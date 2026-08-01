@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ansim-review.local/schemas/drawing-candidate.schema.json",
+  "title": "Drawing candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "candidate_id",
+    "source_sha256",
+    "page",
+    "candidate_type",
+    "origin",
+    "status",
+    "geometry",
+    "raw_value",
+    "normalized_candidate",
+    "extractor",
+    "extractor_version",
+    "annotation_id"
+  ],
+  "properties": {
+    "candidate_id": {"type": "string", "minLength": 1},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "page": {"type": "integer", "minimum": 1},
+    "candidate_type": {"type": "string", "minLength": 1},
+    "origin": {"enum": ["EXTRACTOR", "REVIEWER_MANUAL"]},
+    "status": {"enum": ["UNCONFIRMED", "ACCEPTED", "REJECTED", "EDITED", "CREATED", "CONFLICT"]},
+    "geometry": {"$ref": "drawing-geometry.schema.json"},
+    "raw_value": {"type": ["string", "null"]},
+    "normalized_candidate": {"type": ["string", "null"]},
+    "extractor": {"type": ["string", "null"]},
+    "extractor_version": {"type": ["string", "null"]},
+    "annotation_id": {"type": ["string", "null"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"origin": {"const": "EXTRACTOR"}}},
+      "then": {
+        "properties": {
+          "extractor": {"type": "string", "minLength": 1},
+          "extractor_version": {"type": "string", "minLength": 1},
+          "annotation_id": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "extractor": {"type": "null"},
+          "extractor_version": {"type": "null"},
+          "annotation_id": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  ]
+}
