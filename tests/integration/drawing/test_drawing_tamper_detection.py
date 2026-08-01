@@ -4,7 +4,10 @@ import pytest
 
 from ansim_review.contracts.drawing import DrawingConfirmation, Geometry
 from ansim_review.parsing.drawing_binding import bind_confirmed_inputs
-from ansim_review.parsing.drawing_candidates import create_manual_candidate
+from ansim_review.parsing.drawing_candidates import (
+    create_manual_candidate,
+    persist_candidate,
+)
 from ansim_review.parsing.drawing_confirmation import persist_confirmation
 from ansim_review.parsing.drawing_inputs import (
     ConfirmedInputBuildRequest,
@@ -37,6 +40,7 @@ def test_tampered_confirmation_blocks_engine_binding(tmp_path: Path) -> None:
         raw_value=None,
         normalized_candidate=None,
     )
+    candidate_entry = persist_candidate(case_dir, candidate)
     confirmation = DrawingConfirmation(
         confirmation_id="CONF-001",
         candidate_id=candidate.candidate_id,
@@ -71,4 +75,5 @@ def test_tampered_confirmation_blocks_engine_binding(tmp_path: Path) -> None:
             case_dir,
             [confirmed],
             {attachment.sha256: attachment},
+            candidate_entries={candidate.candidate_id: candidate_entry},
         )
