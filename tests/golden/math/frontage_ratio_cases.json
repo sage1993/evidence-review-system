@@ -1,0 +1,24 @@
+[
+  {
+    "name": "below threshold",
+    "inputs": {
+      "frontage_length_m": "30",
+      "perimeter_length_m": "320",
+      "threshold_ratio": "0.125"
+    },
+    "raw_result": "0.09375",
+    "display_result": "9.375%",
+    "comparison": "BELOW_THRESHOLD"
+  },
+  {
+    "name": "at threshold",
+    "inputs": {
+      "frontage_length_m": "1",
+      "perimeter_length_m": "8",
+      "threshold_ratio": "0.125"
+    },
+    "raw_result": "0.125",
+    "display_result": "12.5%",
+    "comparison": "AT_THRESHOLD"
+  }
+]
