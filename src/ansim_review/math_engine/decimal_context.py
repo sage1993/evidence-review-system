@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from decimal import Context, ROUND_HALF_EVEN, ROUND_HALF_UP, localcontext
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Context, localcontext
 
 _ROUNDING_MODES = {
     "ROUND_HALF_EVEN": ROUND_HALF_EVEN,
