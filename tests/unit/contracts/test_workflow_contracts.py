@@ -93,8 +93,10 @@ def test_workflow_state_round_trips_canonical_document() -> None:
             resumable=True,
         )
     )
-    assert workflow.workflow_state_document(record) == _payload(
+    expected = _payload(
         workflow_state="BLOCKED",
         reason_codes=["MISSING_REQUIRED_INPUT"],
         resumable=True,
     )
+    expected["format"] = "evidence-review/workflow-state"
+    assert workflow.workflow_state_document(record) == expected
