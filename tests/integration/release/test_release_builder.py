@@ -13,7 +13,7 @@ def _workspace(root: Path) -> None:
         root / "src/ansim_review",
     )
     (root / "evidence").mkdir()
-    connection = sqlite3.connect(root / "evidence/ansim-evidence.sqlite")
+    connection = sqlite3.connect(root / "evidence/evidence.sqlite")
     connection.execute("CREATE TABLE evidence(id TEXT PRIMARY KEY)")
     connection.commit()
     connection.close()
@@ -82,6 +82,8 @@ def test_release_blocks_without_acceptance_then_readies_with_exact_hashes(
     root = tmp_path / "workspace"
     _workspace(root)
     blocked = build_ansim_release(root, tmp_path / "blocked")
+    assert blocked["format"] == "evidence-review/release"
+    assert blocked["release"] == "evidence-review-v1.0"
     assert blocked["status"] == "BLOCKED"
     assert blocked["reason_codes"] == ["MANUAL_ACCEPTANCE_MISSING"]
     assert blocked["tag_allowed"] is False
@@ -125,12 +127,7 @@ def test_release_candidate_ignores_generated_python_files(
 
     generated.write_bytes(b"second-different-bytecode")
 
-    egg_info = (
-        root
-        / "src"
-        / "ansim_review"
-        / "noise.egg-info"
-    )
+    egg_info = root / "src" / "ansim_review" / "noise.egg-info"
     egg_info.mkdir()
     (egg_info / "PKG-INFO").write_text(
         "generated metadata",
