@@ -295,7 +295,7 @@ def import_source_batch(
         pages=pages,
         elements=elements,
     )
-    with EvidenceStore(output) as store:
+    with EvidenceStore(output, create=True) as store:
         ingest_snapshot(store, snapshot)
         snapshot_hash = compute_snapshot_hash(store)
         connection = store.require_connection()
