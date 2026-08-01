@@ -74,7 +74,7 @@ def _expect_literal(value: object, field: str, allowed: tuple[_T, ...]) -> _T:
     candidate = _expect_string(value, field)
     if candidate not in allowed:
         raise ValueError(f"unsupported {field}: {candidate}")
-    return cast(_T, candidate)
+    return candidate
 
 
 def _expect_string_tuple(value: object, field: str) -> tuple[str, ...]:
@@ -179,16 +179,19 @@ def decode_calculation_result(value: object) -> CalculationResult:
     if comparison_value is None:
         comparison = None
     else:
-        comparison = _expect_literal(
-            comparison_value,
-            "comparison",
-            (
-                "BELOW_THRESHOLD",
-                "AT_THRESHOLD",
-                "ABOVE_THRESHOLD",
-                "EQUAL",
-                "NOT_EQUAL",
-                "NOT_APPLICABLE",
+        comparison = cast(
+            CalculationComparison,
+            _expect_literal(
+                comparison_value,
+                "comparison",
+                (
+                    "BELOW_THRESHOLD",
+                    "AT_THRESHOLD",
+                    "ABOVE_THRESHOLD",
+                    "EQUAL",
+                    "NOT_EQUAL",
+                    "NOT_APPLICABLE",
+                ),
             ),
         )
     return CalculationResult(
