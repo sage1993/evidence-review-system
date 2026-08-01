@@ -209,7 +209,7 @@ def import_ansim_workspace(root: Path, output_db: Path) -> MigrationReport:
         links=links,
         review_flags=review_flags,
     )
-    with EvidenceStore(output_db) as store:
+    with EvidenceStore(output_db, create=True) as store:
         ingest_snapshot(store, snapshot)
         snapshot_hash = compute_snapshot_hash(store)
         store.require_connection().execute(
