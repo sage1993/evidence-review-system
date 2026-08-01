@@ -1,17 +1,15 @@
 import base64
+import hashlib
+import json
 from pathlib import Path
+
+import pytest
 
 from ansim_review.review_packet.html_renderer import render_review_html
 
 
-def test_self_contained_html_has_traceability_overlay_and_blank_decision(
-    tmp_path: Path,
-) -> None:
-    images = tmp_path / "pages" / "REV1"
-    images.mkdir(parents=True)
-    page = images / "page-0003.png"
-    page.write_bytes(b"\x89PNG\r\n\x1a\nfixture")
-    model = {
+def _model() -> dict[str, object]:
+    return {
         "run_id": "RUN-1",
         "status": "READY_FOR_HUMAN_REVIEW",
         "human_decision": None,
@@ -75,8 +73,37 @@ def test_self_contained_html_has_traceability_overlay_and_blank_decision(
         "conflicts": [],
         "abstention_reasons": [],
     }
-    html = render_review_html(model, images.parent)
-    encoded_page = base64.b64encode(page.read_bytes()).decode()
+
+
+def _write_page_assets(root: Path) -> bytes:
+    images = root / "REV1"
+    images.mkdir(parents=True)
+    page = images / "page-0003.png"
+    page_bytes = b"\x89PNG\r\n\x1a\nverified-fixture"
+    page.write_bytes(page_bytes)
+    metadata = {
+        "format": "ansim/page-image",
+        "version": 1,
+        "revision_id": "REV1",
+        "page_number": 3,
+        "source_hash": "a" * 64,
+        "pdf_width": 120.0,
+        "pdf_height": 200.0,
+        "image_sha256": hashlib.sha256(page_bytes).hexdigest(),
+    }
+    (images / "page-0003.json").write_text(
+        json.dumps(metadata),
+        encoding="utf-8",
+    )
+    return page_bytes
+
+
+def test_self_contained_html_has_traceability_overlay_and_blank_decision(
+    tmp_path: Path,
+) -> None:
+    page_bytes = _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_model(), tmp_path / "pages")
+    encoded_page = base64.b64encode(page_bytes).decode()
     assert "DOC1 · page 3" in html
     assert "정확한 &lt;인용문&gt;" in html
     assert 'data-bbox="10.0,20.0,110.0,40.0"' in html
@@ -86,5 +113,20 @@ def test_self_contained_html_has_traceability_overlay_and_blank_decision(
     assert "<script>" not in html
     assert "checked" not in html
     assert "data:image/png;base64," + encoded_page in html
-    assert "<svg" in html and "<rect" in html
+    assert '<svg viewBox="0 0 120.0 200.0"' in html
+    assert '<rect x="10.0" y="160.0" width="100.0" height="20.0">' in html
     assert "@page" in html and "size: A4" in html
+
+
+def test_review_html_refuses_missing_page_assets(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="verified page image"):
+        render_review_html(_model(), tmp_path / "pages")
+
+
+def test_review_html_rejects_tampered_page_image(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    page = tmp_path / "pages" / "REV1" / "page-0003.png"
+    page.write_bytes(page.read_bytes() + b"tampered")
+
+    with pytest.raises(ValueError, match="page image hash mismatch"):
+        render_review_html(_model(), tmp_path / "pages")
