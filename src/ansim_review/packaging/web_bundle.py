@@ -8,10 +8,15 @@ import zipfile
 from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.formats import WEB_RUNTIME_FORMAT
 from ansim_review.math_engine.formulas import DEFAULT_REGISTRY
 from ansim_review.math_engine.manifest import formula_manifest_payload
 from ansim_review.packaging.file_selection import iter_bundle_source_files
 from ansim_review.packaging.project_instructions import render_project_instructions
+from ansim_review.release.config import (
+    DEFAULT_RELEASE_CONFIG,
+    resolve_evidence_database,
+)
 
 _FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 _SAMPLE_REQUEST: dict[str, object] = {
@@ -49,7 +54,7 @@ def _runtime_files(root: Path) -> list[Path]:
 
 def _manifest(root: Path) -> dict[str, object]:
     return {
-        "format": "ansim/chatgpt-web-runtime",
+        "format": WEB_RUNTIME_FORMAT,
         "version": 1,
         "files": [
             {
@@ -99,7 +104,9 @@ def _write_zip(source: Path, output: Path) -> None:
 
 def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
     """Build byte-reproducible runtime ZIP without source PDFs or installation."""
-    with tempfile.TemporaryDirectory(prefix="ansim-web-runtime-") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix="evidence-review-web-runtime-"
+    ) as temporary:
         stage = Path(temporary) / "runtime"
         stage.mkdir()
         _copy_file(
@@ -119,8 +126,8 @@ def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
             stage / "ansim_review",
         )
         _copy_file(
-            workspace_root / "evidence" / "ansim-evidence.sqlite",
-            stage / "evidence" / "ansim-evidence.sqlite",
+            resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG),
+            stage / "evidence" / "evidence.sqlite",
         )
         _copy_tree(
             workspace_root / "rules" / "approved",
@@ -135,7 +142,7 @@ def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
             workspace_root / "tests" / "golden" / "questions" / "ansim_cases.json"
         )
         if golden.is_file():
-            _copy_file(golden, stage / "examples" / "ansim_cases.json")
+            _copy_file(golden, stage / "examples" / "legacy-ansim-cases.json")
         (stage / "runtime-manifest.json").write_bytes(dump_bytes(_manifest(stage)))
         _write_zip(stage, output_zip)
     return hashlib.sha256(output_zip.read_bytes()).hexdigest()
