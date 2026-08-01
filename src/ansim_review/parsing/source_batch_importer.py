@@ -24,17 +24,21 @@ from ansim_review.parsing.odl_source import (
 from ansim_review.parsing.source_manifest import build_source_entry, sha256_file
 from ansim_review.retrieval.index import build_fts_index
 
-SourcePreparationState = Literal["PENDING_PARSER_OUTPUT", "READY_FOR_INGESTION"]
+SourcePreparationState = Literal[
+    "PENDING_PARSER_OUTPUT",
+    "READY_FOR_INGESTION",
+    "DRAWING_BACKEND_ONLY",
+]
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class PendingParserOutputError(ValueError):
-    """Raised when one or more registered PDFs have no parser artifact yet."""
+    """Raised when one or more registered evidence PDFs have no parser artifact."""
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedSource:
-    """Resolved source bytes and optional parser artifact ready for ingestion."""
+    """Resolved source bytes and optional parser artifact ready for routing."""
 
     source_path: Path
     parser_path: Path | None
@@ -82,7 +86,11 @@ def _prepare_item(root: Path, item: SourceItem) -> PreparedSource:
     document_id = derive_document_id(source_sha256, item.document_id)
     parser_path: Path | None = None
     parser_kind: ParserKind | None = None
-    state: SourcePreparationState = "PENDING_PARSER_OUTPUT"
+    state: SourcePreparationState = (
+        "DRAWING_BACKEND_ONLY"
+        if item.role == "CASE_DRAWING"
+        else "PENDING_PARSER_OUTPUT"
+    )
     if item.parser is not None:
         parser_path = _resolved_file(root, item.parser.artifact_path, "parser.artifact_path")
         parser_kind = item.parser.kind
@@ -124,7 +132,7 @@ def _merge_duplicate(first: PreparedSource, second: PreparedSource) -> PreparedS
 
 
 def prepare_source_batch(batch_root: Path, batch: SourceBatch) -> tuple[PreparedSource, ...]:
-    """Resolve, hash, identify, and deduplicate one generic source batch."""
+    """Resolve, hash, identify, deduplicate, and route one generic source batch."""
     root = batch_root.resolve()
     if not root.is_dir():
         raise FileNotFoundError(root)
@@ -263,7 +271,7 @@ def import_source_batch(
     batch: SourceBatch,
     output_db: Path,
 ) -> SourceBatchImportReport:
-    """Create a searchable evidence SQLite snapshot from arbitrary parsed PDFs."""
+    """Create an evidence snapshot while routing parserless drawings separately."""
     root = batch_root.resolve()
     output = output_db.resolve()
     if output.exists():
@@ -273,7 +281,14 @@ def import_source_batch(
     if pending:
         names = ", ".join(source.source_path.name for source in pending)
         raise PendingParserOutputError(f"PENDING_PARSER_OUTPUT: {names}")
-    documents, revisions, pages, elements = _source_records(root, sources)
+    ingestible = tuple(
+        source for source in sources if source.state == "READY_FOR_INGESTION"
+    )
+    if not ingestible:
+        raise ValueError(
+            "NO_EVIDENCE_SOURCES: source batch contains no parser-ready evidence sources"
+        )
+    documents, revisions, pages, elements = _source_records(root, ingestible)
     snapshot = EvidenceSnapshot(
         documents=documents,
         revisions=revisions,
