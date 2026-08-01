@@ -31,7 +31,7 @@
     "format": {"const": "ansim/review-packet"},
     "version": {"const": 2},
     "run_id": {"type": "string", "minLength": 1},
-    "case_id": {"type": "string"},
+    "case_id": {"type": "string", "minLength": 1},
     "question": {"type": "string", "minLength": 1},
     "finalizer_status": {"enum": ["READY_FOR_HUMAN_REVIEW", "ABSTAIN"]},
     "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
