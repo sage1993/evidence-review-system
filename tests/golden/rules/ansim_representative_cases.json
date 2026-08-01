@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "case_id": "two_roads_boundary_equal",
+      "rule_id": "ANSIM-TWO-ROAD-SIDES-6M",
+      "inputs": {"road_width_side_a_m": "6", "road_width_side_b_m": "6"},
+      "expected_status": "SATISFIED",
+      "expected_missing_inputs": []
+    },
+    {
+      "case_id": "two_roads_missing_second_side",
+      "rule_id": "ANSIM-TWO-ROAD-SIDES-6M",
+      "inputs": {"road_width_side_a_m": "7"},
+      "expected_status": "INDETERMINATE",
+      "expected_missing_inputs": ["road_width_side_b_m"]
+    },
+    {
+      "case_id": "arterial_frontage_30_of_320",
+      "rule_id": "ANSIM-ARTERIAL-FRONTAGE-ONE-EIGHTH",
+      "inputs": {},
+      "calculation_fixture": "frontage_30_320",
+      "expected_status": "NOT_SATISFIED",
+      "expected_missing_inputs": []
+    },
+    {
+      "case_id": "minimum_site_area_boundary_equal",
+      "rule_id": "ANSIM-MINIMUM-SITE-AREA-1500",
+      "inputs": {"site_area_m2": "1500"},
+      "expected_status": "SATISFIED",
+      "expected_missing_inputs": []
+    },
+    {
+      "case_id": "minimum_site_area_below",
+      "rule_id": "ANSIM-MINIMUM-SITE-AREA-1500",
+      "inputs": {"site_area_m2": "1499.99"},
+      "expected_status": "NOT_SATISFIED",
+      "expected_missing_inputs": []
+    }
+  ]
+}

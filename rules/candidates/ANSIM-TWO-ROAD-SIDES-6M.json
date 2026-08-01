@@ -1,0 +1,23 @@
+{
+  "rule_id": "ANSIM-TWO-ROAD-SIDES-6M",
+  "version": "1.0.0",
+  "title": "폭 6m 이상 도로 두 면 접면",
+  "input_schema": {
+    "road_width_side_a_m": {"type": "decimal", "required": true},
+    "road_width_side_b_m": {"type": "decimal", "required": true}
+  },
+  "source_citations": [{
+    "citation_id": "C-ANSIM-ROAD-2SIDES",
+    "document_id": "ANSIM-GUIDELINE",
+    "revision_id": "ANSIM-GUIDELINE-REV-20260801",
+    "page_number": 12,
+    "evidence_id": "ANSIM-GUIDELINE-REV-20260801-P0012-E00001",
+    "bbox": [72, 420, 520, 468],
+    "source_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+  }],
+  "human_decision_required": true,
+  "expression": {"all": [
+    {"compare": {"operator": "gte", "left": {"input": "road_width_side_a_m"}, "right": {"literal": "6"}}},
+    {"compare": {"operator": "gte", "left": {"input": "road_width_side_b_m"}, "right": {"literal": "6"}}}
+  ]}
+}

@@ -1,0 +1,23 @@
+{
+  "rule_id": "ANSIM-MINIMUM-SITE-AREA-1500",
+  "version": "1.0.0",
+  "title": "최소 대지면적 1500제곱미터",
+  "input_schema": {
+    "site_area_m2": {"type": "decimal", "required": true}
+  },
+  "source_citations": [{
+    "citation_id": "C-ANSIM-SITE-AREA",
+    "document_id": "ANSIM-GUIDELINE",
+    "revision_id": "ANSIM-GUIDELINE-REV-20260801",
+    "page_number": 14,
+    "evidence_id": "ANSIM-GUIDELINE-REV-20260801-P0014-E00001",
+    "bbox": [72, 280, 520, 326],
+    "source_hash": "3333333333333333333333333333333333333333333333333333333333333333"
+  }],
+  "human_decision_required": true,
+  "expression": {"compare": {
+    "operator": "gte",
+    "left": {"input": "site_area_m2"},
+    "right": {"literal": "1500"}
+  }}
+}
