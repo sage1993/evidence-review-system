@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from ansim_review import cli
 
@@ -164,3 +168,24 @@ def test_review_run_cli_uses_declared_error_exit_codes(
         == 2
     )
     assert "invalid request" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    (
+        (("review-run", "--help"), "prepare"),
+        (("review-run", "prepare", "--help"), "--workspace"),
+        (("review-run", "finalize", "--help"), "--track-a-output"),
+    ),
+)
+def test_review_run_help_commands(
+    arguments: tuple[str, ...],
+    expected: str,
+) -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "ansim_review", *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert expected in completed.stdout
