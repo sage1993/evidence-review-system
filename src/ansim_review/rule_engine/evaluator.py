@@ -129,13 +129,13 @@ def _evaluate_node(
                 return False, tuple(sorted(calc_ids))
         return True, tuple(sorted(calc_ids))
     if node_type == "any":
-        calc_ids = set()
+        any_calc_ids: set[str] = set()
         for child in cast(Sequence[Mapping[str, object]], body):
             passed, child_ids = _evaluate_node(child, rule, inputs, calculations)
-            calc_ids.update(child_ids)
+            any_calc_ids.update(child_ids)
             if passed:
-                return True, tuple(sorted(calc_ids))
-        return False, tuple(sorted(calc_ids))
+                return True, tuple(sorted(any_calc_ids))
+        return False, tuple(sorted(any_calc_ids))
     if node_type == "not":
         passed, calc_ids = _evaluate_node(
             cast(Mapping[str, object], body), rule, inputs, calculations
