@@ -14,6 +14,7 @@ from ansim_review.contracts.drawing import (
     confirmed_input_document,
     decode_confirmed_input,
     decode_drawing_confirmation,
+    geometry_document,
 )
 from ansim_review.parsing.drawing_case import case_artifact_path
 from ansim_review.parsing.drawing_source import verify_immutable_attachment
@@ -43,6 +44,18 @@ def _verify_confirmation(case_dir: Path, confirmed: ConfirmedInput) -> None:
         raise ValueError("confirmation candidate does not match confirmed evidence")
     if confirmation.source_sha256 != confirmed.source_sha256:
         raise ValueError("confirmation source does not match confirmed input")
+    if confirmation.action != confirmed.candidate_status:
+        raise ValueError("confirmation action does not match confirmed candidate status")
+    if confirmation.confirmed_value is not None:
+        if confirmation.confirmed_value != confirmed.value:
+            raise ValueError("confirmation value does not match confirmed input")
+        if confirmation.unit != confirmed.unit:
+            raise ValueError("confirmation unit does not match confirmed input")
+    if confirmation.geometry is not None:
+        if geometry_document(confirmation.geometry) != geometry_document(
+            confirmed.geometry
+        ):
+            raise ValueError("confirmation geometry does not match confirmed input")
 
 
 def bind_confirmed_inputs(
