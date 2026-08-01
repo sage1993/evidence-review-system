@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal
 
 from ansim_review.contracts.codecs import (
     decode_calculation_result,
@@ -22,11 +22,7 @@ from ansim_review.contracts.drawing import (
     drawing_candidate_document,
 )
 from ansim_review.contracts.engines import CalculationResult, RuleResult
-from ansim_review.contracts.review import (
-    Claim,
-    ConfidenceResult,
-    FinalizerStatus,
-)
+from ansim_review.contracts.review import Claim, ConfidenceResult, FinalizerStatus
 from ansim_review.contracts.validation import (
     expect_int,
     expect_literal,
@@ -89,7 +85,12 @@ def _citation_document(citation: Citation) -> dict[str, object]:
         "revision_id": citation.revision_id,
         "page_number": citation.page_number,
         "evidence_id": citation.evidence_id,
-        "bbox": [citation.bbox.left, citation.bbox.bottom, citation.bbox.right, citation.bbox.top],
+        "bbox": [
+            citation.bbox.left,
+            citation.bbox.bottom,
+            citation.bbox.right,
+            citation.bbox.top,
+        ],
         "source_hash": citation.source_hash,
     }
 
@@ -155,7 +156,11 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
 
 def _decode_evidence_record(value: object) -> EvidenceRecord:
     payload = expect_mapping(value, "evidence")
-    reject_unknown(payload, {"evidence_id", "citation", "quote", "numeric_tokens"}, "evidence")
+    reject_unknown(
+        payload,
+        {"evidence_id", "citation", "quote", "numeric_tokens"},
+        "evidence",
+    )
     citation = decode_citation(payload.get("citation"))
     evidence_id = expect_string(payload.get("evidence_id"), "evidence_id")
     if citation.evidence_id != evidence_id:
@@ -164,7 +169,9 @@ def _decode_evidence_record(value: object) -> EvidenceRecord:
         evidence_id=evidence_id,
         citation=citation,
         quote=expect_string(payload.get("quote"), "quote"),
-        numeric_tokens=expect_string_tuple(payload.get("numeric_tokens", []), "numeric_tokens"),
+        numeric_tokens=expect_string_tuple(
+            payload.get("numeric_tokens", []), "numeric_tokens"
+        ),
     )
 
 
@@ -260,7 +267,8 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
         if compatibility_source_version != 1:
             raise ValueError("compatibility_source_version must be 1 or null")
     claims = tuple(
-        decode_claim(item) for item in expect_sequence(payload.get("claims", []), "claims")
+        decode_claim(item)
+        for item in expect_sequence(payload.get("claims", []), "claims")
     )
     evidence = tuple(
         _decode_evidence_record(item)
@@ -268,11 +276,15 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
     )
     drawing_evidence = tuple(
         decode_drawing_candidate(item)
-        for item in expect_sequence(payload.get("drawing_evidence", []), "drawing_evidence")
+        for item in expect_sequence(
+            payload.get("drawing_evidence", []), "drawing_evidence"
+        )
     )
     confirmed_inputs = tuple(
         decode_confirmed_input(item)
-        for item in expect_sequence(payload.get("confirmed_inputs", []), "confirmed_inputs")
+        for item in expect_sequence(
+            payload.get("confirmed_inputs", []), "confirmed_inputs"
+        )
     )
     calculations = tuple(
         decode_calculation_result(item)
@@ -280,21 +292,31 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
     )
     rules = tuple(
         decode_rule_result(item)
-        for item in expect_sequence(payload.get("rule_evaluations", []), "rule_evaluations")
+        for item in expect_sequence(
+            payload.get("rule_evaluations", []), "rule_evaluations"
+        )
     )
     confidence_value = payload.get("confidence")
-    confidence = None if confidence_value is None else decode_confidence_result(confidence_value)
+    confidence = (
+        None
+        if confidence_value is None
+        else decode_confidence_result(confidence_value)
+    )
     _validate_claims(claims, evidence, calculations, compatibility_source_version)
     return ReviewPacketV2(
-        format=cast(Literal["ansim/review-packet"], format_value),
+        format=format_value,
         version=2,
         run_id=expect_string(payload.get("run_id"), "run_id"),
         case_id=expect_string(payload.get("case_id"), "case_id", allow_empty=True),
         question=expect_string(payload.get("question"), "question"),
         finalizer_status=expect_literal(
-            payload.get("finalizer_status"), "finalizer_status", _FINALIZER_STATUSES
+            payload.get("finalizer_status"),
+            "finalizer_status",
+            _FINALIZER_STATUSES,
         ),
-        snapshot_sha256=expect_sha256(payload.get("snapshot_sha256"), "snapshot_sha256"),
+        snapshot_sha256=expect_sha256(
+            payload.get("snapshot_sha256"), "snapshot_sha256"
+        ),
         rule_manifest_sha256=expect_sha256(
             payload.get("rule_manifest_sha256"), "rule_manifest_sha256"
         ),
@@ -333,17 +355,25 @@ def review_packet_v2_document(packet: ReviewPacketV2) -> dict[str, object]:
         "claims": [_claim_document(claim) for claim in packet.claims],
         "evidence": [_evidence_document(record) for record in packet.evidence],
         "drawing_evidence": [
-            drawing_candidate_document(candidate) for candidate in packet.drawing_evidence
+            drawing_candidate_document(candidate)
+            for candidate in packet.drawing_evidence
         ],
         "confirmed_inputs": [
-            confirmed_input_document(confirmed) for confirmed in packet.confirmed_inputs
+            confirmed_input_document(confirmed)
+            for confirmed in packet.confirmed_inputs
         ],
-        "calculations": [_calculation_document(result) for result in packet.calculations],
-        "rule_evaluations": [_rule_document(result) for result in packet.rule_evaluations],
+        "calculations": [
+            _calculation_document(result) for result in packet.calculations
+        ],
+        "rule_evaluations": [
+            _rule_document(result) for result in packet.rule_evaluations
+        ],
         "exceptions": list(packet.exceptions),
         "conflicts": list(packet.conflicts),
         "confidence": (
-            None if packet.confidence is None else _confidence_document(packet.confidence)
+            None
+            if packet.confidence is None
+            else _confidence_document(packet.confidence)
         ),
         "abstention_reasons": list(packet.abstention_reasons),
         "human_decision": None,
