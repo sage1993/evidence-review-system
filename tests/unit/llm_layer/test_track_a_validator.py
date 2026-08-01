@@ -12,9 +12,13 @@ from ansim_review.llm_layer.track_a import (
 from ansim_review.llm_layer.validators import validate_track_a_integrity
 
 
-def _bundle():
+def _bundle(
+    *,
+    evidence_text: str = "접면 비율은 9.375%이다.",
+    calculation: CalculationResult | None = None,
+):
     citation = Citation("C1", "DOC1", "REV1", 1, "E1", BBox(0, 0, 10, 10), "a" * 64)
-    calculation = CalculationResult(
+    selected_calculation = calculation or CalculationResult(
         calculation_result_id="CALC1",
         status="SUCCESS",
         formula_id="FRONTAGE_RATIO",
@@ -33,9 +37,9 @@ def _bundle():
         run_id="RUN-0123456789ABCDEF0123",
         question="기준 충족 여부",
         inputs={"site_area": "1500"},
-        evidence=(EvidenceExcerpt(citation, "접면 비율은 9.375%이다."),),
+        evidence=(EvidenceExcerpt(citation, evidence_text),),
         rules=(rule,),
-        calculations=(calculation,),
+        calculations=(selected_calculation,),
         approved_rule_result_ids=("RULE1",),
     )
 
@@ -65,6 +69,12 @@ def _valid_output():
         "conflicts": [],
         "explanation": "근거와 계산 결과를 설명한다.",
     }
+
+
+def _validate(payload, bundle=None) -> None:
+    selected_bundle = bundle or _bundle()
+    validated = validate_track_a_output(payload, selected_bundle)
+    validate_track_a_integrity(validated, selected_bundle)
 
 
 @pytest.mark.parametrize(
@@ -105,10 +115,107 @@ def test_llm_authored_rounded_percentage_is_rejected() -> None:
         validate_track_a_integrity(validated, _bundle())
 
 
+@pytest.mark.parametrize("text", ["값은 1e3이다.", "값은 .5이다.", "값은 ½이다."])
+def test_numeric_meaning_cannot_bypass_with_empty_declared_tokens(text: str) -> None:
+    payload = _valid_output()
+    payload["claims"][0]["text"] = text
+    payload["claims"][0]["numeric_tokens"] = []
+    validated = validate_track_a_output(payload, _bundle())
+
+    with pytest.raises(ValueError, match="UNSUPPORTED_NUMERIC_SYNTAX"):
+        validate_track_a_integrity(validated, _bundle())
+
+
+@pytest.mark.parametrize(
+    ("text", "declared"),
+    [
+        ("접면 비율은 9.375%이다.", ["9.375"]),
+        ("면적은 1,234이다.", ["1234"]),
+        ("값은 -12이다.", ["12"]),
+    ],
+)
+def test_numeric_tokens_must_exactly_match_text(text: str, declared: list[str]) -> None:
+    payload = _valid_output()
+    payload["claims"][0]["text"] = text
+    payload["claims"][0]["numeric_tokens"] = declared
+
+    with pytest.raises(ValueError, match="NUMERIC_TOKEN_MISMATCH: CL1"):
+        _validate(payload)
+
+
+def test_exact_evidence_grouped_number_is_accepted() -> None:
+    payload = _valid_output()
+    payload["claims"][0]["text"] = "면적은 1,234이다."
+    payload["claims"][0]["numeric_tokens"] = ["1,234"]
+    payload["claims"][0]["calculation_result_ids"] = []
+
+    _validate(payload, _bundle(evidence_text="면적은 1,234이다."))
+
+
+def test_evidence_number_is_not_normalized_for_claim() -> None:
+    payload = _valid_output()
+    payload["claims"][0]["text"] = "면적은 1234이다."
+    payload["claims"][0]["numeric_tokens"] = ["1234"]
+    payload["claims"][0]["calculation_result_ids"] = []
+
+    with pytest.raises(ValueError, match="unregistered numeric token: 1234"):
+        _validate(payload, _bundle(evidence_text="면적은 1,234이다."))
+
+
+def test_leading_dot_source_does_not_authorize_normalized_claim() -> None:
+    payload = _valid_output()
+    payload["claims"][0]["text"] = "비율은 0.5이다."
+    payload["claims"][0]["numeric_tokens"] = ["0.5"]
+    payload["claims"][0]["calculation_result_ids"] = []
+
+    with pytest.raises(ValueError, match="unregistered numeric token: 0.5"):
+        _validate(payload, _bundle(evidence_text="비율은 .5이다."))
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["123", "61.5", "50%", "2", "60"],
+)
+def test_referenced_successful_calculation_authorizes_exact_tokens(token: str) -> None:
+    calculation = CalculationResult(
+        calculation_result_id="CALC1",
+        status="SUCCESS",
+        formula_id="TEST",
+        formula_version="1.0.0",
+        inputs={"input": "123"},
+        substitution="123 / 2",
+        raw_result="61.5",
+        display_result="50%",
+        comparison="61.5 >= 60",
+        result_hash="b" * 64,
+    )
+    payload = _valid_output()
+    payload["claims"][0]["text"] = f"계산 근거는 {token}이다."
+    payload["claims"][0]["numeric_tokens"] = [token]
+
+    _validate(payload, _bundle(evidence_text="계산 결과를 참고한다.", calculation=calculation))
+
+
+def test_unreferenced_calculation_does_not_authorize_token() -> None:
+    calculation = CalculationResult(
+        calculation_result_id="CALC1",
+        status="SUCCESS",
+        formula_id="TEST",
+        formula_version="1.0.0",
+        raw_result="61.5",
+        result_hash="b" * 64,
+    )
+    payload = _valid_output()
+    payload["claims"][0]["text"] = "계산 근거는 61.5이다."
+    payload["claims"][0]["numeric_tokens"] = ["61.5"]
+    payload["claims"][0]["calculation_result_ids"] = []
+
+    with pytest.raises(ValueError, match="unregistered numeric token: 61.5"):
+        _validate(payload, _bundle(evidence_text="계산 결과를 참고한다.", calculation=calculation))
+
+
 def test_exact_math_value_and_rule_reference_are_accepted() -> None:
-    bundle = _bundle()
-    validated = validate_track_a_output(_valid_output(), bundle)
-    validate_track_a_integrity(validated, bundle)
+    _validate(_valid_output(), _bundle())
 
 
 def test_rule_reference_hash_or_status_mismatch_is_rejected() -> None:
