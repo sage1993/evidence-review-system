@@ -1,19 +1,16 @@
-"""Runtime and static safeguards for the application offline boundary."""
+"""Runtime safeguards for the application offline boundary."""
 
 from __future__ import annotations
 
-import ast
 import socket
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, NoReturn
 from unittest.mock import patch
 
-from ansim_review.offline_policy import (
-    default_offline_policy,
-    is_allowed_local_address,
-)
+from ansim_review.offline_policy import is_allowed_local_address
+from ansim_review.offline_scanner import scan_source_tree
 
 _DISABLED_MESSAGE = "non-loopback network access is disabled"
 _GUARD_INSTALLED = False
@@ -90,43 +87,9 @@ def offline_guard_context() -> Iterator[None]:
         yield
 
 
-def _imported_modules(node: ast.Import | ast.ImportFrom) -> Iterable[str]:
-    if isinstance(node, ast.Import):
-        for alias in node.names:
-            yield alias.name
-        return
-
-    module = node.module or ""
-    if module == "urllib":
-        for alias in node.names:
-            if alias.name == "request":
-                yield "urllib.request"
-    if module:
-        yield module
-
-
-def _is_forbidden_import(module: str) -> bool:
-    policy = default_offline_policy()
-    top_level = module.split(".", maxsplit=1)[0]
-    return (
-        top_level in policy.forbidden_import_roots
-        or module in policy.forbidden_import_names
-    )
-
-
 def find_forbidden_imports(root: Path) -> tuple[str, ...]:
-    """Return deterministic findings for currently forbidden imports."""
-    findings: list[str] = []
-    for path in sorted(root.rglob("*.py")):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except (OSError, SyntaxError) as error:
-            findings.append(f"{path.as_posix()}:0:SCAN_ERROR:{error}")
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.Import, ast.ImportFrom)):
-                continue
-            for module in _imported_modules(node):
-                if _is_forbidden_import(module):
-                    findings.append(f"{path.as_posix()}:{node.lineno}:{module}")
-    return tuple(sorted(findings))
+    """Return compatibility strings derived from the shared source scanner."""
+    return tuple(
+        f"{finding.path}:{finding.line}:{finding.kind}:{finding.symbol}"
+        for finding in scan_source_tree(root)
+    )
