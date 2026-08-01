@@ -151,21 +151,17 @@ def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
     version = expect_int(payload.get("version"), "version")
     if version != 1:
         raise ValueError(f"unsupported version: {version}")
-    workflow_state = cast(
-        WorkflowState,
-        expect_literal(payload.get("workflow_state"), "workflow_state", _WORKFLOW_STATES),
+    workflow_state = expect_literal(
+        payload.get("workflow_state"), "workflow_state", _WORKFLOW_STATES
     )
     finalizer_value = payload.get("finalizer_status")
     finalizer_status = (
         None
         if finalizer_value is None
-        else cast(
-            FinalizerStatus,
-            expect_literal(finalizer_value, "finalizer_status", _FINALIZER_STATUSES),
-        )
+        else expect_literal(finalizer_value, "finalizer_status", _FINALIZER_STATUSES)
     )
     reason_codes = tuple(
-        cast(ReasonCode, expect_literal(code, "reason_code", _REASON_CODES))
+        expect_literal(code, "reason_code", _REASON_CODES)
         for code in expect_string_tuple(payload.get("reason_codes", []), "reason_codes")
     )
     resumable = expect_bool(payload.get("resumable"), "resumable")
