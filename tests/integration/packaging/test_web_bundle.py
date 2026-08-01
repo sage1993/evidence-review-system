@@ -12,6 +12,12 @@ def _workspace(root: Path) -> None:
     package = root / "src" / "ansim_review"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
+    cache = package / "__pycache__"
+    cache.mkdir()
+    (cache / "generated.cpython-313.pyc").write_bytes(b"generated")
+    egg_info = package / "noise.egg-info"
+    egg_info.mkdir()
+    (egg_info / "PKG-INFO").write_text("generated", encoding="utf-8")
     (root / "evidence").mkdir()
     (root / "evidence" / "ansim-evidence.sqlite").write_bytes(
         b"SQLite format 3\0fixture"
@@ -64,6 +70,17 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
         check=True,
     )
     assert completed.stdout.strip() == "WEB_RUNTIME_SELF_TEST_PASS"
+    assert not (
+        extracted
+        / "ansim_review"
+        / "__pycache__"
+        / "generated.cpython-313.pyc"
+    ).exists()
+    assert not (
+        extracted
+        / "ansim_review"
+        / "noise.egg-info"
+    ).exists()
     assert (extracted / "evidence" / "ansim-evidence.sqlite").is_file()
     assert (extracted / "rules" / "approved" / "R1.json").is_file()
 

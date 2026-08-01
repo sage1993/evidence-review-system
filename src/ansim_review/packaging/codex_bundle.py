@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.packaging.file_selection import iter_bundle_source_files
 
 CODEX_ROUTING_SECTION = """
 
@@ -25,14 +26,11 @@ Do not use network APIs or remote search from project code.
 
 
 def _copy_tree(source: Path, destination: Path) -> None:
-    if not source.is_dir():
-        raise FileNotFoundError(source)
-    for path in sorted(source.rglob("*")):
-        if path.is_file():
-            relative = path.relative_to(source)
-            target = destination / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, target)
+    for path in iter_bundle_source_files(source):
+        relative = path.relative_to(source)
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
 
 
 def _copy_file(source: Path, destination: Path) -> None:

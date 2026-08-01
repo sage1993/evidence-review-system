@@ -11,6 +11,12 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     package = root / "src" / "ansim_review"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
+    cache = package / "__pycache__"
+    cache.mkdir()
+    (cache / "generated.cpython-313.pyc").write_bytes(b"generated")
+    egg_info = package / "noise.egg-info"
+    egg_info.mkdir()
+    (egg_info / "PKG-INFO").write_text("generated", encoding="utf-8")
     (root / "evidence").mkdir()
     (root / "evidence" / "ansim-evidence.sqlite").write_bytes(
         b"SQLite format 3\0fixture"
@@ -36,6 +42,19 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     assert (output / "AGENTS.md").is_file()
     assert len(list((output / "skills").glob("*/SKILL.md"))) == 5
     assert (output / "src" / "ansim_review" / "__init__.py").is_file()
+    assert not (
+        output
+        / "src"
+        / "ansim_review"
+        / "__pycache__"
+        / "generated.cpython-313.pyc"
+    ).exists()
+    assert not (
+        output
+        / "src"
+        / "ansim_review"
+        / "noise.egg-info"
+    ).exists()
     assert (output / "evidence" / "ansim-evidence.sqlite").is_file()
     assert (output / "rules" / "approved" / "R1.json").is_file()
     assert (output / "rules" / "manifests" / "active.json").is_file()
@@ -46,3 +65,6 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     )
     assert data == manifest
     assert all(not Path(item["path"]).is_absolute() for item in data["files"])
+    assert all("__pycache__" not in item["path"] for item in data["files"])
+    assert all(not item["path"].endswith(".pyc") for item in data["files"])
+    assert all(".egg-info/" not in item["path"] for item in data["files"])

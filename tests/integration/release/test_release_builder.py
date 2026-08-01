@@ -102,3 +102,41 @@ def test_release_blocks_without_acceptance_then_readies_with_exact_hashes(
     assert ready["reason_codes"] == []
     assert ready["tag_allowed"] is True
     assert (tmp_path / "ready/acceptance-record.json").is_file()
+
+
+def test_release_candidate_ignores_generated_python_files(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+
+    generated = (
+        root
+        / "src"
+        / "ansim_review"
+        / "packaging"
+        / "__pycache__"
+        / "generated.cpython-313.pyc"
+    )
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_bytes(b"first-generated-bytecode")
+
+    first = build_ansim_release(root, tmp_path / "first")
+
+    generated.write_bytes(b"second-different-bytecode")
+
+    egg_info = (
+        root
+        / "src"
+        / "ansim_review"
+        / "noise.egg-info"
+    )
+    egg_info.mkdir()
+    (egg_info / "PKG-INFO").write_text(
+        "generated metadata",
+        encoding="utf-8",
+    )
+
+    second = build_ansim_release(root, tmp_path / "second")
+
+    assert first["candidate_hash"] == second["candidate_hash"]
