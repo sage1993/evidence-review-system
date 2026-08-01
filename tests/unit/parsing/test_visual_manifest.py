@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from ansim_review.parsing.source_manifest import sha256_file
-from ansim_review.parsing.visual_manifest import load_visual_manifest
+from ansim_review.parsing.visual_manifest import (
+    VisualRecord,
+    load_visual_manifest,
+    validate_visual_page_identity,
+)
 
 
 def _record(path: str, sha256: str, *, visual_id: str, page_id: str) -> dict[str, object]:
@@ -107,3 +112,62 @@ def test_visual_filename_never_supplies_document_or_page_identity(tmp_path: Path
 
     with pytest.raises(ValueError, match="visual manifest format"):
         load_visual_manifest(root, manifest)
+
+
+def _identity_connection() -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:")
+    connection.executescript(
+        """
+        CREATE TABLE documents(id TEXT PRIMARY KEY);
+        CREATE TABLE revisions(
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES documents(id)
+        );
+        CREATE TABLE pages(
+            id TEXT PRIMARY KEY,
+            revision_id TEXT NOT NULL REFERENCES revisions(id)
+        );
+        INSERT INTO documents(id) VALUES('DOC-1');
+        INSERT INTO revisions(id, document_id) VALUES('DOC-1-r1', 'DOC-1');
+        INSERT INTO pages(id, revision_id) VALUES('PAGE-1', 'DOC-1-r1');
+        """
+    )
+    return connection
+
+
+def _visual_record(*, revision_id: str = "DOC-1-r1", page_id: str = "PAGE-1") -> VisualRecord:
+    return VisualRecord(
+        visual_id="VIS-1",
+        document_id="DOC-1",
+        revision_id=revision_id,
+        page_id=page_id,
+        kind="page_render",
+        relative_path="visuals/page.png",
+        sha256="a" * 64,
+        duplicate_group="DUP-aaaaaaaaaaaaaaaa",
+        bbox=None,
+        source_evidence_ids=(),
+    )
+
+
+def test_visual_page_identity_matches_database_relationship() -> None:
+    with _identity_connection() as connection:
+        validate_visual_page_identity(connection, _visual_record())
+
+
+def test_visual_page_identity_rejects_missing_page() -> None:
+    with _identity_connection() as connection:
+        with pytest.raises(ValueError, match="VISUAL_PAGE_NOT_FOUND"):
+            validate_visual_page_identity(
+                connection,
+                _visual_record(page_id="PAGE-MISSING"),
+            )
+
+
+def test_visual_page_identity_rejects_revision_mismatch() -> None:
+    with _identity_connection() as connection:
+        with pytest.raises(ValueError, match="VISUAL_PAGE_IDENTITY_MISMATCH"):
+            validate_visual_page_identity(
+                connection,
+                _visual_record(revision_id="DOC-1-r2"),
+            )
