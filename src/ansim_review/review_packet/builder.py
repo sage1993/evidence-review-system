@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from ansim_review.contracts.review import ReviewPacket
+from ansim_review.evidence.store import EvidenceStore
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -103,13 +104,13 @@ def _exception_codes(rules: Sequence[Mapping[str, object]]) -> list[str]:
 
 
 def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, object]:
-    """Resolve display evidence from SQLite while preserving machine output unchanged."""
+    """Resolve display evidence from schema-checked SQLite data."""
     document = _packet_document(packet)
     if document.get("human_decision") is not None:
         raise ValueError("machine packet human_decision must be null")
     claims: list[dict[str, object]] = []
-    connection = sqlite3.connect(evidence_db)
-    try:
+    with EvidenceStore(evidence_db) as store:
+        connection = store.require_connection()
         for index, item in enumerate(_sequence(document.get("claims", []), "claims")):
             claim = _mapping(item, f"claims[{index}]")
             citation_ids = tuple(
@@ -129,8 +130,6 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
                     ],
                 }
             )
-    finally:
-        connection.close()
 
     reasons = [
         _string(item, "abstention_reason")
