@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 from pathlib import Path
 
 import pytest
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
+from ansim_review.evidence.store import EvidenceStore
 from ansim_review.review_run import finalize_review_run, prepare_review_run
 
 
@@ -118,38 +118,45 @@ def _workspace(path: Path) -> Path:
     path.mkdir(parents=True)
     evidence = path / "evidence"
     evidence.mkdir()
-    connection = sqlite3.connect(evidence / "ansim-evidence.sqlite")
-    connection.execute(
-        """CREATE TABLE retrieval_records (
-            evidence_id TEXT PRIMARY KEY,
-            evidence_type TEXT NOT NULL,
-            document_id TEXT NOT NULL,
-            revision_id TEXT NOT NULL,
-            page_number INTEGER NOT NULL,
-            bbox_json TEXT NOT NULL,
-            source_hash TEXT NOT NULL,
-            title TEXT NOT NULL,
-            raw_text TEXT NOT NULL,
-            normalized_text TEXT NOT NULL
-        )"""
-    )
-    connection.execute(
-        "INSERT INTO retrieval_records VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (
-            "E1",
-            "clause",
-            "DOC1",
-            "REV1",
-            1,
-            "[0,0,10,10]",
-            "a" * 64,
-            "접면 기준",
-            "접면 비율은 9.375%이다.",
-            "접면 비율은 9.375%이다.",
-        ),
-    )
-    connection.commit()
-    connection.close()
+    with EvidenceStore(evidence / "evidence.sqlite", create=True) as store:
+        connection = store.require_connection()
+        connection.execute("INSERT INTO documents(id, title) VALUES('DOC1', 'Document')")
+        connection.execute(
+            """
+            INSERT INTO revisions(id, document_id, source_hash, byte_size, page_count)
+            VALUES('REV1', 'DOC1', ?, 10, 1)
+            """,
+            ("a" * 64,),
+        )
+        connection.execute(
+            """
+            INSERT INTO pages(id, revision_id, page_number, width, height)
+            VALUES('REV1-P1', 'REV1', 1, 10, 10)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO retrieval_records(
+                evidence_id, evidence_type, document_id, revision_id, page_id,
+                page_number, bbox_json, source_hash, title, raw_text,
+                normalized_text
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "E1",
+                "clause",
+                "DOC1",
+                "REV1",
+                "REV1-P1",
+                1,
+                "[0,0,10,10]",
+                "a" * 64,
+                "접면 기준",
+                "접면 비율은 9.375%이다.",
+                "접면 비율은 9.375%이다.",
+            ),
+        )
+        connection.commit()
     _write_page_assets(path)
     return path
 
@@ -302,9 +309,9 @@ def test_finalize_refuses_missing_verified_page_assets(tmp_path: Path) -> None:
         _write_request(tmp_path / "request.json"),
     )
     track_a, track_b = _write_tracks(tmp_path, prepared.run_id)
-    for path in (workspace / "page-images").rglob("*"):
-        if path.is_file():
-            path.unlink()
+    for asset_path in (workspace / "page-images").rglob("*"):
+        if asset_path.is_file():
+            asset_path.unlink()
 
     with pytest.raises(FileNotFoundError, match="verified page image"):
         finalize_review_run(
