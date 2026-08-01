@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ansim-review.local/schemas/next-action.schema.json",
+  "title": "Agent-mediated next action",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "run_id",
+    "workflow_state",
+    "action",
+    "input_bundle",
+    "instructions",
+    "expected_output",
+    "resume_command",
+    "track_a_validated"
+  ],
+  "properties": {
+    "format": {"const": "ansim/next-action"},
+    "version": {"const": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "workflow_state": {"enum": ["WAITING_TRACK_A", "WAITING_TRACK_B"]},
+    "action": {"enum": ["PRODUCE_TRACK_A", "PRODUCE_TRACK_B"]},
+    "input_bundle": {"type": "string", "minLength": 1},
+    "instructions": {"type": "string", "minLength": 1},
+    "expected_output": {"type": "string", "minLength": 1},
+    "resume_command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "track_a_validated": {"type": "boolean"}
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "workflow_state": {"const": "WAITING_TRACK_A"},
+        "action": {"const": "PRODUCE_TRACK_A"},
+        "track_a_validated": {"const": false}
+      }
+    },
+    {
+      "properties": {
+        "workflow_state": {"const": "WAITING_TRACK_B"},
+        "action": {"const": "PRODUCE_TRACK_B"},
+        "track_a_validated": {"const": true}
+      }
+    }
+  ]
+}
