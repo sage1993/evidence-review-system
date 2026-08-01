@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal
 
+from ansim_review.contracts.formats import WORKFLOW_STATE_FORMAT
+from ansim_review.contracts.legacy_formats import LEGACY_WORKFLOW_STATE_FORMAT
 from ansim_review.contracts.review import FinalizerStatus
 from ansim_review.contracts.validation import (
     expect_bool,
@@ -92,7 +94,7 @@ _FINALIZER_STATUSES: tuple[FinalizerStatus, ...] = (
 class WorkflowStateRecord:
     """One canonical workflow projection separate from machine review output."""
 
-    format: Literal["ansim/workflow-state"]
+    format: Literal["evidence-review/workflow-state"]
     version: Literal[1]
     run_id: str
     workflow_state: WorkflowState
@@ -134,7 +136,7 @@ def _validate_relationships(
 
 
 def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
-    """Decode and cross-validate one workflow state document."""
+    """Decode a generic or legacy workflow document into the generic model."""
     payload = expect_mapping(value, "workflow_state")
     required = {
         "format",
@@ -147,8 +149,10 @@ def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
     }
     require_fields(payload, required, "workflow_state")
     reject_unknown(payload, required, "workflow_state")
-    format_value = expect_literal(
-        payload.get("format"), "format", ("ansim/workflow-state",)
+    expect_literal(
+        payload.get("format"),
+        "format",
+        (WORKFLOW_STATE_FORMAT, LEGACY_WORKFLOW_STATE_FORMAT),
     )
     version = expect_int(payload.get("version"), "version")
     if version != 1:
@@ -169,7 +173,7 @@ def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
     resumable = expect_bool(payload.get("resumable"), "resumable")
     _validate_relationships(workflow_state, finalizer_status, reason_codes, resumable)
     return WorkflowStateRecord(
-        format=cast(Literal["ansim/workflow-state"], format_value),
+        format=WORKFLOW_STATE_FORMAT,
         version=1,
         run_id=expect_string(payload.get("run_id"), "run_id"),
         workflow_state=workflow_state,
@@ -182,7 +186,7 @@ def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
 def workflow_state_document(record: WorkflowStateRecord) -> dict[str, object]:
     """Return the explicit canonical JSON document for *record*."""
     return {
-        "format": record.format,
+        "format": WORKFLOW_STATE_FORMAT,
         "version": record.version,
         "run_id": record.run_id,
         "workflow_state": record.workflow_state,
