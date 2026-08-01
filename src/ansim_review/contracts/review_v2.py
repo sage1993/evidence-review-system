@@ -32,6 +32,7 @@ from ansim_review.contracts.validation import (
     expect_string,
     expect_string_tuple,
     reject_unknown,
+    require_fields,
 )
 
 _FORMATS: tuple[Literal["ansim/review-packet"], ...] = ("ansim/review-packet",)
@@ -156,11 +157,9 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
 
 def _decode_evidence_record(value: object) -> EvidenceRecord:
     payload = expect_mapping(value, "evidence")
-    reject_unknown(
-        payload,
-        {"evidence_id", "citation", "quote", "numeric_tokens"},
-        "evidence",
-    )
+    required = {"evidence_id", "citation", "quote", "numeric_tokens"}
+    require_fields(payload, required, "evidence")
+    reject_unknown(payload, required, "evidence")
     citation = decode_citation(payload.get("citation"))
     evidence_id = expect_string(payload.get("evidence_id"), "evidence_id")
     if citation.evidence_id != evidence_id:
@@ -170,7 +169,7 @@ def _decode_evidence_record(value: object) -> EvidenceRecord:
         citation=citation,
         quote=expect_string(payload.get("quote"), "quote"),
         numeric_tokens=expect_string_tuple(
-            payload.get("numeric_tokens", []), "numeric_tokens"
+            payload.get("numeric_tokens"), "numeric_tokens"
         ),
     )
 
@@ -228,9 +227,7 @@ def _validate_claims(
 def decode_review_packet_v2(value: object) -> ReviewPacketV2:
     """Decode a strict Review Packet v2 document."""
     payload = expect_mapping(value, "review_packet_v2")
-    if payload.get("human_decision") is not None:
-        raise ValueError("human_decision must be null in a machine review packet")
-    allowed = {
+    required = {
         "format",
         "version",
         "run_id",
@@ -253,7 +250,10 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
         "human_decision",
         "compatibility_source_version",
     }
-    reject_unknown(payload, allowed, "review_packet_v2")
+    require_fields(payload, required, "review_packet_v2")
+    reject_unknown(payload, required, "review_packet_v2")
+    if payload.get("human_decision") is not None:
+        raise ValueError("human_decision must be null in a machine review packet")
     format_value = expect_literal(payload.get("format"), "format", _FORMATS)
     version = expect_int(payload.get("version"), "version")
     if version != 2:
@@ -270,32 +270,32 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
             raise ValueError("compatibility_source_version must be 1 or null")
     claims = tuple(
         decode_claim(item)
-        for item in expect_sequence(payload.get("claims", []), "claims")
+        for item in expect_sequence(payload.get("claims"), "claims")
     )
     evidence = tuple(
         _decode_evidence_record(item)
-        for item in expect_sequence(payload.get("evidence", []), "evidence")
+        for item in expect_sequence(payload.get("evidence"), "evidence")
     )
     drawing_evidence = tuple(
         decode_drawing_candidate(item)
         for item in expect_sequence(
-            payload.get("drawing_evidence", []), "drawing_evidence"
+            payload.get("drawing_evidence"), "drawing_evidence"
         )
     )
     confirmed_inputs = tuple(
         decode_confirmed_input(item)
         for item in expect_sequence(
-            payload.get("confirmed_inputs", []), "confirmed_inputs"
+            payload.get("confirmed_inputs"), "confirmed_inputs"
         )
     )
     calculations = tuple(
         decode_calculation_result(item)
-        for item in expect_sequence(payload.get("calculations", []), "calculations")
+        for item in expect_sequence(payload.get("calculations"), "calculations")
     )
     rules = tuple(
         decode_rule_result(item)
         for item in expect_sequence(
-            payload.get("rule_evaluations", []), "rule_evaluations"
+            payload.get("rule_evaluations"), "rule_evaluations"
         )
     )
     confidence_value = payload.get("confidence")
@@ -309,7 +309,7 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
         format=format_value,
         version=2,
         run_id=expect_string(payload.get("run_id"), "run_id"),
-        case_id=expect_string(payload.get("case_id"), "case_id", allow_empty=True),
+        case_id=expect_string(payload.get("case_id"), "case_id"),
         question=expect_string(payload.get("question"), "question"),
         finalizer_status=expect_literal(
             payload.get("finalizer_status"),
@@ -331,11 +331,11 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
         confirmed_inputs=confirmed_inputs,
         calculations=calculations,
         rule_evaluations=rules,
-        exceptions=expect_string_tuple(payload.get("exceptions", []), "exceptions"),
-        conflicts=expect_string_tuple(payload.get("conflicts", []), "conflicts"),
+        exceptions=expect_string_tuple(payload.get("exceptions"), "exceptions"),
+        conflicts=expect_string_tuple(payload.get("conflicts"), "conflicts"),
         confidence=confidence,
         abstention_reasons=expect_string_tuple(
-            payload.get("abstention_reasons", []), "abstention_reasons"
+            payload.get("abstention_reasons"), "abstention_reasons"
         ),
         human_decision=None,
         compatibility_source_version=compatibility_source_version,
