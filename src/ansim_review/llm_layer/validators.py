@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import re
-
 from ansim_review.contracts.engines import CalculationResult, RuleResult
-from ansim_review.llm_layer.track_a import TrackABundle, ValidatedTrackA
-
-_NUMERIC_TOKEN = re.compile(
-    r"(?<![0-9A-Za-z_.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?(?![0-9A-Za-z_.])"
+from ansim_review.llm_layer.numeric_grammar import (
+    extract_numeric_tokens,
+    reject_unsupported_numeric_syntax,
+    scan_numeric_tokens,
 )
-
-
-def extract_numeric_tokens(text: str) -> tuple[str, ...]:
-    """Extract numeric and percent tokens without rounding or normalization."""
-    return tuple(match.group(0) for match in _NUMERIC_TOKEN.finditer(text))
+from ansim_review.llm_layer.track_a import TrackABundle, ValidatedTrackA
 
 
 def _calculation_tokens(calculation: CalculationResult) -> set[str]:
@@ -57,11 +51,11 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
     }
 
     for claim in validated.draft.claims:
-        extracted = extract_numeric_tokens(claim.text)
+        tokens = scan_numeric_tokens(claim.text)
+        reject_unsupported_numeric_syntax(claim.text, tokens)
+        extracted = tuple(token.text for token in tokens)
         if extracted != claim.numeric_tokens:
-            raise ValueError(
-                f"claim {claim.claim_id} numeric_tokens do not exactly match claim text"
-            )
+            raise ValueError(f"NUMERIC_TOKEN_MISMATCH: {claim.claim_id}")
         references = references_by_claim[claim.claim_id]
         allowed_tokens: set[str] = set()
         for citation_id in claim.citation_ids:
