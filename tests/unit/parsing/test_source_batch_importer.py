@@ -45,6 +45,28 @@ def _batch(*sources: dict[str, object]):
     )
 
 
+def _write_parser(path: Path, file_name: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "file name": file_name,
+                "number of pages": 1,
+                "kids": [
+                    {
+                        "type": "paragraph",
+                        "page number": 1,
+                        "bounding box": [10, 20, 100, 40],
+                        "content": "검토 기준 내용",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_same_bytes_with_different_names_deduplicate(tmp_path: Path) -> None:
     first = tmp_path / "inputs" / "original" / "first.pdf"
     second = tmp_path / "inputs" / "original" / "second.pdf"
@@ -59,6 +81,33 @@ def test_same_bytes_with_different_names_deduplicate(tmp_path: Path) -> None:
 
     assert len(prepared) == 1
     assert prepared[0].document_id.startswith("DOC-")
+
+
+def test_duplicate_bytes_keep_the_source_bound_to_the_available_parser(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "inputs" / "original" / "first.pdf"
+    second = tmp_path / "inputs" / "original" / "second.pdf"
+    parser = tmp_path / "inputs" / "parser" / "second.json"
+    first.parent.mkdir(parents=True)
+    first.write_bytes(b"same-pdf-bytes")
+    second.write_bytes(b"same-pdf-bytes")
+    _write_parser(parser, "second.pdf")
+
+    prepared = prepare_source_batch(
+        tmp_path,
+        _batch(
+            _source("inputs/original/first.pdf"),
+            _source(
+                "inputs/original/second.pdf",
+                parser_path="inputs/parser/second.json",
+            ),
+        ),
+    )
+
+    assert len(prepared) == 1
+    assert prepared[0].source_path == second
+    assert prepared[0].parser_path == parser
 
 
 def test_same_filename_with_different_bytes_produces_different_ids(tmp_path: Path) -> None:
@@ -144,31 +193,39 @@ def test_declared_parser_must_exist(tmp_path: Path) -> None:
         )
 
 
+def test_parser_metadata_must_match_the_bound_source_pdf(tmp_path: Path) -> None:
+    source = tmp_path / "inputs" / "original" / "document.pdf"
+    parser = tmp_path / "inputs" / "parser" / "result.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"document")
+    _write_parser(parser, "different.pdf")
+
+    with pytest.raises(ValueError, match="parser file name does not match source PDF"):
+        import_source_batch(
+            tmp_path,
+            _batch(
+                _source(
+                    "inputs/original/document.pdf",
+                    parser_path="inputs/parser/result.json",
+                )
+            ),
+            tmp_path / "evidence.sqlite",
+        )
+
+
 def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "inputs" / "original" / "사용자-제공-기준.pdf"
     parser = tmp_path / "inputs" / "parser" / "result.json"
     source.parent.mkdir(parents=True)
-    parser.parent.mkdir(parents=True)
     source.write_bytes(b"%PDF-1.7\narbitrary-user-document")
+    _write_parser(parser, source.name)
+    parser_payload = json.loads(parser.read_text(encoding="utf-8"))
+    parser_payload["title"] = "사용자 제공 기준"
+    parser_payload["kids"][0]["content"] = "임의 문서의 검토 기준 내용"
     parser.write_text(
-        json.dumps(
-            {
-                "file name": source.name,
-                "number of pages": 1,
-                "title": "사용자 제공 기준",
-                "kids": [
-                    {
-                        "type": "paragraph",
-                        "page number": 1,
-                        "bounding box": [10, 20, 100, 40],
-                        "content": "임의 문서의 검토 기준 내용",
-                    }
-                ],
-            },
-            ensure_ascii=False,
-        ),
+        json.dumps(parser_payload, ensure_ascii=False),
         encoding="utf-8",
     )
     output = tmp_path / "evidence" / "evidence.sqlite"
