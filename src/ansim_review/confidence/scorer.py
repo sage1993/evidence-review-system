@@ -12,7 +12,11 @@ from ansim_review.confidence.policy import (
     MEDIUM_THRESHOLD,
     POLICY_VERSION,
 )
-from ansim_review.contracts.review import ConfidenceFactor, ConfidenceResult
+from ansim_review.contracts.review import (
+    ConfidenceFactor,
+    ConfidenceLevel,
+    ConfidenceResult,
+)
 
 _QUANTUM = Decimal("0.0001")
 
@@ -81,6 +85,7 @@ def score_confidence(
         quantized_score = total.quantize(_QUANTUM, rounding=ROUND_HALF_UP)
 
     failures = tuple(hard_gate_failures)
+    level: ConfidenceLevel
     if failures or quantized_score < MEDIUM_THRESHOLD:
         level = "LOW"
     elif quantized_score >= HIGH_THRESHOLD:
