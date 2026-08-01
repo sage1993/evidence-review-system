@@ -25,7 +25,8 @@ class ParserContext:
 class ParserAdapter(Protocol):
     """Parser-neutral adapter boundary."""
 
-    kind: str
+    @property
+    def kind(self) -> str: ...
 
     def parse(self, context: ParserContext) -> NormalizedParserContribution: ...
 
