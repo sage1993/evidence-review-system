@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 DOCUMENT = Path("docs/OFFLINE_EXECUTION.md")
 
 
