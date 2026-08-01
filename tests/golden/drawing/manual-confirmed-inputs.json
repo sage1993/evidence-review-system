@@ -1,0 +1,27 @@
+{
+  "format": "ansim/confirmed-input-set",
+  "version": 1,
+  "inputs": [
+    {
+      "input_id": "INPUT-ROAD-WIDTH",
+      "field": "road_width_m",
+      "value": "8.0",
+      "unit": "m",
+      "status": "CONFIRMED",
+      "candidate_status": "CREATED",
+      "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "page": 1,
+      "evidence_id": "CAND-0FE4F21A71D36575ECF145B1",
+      "geometry": {
+        "type": "LINESTRING",
+        "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
+        "coordinates": [
+          [100.0, 200.0],
+          [900.0, 200.0]
+        ]
+      },
+      "confirmation_record": "confirmations/20260801T163000Z-kim-sh-CONF-001.json",
+      "confirmation_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}

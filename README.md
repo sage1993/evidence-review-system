@@ -34,10 +34,11 @@
 ```text
 사용자 PDF 등록
 → 원본 SHA-256 및 역할 기록
-→ parser artifact 확인
+→ parser artifact 또는 drawing-backend route 확인
 → document ID·revision ID 생성
 → 페이지·문단·표·이미지 evidence 생성
 → evidence.sqlite 및 FTS 인덱스 생성
+→ 도면 candidate·reviewer confirmation·confirmed input 생성
 → 질문별 evidence 검색
 → 필요한 계산·승인 규칙 실행
 → Track A 설명 / Track B 감사
@@ -45,7 +46,7 @@
 → 사람 최종 검토
 ```
 
-파서 결과가 없는 PDF는 빈 evidence 데이터베이스로 처리하지 않는다. 해당 입력은 `PENDING_PARSER_OUTPUT` 상태로 남으며, 파서 결과가 준비된 후 다시 ingest해야 한다.
+parser artifact가 없는 `REFERENCE_DOCUMENT`, `CASE_TABLE`, `SUPPORTING_IMAGE` 입력은 `PENDING_PARSER_OUTPUT` 상태로 남고 evidence ingest를 중단한다. parser가 없는 `CASE_DRAWING`은 `DRAWING_BACKEND_ONLY`로 분리되어 evidence DB 생성 대상에서 제외되고, M1 drawing backend의 immutable intake·수동 annotation·confirmation 흐름으로 전달된다. 도면만 포함된 source batch는 빈 evidence DB를 만들지 않고 `NO_EVIDENCE_SOURCES`로 거부한다.
 
 ## 요구 환경
 
@@ -85,12 +86,17 @@ F:\evidence-review-workspace
 │  │  ├─ reference-a.pdf
 │  │  └─ project-drawing.pdf
 │  └─ parser
-│     ├─ reference-a.json
-│     └─ project-drawing.json
+│     └─ reference-a.json
 ├─ manifests
 │  └─ source-batch.json
 ├─ evidence
 │  └─ evidence.sqlite
+├─ cases
+│  └─ CASE-001
+│     ├─ sources\drawings
+│     ├─ candidates
+│     ├─ confirmations
+│     └─ confirmed-inputs.json
 ├─ rules
 │  ├─ approved
 │  └─ manifests
@@ -101,7 +107,7 @@ F:\evidence-review-workspace
 └─ page-images
 ```
 
-폴더 이름 자체가 문서의 역할이나 ID를 결정하지 않는다. 입력 관계는 `source-batch.json`이 명시한다.
+폴더 이름 자체가 문서의 역할이나 ID를 결정하지 않는다. 입력 관계는 `source-batch.json`과 case manifest가 명시한다.
 
 ## 1. 임의 PDF 등록
 
@@ -146,6 +152,8 @@ F:\evidence-review-workspace
 
 현재 범용 ingest에서 직접 지원하는 parser 종류는 `OPENDATALOADER_JSON`이다. 다른 parser는 adapter registry에 별도 구현해야 한다.
 
+`CASE_DRAWING`에 parser가 없으면 source-batch 명세에는 유지하되 evidence DB에는 넣지 않는다. CLI 결과에서 해당 source는 `DRAWING_BACKEND_ONLY`로 반환되며, 도면 backend가 원본을 case-local immutable storage로 다시 복사한 뒤 처리한다. parser가 있는 도면은 일반 evidence ingest에도 포함할 수 있다.
+
 ### 증거 DB 생성
 
 ```powershell
@@ -162,7 +170,7 @@ evidence-review source-batch ingest `
 - 원본 SHA-256
 - snapshot hash
 - 문서·페이지·요소 수
-- parser 준비 상태
+- source별 `READY_FOR_INGESTION`, `PENDING_PARSER_OUTPUT`, `DRAWING_BACKEND_ONLY` 상태
 
 ### 문서 ID 정책
 
@@ -171,6 +179,7 @@ evidence-review source-batch ingest `
 - 동일 bytes와 다른 파일명은 같은 자동 문서 ID로 dedupe된다.
 - 같은 파일명이라도 bytes가 다르면 다른 자동 문서 ID가 된다.
 - 같은 명시적 문서 ID에 서로 다른 bytes를 연결할 수 없다.
+- source-batch와 case manifest의 식별자는 공통 path-safe identifier 정책을 사용한다.
 
 ## 2. 증거 검색
 
@@ -255,7 +264,8 @@ runs/final-review-packet.json
 
 | 상태 | 의미 |
 |---|---|
-| `PENDING_PARSER_OUTPUT` | 원본 PDF는 등록됐으나 parser artifact가 없어 ingest를 진행하지 않음 |
+| `PENDING_PARSER_OUTPUT` | evidence ingest 대상 원본 PDF에 parser artifact가 없어 ingest를 진행하지 않음 |
+| `DRAWING_BACKEND_ONLY` | parser 없는 `CASE_DRAWING`을 evidence DB에서 제외하고 case drawing backend로 전달함 |
 | `READY_FOR_HUMAN_REVIEW` | 결정적 검증을 통과해 사람이 검토할 준비가 됨 |
 | `ABSTAIN` | 입력 누락·출처 충돌·감사 실패 등으로 기계 결론을 중단함 |
 | `SATISFIED` | 개별 승인 규칙 조건을 충족함 |
@@ -263,10 +273,13 @@ runs/final-review-packet.json
 | `INDETERMINATE` | 개별 규칙 실행에 필요한 정보가 부족함 |
 | `ENGINE_ERROR` | 계산 또는 규칙 엔진의 구조적 검증이 실패함 |
 
+`NO_EVIDENCE_SOURCES`는 상태가 아니라 입력 오류다. source batch에 parser-ready evidence source가 하나도 없을 때 빈 evidence DB 생성을 방지하기 위해 반환한다.
+
 ## 안전 경계
 
 - PDF 파일명이나 문서 제목으로 법규 종류를 추정하지 않는다.
-- parser 결과가 없으면 내용을 만들어내거나 빈 ingest를 완료하지 않는다.
+- parser 결과가 없는 evidence source의 내용을 만들어내거나 빈 ingest를 완료하지 않는다.
+- parser 없는 case drawing은 자동 evidence로 취급하지 않고 별도 backend에서 reviewer confirmation을 요구한다.
 - 규칙 ID와 버전은 승인 파일 경로로 사용하기 전에 검증한다.
 - 규칙 expression의 입력 참조는 승인 전에 input schema와 대조한다.
 - 규칙은 실제로 참조한 계산 결과에만 의존한다.
@@ -297,6 +310,8 @@ python -m compileall -q src scripts web_runtime tests
 
 - [범용 PDF 및 신뢰 경계 설계](docs/superpowers/specs/2026-08-02-generic-pdf-and-hardening-design.md)
 - [범용 PDF 구현 계획](docs/superpowers/plans/2026-08-02-generic-pdf-and-hardening.md)
+- [도면 근거 backend 설계](docs/superpowers/specs/2026-08-02-drawing-evidence-backend-design.md)
+- [도면 근거 backend 구현 계획](docs/superpowers/plans/2026-08-02-drawing-evidence-backend.md)
 - [Codex 작업 절차](docs/CODEX_WORKFLOW.md)
 - [ChatGPT Web 작업 절차](docs/CHATGPT_WEB_WORKFLOW.md)
 - [검토자 작업 절차](docs/REVIEWER_WORKFLOW.md)
