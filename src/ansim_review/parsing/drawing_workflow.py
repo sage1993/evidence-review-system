@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ansim_review.contracts.formats import WORKFLOW_STATE_FORMAT
 from ansim_review.contracts.workflow import (
     WorkflowStateRecord,
     decode_workflow_state_record,
@@ -42,7 +43,7 @@ def project_drawing_workflow(
     """Project drawing facts using the fixed M0 precedence and relationships."""
     if facts.terminal_integrity_failure:
         record = WorkflowStateRecord(
-            format="ansim/workflow-state",
+            format=WORKFLOW_STATE_FORMAT,
             version=1,
             run_id=run_id,
             workflow_state="FAILED",
@@ -52,7 +53,7 @@ def project_drawing_workflow(
         )
     elif facts.quality_rejected:
         record = WorkflowStateRecord(
-            format="ansim/workflow-state",
+            format=WORKFLOW_STATE_FORMAT,
             version=1,
             run_id=run_id,
             workflow_state="BLOCKED",
@@ -62,7 +63,7 @@ def project_drawing_workflow(
         )
     elif not facts.has_source:
         record = WorkflowStateRecord(
-            format="ansim/workflow-state",
+            format=WORKFLOW_STATE_FORMAT,
             version=1,
             run_id=run_id,
             workflow_state="PENDING_DRAWING_INGESTION",
@@ -72,7 +73,7 @@ def project_drawing_workflow(
         )
     elif facts.has_conflict or facts.missing_required_inputs:
         record = WorkflowStateRecord(
-            format="ansim/workflow-state",
+            format=WORKFLOW_STATE_FORMAT,
             version=1,
             run_id=run_id,
             workflow_state="INPUT_CONFIRMATION_REQUIRED",
@@ -82,7 +83,7 @@ def project_drawing_workflow(
         )
     elif facts.has_validated_inputs:
         record = WorkflowStateRecord(
-            format="ansim/workflow-state",
+            format=WORKFLOW_STATE_FORMAT,
             version=1,
             run_id=run_id,
             workflow_state="READY_TO_EVALUATE",
@@ -92,7 +93,7 @@ def project_drawing_workflow(
         )
     else:
         record = WorkflowStateRecord(
-            format="ansim/workflow-state",
+            format=WORKFLOW_STATE_FORMAT,
             version=1,
             run_id=run_id,
             workflow_state="INPUT_CONFIRMATION_REQUIRED",
