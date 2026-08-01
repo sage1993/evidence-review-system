@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from ansim_review.contracts.attachments import ImmutableAttachment
@@ -14,6 +15,12 @@ from ansim_review.contracts.drawing import (
 )
 from ansim_review.contracts.validation import expect_sha256, expect_string
 from ansim_review.contracts.workflow import ReasonCode
+from ansim_review.parsing.drawing_case import (
+    CaseManifestEntry,
+    case_artifact_path,
+    validate_artifact_id,
+    write_canonical_create_only,
+)
 from ansim_review.parsing.drawing_source import DrawingIntakePolicy
 
 ParserOutcome = Literal[
@@ -180,6 +187,44 @@ def assess_drawing_quality(
     else:
         quality_value = "PASS"
     return _result(quality_value, metadata, reasons, policy, image_pixels)
+
+
+def drawing_quality_result_document(
+    source_sha256: str,
+    result: DrawingQualityResult,
+) -> dict[str, object]:
+    """Return a source-bound canonical quality artifact."""
+    return {
+        "format": "ansim/drawing-quality",
+        "version": 1,
+        "source_sha256": expect_sha256(source_sha256, "source_sha256"),
+        "policy_id": expect_string(result.policy_id, "policy_id"),
+        "assessment": drawing_quality_document(result.assessment),
+        "detailed_reasons": list(result.detailed_reasons),
+        "image_pixels": result.image_pixels,
+    }
+
+
+def persist_drawing_quality(
+    case_dir: Path,
+    attachment_id: str,
+    source_sha256: str,
+    result: DrawingQualityResult,
+) -> CaseManifestEntry:
+    """Persist one quality assessment as immutable case evidence."""
+    validate_artifact_id(attachment_id, "attachment_id")
+    artifact_id = f"QUALITY-{attachment_id}"
+    relative_path = f"quality/{attachment_id}.json"
+    path = case_artifact_path(case_dir, relative_path)
+    digest = write_canonical_create_only(
+        path,
+        drawing_quality_result_document(source_sha256, result),
+    )
+    return CaseManifestEntry(
+        artifact_id=artifact_id,
+        relative_path=relative_path,
+        sha256=digest,
+    )
 
 
 def workflow_reason_for_quality(result: DrawingQualityResult) -> ReasonCode | None:
