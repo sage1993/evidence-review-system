@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,6 +14,7 @@ from ansim_review.math_engine.manifest import calculation_result_document
 from ansim_review.math_engine.requests import decode_calculation_request
 from ansim_review.math_engine.runner import run_calculation_request
 from ansim_review.network_guard import install_network_guard
+from ansim_review.retrieval.bundle import build_evidence_bundle
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +30,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     math_run.add_argument("--request", required=True, type=Path)
     math_run.add_argument("--output", required=True, type=Path)
+    query = subparsers.add_parser(
+        "query",
+        help="retrieve a deterministic evidence bundle",
+    )
+    query.add_argument("--db", required=True, type=Path)
+    query.add_argument("--request", required=True, type=Path)
+    query.add_argument("--output", required=True, type=Path)
     return parser
 
 
@@ -54,11 +63,46 @@ def _math_run(request_path: Path, output_path: Path) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with output_path.open("xb") as stream:
-            stream.write(dump_bytes(calculation_result_document(result)))
+            stream.write(
+                dump_bytes(calculation_result_document(result))
+            )
     except FileExistsError:
         print(f"output already exists: {output_path}", file=sys.stderr)
         return 1
     return _result_exit_code(result)
+
+
+def _query_run(
+    db_path: Path,
+    request_path: Path,
+    output_path: Path,
+) -> int:
+    if output_path.exists():
+        print(f"output already exists: {output_path}", file=sys.stderr)
+        return 1
+    try:
+        payload = json.loads(request_path.read_text(encoding="utf-8"))
+        with sqlite3.connect(db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            bundle = build_evidence_bundle(connection, payload)
+    except (
+        OSError,
+        json.JSONDecodeError,
+        sqlite3.Error,
+        ValueError,
+        RuntimeError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with output_path.open("xb") as stream:
+            stream.write(dump_bytes(bundle))
+    except FileExistsError:
+        print(f"output already exists: {output_path}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -68,4 +112,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "math-run":
         return _math_run(args.request, args.output)
+    if args.command == "query":
+        return _query_run(args.db, args.request, args.output)
     return 0

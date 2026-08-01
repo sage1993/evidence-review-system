@@ -1,0 +1,106 @@
+"""Deterministic weighted fusion for hybrid evidence channels."""
+from __future__ import annotations
+
+from collections.abc import Sequence
+from decimal import Decimal
+
+from ansim_review.retrieval.models import RetrievalHit
+
+CHANNEL_WEIGHTS: dict[str, Decimal] = {
+    "structured_exact": Decimal("1.00"),
+    "clause_id": Decimal("0.95"),
+    "rule_source": Decimal("0.90"),
+    "fts": Decimal("0.70"),
+    "linked_visual_table": Decimal("0.60"),
+}
+
+
+def _same_identity(left: RetrievalHit, right: RetrievalHit) -> bool:
+    return (
+        left.evidence_type == right.evidence_type
+        and left.document_id == right.document_id
+        and left.revision_id == right.revision_id
+        and left.page_number == right.page_number
+        and left.bbox == right.bbox
+        and left.source_hash == right.source_hash
+        and left.title == right.title
+        and left.text == right.text
+    )
+
+
+def _merge(existing: RetrievalHit, incoming: RetrievalHit) -> RetrievalHit:
+    if not _same_identity(existing, incoming):
+        raise ValueError(
+            f"conflicting retrieval identity for {existing.evidence_id}"
+        )
+    merged = existing
+    for channel in incoming.channel_scores:
+        merged = merged.with_channel(channel)
+    return merged
+
+
+def _score(hit: RetrievalHit) -> Decimal:
+    score = Decimal("0")
+    for channel in hit.channel_scores:
+        try:
+            weight = CHANNEL_WEIGHTS[channel.channel]
+        except KeyError as error:
+            raise ValueError(
+                f"unsupported retrieval channel: {channel.channel}"
+            ) from error
+        score += weight * channel.score
+    return score
+
+
+def fuse_hits(
+    channels: Sequence[Sequence[RetrievalHit]],
+) -> tuple[RetrievalHit, ...]:
+    """Merge channel hits and sort by descending weighted score then stable ID."""
+    by_id: dict[str, RetrievalHit] = {}
+    for channel_hits in channels:
+        for hit in channel_hits:
+            existing = by_id.get(hit.evidence_id)
+            by_id[hit.evidence_id] = (
+                hit if existing is None else _merge(existing, hit)
+            )
+    scored = [hit.with_final_score(_score(hit)) for hit in by_id.values()]
+    scored.sort(key=lambda item: (-item.final_score, item.evidence_id))
+    return tuple(scored)
+
+
+def _decimal_text(value: Decimal) -> str:
+    return format(value, "f")
+
+
+def fusion_document(hits: Sequence[RetrievalHit]) -> dict[str, object]:
+    """Return canonical JSON-ready fused evidence output."""
+    return {
+        "hits": [
+            {
+                "evidence_id": hit.evidence_id,
+                "evidence_type": hit.evidence_type,
+                "document_id": hit.document_id,
+                "revision_id": hit.revision_id,
+                "page_number": hit.page_number,
+                "bbox": [
+                    hit.bbox.left,
+                    hit.bbox.bottom,
+                    hit.bbox.right,
+                    hit.bbox.top,
+                ],
+                "source_hash": hit.source_hash,
+                "title": hit.title,
+                "text": hit.text,
+                "channel_scores": [
+                    {
+                        "channel": channel.channel,
+                        "score": _decimal_text(channel.score),
+                        "detail": channel.detail,
+                    }
+                    for channel in hit.channel_scores
+                ],
+                "final_score": _decimal_text(hit.final_score),
+            }
+            for hit in hits
+        ]
+    }
