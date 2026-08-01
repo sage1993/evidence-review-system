@@ -6,7 +6,7 @@ import socket
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 from unittest.mock import patch
 
 from ansim_review.offline_policy import is_allowed_local_address
@@ -14,10 +14,10 @@ from ansim_review.offline_scanner import scan_source_tree
 
 _DISABLED_MESSAGE = "non-loopback network access is disabled"
 _GUARD_INSTALLED = False
-_ORIGINAL_CREATE_CONNECTION = socket.create_connection
-_ORIGINAL_CONNECT = socket.socket.connect
-_ORIGINAL_CONNECT_EX = socket.socket.connect_ex
-_ORIGINAL_SENDTO = socket.socket.sendto
+_ORIGINAL_CREATE_CONNECTION: Any = socket.create_connection
+_ORIGINAL_CONNECT: Any = socket.socket.connect
+_ORIGINAL_CONNECT_EX: Any = socket.socket.connect_ex
+_ORIGINAL_SENDTO: Any = socket.socket.sendto
 
 
 def _raise_blocked(address: object) -> NoReturn:
@@ -60,7 +60,7 @@ def _guarded_socket_sendto(
     address = _sendto_address(args)
     if not is_allowed_local_address(address):
         _raise_blocked(address)
-    return _ORIGINAL_SENDTO(self, data, *args)
+    return cast(int, _ORIGINAL_SENDTO(self, data, *args))
 
 
 def install_network_guard() -> None:

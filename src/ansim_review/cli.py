@@ -10,14 +10,18 @@ from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.engines import CalculationResult
-from ansim_review.contracts.source_batch import decode_source_batch
+from ansim_review.contracts.source_batch import SourceBatch, decode_source_batch
 from ansim_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.math_engine.manifest import calculation_result_document
 from ansim_review.math_engine.requests import decode_calculation_request
 from ansim_review.math_engine.runner import run_calculation_request
 from ansim_review.network_guard import install_network_guard
-from ansim_review.parsing.source_batch_importer import import_source_batch
+from ansim_review.parsing.source_batch_importer import (
+    PreparedSource,
+    import_source_batch,
+    prepare_source_batch,
+)
 from ansim_review.retrieval.bundle import build_evidence_bundle
 from ansim_review.review_run import finalize_review_run, prepare_review_run
 
@@ -50,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="validate and ingest arbitrary user-provided PDF sources",
     )
     source_stages = source_batch.add_subparsers(dest="source_stage", required=True)
+    source_prepare = source_stages.add_parser(
+        "prepare",
+        help="validate a source batch and report parser and routing states",
+    )
+    source_prepare.add_argument("--root", required=True, type=Path)
+    source_prepare.add_argument("--manifest", required=True, type=Path)
     source_ingest = source_stages.add_parser(
         "ingest",
         help="build a searchable evidence SQLite database from a source batch",
@@ -137,10 +147,64 @@ def _evidence_migrate(source: Path, output: Path) -> int:
     return 0
 
 
+def _decode_source_batch_file(manifest: Path) -> SourceBatch:
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    return decode_source_batch(payload)
+
+
+def _source_projection(source: PreparedSource) -> dict[str, object]:
+    return {
+        "role": source.role,
+        "document_id": source.document_id,
+        "revision_id": source.revision_id,
+        "source_sha256": source.source_sha256,
+        "parser_kind": source.parser_kind,
+        "state": str(source.state),
+        "reason_codes": list(source.reason_codes),
+        "can_ingest_reference": source.can_ingest_reference,
+        "can_evaluate": source.can_evaluate,
+    }
+
+
+def _preparation_status(sources: Sequence[PreparedSource]) -> str:
+    states = {str(source.state) for source in sources}
+    if "FAILED" in states:
+        return "FAILED"
+    if "BLOCKED" in states:
+        return "BLOCKED"
+    if states == {"READY_TO_EVALUATE"}:
+        return "READY_TO_EVALUATE"
+    return "PENDING"
+
+
+def _source_batch_prepare(root: Path, manifest: Path) -> int:
+    try:
+        batch = _decode_source_batch_file(manifest)
+        sources = prepare_source_batch(root, batch)
+    except (
+        FileNotFoundError,
+        OSError,
+        json.JSONDecodeError,
+        sqlite3.Error,
+        ValueError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/source-batch-cli-status",
+            "version": 2,
+            "stage": "prepare",
+            "status": _preparation_status(sources),
+            "sources": [_source_projection(source) for source in sources],
+        }
+    )
+    return 0
+
+
 def _source_batch_ingest(root: Path, manifest: Path, output: Path) -> int:
     try:
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
-        batch = decode_source_batch(payload)
+        batch = _decode_source_batch_file(manifest)
         report = import_source_batch(root, batch, output)
     except FileExistsError as error:
         print(str(error), file=sys.stderr)
@@ -157,19 +221,14 @@ def _source_batch_ingest(root: Path, manifest: Path, output: Path) -> int:
     _write_stdout(
         {
             "format": "evidence-review/source-batch-cli-status",
-            "version": 1,
+            "version": 2,
+            "stage": "ingest",
             "status": "INGESTED",
             "output_db": str(report.output_db),
             "snapshot_hash": report.snapshot_hash,
             "counts": report.counts,
             "sources": [
-                {
-                    "document_id": source.document_id,
-                    "revision_id": source.revision_id,
-                    "source_sha256": source.source_sha256,
-                    "state": source.state,
-                }
-                for source in report.sources
+                _source_projection(source) for source in report.sources
             ],
         }
     )
@@ -320,6 +379,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "evidence" and args.evidence_stage == "migrate":
         return _evidence_migrate(args.source, args.output)
+    if args.command == "source-batch" and args.source_stage == "prepare":
+        return _source_batch_prepare(args.root, args.manifest)
     if args.command == "source-batch" and args.source_stage == "ingest":
         return _source_batch_ingest(args.root, args.manifest, args.output)
     if args.command == "math-run":

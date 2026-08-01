@@ -82,15 +82,19 @@ def _scan_tree(
                         )
                     )
         elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
+            imported_module = node.module or ""
             for alias in node.names:
-                full_name = f"{module}.{alias.name}" if module else alias.name
+                full_name = (
+                    f"{imported_module}.{alias.name}"
+                    if imported_module
+                    else alias.name
+                )
                 local = alias.asname or alias.name
                 symbol_aliases[local] = full_name
                 reported = (
                     full_name
                     if full_name in policy.forbidden_import_names
-                    else module
+                    else imported_module
                 )
                 if reported and _is_forbidden_import(full_name, policy):
                     findings.add(
@@ -117,14 +121,16 @@ def _scan_tree(
             )
         if symbol not in {"__import__", "importlib.import_module"}:
             continue
-        module = _literal_string_argument(node)
-        if module is not None and _is_forbidden_import(module, policy):
+        dynamic_module = _literal_string_argument(node)
+        if dynamic_module is not None and _is_forbidden_import(
+            dynamic_module, policy
+        ):
             findings.add(
                 OfflineFinding(
                     path=relative_path,
                     line=node.lineno,
                     kind="DYNAMIC_FORBIDDEN_IMPORT",
-                    symbol=module,
+                    symbol=dynamic_module,
                 )
             )
     return findings

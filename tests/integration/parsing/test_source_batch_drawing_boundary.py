@@ -74,17 +74,19 @@ def test_parserless_case_drawing_does_not_block_reference_ingestion(
     _write_parser(parser, "reference.pdf")
 
     prepared = prepare_source_batch(tmp_path, _mixed_batch())
-    states = {source.role: source.state for source in prepared}
-    assert states == {
-        "REFERENCE_DOCUMENT": "READY_FOR_INGESTION",
-        "CASE_DRAWING": "DRAWING_BACKEND_ONLY",
+    assert {source.role: source.state for source in prepared} == {
+        "REFERENCE_DOCUMENT": "PENDING_REFERENCE_INGESTION",
+        "CASE_DRAWING": "PENDING_DRAWING_INGESTION",
     }
 
     output = tmp_path / "evidence.sqlite"
     report = import_source_batch(tmp_path, _mixed_batch(), output)
 
     assert output.is_file()
-    assert {source.role: source.state for source in report.sources} == states
+    assert {source.role: source.state for source in report.sources} == {
+        "REFERENCE_DOCUMENT": "READY_TO_EVALUATE",
+        "CASE_DRAWING": "PENDING_DRAWING_INGESTION",
+    }
     with sqlite3.connect(output) as connection:
         document_ids = connection.execute(
             "SELECT id FROM documents ORDER BY id"
