@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 SOURCE_ROOT = Path("src/ansim_review")
+LEGACY_FILE = SOURCE_ROOT / "contracts" / "legacy_formats.py"
 TOKENS = (
     '"ansim/',
     "'ansim/",
@@ -13,12 +14,32 @@ TOKENS = (
 )
 
 
-def test_new_runtime_source_has_no_sample_specific_artifact_defaults() -> None:
+def test_sample_specific_artifact_identifiers_are_isolated() -> None:
     findings: list[str] = []
     for path in sorted(SOURCE_ROOT.rglob("*.py")):
+        if path == LEGACY_FILE:
+            continue
         text = path.read_text(encoding="utf-8")
         for line_number, line in enumerate(text.splitlines(), start=1):
             if any(token in line for token in TOKENS):
                 findings.append(f"{path.as_posix()}:{line_number}:{line.strip()}")
 
     assert findings == []
+
+
+def test_legacy_module_is_explicitly_read_only() -> None:
+    text = LEGACY_FILE.read_text(encoding="utf-8")
+
+    assert "New writers must not emit these values" in text
+    for required in (
+        "LEGACY_NEXT_ACTION_FORMAT",
+        "LEGACY_REVIEW_PACKET_FORMAT",
+        "LEGACY_WORKFLOW_STATE_FORMAT",
+        "LEGACY_CASE_MANIFEST_FORMAT",
+        "LEGACY_HUMAN_ACCEPTANCE_FORMAT",
+        "LEGACY_PAGE_IMAGE_FORMAT",
+        "LEGACY_REVIEW_RUN_REQUEST_FORMAT",
+        "LEGACY_EVIDENCE_DB_NAME",
+        "LEGACY_RELEASE_ID",
+    ):
+        assert required in text
