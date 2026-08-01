@@ -14,6 +14,7 @@ from ansim_review.contracts.validation import (
     expect_string,
     expect_string_tuple,
     reject_unknown,
+    require_fields,
 )
 
 WorkflowState = Literal[
@@ -135,7 +136,7 @@ def _validate_relationships(
 def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
     """Decode and cross-validate one workflow state document."""
     payload = expect_mapping(value, "workflow_state")
-    allowed = {
+    required = {
         "format",
         "version",
         "run_id",
@@ -144,7 +145,8 @@ def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
         "reason_codes",
         "resumable",
     }
-    reject_unknown(payload, allowed, "workflow_state")
+    require_fields(payload, required, "workflow_state")
+    reject_unknown(payload, required, "workflow_state")
     format_value = expect_literal(
         payload.get("format"), "format", ("ansim/workflow-state",)
     )
@@ -162,7 +164,7 @@ def decode_workflow_state_record(value: object) -> WorkflowStateRecord:
     )
     reason_codes = tuple(
         expect_literal(code, "reason_code", _REASON_CODES)
-        for code in expect_string_tuple(payload.get("reason_codes", []), "reason_codes")
+        for code in expect_string_tuple(payload.get("reason_codes"), "reason_codes")
     )
     resumable = expect_bool(payload.get("resumable"), "resumable")
     _validate_relationships(workflow_state, finalizer_status, reason_codes, resumable)
