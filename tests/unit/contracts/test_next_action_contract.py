@@ -114,6 +114,6 @@ def test_next_action_requires_python_resume_command() -> None:
 
 def test_next_action_round_trips_canonical_document() -> None:
     next_actions = _next_actions()
-    payload = _next_action()
-    action = next_actions.decode_next_action(payload)
-    assert next_actions.next_action_document(action) == payload
+    action = next_actions.decode_next_action(_next_action())
+    expected = _next_action(format="evidence-review/next-action")
+    assert next_actions.next_action_document(action) == expected
