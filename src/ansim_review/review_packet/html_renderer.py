@@ -2,10 +2,20 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import cast
+
+
+@dataclass(frozen=True, slots=True)
+class _PageAsset:
+    data_uri: str
+    pdf_width: float
+    pdf_height: float
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -30,6 +40,15 @@ def _page_number(value: object) -> int:
     return value
 
 
+def _positive_number(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a positive number")
+    result = float(value)
+    if result <= 0 or result != result or result in (float("inf"), float("-inf")):
+        raise ValueError(f"{field} must be a positive number")
+    return result
+
+
 def _bbox(value: object) -> list[float]:
     items = _sequence(value, "bbox")
     if len(items) != 4:
@@ -38,46 +57,106 @@ def _bbox(value: object) -> list[float]:
     for item in items:
         if isinstance(item, bool) or not isinstance(item, (int, float)):
             raise ValueError("citation bbox must contain numbers")
-        result.append(float(item))
+        number = float(item)
+        if number != number or number in (float("inf"), float("-inf")):
+            raise ValueError("citation bbox must contain finite numbers")
+        result.append(number)
+    left, bottom, right, top = result
+    if left > right or bottom > top:
+        raise ValueError("citation bbox coordinates are inverted")
     return result
 
 
-def _page_image(page_root: Path, revision_id: str, page_number: int) -> str | None:
-    candidates = (
-        page_root / revision_id / f"page-{page_number:04d}.png",
-        page_root / f"{revision_id}-page-{page_number:04d}.png",
-        page_root / f"page-{page_number:04d}.png",
+def _verified_page_image(
+    page_root: Path,
+    revision_id: str,
+    page_number: int,
+    source_hash: str,
+) -> _PageAsset:
+    directory = page_root / revision_id
+    stem = f"page-{page_number:04d}"
+    image_path = directory / f"{stem}.png"
+    metadata_path = directory / f"{stem}.json"
+    if not image_path.is_file() or not metadata_path.is_file():
+        raise FileNotFoundError(
+            f"verified page image missing: {revision_id} page {page_number}"
+        )
+
+    metadata = _mapping(
+        json.loads(metadata_path.read_text(encoding="utf-8")),
+        "page image metadata",
     )
-    for path in candidates:
-        if path.is_file():
-            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-            return "data:image/png;base64," + encoded
-    return None
+    required = {
+        "format",
+        "version",
+        "revision_id",
+        "page_number",
+        "source_hash",
+        "pdf_width",
+        "pdf_height",
+        "image_sha256",
+    }
+    if set(metadata) != required:
+        raise ValueError("page image metadata fields are invalid")
+    if metadata.get("format") != "ansim/page-image" or metadata.get("version") != 1:
+        raise ValueError("unsupported page image metadata")
+    if metadata.get("revision_id") != revision_id:
+        raise ValueError("page image revision mismatch")
+    if metadata.get("page_number") != page_number:
+        raise ValueError("page image page number mismatch")
+    if metadata.get("source_hash") != source_hash:
+        raise ValueError("page image source hash mismatch")
+
+    image_hash = metadata.get("image_sha256")
+    if not isinstance(image_hash, str) or len(image_hash) != 64:
+        raise ValueError("page image hash is invalid")
+    image_bytes = image_path.read_bytes()
+    if hashlib.sha256(image_bytes).hexdigest() != image_hash:
+        raise ValueError("page image hash mismatch")
+
+    pdf_width = _positive_number(metadata.get("pdf_width"), "pdf_width")
+    pdf_height = _positive_number(metadata.get("pdf_height"), "pdf_height")
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return _PageAsset(
+        data_uri="data:image/png;base64," + encoded,
+        pdf_width=pdf_width,
+        pdf_height=pdf_height,
+    )
 
 
 def _citation_html(value: object, page_root: Path) -> str:
     citation = _mapping(value, "citation")
     revision_id = str(citation.get("revision_id", ""))
     page_number = _page_number(citation.get("page_number"))
+    source_hash = str(citation.get("source_hash", ""))
     bbox_values = _bbox(citation.get("bbox", []))
     left, bottom, right, top = bbox_values
     bbox_text = ",".join(str(item) for item in bbox_values)
-    image = _page_image(page_root, revision_id, page_number)
-    image_html = ""
-    if image is not None:
-        width = max(right, 1.0)
-        height = max(top, 1.0)
-        rect_width = max(right - left, 0.0)
-        rect_height = max(top - bottom, 0.0)
-        image_html = (
-            '<div class="page">'
-            f'<img alt="cited page" src="{image}">'
-            f'<svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" '
-            'aria-label="bbox overlay">'
-            f'<rect x="{left}" y="{bottom}" width="{rect_width}" '
-            f'height="{rect_height}"></rect>'
-            "</svg></div>"
-        )
+    page_asset = _verified_page_image(
+        page_root,
+        revision_id,
+        page_number,
+        source_hash,
+    )
+    if (
+        left < 0
+        or bottom < 0
+        or right > page_asset.pdf_width
+        or top > page_asset.pdf_height
+    ):
+        raise ValueError("citation bbox is outside the verified page bounds")
+    rect_width = right - left
+    rect_height = top - bottom
+    rect_y = page_asset.pdf_height - top
+    image_html = (
+        '<div class="page">'
+        f'<img alt="cited page" src="{page_asset.data_uri}">'
+        f'<svg viewBox="0 0 {page_asset.pdf_width} {page_asset.pdf_height}" '
+        'preserveAspectRatio="none" aria-label="bbox overlay">'
+        f'<rect x="{left}" y="{rect_y}" width="{rect_width}" '
+        f'height="{rect_height}"></rect>'
+        "</svg></div>"
+    )
     return (
         f'<article class="evidence" data-bbox="{escape(bbox_text, quote=True)}">'
         "<div>"
