@@ -104,7 +104,7 @@ def import_visuals(root: Path, revisions: Mapping[str, str]) -> tuple[dict[str, 
         for path in sorted(manifest_dir.glob("*.json")):
             payload: object = json.loads(path.read_text(encoding="utf-8"))
             document_id = _manifest_document_id(path, payload)
-            if document_id not in revisions:
+            if document_id is None or document_id not in revisions:
                 continue
             result = load_visual_manifest(
                 root,
