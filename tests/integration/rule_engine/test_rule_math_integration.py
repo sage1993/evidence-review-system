@@ -29,6 +29,19 @@ def _calculation() -> CalculationResult:
     return replace(result, result_hash=sha256_json(calculation_result_payload(result)))
 
 
+def _unrelated_failed_calculation() -> CalculationResult:
+    return CalculationResult(
+        calculation_result_id="CALC-UNRELATED",
+        status="ENGINE_ERROR",
+        formula_id="UNRELATED",
+        formula_version="1.0.0",
+        inputs={},
+        formula_manifest_hash="c" * 64,
+        result_hash="d" * 64,
+        error_codes=("ENGINE_ERROR",),
+    )
+
+
 def _rule():
     return load_rule(
         {
@@ -96,3 +109,15 @@ def test_tampered_calculation_hash_is_rejected() -> None:
     )
     assert result.status == "ENGINE_ERROR"
     assert result.reason_codes == ("INVALID_CALCULATION_REFERENCE",)
+
+
+def test_unrelated_failed_calculation_does_not_change_rule_result() -> None:
+    result = evaluate_rule(
+        _rule(),
+        {},
+        calculations=[_calculation(), _unrelated_failed_calculation()],
+        expected_formula_manifest_hash="b" * 64,
+        evidence_records=[_evidence()],
+    )
+    assert result.status == "NOT_SATISFIED"
+    assert result.calculation_result_ids == ("CALC-FRONTAGE",)

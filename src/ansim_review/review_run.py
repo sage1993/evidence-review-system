@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from ansim_review.abstention.finalizer import finalize_run
-from ansim_review.canonical_json import dump_bytes, sha256_json
+from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.scorer import FactorInput, score_confidence
 from ansim_review.contracts.codecs import (
     decode_calculation_result,
@@ -21,7 +21,10 @@ from ansim_review.contracts.codecs import (
 from ansim_review.contracts.common import Citation
 from ansim_review.contracts.engines import CalculationResult, RuleResult
 from ansim_review.contracts.review import ReviewPacket
-from ansim_review.contracts.run_context import compute_run_id, create_run_directory
+from ansim_review.contracts.run_context import (
+    compute_run_id_from_request,
+    create_run_directory,
+)
 from ansim_review.llm_layer.track_a import (
     EvidenceExcerpt,
     build_track_a_bundle,
@@ -41,6 +44,10 @@ _REQUEST_FIELDS = {
     "rules",
     "approved_rule_result_ids",
     "confidence_input",
+}
+_REQUEST_FORMATS = {
+    "ansim/review-run-request",
+    "evidence-review/review-run-request",
 }
 _FINALIZER_ARTIFACTS = (
     "track-a-bundle.json",
@@ -164,7 +171,7 @@ def _decode_confidence_input(value: object) -> dict[str, object]:
     factor_payload = _mapping(payload.get("factors"), "confidence_input.factors")
     factors: dict[str, FactorInput] = {}
     document: dict[str, object] = {}
-    for name, item in factor_payload.items():
+    for name, item in sorted(factor_payload.items()):
         factor = _mapping(item, f"confidence_input.factors.{name}")
         if set(factor) != {"value", "source"}:
             raise ValueError(
@@ -203,14 +210,11 @@ def _decode_request(path: Path) -> tuple[
         raise ValueError(
             f"review_run_request is missing fields: {', '.join(missing)}"
         )
-    if (
-        payload.get("format") != "ansim/review-run-request"
-        or payload.get("version") != 1
-    ):
+    if payload.get("format") not in _REQUEST_FORMATS or payload.get("version") != 1:
         raise ValueError("unsupported review-run request")
 
     question = _string(payload.get("question"), "question")
-    inputs = dict(_mapping(payload.get("inputs"), "inputs"))
+    inputs = dict(sorted(_mapping(payload.get("inputs"), "inputs").items()))
     evidence: list[EvidenceExcerpt] = []
     evidence_documents: list[dict[str, object]] = []
     for index, item in enumerate(_sequence(payload.get("evidence"), "evidence")):
@@ -257,11 +261,13 @@ def _decode_request(path: Path) -> tuple[
             )
 
     approved = tuple(
-        _string(item, f"approved_rule_result_ids[{index}]")
-        for index, item in enumerate(
-            _sequence(
-                payload.get("approved_rule_result_ids"),
-                "approved_rule_result_ids",
+        sorted(
+            _string(item, f"approved_rule_result_ids[{index}]")
+            for index, item in enumerate(
+                _sequence(
+                    payload.get("approved_rule_result_ids"),
+                    "approved_rule_result_ids",
+                )
             )
         )
     )
@@ -278,7 +284,7 @@ def _decode_request(path: Path) -> tuple[
     calculation_documents = [_calculation_document(item) for item in calculations]
     rule_documents = [_rule_document(item) for item in rules]
     normalized_request = {
-        "format": "ansim/review-run-request",
+        "format": "evidence-review/review-run-request",
         "version": 1,
         "question": question,
         "inputs": inputs,
@@ -315,16 +321,7 @@ def prepare_review_run(
         confidence,
         normalized_request,
     ) = _decode_request(request_path)
-    evidence_documents = normalized_request["evidence"]
-    calculation_documents = normalized_request["calculations"]
-    rule_documents = normalized_request["rules"]
-    run_id = compute_run_id(
-        question,
-        inputs,
-        evidence_hash=sha256_json(evidence_documents),
-        rule_hash=sha256_json(rule_documents),
-        formula_hash=sha256_json(calculation_documents),
-    )
+    run_id = compute_run_id_from_request(normalized_request)
     bundle = build_track_a_bundle(
         run_id=run_id,
         question=question,
@@ -354,7 +351,7 @@ def prepare_review_run(
         _write_json(
             run_directory / "prepare-status.json",
             {
-                "format": "ansim/review-run-prepare-status",
+                "format": "evidence-review/review-run-prepare-status",
                 "version": 1,
                 "run_id": run_id,
                 "state": "AWAITING_TRACK_OUTPUTS",
@@ -396,6 +393,16 @@ def _validate_track_output_run_id(value: object, run_id: str, field: str) -> Non
     payload = _mapping(value, field)
     if payload.get("run_id") != run_id:
         raise ValueError(f"{field} run_id does not match prepared run")
+
+
+def _evidence_database(workspace_root: Path) -> Path:
+    generic = workspace_root / "evidence" / "evidence.sqlite"
+    if generic.is_file():
+        return generic
+    legacy = workspace_root / "evidence" / "ansim-evidence.sqlite"
+    if legacy.is_file():
+        return legacy
+    raise FileNotFoundError(generic)
 
 
 def finalize_review_run(
@@ -445,9 +452,7 @@ def finalize_review_run(
             {"run_id": run_id, "artifacts": artifacts},
         )
         packet = finalize_run(run_directory)
-        evidence_db = workspace_root / "evidence" / "ansim-evidence.sqlite"
-        if not evidence_db.is_file():
-            raise FileNotFoundError(evidence_db)
+        evidence_db = _evidence_database(workspace_root)
         view_model = build_review_view_model(packet, evidence_db)
         write_review_html(
             view_model,

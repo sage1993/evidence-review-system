@@ -1,18 +1,31 @@
 # Codex Workflow
 
-Use local evidence only. Retrieval, Math Engine, and approved Rule Engine results must already exist as deterministic artifacts in an `ansim/review-run-request` document. Project code never invokes a model or API and never replaces deterministic output with prose calculations.
+Use local evidence only. Retrieval, Math Engine, and approved Rule Engine results must already exist as deterministic artifacts in an `evidence-review/review-run-request` document. Project code never invokes a model or API and never replaces deterministic output with prose calculations.
 
 Shared status, attachment, Review Packet v2, and next-action rules are governed by `docs/CONTRACT_GOVERNANCE.md`.
 
-## 1. Prepare an immutable run
+## 1. Register arbitrary PDF sources
+
+Every source PDF must be declared in an `evidence-review/source-batch` manifest. A filename or display title is never used to infer the document type or legal meaning.
 
 ```powershell
-python -m ansim_review review-run prepare `
-  --workspace F:\ansim-workspace `
-  --request F:\ansim-case\review-request.json
+evidence-review source-batch ingest `
+  --root F:\evidence-review-workspace `
+  --manifest F:\evidence-review-workspace\manifests\source-batch.json `
+  --output F:\evidence-review-workspace\evidence\evidence.sqlite
 ```
 
-The command prints the stable run ID and creates `F:\ansim-workspace\runs\<RUN-ID>`. Every attachment used by the run must first be copied under `inputs/original/` and recorded with its original name, stored path, SHA-256, byte size, MIME, and user-confirmed role. External mutable paths are not runtime authority.
+If a declared PDF has no parser artifact, ingestion stops with `PENDING_PARSER_OUTPUT`. Do not create Track output from an empty or fabricated evidence database.
+
+## 2. Prepare an immutable run
+
+```powershell
+evidence-review review-run prepare `
+  --workspace F:\evidence-review-workspace `
+  --request F:\review-case\review-request.json
+```
+
+The command prints the stable Run ID and creates `F:\evidence-review-workspace\runs\<RUN-ID>`. Every attachment used by the run must first be copied under `inputs/original/` and recorded with its original name, stored path, SHA-256, byte size, MIME, and user-confirmed role. External mutable paths are not runtime authority.
 
 Use only these prepared files when producing Track outputs:
 
@@ -25,28 +38,11 @@ Track A may explain supplied evidence, CalculationResult, and RuleResult artifac
 
 Run Track B independently against every Track A claim. Track B may audit but may not rewrite Track A or set confidence, final status, drawing confirmation, or a human decision. Save its JSON as `track-b-output.json`.
 
-## 2. Follow `next-action.json`
+## 3. Follow `next-action.json`
 
 Project code does not invoke Track A or Track B. When agent work is required, the workflow writes a deterministic `next-action.json` document.
 
-A Track A action declares:
-
-```json
-{
-  "format": "ansim/next-action",
-  "version": 1,
-  "workflow_state": "WAITING_TRACK_A",
-  "action": "PRODUCE_TRACK_A",
-  "input_bundle": "track-a-bundle.json",
-  "instructions": "TRACK_A_INSTRUCTIONS.md",
-  "expected_output": "track-a-output.json",
-  "track_a_validated": false
-}
-```
-
-After writing the expected output, execute the declared `resume_command`. The runtime validates schema, hashes, citations, and registered numeric values before it may emit a Track B action.
-
-A Track B action is valid only when:
+A Track A action declares its workflow state, action, input bundle, instructions, expected output, resume command, and whether Track A has already passed validation. A Track B action is valid only when:
 
 - `workflow_state` is `WAITING_TRACK_B`;
 - `action` is `PRODUCE_TRACK_B`;
@@ -55,7 +51,9 @@ A Track B action is valid only when:
 
 Do not manually advance workflow state or construct a Track B action before that gate passes.
 
-## 3. Handle drawing evidence without granting machine authority
+The frozen next-action v1 namespace remains readable for compatibility with existing runtime packages. It is not a document classification scheme and must not be used to derive a PDF title, role, or document ID.
+
+## 4. Handle drawing evidence without granting machine authority
 
 Case drawings are stored separately from reusable reference-document evidence. The drawing backend copies source bytes into case-local immutable storage before quality assessment or candidate creation. After ingest, the external upload path is not runtime authority.
 
@@ -92,14 +90,14 @@ Drawing workflow states follow the M0 contract:
 
 Nonterminal states do not carry reason codes. Detailed drawing-quality and conflict data remain in companion artifacts.
 
-## 4. Finalize and explicitly publish
+## 5. Finalize and explicitly publish
 
 ```powershell
-python -m ansim_review review-run finalize `
-  --workspace F:\ansim-workspace `
+evidence-review review-run finalize `
+  --workspace F:\evidence-review-workspace `
   --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
-  --track-a-output F:\ansim-case\track-a-output.json `
-  --track-b-output F:\ansim-case\track-b-output.json `
+  --track-a-output F:\review-case\track-a-output.json `
+  --track-b-output F:\review-case\track-b-output.json `
   --publish
 ```
 

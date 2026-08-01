@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ansim-review"
+name = "evidence-review-system"
 version = "0.1.0"
-description = "Evidence-first regulatory review runtime"
+description = "Evidence-first review runtime for arbitrary user-provided documents"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -17,6 +17,7 @@ dev = [
 ]
 
 [project.scripts]
+evidence-review = "ansim_review.cli:main"
 ansim-review = "ansim_review.cli:main"
 
 [tool.setuptools]

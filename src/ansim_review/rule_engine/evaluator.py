@@ -99,6 +99,21 @@ def _input_names(node: Mapping[str, object]) -> set[str]:
     return set()
 
 
+def _calculation_names(node: Mapping[str, object]) -> set[str]:
+    node_type = next(iter(node))
+    body = node[node_type]
+    if node_type in {"all", "any"}:
+        names: set[str] = set()
+        for child in cast(Sequence[Mapping[str, object]], body):
+            names.update(_calculation_names(child))
+        return names
+    if node_type == "not":
+        return _calculation_names(cast(Mapping[str, object], body))
+    if node_type == "calculation":
+        return {str(cast(Mapping[str, object], body)["calculation_result_id"])}
+    return set()
+
+
 def _resolve_operand(
     operand: Mapping[str, object],
     inputs: Mapping[str, object],
@@ -196,6 +211,19 @@ def _sources_resolved(rule: RuleSpec, evidence_records: Sequence[EvidenceRecord]
     return True
 
 
+def _valid_calculation(
+    calculation: CalculationResult,
+    expected_formula_manifest_hash: str | None,
+) -> bool:
+    return (
+        calculation.status == "SUCCESS"
+        and expected_formula_manifest_hash is not None
+        and calculation.formula_manifest_hash == expected_formula_manifest_hash
+        and calculation.result_hash is not None
+        and calculation.result_hash == sha256_json(calculation_result_payload(calculation))
+    )
+
+
 def evaluate_rule(
     rule: RuleSpec,
     inputs: Mapping[str, object],
@@ -221,14 +249,18 @@ def evaluate_rule(
             missing_inputs=missing,
             reason_codes=("MISSING_REQUIRED_INPUT",),
         )
+    supplied_ids = tuple(item.calculation_result_id for item in calculations)
+    if len(supplied_ids) != len(set(supplied_ids)):
+        return _finalize(
+            rule,
+            "ENGINE_ERROR",
+            reason_codes=("INVALID_CALCULATION_REFERENCE",),
+        )
     calculation_map = {item.calculation_result_id: item for item in calculations}
-    for calculation in calculation_map.values():
-        if (
-            calculation.status != "SUCCESS"
-            or expected_formula_manifest_hash is None
-            or calculation.formula_manifest_hash != expected_formula_manifest_hash
-            or calculation.result_hash is None
-            or calculation.result_hash != sha256_json(calculation_result_payload(calculation))
+    for calculation_id in sorted(_calculation_names(rule.expression)):
+        calculation = calculation_map.get(calculation_id)
+        if calculation is None or not _valid_calculation(
+            calculation, expected_formula_manifest_hash
         ):
             return _finalize(
                 rule,
@@ -237,7 +269,7 @@ def evaluate_rule(
             )
     try:
         passed, calculation_ids = _evaluate_node(rule.expression, rule, inputs, calculation_map)
-    except CalculationReferenceError:
+    except (CalculationReferenceError, KeyError):
         return _finalize(
             rule,
             "ENGINE_ERROR",
