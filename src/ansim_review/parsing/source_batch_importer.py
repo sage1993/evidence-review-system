@@ -242,9 +242,7 @@ def _source_records(
             elements.append(
                 {
                     "id": element.element_id,
-                    "revision_id": source.revision_id,
                     "page_id": f"{source.revision_id}-P{element.page_number:04d}",
-                    "page_number": element.page_number,
                     "element_type": element.element_type,
                     "raw_json": element.raw_payload,
                     "raw_text": element.raw_text,
@@ -295,7 +293,7 @@ def import_source_batch(
         pages=pages,
         elements=elements,
     )
-    with EvidenceStore(output) as store:
+    with EvidenceStore(output, create=True) as store:
         ingest_snapshot(store, snapshot)
         snapshot_hash = compute_snapshot_hash(store)
         connection = store.require_connection()

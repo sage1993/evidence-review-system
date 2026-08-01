@@ -52,7 +52,7 @@ def _snapshot(text: str = "이면도로 차량 진출입 기준") -> EvidenceSna
 
 def test_korean_fts_query_returns_page_resolved_hits(tmp_path: Path) -> None:
     db_path = tmp_path / "evidence.sqlite"
-    with EvidenceStore(db_path) as store:
+    with EvidenceStore(db_path, create=True) as store:
         snapshot_hash = ingest_snapshot(store, _snapshot())
         assert build_fts_index(store.require_connection()) == snapshot_hash
         hits = search_fts(
@@ -72,7 +72,7 @@ def test_korean_fts_query_returns_page_resolved_hits(tmp_path: Path) -> None:
 
 def test_stale_index_is_rejected(tmp_path: Path) -> None:
     db_path = tmp_path / "evidence.sqlite"
-    with EvidenceStore(db_path) as store:
+    with EvidenceStore(db_path, create=True) as store:
         ingest_snapshot(store, _snapshot())
         build_fts_index(store.require_connection())
         store.require_connection().execute(

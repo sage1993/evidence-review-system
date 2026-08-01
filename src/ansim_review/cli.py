@@ -11,6 +11,8 @@ from pathlib import Path
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.engines import CalculationResult
 from ansim_review.contracts.source_batch import decode_source_batch
+from ansim_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
+from ansim_review.evidence.store import EvidenceStore
 from ansim_review.math_engine.manifest import calculation_result_document
 from ansim_review.math_engine.requests import decode_calculation_request
 from ansim_review.math_engine.runner import run_calculation_request
@@ -27,6 +29,21 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evidence-first regulatory review for arbitrary documents",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    evidence = subparsers.add_parser(
+        "evidence",
+        help="manage versioned evidence databases",
+    )
+    evidence_stages = evidence.add_subparsers(
+        dest="evidence_stage",
+        required=True,
+    )
+    evidence_migrate = evidence_stages.add_parser(
+        "migrate",
+        help="copy an evidence schema v1 database to schema v2",
+    )
+    evidence_migrate.add_argument("--source", required=True, type=Path)
+    evidence_migrate.add_argument("--output", required=True, type=Path)
 
     source_batch = subparsers.add_parser(
         "source-batch",
@@ -84,6 +101,40 @@ def _result_exit_code(result: CalculationResult) -> int:
     if result.status == "SUCCESS":
         return 0
     return 2
+
+
+def _evidence_migrate(source: Path, output: Path) -> int:
+    try:
+        report = migrate_v1_to_v2(source, output)
+    except FileExistsError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except (
+        FileNotFoundError,
+        OSError,
+        sqlite3.Error,
+        ValueError,
+        RuntimeError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/evidence-migration-status",
+            "version": 1,
+            "status": "MIGRATED",
+            "source_db": str(report.source_db),
+            "output_db": str(report.output_db),
+            "report": str(report.report_path),
+            "source_schema_version": report.source_schema_version,
+            "output_schema_version": report.output_schema_version,
+            "source_sha256": report.source_sha256,
+            "output_sha256": report.output_sha256,
+            "logical_snapshot_hash": report.logical_snapshot_hash,
+            "counts": report.counts,
+        }
+    )
+    return 0
 
 
 def _source_batch_ingest(root: Path, manifest: Path, output: Path) -> int:
@@ -157,10 +208,10 @@ def _query_run(
         return 1
     try:
         payload = json.loads(request_path.read_text(encoding="utf-8"))
-        with sqlite3.connect(db_path) as connection:
-            connection.row_factory = sqlite3.Row
-            bundle = build_evidence_bundle(connection, payload)
+        with EvidenceStore(db_path) as store:
+            bundle = build_evidence_bundle(store.require_connection(), payload)
     except (
+        FileNotFoundError,
         OSError,
         json.JSONDecodeError,
         sqlite3.Error,
@@ -267,6 +318,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     install_network_guard()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "evidence" and args.evidence_stage == "migrate":
+        return _evidence_migrate(args.source, args.output)
     if args.command == "source-batch" and args.source_stage == "ingest":
         return _source_batch_ingest(args.root, args.manifest, args.output)
     if args.command == "math-run":
