@@ -19,7 +19,7 @@ def _workspace(root: Path) -> None:
     egg_info.mkdir()
     (egg_info / "PKG-INFO").write_text("generated", encoding="utf-8")
     (root / "evidence").mkdir()
-    (root / "evidence" / "ansim-evidence.sqlite").write_bytes(
+    (root / "evidence" / "evidence.sqlite").write_bytes(
         b"SQLite format 3\0fixture"
     )
     (root / "rules" / "approved").mkdir(parents=True)
@@ -34,13 +34,15 @@ def _workspace(root: Path) -> None:
     )
     (root / "web_runtime").mkdir()
     repository_root = Path(__file__).parents[3]
-    bootstrap = repository_root / "web_runtime" / "bootstrap.py"
-    (root / "web_runtime" / "bootstrap.py").write_text(
-        bootstrap.read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    (root / "web_runtime" / "PROJECT_INSTRUCTIONS.md").write_text(
-        "# instructions",
+    for filename in ("bootstrap.py", "runtime_runner.py"):
+        source = repository_root / "web_runtime" / filename
+        (root / "web_runtime" / filename).write_text(
+            source.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    (root / "tests/golden/questions").mkdir(parents=True)
+    (root / "tests/golden/questions/ansim_cases.json").write_text(
+        "[]",
         encoding="utf-8",
     )
     (root / "02_source_pdf").mkdir()
@@ -81,8 +83,14 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
         / "ansim_review"
         / "noise.egg-info"
     ).exists()
-    assert (extracted / "evidence" / "ansim-evidence.sqlite").is_file()
+    assert (extracted / "evidence" / "evidence.sqlite").is_file()
+    assert (extracted / "examples" / "golden-cases.json").is_file()
     assert (extracted / "rules" / "approved" / "R1.json").is_file()
+
+    runtime_manifest = json.loads(
+        (extracted / "runtime-manifest.json").read_text(encoding="utf-8")
+    )
+    assert runtime_manifest["format"] == "evidence-review/chatgpt-web-runtime"
 
     formula_manifest = json.loads(
         (extracted / "formulas" / "manifest.json").read_text(encoding="utf-8")
