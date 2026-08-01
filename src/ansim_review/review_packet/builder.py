@@ -139,8 +139,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         )
     ]
     rule_documents = _list_of_mappings(document.get("rules", []), "rules")
-    rules: list[Mapping[str, object]] = rule_documents
-    exceptions = _exception_codes(rules)
+    exceptions = _exception_codes(rule_documents)
     conflicts = [reason for reason in reasons if "CONFLICT" in reason]
     confidence_value = document.get("confidence")
     confidence = (
