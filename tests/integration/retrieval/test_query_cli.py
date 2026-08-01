@@ -47,7 +47,7 @@ def _build_db(path: Path) -> str:
             },
         ),
     )
-    with EvidenceStore(path) as store:
+    with EvidenceStore(path, create=True) as store:
         snapshot_hash = ingest_snapshot(store, snapshot)
         build_fts_index(store.require_connection())
     return snapshot_hash
