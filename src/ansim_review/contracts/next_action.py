@@ -19,6 +19,7 @@ from ansim_review.contracts.workflow import WorkflowState
 
 NextActionType = Literal["PRODUCE_TRACK_A", "PRODUCE_TRACK_B"]
 WaitingWorkflowState = Literal["WAITING_TRACK_A", "WAITING_TRACK_B"]
+_FORMATS: tuple[Literal["ansim/next-action"], ...] = ("ansim/next-action",)
 _NEXT_ACTIONS: tuple[NextActionType, ...] = ("PRODUCE_TRACK_A", "PRODUCE_TRACK_B")
 _WAITING_STATES: tuple[WaitingWorkflowState, ...] = (
     "WAITING_TRACK_A",
@@ -86,9 +87,7 @@ def decode_next_action(value: object) -> NextAction:
         "track_a_validated",
     }
     reject_unknown(payload, allowed, "next_action")
-    format_value = expect_literal(
-        payload.get("format"), "format", ("ansim/next-action",)
-    )
+    format_value = expect_literal(payload.get("format"), "format", _FORMATS)
     version = expect_int(payload.get("version"), "version")
     if version != 1:
         raise ValueError(f"unsupported version: {version}")
