@@ -1,6 +1,10 @@
 import pytest
 
-from ansim_review.llm_layer.numeric_grammar import scan_numeric_tokens
+from ansim_review.llm_layer.numeric_grammar import (
+    UnsupportedNumericSyntax,
+    reject_unsupported_numeric_syntax,
+    scan_numeric_tokens,
+)
 
 
 @pytest.mark.parametrize(
@@ -16,7 +20,9 @@ from ansim_review.llm_layer.numeric_grammar import scan_numeric_tokens
     ],
 )
 def test_scan_supported_tokens(text: str, expected: tuple[str, ...]) -> None:
-    assert tuple(token.text for token in scan_numeric_tokens(text)) == expected
+    tokens = scan_numeric_tokens(text)
+    assert tuple(token.text for token in tokens) == expected
+    reject_unsupported_numeric_syntax(text, tokens)
 
 
 def test_scanner_returns_original_spans() -> None:
@@ -29,4 +35,38 @@ def test_scanner_returns_original_spans() -> None:
 
 @pytest.mark.parametrize("text", ["R1", "DOC-A", "RUN-ABC", "A12B"])
 def test_scanner_does_not_extract_inside_identifiers(text: str) -> None:
-    assert scan_numeric_tokens(text) == ()
+    tokens = scan_numeric_tokens(text)
+    assert tokens == ()
+    reject_unsupported_numeric_syntax(text, tokens)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "값은 1e3이다.",
+        "값은 1E-3이다.",
+        "값은 .5이다.",
+        "값은 1_000이다.",
+        "값은 ½이다.",
+        "값은 １２３이다.",
+        "값은 12,34이다.",
+        "값은 1,23,456이다.",
+        "값은 10²이다.",
+        "값은 ⑩이다.",
+    ],
+)
+def test_unsupported_numeric_syntax_is_rejected(text: str) -> None:
+    tokens = scan_numeric_tokens(text)
+    with pytest.raises(UnsupportedNumericSyntax, match="UNSUPPORTED_NUMERIC_SYNTAX"):
+        reject_unsupported_numeric_syntax(text, tokens)
+
+
+def test_unsupported_error_reports_first_exact_span() -> None:
+    text = "값은 1e3이고 .5이다."
+    tokens = scan_numeric_tokens(text)
+
+    with pytest.raises(
+        UnsupportedNumericSyntax,
+        match=r"UNSUPPORTED_NUMERIC_SYNTAX at 3:6: 1e3",
+    ):
+        reject_unsupported_numeric_syntax(text, tokens)
