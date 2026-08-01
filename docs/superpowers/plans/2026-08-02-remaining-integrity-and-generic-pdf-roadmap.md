@@ -8,19 +8,37 @@
 
 **Tech Stack:** Python 3.11 standard library, SQLite STRICT tables and FTS5, dataclasses, pathlib, hashlib, canonical JSON, pytest, Ruff, strict mypy.
 
+**Reviewed main:** `09f6209ccdcb81dad3a14d32a8efb5165dd723b7`
+
 ## Global Constraints
 
 - Runtime dependencies remain empty.
 - Project code does not call external model, search, or document APIs.
 - New artifacts use the `evidence-review/` format prefix.
 - Machine output never contains a non-null human final decision.
-- Source bytes, parser artifacts, rule versions, formula versions, and release inputs remain hash-addressed.
+- Source bytes, parser artifacts, rule versions, formula versions, release inputs, drawing candidates, and drawing confirmations remain hash-addressed.
 - Same normalized input produces byte-equivalent canonical JSON.
 - Existing `ansim/*` artifacts are accepted only by explicitly named legacy readers.
 - Every implementation PR follows red-green-refactor TDD and ends with the full quality gate.
 - Do not combine the six implementation PRs into one branch.
+- Preserve PR #29 candidate-provenance binding and `ACCEPTED`/`EDITED` semantics.
 
 ---
+
+## Completed prerequisite
+
+PR #29 was merged before execution of this roadmap:
+
+```text
+09f6209ccdcb81dad3a14d32a8efb5165dd723b7
+fix: reverify drawing candidate provenance
+```
+
+The detailed correction document below is authoritative where it conflicts with the earlier #22 plans:
+
+```text
+docs/superpowers/plans/2026-08-02-drawing-backend-plan-corrections.md
+```
 
 ## Ordered Pull Requests
 
@@ -30,12 +48,14 @@
 | 2A | `agent/issue25-track-a-numeric-grammar` | #25 | `2026-08-02-track-a-numeric-grammar.md` |
 | 2B | `agent/issue26-offline-boundary` | #26 | `2026-08-02-offline-boundary-hardening.md` |
 | 3 | `agent/issue20-process-attestation` | #20 | `2026-08-02-process-attestation.md` |
-| 4A | `agent/issue22-parser-registry-state` | #22 | `2026-08-02-generic-parser-registry-state-model.md` |
-| 4B | `agent/issue22-namespace-fixtures-e2e` | #22 | `2026-08-02-evidence-review-namespace-fixtures-e2e.md` |
+| 4A | `agent/issue22-parser-registry-state` | #22 | `2026-08-02-generic-parser-registry-state-model.md` plus correction document |
+| 4B | `agent/issue22-namespace-fixtures-e2e` | #22 | `2026-08-02-evidence-review-namespace-fixtures-e2e.md` plus correction document |
 
 ## Dependency Rules
 
 ```text
+PR #29 drawing provenance hotfix
+          ↓
 PR 1 (#19)
   ├─> PR 2A (#25)
   └─> PR 2B (#26)
@@ -49,6 +69,7 @@ PR 1 + PR 2A + PR 2B + PR 3
 - PR 3 must consume the assurance vocabulary introduced by PR 2B.
 - PR 4A must target a `main` that already contains PRs 1–3.
 - PR 4B is the only PR allowed to rename the canonical Python package.
+- `DRAWING_BACKEND_ONLY` remains a source-routing result; drawing workflow remains owned by `drawing_workflow.py`.
 
 ## Plan Self-Review Corrections
 
@@ -73,7 +94,7 @@ tests/integration/release/test_acceptance_record.py
 tests/unit/llm_layer/test_track_a_validator.py
 ```
 
-When this correction table conflicts with a per-task `Create/Modify` label, this table is authoritative. Exact production interfaces, test behavior, and commit boundaries in the detailed plans remain unchanged.
+When this correction table conflicts with a per-task `Create/Modify` label, this table is authoritative. Exact production interfaces, test behavior, and commit boundaries in the detailed plans remain unchanged except where the drawing-backend correction document explicitly supersedes them.
 
 ### Spec coverage check
 
@@ -86,11 +107,12 @@ When this correction table conflicts with a per-task `Create/Modify` label, this
 | application guard vs OS isolation wording | Offline Tasks 4, 6 |
 | internal process attestation, no signature claim | Attestation Tasks 1–6 |
 | candidate and packet hashes gate release | Attestation Tasks 2, 5 |
-| parser registry and source status model | Parser/state Tasks 1–6 |
+| parser registry and source status model | Parser/state Tasks 1–6 plus drawing correction |
 | explicit visual document/revision/page identity | Parser/state Task 7 |
-| canonical `evidence_review` namespace | Namespace Task 2 |
+| drawing source/candidate/confirmation authority separation | Drawing correction Sections 1–3 |
+| canonical `evidence_review` namespace | Namespace Task 2 plus drawing correction Section 4 |
 | legacy compatibility isolation | Namespace Tasks 3, 5, 6 |
-| varied PDF fixture matrix and E2E | Namespace Tasks 7–9 |
+| varied PDF fixture matrix and E2E | Namespace Tasks 7–9 plus drawing correction Section 4.2 |
 
 ### Placeholder and type-consistency check
 
@@ -100,6 +122,8 @@ When this correction table conflicts with a per-task `Create/Modify` label, this
 - `validate_bbox_within_page()` from the schema-v2 plan is reused by parser models and migration.
 - `PROCESS_ATTESTATION` and `cryptographic_identity_verified=false` are consistent between attestation, release validation, and documentation plans.
 - `APPLICATION_OFFLINE_GUARD` and `OS_ISOLATED` are consistent between policy code, release reports, and documentation.
+- `bind_confirmed_inputs(..., candidate_entries=...)` is preserved through parser/state and namespace migration.
+- `ACCEPTED` never carries replacement value, unit, or geometry; `EDITED` is required for changes.
 
 ## Branch Preparation
 
@@ -143,6 +167,7 @@ Before requesting merge:
 - [ ] Full quality gate passes on the PR head.
 - [ ] New JSON output is canonical and byte-reproducible.
 - [ ] Documentation describes the implemented assurance level without stronger claims.
+- [ ] Drawing engine binding still revalidates source, candidate, and confirmation artifacts.
 - [ ] The PR body names the exact issue it closes or advances.
 - [ ] No unrelated refactoring is included.
 
@@ -155,6 +180,10 @@ arbitrary names + different bytes       -> distinct source identity
 same bytes + different names            -> deduplicated source identity
 different supported parser adapters     -> registry dispatch
 missing parser artifact                  -> explicit pending state
+parserless CASE_DRAWING                  -> DRAWING_BACKEND_ONLY
+drawing workflow                         -> existing drawing backend projection
+candidate tampering                      -> engine binding blocked
+ACCEPTED replacement data                -> rejected
 visual evidence                          -> explicit document/revision/page identity
 new artifacts and user-facing docs       -> no ansim identifier
 legacy artifacts                         -> read-only explicit compatibility path
@@ -163,10 +192,10 @@ full generic fixture matrix              -> passing end-to-end tests
 
 ## Execution Handoff
 
-Recommended execution mode:
+Selected execution mode:
 
 ```text
-superpowers:subagent-driven-development
+superpowers:executing-plans
 ```
 
-Use one fresh implementation subagent per task, followed by specification review and code-quality review before moving to the next task.
+Execute one implementation PR at a time with a review checkpoint after each PR. Do not start a dependent PR until its required parent PR is merged and verified on `main`.
