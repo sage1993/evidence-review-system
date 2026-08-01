@@ -12,7 +12,10 @@ from ansim_review.contracts.attachments import (
     AttachmentRole,
     ImmutableAttachment,
 )
-from ansim_review.parsing.drawing_case import validate_artifact_id
+from ansim_review.parsing.drawing_case import (
+    CaseManifestEntry,
+    validate_artifact_id,
+)
 from ansim_review.parsing.source_manifest import sha256_file
 
 _CHUNK_SIZE = 1024 * 1024
@@ -85,7 +88,7 @@ def _logical_stored_path(attachment_id: str, extension: str) -> str:
     return f"inputs/original/{attachment_id}{extension}"
 
 
-def _physical_stored_path(case_dir: Path, attachment: ImmutableAttachment) -> Path:
+def _physical_relative_path(attachment: ImmutableAttachment) -> str:
     parsed = PurePosixPath(attachment.stored_path)
     expected_prefix = ("inputs", "original")
     if parsed.parts[:2] != expected_prefix or len(parsed.parts) != 3:
@@ -95,7 +98,23 @@ def _physical_stored_path(case_dir: Path, attachment: ImmutableAttachment) -> Pa
     expected_filename = f"{attachment.attachment_id}{canonical_extension}"
     if not canonical_extension or filename != expected_filename:
         raise ValueError("attachment stored_path does not match attachment metadata")
-    return case_dir / "sources" / "drawings" / filename
+    return f"sources/drawings/{filename}"
+
+
+def _physical_stored_path(case_dir: Path, attachment: ImmutableAttachment) -> Path:
+    relative_path = PurePosixPath(_physical_relative_path(attachment))
+    return case_dir.joinpath(*relative_path.parts)
+
+
+def drawing_source_manifest_entry(
+    attachment: ImmutableAttachment,
+) -> CaseManifestEntry:
+    """Return the case-manifest index entry for one immutable source."""
+    return CaseManifestEntry(
+        artifact_id=attachment.attachment_id,
+        relative_path=_physical_relative_path(attachment),
+        sha256=attachment.sha256,
+    )
 
 
 def _copy_source_to_temporary(
