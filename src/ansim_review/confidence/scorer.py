@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 
 from ansim_review.confidence.policy import (
     FACTOR_WEIGHTS,
