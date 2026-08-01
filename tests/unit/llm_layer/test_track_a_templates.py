@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 TEMPLATE = Path("src/ansim_review/llm_layer/templates/track-a.md")
 GRAMMAR_DOC = Path("docs/TRACK_A_NUMERIC_GRAMMAR.md")
 
