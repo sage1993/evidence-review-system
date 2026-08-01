@@ -59,7 +59,7 @@ def test_duplicate_element_rolls_back_entire_snapshot(tmp_path: Path) -> None:
         ),
     )
 
-    with EvidenceStore(database) as store:
+    with EvidenceStore(database, create=True) as store:
         with pytest.raises(sqlite3.IntegrityError):
             ingest_snapshot(store, snapshot)
 
@@ -82,9 +82,9 @@ def test_snapshot_hash_is_independent_of_record_order(tmp_path: Path) -> None:
         documents=tuple(reversed(first_snapshot.documents))
     )
 
-    with EvidenceStore(tmp_path / "first-order.sqlite") as first_store:
+    with EvidenceStore(tmp_path / "first-order.sqlite", create=True) as first_store:
         first_hash = ingest_snapshot(first_store, first_snapshot)
-    with EvidenceStore(tmp_path / "second-order.sqlite") as second_store:
+    with EvidenceStore(tmp_path / "second-order.sqlite", create=True) as second_store:
         second_hash = ingest_snapshot(second_store, second_snapshot)
 
     assert first_hash == second_hash
