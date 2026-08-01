@@ -157,7 +157,10 @@ class OpenDataLoaderJsonAdapter:
             if not isinstance(declared_name, str) or not declared_name.strip():
                 raise ValueError("parser file name must be a non-empty string")
             if Path(declared_name).name != context.source_path.name:
-                raise ValueError("PARSER_SOURCE_MISMATCH")
+                raise ValueError(
+                    "PARSER_SOURCE_MISMATCH: "
+                    "parser file name does not match source PDF"
+                )
         raw_elements = load_raw_elements(
             context.parser_artifact_path,
             document_id="PARSER",
@@ -178,6 +181,16 @@ class OpenDataLoaderJsonAdapter:
             index = page_counts[raw.page_number]
             width, height = size_by_page[raw.page_number]
             bbox = parser_bbox(raw, width, height)
+            bbox_value = (
+                None
+                if bbox is None
+                else (
+                    float(bbox[0]),
+                    float(bbox[1]),
+                    float(bbox[2]),
+                    float(bbox[3]),
+                )
+            )
             elements.append(
                 ParsedElement(
                     element_key=f"P{raw.page_number:04d}-E{index:05d}",
@@ -187,7 +200,7 @@ class OpenDataLoaderJsonAdapter:
                     raw_payload=raw.raw_payload,
                     raw_payload_hash=raw.raw_payload_hash,
                     raw_text=raw.raw_text,
-                    bbox=None if bbox is None else tuple(bbox),
+                    bbox=bbox_value,
                 )
             )
         return NormalizedParserContribution(
