@@ -1,5 +1,5 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 
 def test_runtime_templates_and_styles_are_declared_as_package_data() -> None:
