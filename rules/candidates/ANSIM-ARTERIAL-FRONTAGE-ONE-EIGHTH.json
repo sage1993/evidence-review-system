@@ -1,0 +1,22 @@
+{
+  "rule_id": "ANSIM-ARTERIAL-FRONTAGE-ONE-EIGHTH",
+  "version": "1.0.0",
+  "title": "간선도로 접면 길이 대지둘레의 1/8 이상",
+  "input_schema": {},
+  "source_citations": [{
+    "citation_id": "C-ANSIM-FRONTAGE",
+    "document_id": "ANSIM-GUIDELINE",
+    "revision_id": "ANSIM-GUIDELINE-REV-20260801",
+    "page_number": 13,
+    "evidence_id": "ANSIM-GUIDELINE-REV-20260801-P0013-E00001",
+    "bbox": [72, 350, 520, 402],
+    "source_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+  }],
+  "human_decision_required": true,
+  "expression": {"calculation": {
+    "calculation_result_id": "CALC-FRONTAGE-30-320",
+    "field": "comparison",
+    "operator": "in",
+    "value": ["AT_THRESHOLD", "ABOVE_THRESHOLD"]
+  }}
+}
