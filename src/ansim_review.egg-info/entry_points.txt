@@ -1,0 +1,2 @@
+[console_scripts]
+ansim-review = ansim_review.cli:main

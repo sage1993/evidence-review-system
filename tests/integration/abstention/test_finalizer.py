@@ -116,7 +116,9 @@ def test_complete_run_yields_ready_packet_without_human_decision(tmp_path: Path)
     assert packet.status == "READY_FOR_HUMAN_REVIEW"
     assert packet.human_decision is None
     assert packet.confidence is not None and packet.confidence.level == "HIGH"
-    output = json.loads((run_dir / "final-review-packet.json").read_text())
+    output = json.loads(
+        (run_dir / "final-review-packet.json").read_text(encoding="utf-8")
+    )
     assert output["human_decision"] is None
 
 
