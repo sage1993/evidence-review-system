@@ -8,9 +8,20 @@ import zipfile
 from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.math_engine.formulas import DEFAULT_REGISTRY
+from ansim_review.math_engine.manifest import formula_manifest_payload
 from ansim_review.packaging.project_instructions import render_project_instructions
 
 _FIXED_TIME = (1980, 1, 1, 0, 0, 0)
+_SAMPLE_REQUEST: dict[str, object] = {
+    "formula_id": "FRONTAGE_RATIO",
+    "formula_version": "1.0.0",
+    "inputs": {
+        "frontage_length_m": "30",
+        "perimeter_length_m": "320",
+        "threshold_ratio": "0.125",
+    },
+}
 
 
 def _copy_tree(source: Path, destination: Path) -> None:
@@ -51,6 +62,18 @@ def _manifest(root: Path) -> dict[str, object]:
             for path in _runtime_files(root)
         ],
     }
+
+
+def _write_generated_runtime_inputs(stage: Path) -> None:
+    formulas = stage / "formulas" / "manifest.json"
+    formulas.parent.mkdir(parents=True, exist_ok=True)
+    formulas.write_bytes(formula_manifest_payload(DEFAULT_REGISTRY.values()) and dump_bytes(
+        formula_manifest_payload(DEFAULT_REGISTRY.values())
+    ))
+
+    sample = stage / "examples" / "sample-request.json"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_bytes(dump_bytes(_SAMPLE_REQUEST))
 
 
 def _write_zip(source: Path, output: Path) -> None:
@@ -110,14 +133,7 @@ def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
             workspace_root / "rules" / "manifests",
             stage / "rules" / "manifests",
         )
-        _copy_file(
-            workspace_root / "formulas" / "manifest.json",
-            stage / "formulas" / "manifest.json",
-        )
-        _copy_file(
-            workspace_root / "examples" / "sample-request.json",
-            stage / "examples" / "sample-request.json",
-        )
+        _write_generated_runtime_inputs(stage)
         golden = (
             workspace_root / "tests" / "golden" / "questions" / "ansim_cases.json"
         )
