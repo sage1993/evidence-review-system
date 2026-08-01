@@ -12,6 +12,7 @@ from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.engines import CalculationResult
 from ansim_review.contracts.source_batch import decode_source_batch
 from ansim_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
+from ansim_review.evidence.store import EvidenceStore
 from ansim_review.math_engine.manifest import calculation_result_document
 from ansim_review.math_engine.requests import decode_calculation_request
 from ansim_review.math_engine.runner import run_calculation_request
@@ -207,10 +208,10 @@ def _query_run(
         return 1
     try:
         payload = json.loads(request_path.read_text(encoding="utf-8"))
-        with sqlite3.connect(db_path) as connection:
-            connection.row_factory = sqlite3.Row
-            bundle = build_evidence_bundle(connection, payload)
+        with EvidenceStore(db_path) as store:
+            bundle = build_evidence_bundle(store.require_connection(), payload)
     except (
+        FileNotFoundError,
         OSError,
         json.JSONDecodeError,
         sqlite3.Error,
