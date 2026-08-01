@@ -37,3 +37,21 @@ def test_loader_requires_human_decision_and_source_identity() -> None:
     payload["human_decision_required"] = False
     with pytest.raises(ValueError, match="human_decision_required"):
         load_rule(payload)
+
+
+@pytest.mark.parametrize(
+    "rule_id",
+    ["../RULE", "/tmp/RULE", "C:\\tmp\\RULE", "RULE/CHILD", "RULE\\CHILD"],
+)
+def test_loader_rejects_rule_ids_with_path_syntax(rule_id: str) -> None:
+    payload = _base_rule()
+    payload["rule_id"] = rule_id
+    with pytest.raises(ValueError, match="rule_id"):
+        load_rule(payload)
+
+
+def test_loader_rejects_undeclared_input_reference() -> None:
+    payload = _base_rule()
+    payload["expression"] = {"exists": {"input": "road_width_m"}}
+    with pytest.raises(ValueError, match="undeclared input reference: road_width_m"):
+        load_rule(payload)
