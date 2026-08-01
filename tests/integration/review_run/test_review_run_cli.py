@@ -46,7 +46,7 @@ def test_review_run_prepare_cli_routes_and_outputs_status(
     assert exit_code == 0
     document = json.loads(capsys.readouterr().out)
     assert document == {
-        "format": "ansim/review-run-cli-status",
+        "format": "evidence-review/review-run-cli-status",
         "version": 1,
         "stage": "prepare",
         "status": "AWAITING_TRACK_OUTPUTS",
@@ -114,7 +114,7 @@ def test_review_run_finalize_cli_routes_publish_and_outputs_status(
     assert exit_code == 0
     document = json.loads(capsys.readouterr().out)
     assert document == {
-        "format": "ansim/review-run-cli-status",
+        "format": "evidence-review/review-run-cli-status",
         "version": 1,
         "stage": "finalize",
         "status": "READY_FOR_HUMAN_REVIEW",
