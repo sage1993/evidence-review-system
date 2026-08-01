@@ -18,3 +18,4 @@ jobs:
       - run: pytest -v
       - run: ruff check src tests
       - run: mypy src
+      - run: python -m compileall -q src scripts web_runtime tests
