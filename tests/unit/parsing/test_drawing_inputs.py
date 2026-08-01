@@ -37,24 +37,31 @@ def candidate():
     )
 
 
-def confirmation() -> DrawingConfirmation:
+def confirmation(
+    value: str = "8.0",
+    confirmation_id: str = "CONF-001",
+) -> DrawingConfirmation:
     return DrawingConfirmation(
-        confirmation_id="CONF-001",
+        confirmation_id=confirmation_id,
         candidate_id=candidate().candidate_id,
         action="CREATED",
         source_sha256="a" * 64,
         reviewer="김성현",
         confirmed_at="2026-08-02T01:30:00+09:00",
-        confirmed_value="8.0",
+        confirmed_value=value,
         unit="m",
         geometry=None,
     )
 
 
-def confirmation_entry() -> CaseManifestEntry:
+def confirmation_entry(
+    confirmation_id: str = "CONF-001",
+) -> CaseManifestEntry:
     return CaseManifestEntry(
-        artifact_id="CONF-001",
-        relative_path="confirmations/20260801T163000Z-kim-sh-CONF-001.json",
+        artifact_id=confirmation_id,
+        relative_path=(
+            f"confirmations/20260801T163000Z-kim-sh-{confirmation_id}.json"
+        ),
         sha256="c" * 64,
     )
 
@@ -66,6 +73,7 @@ def request(
     value: str = "8.0",
     unit: str = "m",
     effective_status: CandidateStatus = "CREATED",
+    confirmation_id: str = "CONF-001",
 ) -> ConfirmedInputBuildRequest:
     return ConfirmedInputBuildRequest(
         input_id=input_id,
@@ -74,8 +82,8 @@ def request(
         unit=unit,
         candidate=candidate(),
         effective_status=effective_status,
-        confirmation=confirmation(),
-        confirmation_entry=confirmation_entry(),
+        confirmation=confirmation(value, confirmation_id),
+        confirmation_entry=confirmation_entry(confirmation_id),
     )
 
 
@@ -100,8 +108,12 @@ def test_non_finite_decimal_is_rejected() -> None:
 
 
 def test_conflicting_field_values_are_reported_without_winner() -> None:
-    first = build_confirmed_input(request(input_id="INPUT-A", value="8.0"))
-    second = build_confirmed_input(request(input_id="INPUT-B", value="10.0"))
+    first = build_confirmed_input(
+        request(input_id="INPUT-A", value="8.0", confirmation_id="CONF-A")
+    )
+    second = build_confirmed_input(
+        request(input_id="INPUT-B", value="10.0", confirmation_id="CONF-B")
+    )
     assert validate_confirmed_input_set([first, second]) == (
         ConfirmedInputConflict(
             field="road_width_m",
@@ -112,8 +124,12 @@ def test_conflicting_field_values_are_reported_without_winner() -> None:
 
 
 def test_duplicate_identical_values_are_rejected() -> None:
-    first = build_confirmed_input(request(input_id="INPUT-A"))
-    second = build_confirmed_input(request(input_id="INPUT-B"))
+    first = build_confirmed_input(
+        request(input_id="INPUT-A", confirmation_id="CONF-A")
+    )
+    second = build_confirmed_input(
+        request(input_id="INPUT-B", confirmation_id="CONF-B")
+    )
     conflicts = validate_confirmed_input_set([first, second])
     assert conflicts[0].reason == "DUPLICATE_ACTIVE_FIELD"
 
@@ -136,7 +152,11 @@ def test_persist_confirmed_inputs_is_create_only(tmp_path: Path) -> None:
 
 
 def test_conflicting_set_cannot_be_persisted(tmp_path: Path) -> None:
-    first = build_confirmed_input(request(input_id="INPUT-A", value="8.0"))
-    second = build_confirmed_input(request(input_id="INPUT-B", value="10.0"))
+    first = build_confirmed_input(
+        request(input_id="INPUT-A", value="8.0", confirmation_id="CONF-A")
+    )
+    second = build_confirmed_input(
+        request(input_id="INPUT-B", value="10.0", confirmation_id="CONF-B")
+    )
     with pytest.raises(ValueError, match="confirmed input conflicts"):
         persist_confirmed_inputs(tmp_path, [first, second])
