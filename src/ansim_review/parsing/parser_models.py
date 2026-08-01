@@ -128,20 +128,16 @@ class NormalizedParserContribution:
             page = pages.get(page_number)
             if page is None:
                 raise ValueError(f"PARSER_PAGE_NOT_FOUND: {page_number}")
-            geometry = PageGeometry(
-                page_id=f"PARSER-P{page_number:04d}",
-                revision_id="PARSER",
-                page_number=page_number,
-                width=page.width,
-                height=page.height,
+            validate_bbox_within_page(
+                bbox,
+                PageGeometry(
+                    page_id=f"PARSER-P{page_number:04d}",
+                    revision_id="PARSER",
+                    page_number=page_number,
+                    width=page.width,
+                    height=page.height,
+                ),
             )
-            normalized = validate_bbox_within_page(bbox, geometry)
-            if bbox is not None and normalized is not None:
-                object.__setattr__(
-                    self,
-                    {"element": "elements", "table": "tables", "visual": "visuals"}[kind],
-                    getattr(self, {"element": "elements", "table": "tables", "visual": "visuals"}[kind]),
-                )
 
     @property
     def page_count(self) -> int:
