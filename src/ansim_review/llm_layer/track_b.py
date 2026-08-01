@@ -143,5 +143,5 @@ def validate_track_b_output(value: object, track_a: ValidatedTrackA) -> TrackBAu
     return TrackBAudit(
         run_id=run_id,
         claim_audits=tuple(audits),
-        overall_disposition=cast(AuditDisposition, overall_value),
+        overall_disposition=expected_overall,
     )
