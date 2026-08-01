@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument("--path-hint", default="")
     arguments = parser.parse_args()
     cases = json.loads(
-        (ROOT / "examples/ansim_cases.json").read_text(encoding="utf-8")
+        (ROOT / "examples/golden-cases.json").read_text(encoding="utf-8")
     )
     case = next(
         (item for item in cases if item["case_id"] == arguments.case_id),

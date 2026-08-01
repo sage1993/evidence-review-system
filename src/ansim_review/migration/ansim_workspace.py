@@ -1,4 +1,4 @@
-"""Source-preserving Ansim workspace inventory and evidence migration."""
+"""Source-preserving legacy workspace inventory and evidence migration."""
 from __future__ import annotations
 
 import hashlib
@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes, sha256_json
+from ansim_review.contracts.formats import SOURCE_INVENTORY_FORMAT
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -79,7 +80,7 @@ def source_inventory(workspace_root: Path) -> dict[str, object]:
                 }
             )
     return {
-        "format": "ansim/source-inventory",
+        "format": SOURCE_INVENTORY_FORMAT,
         "version": 1,
         "counts": {name: counts[name] for name in sorted(counts)},
         "files": records,

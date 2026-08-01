@@ -18,7 +18,7 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     egg_info.mkdir()
     (egg_info / "PKG-INFO").write_text("generated", encoding="utf-8")
     (root / "evidence").mkdir()
-    (root / "evidence" / "ansim-evidence.sqlite").write_bytes(
+    (root / "evidence" / "evidence.sqlite").write_bytes(
         b"SQLite format 3\0fixture"
     )
     (root / "rules" / "approved").mkdir(parents=True)
@@ -55,7 +55,7 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
         / "ansim_review"
         / "noise.egg-info"
     ).exists()
-    assert (output / "evidence" / "ansim-evidence.sqlite").is_file()
+    assert (output / "evidence" / "evidence.sqlite").is_file()
     assert (output / "rules" / "approved" / "R1.json").is_file()
     assert (output / "rules" / "manifests" / "active.json").is_file()
     validation = (output / "VALIDATE.md").read_text(encoding="utf-8")
@@ -64,6 +64,7 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
         (output / "bundle-manifest.json").read_text(encoding="utf-8")
     )
     assert data == manifest
+    assert data["format"] == "evidence-review/codex-workspace"
     assert all(not Path(item["path"]).is_absolute() for item in data["files"])
     assert all("__pycache__" not in item["path"] for item in data["files"])
     assert all(not item["path"].endswith(".pyc") for item in data["files"])

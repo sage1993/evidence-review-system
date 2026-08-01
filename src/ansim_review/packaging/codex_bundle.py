@@ -6,7 +6,12 @@ import shutil
 from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.formats import CODEX_WORKSPACE_FORMAT
 from ansim_review.packaging.file_selection import iter_bundle_source_files
+from ansim_review.release.config import (
+    DEFAULT_RELEASE_CONFIG,
+    resolve_evidence_database,
+)
 
 CODEX_ROUTING_SECTION = """
 
@@ -52,7 +57,7 @@ def _manifest(root: Path) -> dict[str, object]:
                     "size": len(data),
                 }
             )
-    return {"format": "ansim/codex-workspace", "version": 1, "files": files}
+    return {"format": CODEX_WORKSPACE_FORMAT, "version": 1, "files": files}
 
 
 def build_codex_bundle(
@@ -78,8 +83,8 @@ def build_codex_bundle(
         output_directory / "src" / "ansim_review",
     )
     _copy_file(
-        workspace_root / "evidence" / "ansim-evidence.sqlite",
-        output_directory / "evidence" / "ansim-evidence.sqlite",
+        resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG),
+        output_directory / "evidence" / "evidence.sqlite",
     )
     _copy_tree(
         workspace_root / "rules" / "approved",

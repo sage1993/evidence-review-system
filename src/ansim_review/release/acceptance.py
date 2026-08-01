@@ -1,4 +1,8 @@
-"""Validate explicit named-reviewer acceptance records."""
+"""Validate legacy named-reviewer acceptance records.
+
+This module remains for release compatibility until the separate process-
+attestation hardening issue is completed. It is not a new artifact writer.
+"""
 from __future__ import annotations
 
 import json
@@ -7,6 +11,8 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import cast
+
+from ansim_review.contracts.legacy_formats import LEGACY_HUMAN_ACCEPTANCE_FORMAT
 
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _REQUIRED_CHECKS = (
@@ -52,7 +58,7 @@ def validate_acceptance_record(
         json.loads(path.read_text(encoding="utf-8")),
         "acceptance",
     )
-    if payload.get("format") != "ansim/human-acceptance" or payload.get(
+    if payload.get("format") != LEGACY_HUMAN_ACCEPTANCE_FORMAT or payload.get(
         "version"
     ) != 1:
         raise ValueError("unsupported acceptance format")

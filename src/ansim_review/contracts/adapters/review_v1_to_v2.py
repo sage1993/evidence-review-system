@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ansim_review.contracts.formats import REVIEW_PACKET_FORMAT
 from ansim_review.contracts.review import ReviewPacket
 from ansim_review.contracts.review_v2 import ReviewPacketV2
 from ansim_review.contracts.validation import expect_sha256, expect_string
@@ -17,7 +18,7 @@ def adapt_review_packet_v1_to_v2(
 ) -> ReviewPacketV2:
     """Wrap v1 machine output without inventing v2-only evidence or drawing data."""
     return ReviewPacketV2(
-        format="ansim/review-packet",
+        format=REVIEW_PACKET_FORMAT,
         version=2,
         run_id=packet.run_id,
         case_id=expect_string(case_id, "case_id"),

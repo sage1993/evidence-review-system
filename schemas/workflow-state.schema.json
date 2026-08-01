@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ansim-review.local/schemas/workflow-state.schema.json",
+  "$id": "https://evidence-review.local/schemas/workflow-state.schema.json",
   "title": "Review workflow state",
   "type": "object",
   "additionalProperties": false,
@@ -14,7 +14,7 @@
     "resumable"
   ],
   "properties": {
-    "format": {"const": "ansim/workflow-state"},
+    "format": {"const": "evidence-review/workflow-state"},
     "version": {"const": 1},
     "run_id": {"type": "string", "minLength": 1},
     "workflow_state": {
