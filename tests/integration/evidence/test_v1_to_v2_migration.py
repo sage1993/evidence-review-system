@@ -66,7 +66,11 @@ def create_v1_database(path: Path, *, defect: str | None = None) -> None:
             dumps({"rows": [["a", "b"]]}),
         ),
     )
-    visual_bbox = [120, 130, 601, 220] if defect == "visual_bbox" else [120, 130, 200, 220]
+    visual_bbox = (
+        [120, 130, 601, 220]
+        if defect == "visual_bbox"
+        else [120, 130, 200, 220]
+    )
     connection.execute(
         """
         INSERT INTO visuals(
@@ -129,14 +133,21 @@ def test_valid_v1_database_migrates_copy_on_write(tmp_path: Path) -> None:
         assert compute_logical_snapshot_hash(connection) == expected_logical_hash
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert connection.execute(
-            "SELECT page_id, revision_id, page_number FROM retrieval_records WHERE evidence_id = 'E-1'"
-        ).fetchone() == ("REV-1-P0001", "REV-1", 1)
+        row = connection.execute(
+            """
+            SELECT page_id, revision_id, page_number
+            FROM retrieval_records
+            WHERE evidence_id = 'E-1'
+            """
+        ).fetchone()
+        assert tuple(row) == ("REV-1-P0001", "REV-1", 1)
         assert connection.execute(
             "SELECT COUNT(*) FROM retrieval_records WHERE evidence_id = 'STALE'"
         ).fetchone()[0] == 0
         for table in ("elements", "tables", "visuals"):
-            columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+            columns = {
+                info[1] for info in connection.execute(f"PRAGMA table_info({table})")
+            }
             assert "page_id" in columns
             assert "revision_id" not in columns
             assert "page_number" not in columns
