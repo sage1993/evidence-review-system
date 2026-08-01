@@ -12,7 +12,7 @@ from ansim_review.llm_layer.numeric_grammar import scan_numeric_tokens
         ("면적은 1,234이다.", ("1,234",)),
         ("비율은 12.50%이다.", ("12.50%",)),
         ("A는 10이고 B는 20이다.", ("10", "20")),
-        ("치수는 0.5m이다.", ("0.5",)),
+        ("치수는 0.5미터이다.", ("0.5",)),
     ],
 )
 def test_scan_supported_tokens(text: str, expected: tuple[str, ...]) -> None:
