@@ -1,0 +1,9 @@
+﻿file,rows,bytes
+00_guide.csv,11,2199
+documents.csv,2,704
+clauses.csv,137,388956
+visuals.csv,332,559700
+extracted_tables.csv,46,651296
+rules.csv,0,161
+cases.csv,0,117
+source_elements.csv,1277,1414066

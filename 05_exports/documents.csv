@@ -1,0 +1,3 @@
+﻿document_id,title,document_type,page_count,enacted_date,amended_date,effective_date,ordinance_no,source_pdf_file,pdf_path,json_path,markdown_path,pdf_created_date,pdf_modified_date,related_document_ids,status,review_status,notes
+LAW1,서울특별시 안심주택 건립 및 운영기준,운영기준,84,2025-07-01,2025-08-14,,,law-1.pdf,02_source_pdf/law-1.pdf,02_source_pdf/law-1.json,02_source_pdf/law-1.md,2025-08-18,2025-08-18,LAW2,현행,자동 추출,
+LAW2,서울특별시 안심주택 공급 지원에 관한 조례,조례,10,,2025-09-29,2025-09-29,제9869호,law-2.pdf,02_source_pdf/law-2.pdf,02_source_pdf/law-2.json,02_source_pdf/law-2.md,2025-11-04,2025-11-04,LAW1,현행,자동 추출,
