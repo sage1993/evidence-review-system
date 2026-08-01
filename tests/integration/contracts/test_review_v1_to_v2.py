@@ -9,7 +9,11 @@ import pytest
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.codecs import decode_review_packet
-from ansim_review.contracts.review_v2 import ReviewPacketV2, review_packet_v2_document
+from ansim_review.contracts.review_v2 import (
+    ReviewPacketV2,
+    decode_review_packet_v2,
+    review_packet_v2_document,
+)
 
 FIXTURES = Path(__file__).parents[2] / "golden" / "contracts"
 
@@ -20,9 +24,9 @@ def _adapter() -> ModuleType:
     )
 
 
-def _adapt(name: str) -> ReviewPacketV2:
+def _adapt_packet(packet_document: dict[str, object]) -> ReviewPacketV2:
     adapter = _adapter()
-    packet = decode_review_packet(json.loads((FIXTURES / name).read_bytes()))
+    packet = decode_review_packet(packet_document)
     adapted = adapter.adapt_review_packet_v1_to_v2(
         packet,
         case_id="CASE-LEGACY",
@@ -32,6 +36,12 @@ def _adapt(name: str) -> ReviewPacketV2:
     )
     assert isinstance(adapted, ReviewPacketV2)
     return adapted
+
+
+def _adapt(name: str) -> ReviewPacketV2:
+    document = json.loads((FIXTURES / name).read_bytes())
+    assert isinstance(document, dict)
+    return _adapt_packet(document)
 
 
 def test_ready_v1_packet_adapts_without_inventing_drawing_evidence() -> None:
@@ -76,3 +86,20 @@ def test_adapter_output_is_byte_equivalent_across_repeated_runs() -> None:
         review_packet_v2_document(_adapt("review-packet-v1-ready.json"))
     )
     assert first == second
+
+
+def test_compatibility_packet_preserves_legacy_numeric_tokens_without_invention() -> None:
+    document = json.loads((FIXTURES / "review-packet-v1-ready.json").read_bytes())
+    assert isinstance(document, dict)
+    claims = document["claims"]
+    assert isinstance(claims, list)
+    claim = claims[0]
+    assert isinstance(claim, dict)
+    claim["numeric_tokens"] = ["8"]
+
+    adapted_document = review_packet_v2_document(_adapt_packet(document))
+    decoded = decode_review_packet_v2(adapted_document)
+
+    assert decoded.claims[0].numeric_tokens == ("8",)
+    assert decoded.evidence == ()
+    assert decoded.compatibility_source_version == 1
