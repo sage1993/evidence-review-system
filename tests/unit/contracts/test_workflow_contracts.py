@@ -27,6 +27,15 @@ def _payload(**overrides: object) -> dict[str, object]:
     return payload
 
 
+def test_workflow_requires_explicit_nullable_and_collection_fields() -> None:
+    workflow = _workflow()
+    for field in ("finalizer_status", "reason_codes", "resumable"):
+        payload = _payload()
+        del payload[field]
+        with pytest.raises(ValueError, match=f"missing required fields: {field}"):
+            workflow.decode_workflow_state_record(payload)
+
+
 def test_reason_code_cannot_be_used_as_workflow_state() -> None:
     workflow = _workflow()
     with pytest.raises(ValueError, match="unsupported workflow_state"):
