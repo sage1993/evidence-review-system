@@ -256,11 +256,13 @@ Integration tests:
 
 ### 5.1 Numeric scanner
 
-The regex-only implementation will be replaced by a deterministic scanner in a dedicated module, for example:
+The regex-only implementation will be replaced by a deterministic scanner in a dedicated module:
 
 ```text
-src/evidence_review/llm_layer/numeric_grammar.py
+src/ansim_review/llm_layer/numeric_grammar.py
 ```
+
+This path follows the current package layout during Stage 2. The module moves to `src/evidence_review/llm_layer/` during the isolated namespace migration in Stage 4.
 
 The scanner returns token spans and the exact original token text. It does not round, localize, or normalize.
 
@@ -333,7 +335,13 @@ Accept:
 
 ### 6.1 One shared policy module
 
-Runtime guard and release validator will import one policy definition.
+Runtime guard and release validator will import one policy definition from the current package, for example:
+
+```text
+src/ansim_review/offline_policy.py
+```
+
+It moves with the canonical package during Stage 4.
 
 The policy contains:
 
@@ -488,6 +496,7 @@ PR #23 delivered source-batch v1, hash-based IDs, ODL ingestion, generic CLI nam
 - generic release code that still emits legacy `ansim` names in several paths and formats;
 - an internal package namespace named `ansim_review`;
 - legacy-named golden fixtures and release tests in normal paths;
+- visual artifacts that are not yet required to identify their document, revision, and page explicitly;
 - no complete fixture matrix for report, table, scan, and drawing inputs;
 - no static gate proving that new artifacts are free of sample identifiers.
 
@@ -523,7 +532,23 @@ Future adapters can be registered without revising the source-batch schema. Unkn
 
 Source-batch v1 remains readable through a legacy decoder and maps to the initial ODL adapter version. New manifests are written as v2.
 
-### 8.3 Generic input state model
+### 8.3 Explicit visual identity
+
+Every visual manifest entry must declare:
+
+```text
+document_id
+revision_id
+page_id
+source_sha256
+relative_path
+visual_sha256
+bbox or explicit whole-page scope
+```
+
+Filename inference, `law-1`/`law-2` mapping, and directory-name inference are forbidden. The importer verifies that `page_id` resolves to the declared revision and source before a visual is stored or displayed.
+
+### 8.4 Generic input state model
 
 The source preparation model becomes a strict transition system:
 
@@ -555,7 +580,7 @@ Role routing:
 
 Every transition is represented by a canonical state document with reason codes and resumability.
 
-### 8.4 Canonical namespace migration
+### 8.5 Canonical namespace migration
 
 The canonical Python package moves from:
 
@@ -580,7 +605,7 @@ Migration procedure:
 
 This migration is isolated in its own PR so import failures are easy to identify and revert.
 
-### 8.5 Generic release names
+### 8.6 Generic release names
 
 The release validator and builder use configurable product metadata and emit:
 
@@ -592,7 +617,7 @@ evidence-review-runtime-<version>.zip
 
 Legacy filenames are accepted only by legacy inspection or migration commands.
 
-### 8.6 Fixture matrix
+### 8.7 Fixture matrix
 
 All fixtures are synthetic or redistribution-safe. At minimum:
 
@@ -605,11 +630,13 @@ All fixtures are synthetic or redistribution-safe. At minimum:
 7. different filenames with identical bytes;
 8. unsupported parser adapter;
 9. missing parser output;
-10. malformed parser/source binding.
+10. malformed parser/source binding;
+11. visual manifest with explicit valid identity;
+12. visual manifest with mismatched page or revision identity.
 
 The sample housing guideline remains only as an optional legacy fixture and is not needed for generic acceptance.
 
-### 8.7 Generic end-to-end acceptance
+### 8.8 Generic end-to-end acceptance
 
 End-to-end scenarios:
 
@@ -639,11 +666,12 @@ A drawing source is routed to `PENDING_DRAWING_INGESTION` and is not inserted in
 
 A legacy `ansim/*` artifact can be inspected or migrated, but no new run or release writes an `ansim/*` format.
 
-### 8.8 Stage 4 tests
+### 8.9 Stage 4 tests
 
 - source-batch v1 read compatibility and v2 write behavior;
 - adapter registry lookup and unsupported-adapter state;
 - role-based routing and forbidden cross-lane ingestion;
+- explicit visual document/revision/page identity and mismatch rejection;
 - all state transitions and invalid transitions;
 - package import and CLI tests after namespace migration;
 - repository scan for forbidden new `ansim` identifiers;
