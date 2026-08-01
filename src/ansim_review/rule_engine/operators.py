@@ -66,7 +66,7 @@ def apply_operator(operator: RuleOperator, left: object, right: object) -> bool:
     if operator == "in":
         if not isinstance(right, (tuple, list, str)):
             raise RuleInputError("in requires an array or string on the right")
-        return left in right  # type: ignore[operator]
+        return left in right
     if not isinstance(left, (tuple, list, str)):
         raise RuleInputError("contains requires an array or string on the left")
-    return right in left  # type: ignore[operator]
+    return right in left
