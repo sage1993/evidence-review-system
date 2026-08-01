@@ -77,6 +77,7 @@ _CONFIRMATION_ACTIONS: tuple[ConfirmationAction, ...] = (
     "EDITED",
     "CREATED",
 )
+_CONFIRMED_STATUSES: tuple[ConfirmedStatus, ...] = ("CONFIRMED",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -393,7 +394,7 @@ def decode_confirmed_input(value: object) -> ConfirmedInput:
         "confirmation_sha256",
     }
     reject_unknown(payload, allowed, "confirmed_input")
-    status = expect_literal(payload.get("status"), "status", ("CONFIRMED",))
+    status = expect_literal(payload.get("status"), "status", _CONFIRMED_STATUSES)
     candidate_status = expect_literal(
         payload.get("candidate_status"), "candidate_status", _CANDIDATE_STATUSES
     )
