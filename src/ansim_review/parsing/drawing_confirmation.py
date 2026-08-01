@@ -73,10 +73,7 @@ def validate_confirmation_for_candidate(
     parse_confirmation_time(validated.confirmed_at)
 
     if validated.geometry is not None:
-        if (
-            validated.geometry.coordinate_system
-            != candidate.geometry.coordinate_system
-        ):
+        if validated.geometry.coordinate_system != candidate.geometry.coordinate_system:
             raise ValueError("replacement geometry must keep the candidate coordinate system")
 
     if validated.confirmed_value is not None and not validated.unit:
@@ -97,6 +94,12 @@ def validate_confirmation_for_candidate(
         raise ValueError(f"candidate status cannot be confirmed: {candidate.status}")
 
     if validated.action == "ACCEPTED":
+        if (
+            validated.confirmed_value is not None
+            or validated.unit is not None
+            or validated.geometry is not None
+        ):
+            raise ValueError("ACCEPTED confirmation cannot replace candidate data")
         return "ACCEPTED"
 
     if validated.action == "EDITED":

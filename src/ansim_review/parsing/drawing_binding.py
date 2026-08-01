@@ -11,12 +11,14 @@ from pathlib import Path
 from ansim_review.contracts.attachments import ImmutableAttachment
 from ansim_review.contracts.drawing import (
     ConfirmedInput,
+    DrawingCandidate,
     confirmed_input_document,
     decode_confirmed_input,
+    decode_drawing_candidate,
     decode_drawing_confirmation,
     geometry_document,
 )
-from ansim_review.parsing.drawing_case import case_artifact_path
+from ansim_review.parsing.drawing_case import CaseManifestEntry, case_artifact_path
 from ansim_review.parsing.drawing_source import verify_immutable_attachment
 
 
@@ -27,6 +29,42 @@ class EngineInputValue:
     value: str
     unit: str
     input_id: str
+
+
+def _verify_candidate(
+    case_dir: Path,
+    confirmed: ConfirmedInput,
+    entry: CaseManifestEntry,
+) -> DrawingCandidate:
+    if entry.artifact_id != confirmed.evidence_id:
+        raise ValueError("candidate entry identity does not match confirmed evidence")
+    path = case_artifact_path(case_dir, entry.relative_path)
+    payload_bytes = path.read_bytes()
+    actual_hash = hashlib.sha256(payload_bytes).hexdigest()
+    if actual_hash != entry.sha256:
+        raise ValueError("candidate hash mismatch")
+    try:
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("candidate document is invalid JSON") from error
+    candidate = decode_drawing_candidate(payload)
+    if candidate.candidate_id != confirmed.evidence_id:
+        raise ValueError("candidate file identity does not match confirmed evidence")
+    if candidate.source_sha256 != confirmed.source_sha256:
+        raise ValueError("candidate source does not match confirmed input")
+    if candidate.page != confirmed.page:
+        raise ValueError("candidate page does not match confirmed input")
+    if confirmed.candidate_status == "ACCEPTED":
+        candidate_value = (
+            candidate.normalized_candidate
+            if candidate.normalized_candidate is not None
+            else candidate.raw_value
+        )
+        if candidate_value != confirmed.value:
+            raise ValueError("accepted candidate value does not match confirmed input")
+        if geometry_document(candidate.geometry) != geometry_document(confirmed.geometry):
+            raise ValueError("accepted candidate geometry does not match confirmed input")
+    return candidate
 
 
 def _verify_confirmation(case_dir: Path, confirmed: ConfirmedInput) -> None:
@@ -62,6 +100,8 @@ def bind_confirmed_inputs(
     case_dir: Path,
     inputs: Sequence[ConfirmedInput],
     source_attachments: Mapping[str, ImmutableAttachment],
+    *,
+    candidate_entries: Mapping[str, CaseManifestEntry],
 ) -> dict[str, EngineInputValue]:
     """Reverify all provenance and return a stable field-keyed engine mapping."""
     bound: dict[str, EngineInputValue] = {}
@@ -78,6 +118,10 @@ def bind_confirmed_inputs(
             raise ValueError(
                 "immutable source verification failed: " + ",".join(errors)
             )
+        candidate_entry = candidate_entries.get(confirmed.evidence_id)
+        if candidate_entry is None:
+            raise ValueError("candidate entry is not registered")
+        _verify_candidate(case_dir, confirmed, candidate_entry)
         _verify_confirmation(case_dir, confirmed)
         if confirmed.field in bound:
             raise ValueError(f"duplicate confirmed input field: {confirmed.field}")
