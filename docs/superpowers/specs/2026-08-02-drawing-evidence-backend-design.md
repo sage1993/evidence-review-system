@@ -7,30 +7,28 @@
 
 ## 1. Purpose
 
-Implement the first backend milestone for case-specific drawing evidence. The system must receive user-provided drawing files, copy them into immutable case storage, evaluate whether they are safe and usable, store extractor or reviewer-created candidates, append reviewer confirmations without overwrite, generate confirmed inputs, and expose only confirmed inputs to deterministic Math and Rule Engine bindings.
+Implement the first backend milestone for case-specific drawing evidence. The system receives user-provided drawing files, copies them into immutable case storage, evaluates safety and usability, stores extractor or reviewer-created candidates, appends reviewer confirmations without overwrite, generates confirmed inputs, and exposes only confirmed inputs to deterministic Math and Rule Engine bindings.
 
-This milestone must remain useful even when automatic drawing recognition finds nothing. A reviewer must be able to create a manual annotation, confirm its value or geometry, and produce a traceable engine input.
+The milestone must remain useful when automatic drawing recognition finds nothing. A reviewer must be able to create a manual annotation, confirm its value or geometry, and produce a traceable engine input.
 
 ## 2. Scope
 
 ### 2.1 In scope
 
-- Case-specific drawing workspace and manifest
+- Case-specific drawing workspace and versioned manifest
 - Immutable source ingest for PDF, PNG, TIFF, and JPEG
-- File role preservation using the existing immutable attachment contract
-- File size, page count, and pixel-count resource limits
-- Symlink, junction-like path indirection, directory, and overwrite rejection
-- MIME sniffing based on file signatures rather than extension alone
-- Drawing quality assessment using the M0 quality and physical-size-trust contracts
-- Candidate persistence using the M0 geometry, origin, and status contracts
-- Conversion of existing parser elements into explicit extractor candidates
+- File role preservation through the existing immutable attachment contract
+- File-size, PDF-page, per-image-pixel, and per-case-pixel limits
+- Directory, symlink, Windows reparse-point, path-escape, and overwrite rejection
+- MIME sniffing from file signatures instead of extension alone
+- Drawing quality assessment through the M0 quality and physical-size-trust contracts
+- Candidate persistence through the M0 geometry, origin, and status contracts
+- Neutral conversion of existing parser elements into extractor candidates
 - Reviewer-created manual candidates with stable annotation IDs
-- Append-only confirmation records
-- Confirmation hash verification
-- Confirmed-input generation and conflict checks
-- Engine-binding adapter that accepts only validated confirmed inputs
-- Workflow projection for `INPUT_CONFIRMATION_REQUIRED`, `READY_TO_EVALUATE`, `BLOCKED`, or `FAILED`
-- Deterministic JSON serialization and golden fixtures
+- Append-only confirmation records and confirmation hash verification
+- Confirmed-input generation, set-level conflict detection, and engine binding
+- Workflow projection using only M0 workflow states and reason codes
+- Deterministic canonical JSON and golden fixtures
 - Unit and integration tests
 
 ### 2.2 Out of scope
@@ -47,9 +45,9 @@ This milestone must remain useful even when automatic drawing recognition finds 
 - New external model or OpenAI API calls
 - Treating case drawings as reusable reference-document evidence in `evidence.sqlite`
 
-## 3. Architectural decision
+## 3. Architecture
 
-The backend is split into small deterministic services. Contract objects from `ansim_review.contracts.drawing` remain the only public drawing data model. Parsing modules must consume and produce those contracts rather than define duplicate enums or schemas.
+Contract objects from `ansim_review.contracts.drawing` remain the only public drawing data model. Parsing modules consume and produce those contracts and must not define duplicate drawing enums or schemas.
 
 ```text
 External upload path
@@ -65,11 +63,9 @@ External upload path
   -> Engine Binding Adapter
 ```
 
-No downstream service may reopen or trust the original external upload path after immutable ingest succeeds.
+No downstream service may reopen or trust the original upload path after immutable ingest succeeds.
 
 ## 4. Case workspace
-
-Each case uses the following structure:
 
 ```text
 cases/<case_id>/
@@ -84,58 +80,61 @@ cases/<case_id>/
 └─ confirmed-inputs.json
 ```
 
-### 4.1 Case ID and path rules
+### 4.1 Identifier and path rules
 
-- `case_id` must be a non-empty safe identifier.
-- Generated paths must be relative to the case root.
-- `..`, absolute paths, drive-prefixed paths, NUL bytes, and empty path components are rejected.
-- Existing files must never be replaced.
-- Directories and symbolic links are rejected as source inputs.
-- The case root is resolved before any write, and every destination must remain inside that resolved root.
+- `case_id`, attachment IDs, candidate IDs, annotation IDs, confirmation IDs, and reviewer filename tokens must match `[A-Za-z0-9][A-Za-z0-9_-]{0,127}`.
+- User-facing reviewer names may remain Unicode inside JSON, but filename tokens use a separately validated ASCII identifier.
+- Generated artifact paths are relative to the resolved case root.
+- Absolute paths, drive-prefixed paths, `..`, NUL bytes, empty components, and backslash-based alternate paths are rejected.
+- Source inputs that are directories, symbolic links, or Windows reparse points are rejected before opening.
+- Every destination is resolved or constructed from validated components and must remain under the case root.
+- Existing artifacts are never replaced.
 
 ### 4.2 Manifest responsibilities
 
 `manifest.json` records:
 
-- format and version
+- `format` and `version`
 - case ID
 - immutable source attachments
-- source-role declarations
+- declared source roles
+- source metadata and intake policy ID
 - quality assessments
 - candidate index entries
 - confirmation index entries
 - confirmed-input document hash
 
-The manifest is a deterministic projection of canonical records. Operational timestamps remain in append-only envelopes and are not used when computing deterministic payload hashes.
+The manifest is a deterministic projection of canonical records. Reviewer timestamps and operational filenames remain in append-only envelopes and do not affect deterministic payload identities.
 
 ## 5. Source intake
 
 ### 5.1 Intake sequence
 
-1. Validate the external source path without following symbolic links.
-2. Reject directories, symlinks, unsupported file types, and policy-limit violations that can be determined before copying.
-3. Create a new immutable destination under `sources/drawings/`.
-4. Copy bytes without modifying, transcoding, rotating, or resaving the source.
-5. Compute SHA-256 and byte size from the copied destination.
-6. Sniff MIME from copied bytes.
-7. Verify extension, MIME, and declared role compatibility.
-8. Record the immutable attachment and source manifest entry.
-9. Never use the external path as runtime authority again.
+1. Validate the source path without following links.
+2. Reject directories, symlinks, Windows reparse points, unsupported extensions, and known pre-copy policy violations.
+3. Stream bytes into a private temporary file inside the case root while enforcing `max_file_bytes`.
+4. Compute SHA-256 and byte size from the temporary copy.
+5. Sniff MIME from the copied bytes.
+6. Validate MIME, extension, declared role, and trusted metadata.
+7. Open the final destination with create-only semantics equivalent to `O_CREAT | O_EXCL` and copy the validated bytes.
+8. Flush and close the final destination before publishing its manifest entry.
+9. Delete the temporary file.
+10. Never use the external path as runtime authority again.
 
-### 5.2 Supported MIME signatures
+The final path is not considered published until the manifest entry is written. On an expected failure, unpublished temporary or final files are removed. A process crash may leave an unreferenced file; recovery treats any unreferenced artifact as incomplete and never as authoritative evidence.
 
-MVP signature detection supports:
+### 5.2 Supported signatures and canonical extensions
 
-- PDF: `%PDF-`
-- PNG: standard 8-byte PNG signature
-- TIFF: little-endian and big-endian TIFF signatures
-- JPEG: JPEG SOI marker
+| MIME | Signature | Canonical extension |
+|---|---|---|
+| `application/pdf` | `%PDF-` | `.pdf` |
+| `image/png` | standard PNG 8-byte signature | `.png` |
+| `image/tiff` | little- or big-endian TIFF signature | `.tif` |
+| `image/jpeg` | JPEG SOI marker | `.jpg` |
 
-An extension/MIME mismatch is rejected. Unknown signatures are rejected rather than guessed.
+Input extensions are compared case-insensitively. `.tiff` and `.jpeg` are accepted aliases but stored with the canonical extension. An extension/MIME mismatch or unknown signature is rejected rather than guessed.
 
-### 5.3 Intake policy
-
-The default versioned policy is:
+### 5.3 Versioned intake policy
 
 ```text
 policy_id: DRAWING-INTAKE-1
@@ -145,27 +144,34 @@ max_image_pixels: 150000000
 max_case_image_pixels: 500000000
 ```
 
-Policy values are explicit data and are included in assessment outputs. Tests may inject smaller limits.
+Policy values are explicit immutable input data and are included in assessment output. Tests inject smaller policies rather than patch global constants.
 
-### 5.4 Parser isolation boundary
+### 5.4 Trusted metadata boundary
 
-This milestone defines the parser execution boundary but does not add a new PDF or image parser dependency.
+This milestone does not add a PDF or image parser dependency. Page count, image dimensions, page MediaBox, and parser failure data arrive through a trusted adapter-result contract.
 
-- Page count and pixel metadata may be provided by a trusted adapter result.
-- Adapter results must include source SHA-256.
-- Adapter results with a mismatched source hash are rejected.
-- Parser timeout, memory-limit, or malformed-output failures become quality reason codes rather than unhandled process termination.
-- Embedded PDF JavaScript, file attachments, actions, and links are not executed or imported as evidence.
+The adapter result must include:
+
+- source SHA-256
+- adapter name and version
+- page count for PDF, when available
+- width and height for images, when available
+- page physical-size metadata, when available
+- explicit parser outcome and failure code
+
+A source-hash mismatch rejects the adapter result. Unknown dimensions or page counts do not silently bypass limits; they produce `REVIEW_REQUIRED` unless another trusted source verifies them. Parser timeout, memory-limit, malformed-output, and unsupported-feature failures become detailed quality reasons instead of uncaught process failures.
+
+Embedded PDF JavaScript, file attachments, actions, and links are never executed or imported as evidence.
 
 ## 6. Drawing quality gate
 
-The quality gate returns the existing `DrawingQualityAssessment` contract.
+The gate returns the existing `DrawingQualityAssessment` contract.
 
 ### 6.1 Quality statuses
 
 - `PASS`: safe and sufficiently trusted for candidate review
-- `REVIEW_REQUIRED`: source can be stored and reviewed, but physical size, image quality, or metadata requires reviewer confirmation
-- `REJECTED`: unsafe, corrupt, unsupported, or beyond resource limits
+- `REVIEW_REQUIRED`: stored and reviewable, but physical size, source quality, or metadata needs reviewer confirmation
+- `REJECTED`: unsupported, unsafe, corrupt, or beyond resource limits
 
 ### 6.2 Physical-size trust
 
@@ -174,107 +180,116 @@ The quality gate returns the existing `DrawingQualityAssessment` contract.
 - `METADATA_ONLY`
 - `UNKNOWN`
 
-`METADATA_ONLY` must never automatically produce `PASS`.
+`METADATA_ONLY` cannot produce `PASS`. JPEG, screenshots, and lossily recompressed sources default to at least `REVIEW_REQUIRED`.
 
-### 6.3 Minimum reason codes
+### 6.3 Detailed quality reasons
 
-- `UNSUPPORTED_MIME`
-- `MIME_EXTENSION_MISMATCH`
-- `FILE_SIZE_LIMIT_EXCEEDED`
-- `PDF_PAGE_LIMIT_EXCEEDED`
-- `IMAGE_PIXEL_LIMIT_EXCEEDED`
-- `CASE_PIXEL_LIMIT_EXCEEDED`
-- `DECOMPRESSION_BOMB_RISK`
-- `PARSER_TIMEOUT`
-- `PARSER_MEMORY_LIMIT`
-- `PARSER_OUTPUT_INVALID`
-- `SOURCE_HASH_MISMATCH`
-- `UNKNOWN_PHYSICAL_SIZE`
-- `METADATA_ONLY_PHYSICAL_SIZE`
-- `LOSSY_OR_SCREEN_CAPTURE_SOURCE`
-- `DRAWING_CONFIRMATION_REQUIRED`
+Detailed quality reasons remain inside the quality assessment and are not inserted directly into `WorkflowStateRecord.reason_codes`.
 
-Reason codes are quality data, not workflow states and not human decisions.
+Minimum detailed reasons:
+
+```text
+UNSUPPORTED_MIME
+MIME_EXTENSION_MISMATCH
+FILE_SIZE_LIMIT_EXCEEDED
+PDF_PAGE_LIMIT_EXCEEDED
+IMAGE_PIXEL_LIMIT_EXCEEDED
+CASE_PIXEL_LIMIT_EXCEEDED
+DECOMPRESSION_BOMB_RISK
+PARSER_TIMEOUT
+PARSER_MEMORY_LIMIT
+PARSER_OUTPUT_INVALID
+SOURCE_HASH_MISMATCH
+UNKNOWN_PHYSICAL_SIZE
+METADATA_ONLY_PHYSICAL_SIZE
+LOSSY_OR_SCREEN_CAPTURE_SOURCE
+DRAWING_CONFIRMATION_REQUIRED
+```
+
+### 6.4 Mapping to M0 workflow reason codes
+
+Workflow documents use only the M0 reason-code namespace:
+
+| Detailed condition | M0 workflow reason code |
+|---|---|
+| source hash mismatch | `SOURCE_HASH_MISMATCH` |
+| rejected drawing quality or resource/security rejection | `DRAWING_QUALITY_REJECTED` |
+| missing reviewer confirmation or unknown physical size needed for binding | `DRAWING_CONFIRMATION_REQUIRED` |
+| conflicting confirmed values | `SOURCE_CONFLICT` |
+
+The quality assessment preserves the detailed reason list for diagnosis.
 
 ## 7. Candidate repository
 
 ### 7.1 Contract reuse
 
-All candidates use `DrawingCandidate` from the M0 contracts. No new candidate status, geometry type, coordinate-system type, or origin enum may be introduced.
+All candidates use `DrawingCandidate`. No new candidate status, geometry type, coordinate-system type, or origin enum is introduced.
 
 ### 7.2 Extractor candidates
 
-Existing parser elements may become extractor candidates when they have:
+A parser element may become an extractor candidate only when it has:
 
 - immutable source SHA-256
 - positive page number
-- explicit candidate type
-- geometry or a valid bbox convertible to `BBOX`
+- explicit neutral candidate type
+- approved geometry or a bbox convertible to `BBOX`
 - extractor name and version
 
-The adapter must not infer legal meaning from generic parser content. It may map explicit parser element types to neutral candidate types such as `TEXT_ELEMENT`, `TABLE_ELEMENT`, or `VECTOR_ELEMENT`. Domain-specific types require a dedicated extractor output or reviewer choice.
+The adapter may map explicit parser element types to neutral types such as `TEXT_ELEMENT`, `TABLE_ELEMENT`, or `VECTOR_ELEMENT`. It must not infer legal meaning or domain-specific drawing semantics from generic text.
 
 ### 7.3 Manual candidates
 
-A reviewer may create a candidate when automatic detection fails.
-
-Manual candidates must use:
+A reviewer may create a candidate when extraction fails.
 
 ```text
 origin: REVIEWER_MANUAL
 status: CREATED
-annotation_id: required stable identifier
+annotation_id: required
 extractor: null
 extractor_version: null
 ```
 
-Manual candidates still require source SHA-256, page, candidate type, and one of the approved geometry types.
+Manual candidates require immutable source SHA-256, page, candidate type, and `POINT`, `BBOX`, `LINESTRING`, or `POLYGON` geometry.
 
-### 7.4 Candidate persistence
+### 7.4 Stable IDs and persistence
 
-- One canonical JSON file per candidate
-- Candidate ID is stable and deterministic from case/source/page/origin sequence inputs
-- Duplicate candidate IDs are rejected
-- Existing candidate files are immutable
-- A status-changing reviewer action is represented in a confirmation record, not by rewriting the original candidate file
+- Extractor candidate IDs derive from case ID, source SHA-256, page, extractor identity, and stable parser element identity.
+- Manual candidate IDs derive from case ID plus the reviewer-supplied stable annotation ID.
+- Arrival order, wall-clock time, and filesystem enumeration order are not ID inputs.
+- One canonical JSON file is written per candidate.
+- Duplicate IDs are rejected.
+- Candidate files are immutable.
+- Reviewer actions never rewrite candidates; they create confirmation records.
 
 ## 8. Confirmation store
 
 ### 8.1 Append-only rule
 
-Every reviewer action is stored as a new canonical JSON document under `confirmations/`. Existing confirmation files are never changed or replaced.
+Each reviewer action creates a new canonical JSON document under `confirmations/`. Existing confirmation files are never updated or replaced.
 
 ### 8.2 Validation
 
-Before a confirmation is accepted:
+Before persistence:
 
 - candidate exists
-- candidate ID matches
-- source SHA-256 matches the immutable case source
-- action is allowed by the M0 contract
-- reviewer is non-empty
-- timestamp is explicit and parseable
-- `EDITED` or `CREATED` includes a confirmed value, replacement geometry, or both
+- candidate and source SHA-256 match the immutable case source
+- action is allowed by M0
+- reviewer and reviewer filename token are valid
+- timestamp is an ISO-8601 datetime with an explicit offset
+- `EDITED` or `CREATED` contains a confirmed value, replacement geometry, or both
 - `REJECTED` cannot produce a confirmed input
-- referenced geometry remains on the same source page and coordinate system
+- geometry retains the candidate page and coordinate system
+- confirmation ID and destination path are create-only
 
 ### 8.3 Confirmation hash
 
-The canonical confirmation payload is SHA-256 hashed. Confirmed inputs store both the relative confirmation path and confirmation SHA-256. Any later mismatch blocks binding.
+The canonical confirmation payload is SHA-256 hashed. `ConfirmedInput` stores the relative confirmation path and confirmation SHA-256. A later mismatch blocks input building or engine binding.
 
 ## 9. Confirmed input builder
 
-### 9.1 Bindable candidate statuses
+### 9.1 Bindable statuses
 
-Only:
-
-- `ACCEPTED`
-- `EDITED`
-- `CREATED`
-
-may produce a `ConfirmedInput`.
-
-`UNCONFIRMED`, `REJECTED`, and `CONFLICT` always fail.
+Only `ACCEPTED`, `EDITED`, and `CREATED` may produce a `ConfirmedInput`. `UNCONFIRMED`, `REJECTED`, and `CONFLICT` always fail.
 
 ### 9.2 Build requirements
 
@@ -282,31 +297,31 @@ The builder verifies:
 
 - candidate and confirmation source hashes match the immutable source
 - candidate ID or annotation ID matches the confirmation target
-- candidate status is bindable
-- confirmation action and effective candidate status are consistent
+- confirmation action resolves to a bindable effective status
 - value is a finite decimal string
 - unit is non-empty
 - page and geometry are present
-- confirmation file exists inside `confirmations/`
-- confirmation hash matches
-- input ID and field are non-empty
+- confirmation path remains under `confirmations/`
+- confirmation file exists and its SHA-256 matches
+- input ID and field are valid identifiers
 
-### 9.3 Conflict policy
+### 9.3 Set-level conflict policy
 
-A confirmed-input set is invalid when the same field has multiple active confirmed values with different value/unit pairs or incompatible geometries.
+A confirmed-input set is invalid when the same field has multiple active confirmations with different value/unit pairs or incompatible geometries. The builder returns a deterministically sorted error set and does not choose a winner.
 
-Conflict output must not choose a winner. It returns a deterministic error set and projects:
+The workflow projection is:
 
 ```text
 workflow_state: INPUT_CONFIRMATION_REQUIRED
-reason_code: SOURCE_CONFLICT or DRAWING_CONFIRMATION_REQUIRED
+reason_codes: [SOURCE_CONFLICT]
+resumable: false
 ```
+
+`resumable` remains `false` because the current M0 workflow contract permits `resumable: true` only for `BLOCKED`; the workflow can still progress after a later confirmation event creates a new state document.
 
 ## 10. Engine binding adapter
 
-The adapter accepts only decoded `ConfirmedInput` objects whose evidence files and hashes have been reverified.
-
-Output is a deterministic mapping from field name to decimal string and unit metadata. It does not calculate derived values.
+The adapter accepts decoded `ConfirmedInput` objects only after source and confirmation hashes are reverified.
 
 ```text
 DrawingCandidate
@@ -315,17 +330,22 @@ DrawingCandidate
   -> engine input mapping
 ```
 
-Direct candidate-to-engine binding is prohibited.
+Output is a deterministic mapping from field name to decimal-string value and unit metadata. It performs no derived calculation. Direct candidate-to-engine binding is prohibited.
 
 ## 11. Workflow projection
 
-- No drawing source: `PENDING_DRAWING_INGESTION`
-- Source rejected: `BLOCKED` with quality reason codes when resumable, otherwise `FAILED`
-- Candidates exist but required inputs are not confirmed: `INPUT_CONFIRMATION_REQUIRED`
-- Conflicting confirmations: `INPUT_CONFIRMATION_REQUIRED`
-- All required confirmed inputs validate: `READY_TO_EVALUATE`
+Workflow documents follow the M0 relationship rules exactly:
 
-This milestone writes only workflow state documents. It does not produce a human decision or finalizer result.
+- no drawing source: `PENDING_DRAWING_INGESTION`, no reason codes
+- source stored but required confirmations missing: `INPUT_CONFIRMATION_REQUIRED`, no reason codes
+- conflicting confirmations: `INPUT_CONFIRMATION_REQUIRED`, no reason codes; conflict details remain in the drawing validation result
+- accepted confirmed-input set: `READY_TO_EVALUATE`, no reason codes
+- resumable source rejection: `BLOCKED`, `reason_codes: [DRAWING_QUALITY_REJECTED]`, `resumable: true`
+- terminal source integrity failure: `FAILED`, one or more M0 reason codes, `resumable: false`
+
+Because M0 permits reason codes only on `BLOCKED` and `FAILED`, nonterminal workflow states carry detailed drawing conditions in their companion validation/quality artifact rather than `WorkflowStateRecord.reason_codes`.
+
+This milestone never produces a human decision or finalizer result.
 
 ## 12. Determinism
 
@@ -333,11 +353,11 @@ Deterministic artifacts:
 
 - immutable source hash and manifest entry
 - quality assessment for identical source metadata and policy
-- candidate JSON
-- confirmation payload excluding operational filename
+- candidate JSON and IDs
+- confirmation payload excluding its operational filename
 - confirmed-input JSON
 - engine-binding mapping
-- validation error ordering
+- validation-error ordering
 
 Operational data kept separate:
 
@@ -347,66 +367,70 @@ Operational data kept separate:
 - process ID
 - parser worker timing
 
-All deterministic JSON uses the existing canonical JSON utilities.
+All deterministic JSON uses existing canonical JSON utilities.
 
-## 13. Error handling
+## 13. Error handling and create-only writes
 
-Expected validation errors use structured codes and do not leave partial files.
-
-- Intake copies to a temporary file inside the case root and atomically publishes only after validation.
-- Failed source intake removes the unpublished temporary file.
+- Source bytes are copied to an internal temporary file before validation.
+- Final destinations are opened create-only; overwrite attempts fail.
+- A manifest entry is written only after the final source is complete and closed.
+- Recovery ignores unreferenced source files and may report them as incomplete artifacts.
 - Candidate and confirmation writes use create-only semantics.
-- Confirmed-input generation writes only after all inputs validate as a set.
-- Parser errors are captured into quality assessment records.
+- `confirmed-inputs.json` is generated only after the complete set validates; an existing file is not replaced in this milestone.
+- Parser failures become quality assessment data.
 - Hash mismatch, path escape, and overwrite attempts fail closed.
 
 ## 14. Security requirements
 
-- No network access
-- No execution of embedded PDF actions or scripts
-- No archive extraction
-- No image allocation from untrusted dimensions before pixel-limit validation
-- No following symbolic links
-- No external-path authority after immutable ingest
-- No overwrite of source, candidate, confirmation, or confirmed-input artifacts
-- No model-generated confirmation or engine input
-- No source role inferred as authoritative without user-declared role
+- no network access
+- no execution of embedded PDF actions or scripts
+- no archive extraction
+- no allocation from untrusted image dimensions before policy validation
+- no following symlinks or Windows reparse points
+- no external-path authority after immutable ingest
+- no overwrite of source, candidate, confirmation, or confirmed-input artifacts
+- no model-generated confirmation or engine input
+- no authoritative source role inferred without the user-declared role
 
 ## 15. Testing strategy
 
 ### 15.1 Unit tests
 
-- safe case IDs and paths
-- symlink and directory rejection
-- overwrite refusal
-- signature-based MIME detection
+- identifier and path validation
+- symlink, reparse-point, and directory rejection
+- create-only source writes and recovery of unreferenced files
+- signature-based MIME detection and alias normalization
 - extension/MIME mismatch
-- file size, page, image-pixel, and case-pixel limits
+- file, page, image-pixel, and case-pixel limits
 - `METADATA_ONLY + PASS` rejection
-- parser failure reason-code mapping
+- detailed quality reason to M0 workflow reason mapping
+- parser failure mapping
 - extractor/manual candidate separation
 - all four geometry types
+- stable ID independence from arrival order
 - candidate create-only persistence
 - append-only confirmation persistence
-- candidate/source/confirmation hash mismatch
+- source and confirmation hash mismatch
 - action/status consistency
-- confirmed-input decimal validation
+- finite decimal validation
 - conflict detection
 - unconfirmed/conflict engine-binding rejection
+- M0 workflow relationship validation
 
 ### 15.2 Integration tests
 
 Primary success path:
 
 ```text
-PNG or PDF received
+PDF or PNG received
   -> immutable source stored
   -> quality assessment produced
   -> no useful automatic candidate
   -> reviewer creates manual LINESTRING or POLYGON
-  -> reviewer confirms value or geometry
+  -> reviewer creates append-only confirmation
   -> confirmed-inputs.json generated
   -> engine binding succeeds
+  -> READY_TO_EVALUATE
 ```
 
 Primary blocked path:
@@ -421,15 +445,24 @@ source stored
 Tamper path:
 
 ```text
-confirmation file modified after confirmed input generation
+confirmation file modified after confirmed-input generation
   -> confirmation hash mismatch
   -> binding rejected
 ```
 
-### 15.3 Regression and quality checks
+Resource rejection path:
 
-- Existing 158-test baseline remains green
-- New deterministic fixtures are byte-equivalent across repeated runs
+```text
+over-limit trusted metadata
+  -> quality REJECTED
+  -> no candidate extraction
+  -> BLOCKED or FAILED using M0 reason codes
+```
+
+### 15.3 Regression checks
+
+- current baseline tests remain green
+- new deterministic fixtures are byte-equivalent across repeated runs
 - `pytest -v`
 - `ruff check src tests`
 - `mypy src`
@@ -460,20 +493,22 @@ tests/integration/drawing/test_manual_annotation_flow.py
 tests/integration/drawing/test_drawing_tamper_detection.py
 ```
 
-Schemas must reuse the M0 schema documents. A new case-manifest schema may be added, but drawing candidate, confirmation, geometry, quality, and confirmed-input schemas must not be duplicated.
+A new case-manifest schema may be added. Drawing geometry, candidate, confirmation, quality, and confirmed-input schemas reuse M0 documents and are not duplicated.
 
 ## 17. Acceptance criteria
 
 - A supported drawing is copied to immutable case storage before processing.
 - The runtime never uses the external upload path after ingest.
-- Unsafe or over-limit inputs fail without partial published artifacts.
+- Unsafe or over-limit inputs fail without a published manifest entry.
 - Quality results use only M0 quality and trust enums.
+- Detailed drawing reasons never violate the M0 workflow reason-code namespace.
 - Automatic parser failure does not prevent manual annotation.
-- Manual `CREATED` candidates support `POINT`, `BBOX`, `LINESTRING`, and `POLYGON`.
+- Manual `CREATED` candidates support all four approved geometry types.
+- Candidate IDs do not depend on timestamps or arrival order.
 - Confirmation records are append-only and hash-bound.
 - Only validated `ACCEPTED`, `EDITED`, or `CREATED` values become confirmed inputs.
 - Conflicts and unconfirmed values cannot bind to engines.
-- The complete manual-annotation success path passes without OCR or automatic boundary detection.
+- The manual-annotation success path passes without OCR or automatic boundary detection.
 - Existing tests and all new checks pass.
 
 ## 18. Follow-up milestones
