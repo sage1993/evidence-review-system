@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import cast
 
 from ansim_review.contracts.common import BBox, Citation
+from ansim_review.contracts.identifiers import validate_identifier, validate_version
 from ansim_review.rule_engine.schema import InputFieldSpec, InputType, RuleOperator, RuleSpec
 
 _ALLOWED_NODES = frozenset({"all", "any", "not", "compare", "exists", "calculation"})
@@ -157,6 +158,29 @@ def _validate_node(value: object, field: str = "expression") -> dict[str, object
     }
 
 
+def _input_references(node: Mapping[str, object]) -> set[str]:
+    node_type = next(iter(node))
+    body = node[node_type]
+    if node_type in {"all", "any"}:
+        references: set[str] = set()
+        for child in cast(Sequence[Mapping[str, object]], body):
+            references.update(_input_references(child))
+        return references
+    if node_type == "not":
+        return _input_references(cast(Mapping[str, object], body))
+    if node_type == "exists":
+        return {str(cast(Mapping[str, object], body)["input"])}
+    if node_type == "compare":
+        references = set()
+        compare = cast(Mapping[str, object], body)
+        for side in ("left", "right"):
+            operand = cast(Mapping[str, object], compare[side])
+            if "input" in operand:
+                references.add(str(operand["input"]))
+        return references
+    return set()
+
+
 def load_rule(value: object) -> RuleSpec:
     """Decode and validate one constrained rule document."""
     payload = _mapping(value, "rule")
@@ -179,6 +203,8 @@ def load_rule(value: object) -> RuleSpec:
     schema_payload = _mapping(payload.get("input_schema"), "input_schema")
     input_schema: dict[str, InputFieldSpec] = {}
     for name, item in sorted(schema_payload.items()):
+        if not name:
+            raise ValueError("input_schema names must not be empty")
         field_payload = _mapping(item, f"input_schema.{name}")
         _reject_unknown(field_payload, {"type", "required"}, f"input_schema.{name}")
         value_type = _string(field_payload.get("type"), f"input_schema.{name}.type")
@@ -192,12 +218,16 @@ def load_rule(value: object) -> RuleSpec:
     if not citation_items:
         raise ValueError("source_citations must not be empty")
     citations = tuple(_load_citation(item, index) for index, item in enumerate(citation_items))
+    expression = _validate_node(payload.get("expression"))
+    undeclared = sorted(_input_references(expression) - set(input_schema))
+    if undeclared:
+        raise ValueError(f"undeclared input reference: {', '.join(undeclared)}")
     return RuleSpec(
-        rule_id=_string(payload.get("rule_id"), "rule_id"),
-        version=_string(payload.get("version"), "version"),
+        rule_id=validate_identifier(payload.get("rule_id"), "rule_id"),
+        version=validate_version(payload.get("version"), "version"),
         title=_string(payload.get("title"), "title"),
         input_schema=input_schema,
         source_citations=citations,
         human_decision_required=True,
-        expression=_validate_node(payload.get("expression")),
+        expression=expression,
     )
