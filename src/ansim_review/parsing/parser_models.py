@@ -106,9 +106,12 @@ class NormalizedParserContribution:
     tables: tuple[ParsedTable, ...]
     visuals: tuple[ParsedVisual, ...]
     parser_artifact_sha256: str
+    document_title: str | None = None
 
     def __post_init__(self) -> None:
         _require_hash(self.parser_artifact_sha256, "parser_artifact_sha256")
+        if self.document_title is not None and not self.document_title.strip():
+            raise ValueError("document_title must not be blank")
         page_numbers = tuple(page.page_number for page in self.page_dimensions)
         expected = tuple(range(1, len(self.page_dimensions) + 1))
         if page_numbers != expected:
