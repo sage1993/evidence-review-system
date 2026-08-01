@@ -67,9 +67,8 @@ def _manifest(root: Path) -> dict[str, object]:
 def _write_generated_runtime_inputs(stage: Path) -> None:
     formulas = stage / "formulas" / "manifest.json"
     formulas.parent.mkdir(parents=True, exist_ok=True)
-    formulas.write_bytes(formula_manifest_payload(DEFAULT_REGISTRY.values()) and dump_bytes(
-        formula_manifest_payload(DEFAULT_REGISTRY.values())
-    ))
+    formula_payload = formula_manifest_payload(DEFAULT_REGISTRY.values())
+    formulas.write_bytes(dump_bytes(formula_payload))
 
     sample = stage / "examples" / "sample-request.json"
     sample.parent.mkdir(parents=True, exist_ok=True)
