@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ansim-review.local/schemas/review-packet-v2.schema.json",
+  "$id": "https://evidence-review.local/schemas/review-packet-v2.schema.json",
   "title": "Review Packet v2",
   "type": "object",
   "additionalProperties": false,
@@ -28,7 +28,7 @@
     "compatibility_source_version"
   ],
   "properties": {
-    "format": {"const": "ansim/review-packet"},
+    "format": {"const": "evidence-review/review-packet"},
     "version": {"const": 2},
     "run_id": {"type": "string", "minLength": 1},
     "case_id": {"type": "string", "minLength": 1},
