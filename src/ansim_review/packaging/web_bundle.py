@@ -142,7 +142,7 @@ def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
             workspace_root / "tests" / "golden" / "questions" / "ansim_cases.json"
         )
         if golden.is_file():
-            _copy_file(golden, stage / "examples" / "legacy-ansim-cases.json")
+            _copy_file(golden, stage / "examples" / "golden-cases.json")
         (stage / "runtime-manifest.json").write_bytes(dump_bytes(_manifest(stage)))
         _write_zip(stage, output_zip)
     return hashlib.sha256(output_zip.read_bytes()).hexdigest()
