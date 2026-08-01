@@ -50,6 +50,57 @@ PR 1 + PR 2A + PR 2B + PR 3
 - PR 4A must target a `main` that already contains PRs 1–3.
 - PR 4B is the only PR allowed to rename the canonical Python package.
 
+## Plan Self-Review Corrections
+
+The detailed plans were checked against the current `main` tree. The following test modules do not exist yet and must be treated as **Create**, even where a task table says `Modify`:
+
+```text
+tests/unit/evidence/test_store.py
+tests/unit/evidence/test_ingest.py
+tests/unit/evidence/test_snapshot.py
+tests/integration/retrieval/test_index.py
+tests/unit/llm_layer/test_track_a_templates.py
+tests/integration/release/test_release_validator.py
+tests/unit/test_documentation_contracts.py
+```
+
+The following modules were confirmed to exist and are modified in place:
+
+```text
+tests/unit/test_network_guard.py
+tests/unit/parsing/test_odl_adapter.py
+tests/integration/release/test_acceptance_record.py
+tests/unit/llm_layer/test_track_a_validator.py
+```
+
+When this correction table conflicts with a per-task `Create/Modify` label, this table is authoritative. Exact production interfaces, test behavior, and commit boundaries in the detailed plans remain unchanged.
+
+### Spec coverage check
+
+| Spec requirement | Implementing plan/task |
+|---|---|
+| authoritative `page_id`, table/visual FK, bbox rejection | Schema v2 Tasks 2–5 |
+| copy-on-write versioned migration | Schema v2 Tasks 1, 6, 7 |
+| unsupported numeric syntax cannot bypass validation | Numeric grammar Tasks 1–4 |
+| one offline policy, TCP/UDP/subprocess boundary | Offline Tasks 1–5 |
+| application guard vs OS isolation wording | Offline Tasks 4, 6 |
+| internal process attestation, no signature claim | Attestation Tasks 1–6 |
+| candidate and packet hashes gate release | Attestation Tasks 2, 5 |
+| parser registry and source status model | Parser/state Tasks 1–6 |
+| explicit visual document/revision/page identity | Parser/state Task 7 |
+| canonical `evidence_review` namespace | Namespace Task 2 |
+| legacy compatibility isolation | Namespace Tasks 3, 5, 6 |
+| varied PDF fixture matrix and E2E | Namespace Tasks 7–9 |
+
+### Placeholder and type-consistency check
+
+- No `TBD`, `TODO`, “implement later,” or unspecified test steps remain.
+- `ParserRegistry.require(kind) -> ParserAdapter` is consistent between registry and importer plans.
+- `NormalizedParserContribution` is the sole adapter-to-importer payload.
+- `validate_bbox_within_page()` from the schema-v2 plan is reused by parser models and migration.
+- `PROCESS_ATTESTATION` and `cryptographic_identity_verified=false` are consistent between attestation, release validation, and documentation plans.
+- `APPLICATION_OFFLINE_GUARD` and `OS_ISOLATED` are consistent between policy code, release reports, and documentation.
+
 ## Branch Preparation
 
 For every implementation PR:
