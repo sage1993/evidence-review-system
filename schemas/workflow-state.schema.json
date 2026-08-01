@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ansim-review.local/schemas/workflow-state.schema.json",
+  "title": "Review workflow state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "run_id",
+    "workflow_state",
+    "finalizer_status",
+    "reason_codes",
+    "resumable"
+  ],
+  "properties": {
+    "format": {"const": "ansim/workflow-state"},
+    "version": {"const": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "workflow_state": {
+      "type": "string",
+      "enum": [
+        "RECEIVED",
+        "CLASSIFYING_INPUTS",
+        "ROLE_CONFIRMATION_REQUIRED",
+        "PENDING_REFERENCE_INGESTION",
+        "PENDING_DRAWING_INGESTION",
+        "INPUT_CONFIRMATION_REQUIRED",
+        "READY_TO_EVALUATE",
+        "RETRIEVING_EVIDENCE",
+        "RUNNING_MATH",
+        "RUNNING_RULES",
+        "WAITING_TRACK_A",
+        "WAITING_TRACK_B",
+        "FINALIZING",
+        "READY_FOR_REVIEW",
+        "BLOCKED",
+        "FAILED"
+      ]
+    },
+    "finalizer_status": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "enum": ["READY_FOR_HUMAN_REVIEW", "ABSTAIN"]}
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "reason-code.schema.json"}
+    },
+    "resumable": {"type": "boolean"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"workflow_state": {"const": "READY_FOR_REVIEW"}}},
+      "then": {
+        "properties": {
+          "finalizer_status": {
+            "type": "string",
+            "enum": ["READY_FOR_HUMAN_REVIEW", "ABSTAIN"]
+          }
+        }
+      },
+      "else": {"properties": {"finalizer_status": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"workflow_state": {"const": "BLOCKED"}}},
+      "then": {
+        "properties": {
+          "reason_codes": {"minItems": 1},
+          "resumable": {"const": true}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"workflow_state": {"const": "FAILED"}}},
+      "then": {
+        "properties": {
+          "reason_codes": {"minItems": 1},
+          "resumable": {"const": false}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow_state": {"not": {"enum": ["BLOCKED", "FAILED"]}}
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {"maxItems": 0},
+          "resumable": {"const": false}
+        }
+      }
+    }
+  ]
+}

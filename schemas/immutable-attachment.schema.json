@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ansim-review.local/schemas/immutable-attachment.schema.json",
+  "title": "Immutable attachment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "attachment_id",
+    "original_name",
+    "stored_path",
+    "sha256",
+    "byte_size",
+    "mime",
+    "role"
+  ],
+  "properties": {
+    "attachment_id": {"type": "string", "minLength": 1},
+    "original_name": {"type": "string", "minLength": 1},
+    "stored_path": {
+      "type": "string",
+      "pattern": "^inputs/original/[^/]+$"
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "byte_size": {"type": "integer", "minimum": 1},
+    "mime": {"type": "string", "minLength": 1},
+    "role": {
+      "enum": [
+        "REFERENCE_DOCUMENT",
+        "CASE_DRAWING",
+        "CASE_TABLE",
+        "SUPPORTING_IMAGE"
+      ]
+    }
+  }
+}

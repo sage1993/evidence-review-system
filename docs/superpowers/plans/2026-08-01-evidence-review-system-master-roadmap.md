@@ -17,6 +17,8 @@
 - Identical evidence/rule/formula versions and inputs produce byte-equivalent canonical engine JSON.
 - The GPT web runtime core is standard-library-only and requires no installation.
 - Grist remains a human maintenance surface; it is not the execution engine.
+- Review Packet v1 is frozen and remains byte-compatible.
+- Browser review, drawing ingestion, and Codex orchestration must consume shared contracts rather than define duplicate schemas or enums.
 
 ---
 
@@ -24,6 +26,7 @@
 
 | Order | Plan | Deliverable |
 |---:|---|---|
+| 0 | `2026-08-02-browser-drawing-shared-contracts.md` | Review Packet v2, workflow, drawing, attachment, next-action, and v1 adapter contracts |
 | 1 | `2026-08-01-foundation-and-contracts.md` | package, canonical models, immutable runs, no-network guard |
 | 2 | `2026-08-01-parse-engine-and-evidence-store.md` | coordinate-traceable evidence SQLite snapshot |
 | 3 | `2026-08-01-math-engine.md` | versioned Decimal calculation engine |
@@ -49,10 +52,15 @@ docs/superpowers/specs/ docs/superpowers/plans/
 
 ## Milestone Gates
 
+0. **M0 Shared contracts:** Review Packet v1 is frozen; v2, workflow, drawing, immutable-attachment, next-action, and deterministic adapter contracts pass automated validation and human contract review. Issues #5, #6, and #7 remain blocked until this gate passes.
 1. **Core v0.1:** Plans 1–4 pass; source, calculations, and rules are deterministic.
 2. **Evidence v0.2:** Plans 5–6 pass; uncited claims and weak evidence abstain.
 3. **Review v0.3:** Plan 7 passes; Codex and ChatGPT web packages execute offline.
 4. **Ansim v1.0:** Plan 8 passes automated and human acceptance; only this milestone may declare production-review readiness.
+
+## Contract Governance
+
+`docs/CONTRACT_GOVERNANCE.md` is authoritative for shared enum ownership, v1 compatibility, machine/human authority separation, deterministic payload boundaries, and downstream integration rules.
 
 ## Commit Policy
 
