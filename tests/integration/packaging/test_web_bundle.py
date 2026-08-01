@@ -1,4 +1,5 @@
 import hashlib
+import json
 import subprocess
 import sys
 import zipfile
@@ -23,13 +24,6 @@ def _workspace(root: Path) -> None:
     (root / "rules" / "manifests").mkdir()
     (root / "rules" / "manifests" / "active.json").write_text(
         "{}",
-        encoding="utf-8",
-    )
-    (root / "formulas").mkdir()
-    (root / "formulas" / "manifest.json").write_text("{}", encoding="utf-8")
-    (root / "examples").mkdir()
-    (root / "examples" / "sample-request.json").write_text(
-        '{"question":"test"}',
         encoding="utf-8",
     )
     (root / "web_runtime").mkdir()
@@ -72,6 +66,26 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
     assert completed.stdout.strip() == "WEB_RUNTIME_SELF_TEST_PASS"
     assert (extracted / "evidence" / "ansim-evidence.sqlite").is_file()
     assert (extracted / "rules" / "approved" / "R1.json").is_file()
-    assert (extracted / "formulas" / "manifest.json").is_file()
-    assert (extracted / "examples" / "sample-request.json").is_file()
+
+    formula_manifest = json.loads(
+        (extracted / "formulas" / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert [item["formula_id"] for item in formula_manifest["formulas"]] == [
+        "FRONTAGE_RATIO"
+    ]
+
+    sample_request = json.loads(
+        (extracted / "examples" / "sample-request.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert sample_request == {
+        "formula_id": "FRONTAGE_RATIO",
+        "formula_version": "1.0.0",
+        "inputs": {
+            "frontage_length_m": "30",
+            "perimeter_length_m": "320",
+            "threshold_ratio": "0.125",
+        },
+    }
     assert not (extracted / "02_source_pdf").exists()
