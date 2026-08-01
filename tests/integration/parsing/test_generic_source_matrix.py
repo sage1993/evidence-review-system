@@ -63,14 +63,62 @@ def _source(
 
 def _workspace(root: Path) -> object:
     declarations = (
-        ("inputs/legal/statute.pdf", b"statute-bytes", "법령 조항 증거", "paragraph", "REFERENCE_DOCUMENT"),
-        ("inputs/report/report.pdf", b"report-bytes", "일반 보고서 증거", "paragraph", "REFERENCE_DOCUMENT"),
-        ("inputs/table/schedule.pdf", b"table-bytes", "표 중심 자료 증거", "table", "CASE_TABLE"),
-        ("inputs/scan/scanned.pdf", b"scan-bytes", "OCR 스캔 증거", "paragraph", "REFERENCE_DOCUMENT"),
-        ("inputs/a/shared.pdf", b"same-name-first", "동일 파일명 첫 번째", "paragraph", "REFERENCE_DOCUMENT"),
-        ("inputs/b/shared.pdf", b"same-name-second", "동일 파일명 두 번째", "paragraph", "REFERENCE_DOCUMENT"),
-        ("inputs/duplicate/copy-a.pdf", b"duplicate-source", "동일 bytes 증거", "paragraph", "REFERENCE_DOCUMENT"),
-        ("inputs/duplicate/copy-b.pdf", b"duplicate-source", "동일 bytes 증거", "paragraph", "REFERENCE_DOCUMENT"),
+        (
+            "inputs/legal/statute.pdf",
+            b"statute-bytes",
+            "법령 조항 증거",
+            "paragraph",
+            "REFERENCE_DOCUMENT",
+        ),
+        (
+            "inputs/report/report.pdf",
+            b"report-bytes",
+            "일반 보고서 증거",
+            "paragraph",
+            "REFERENCE_DOCUMENT",
+        ),
+        (
+            "inputs/table/schedule.pdf",
+            b"table-bytes",
+            "표 중심 자료 증거",
+            "table",
+            "CASE_TABLE",
+        ),
+        (
+            "inputs/scan/scanned.pdf",
+            b"scan-bytes",
+            "OCR 스캔 증거",
+            "paragraph",
+            "REFERENCE_DOCUMENT",
+        ),
+        (
+            "inputs/a/shared.pdf",
+            b"same-name-first",
+            "동일 파일명 첫 번째",
+            "paragraph",
+            "REFERENCE_DOCUMENT",
+        ),
+        (
+            "inputs/b/shared.pdf",
+            b"same-name-second",
+            "동일 파일명 두 번째",
+            "paragraph",
+            "REFERENCE_DOCUMENT",
+        ),
+        (
+            "inputs/duplicate/copy-a.pdf",
+            b"duplicate-source",
+            "동일 bytes 증거",
+            "paragraph",
+            "REFERENCE_DOCUMENT",
+        ),
+        (
+            "inputs/duplicate/copy-b.pdf",
+            b"duplicate-source",
+            "동일 bytes 증거",
+            "paragraph",
+            "REFERENCE_DOCUMENT",
+        ),
     )
     sources: list[dict[str, object]] = []
     for index, (source_path, source_bytes, text, kind, role) in enumerate(
@@ -135,7 +183,10 @@ def test_generic_matrix_routes_deduplicates_and_reproduces(tmp_path: Path) -> No
 
     assert len(documents) == 7
     assert all(str(document_id).startswith("DOC-") for document_id, _ in documents)
-    assert all("law" not in str(document_id).lower() for document_id, _ in documents)
+    assert all(
+        "law" not in str(document_id).lower()
+        for document_id, _ in documents
+    )
     assert "사업 도면" not in texts
     assert {
         "법령 조항 증거",
