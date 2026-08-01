@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
 
+from ansim_review.canonical_json import sha256_json
 from ansim_review.contracts.drawing import (
     CandidateStatus,
     ConfirmedInput,
@@ -147,7 +148,7 @@ def validate_confirmed_input_set(
         input_ids = tuple(item.input_id for item in active)
         value_units = {(item.value, item.unit) for item in active}
         geometries = {
-            str(geometry_document(item.geometry))
+            sha256_json(geometry_document(item.geometry))
             for item in active
         }
         if len(value_units) > 1:
