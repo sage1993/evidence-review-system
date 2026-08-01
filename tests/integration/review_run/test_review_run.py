@@ -174,6 +174,7 @@ def _track_b(run_id: str) -> dict[str, object]:
 
 
 def _write_tracks(root: Path, run_id: str) -> tuple[Path, Path]:
+    root.mkdir(parents=True, exist_ok=True)
     track_a = root / "track-a-output.json"
     track_b = root / "track-b-output.json"
     track_a.write_bytes(dump_bytes(_track_a(run_id)))
