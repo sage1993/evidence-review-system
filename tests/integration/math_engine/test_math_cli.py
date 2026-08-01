@@ -1,8 +1,8 @@
 import json
 import os
+import sys
 from pathlib import Path
 from subprocess import run
-import sys
 
 from ansim_review.cli import _result_exit_code
 from ansim_review.contracts.engines import CalculationResult
