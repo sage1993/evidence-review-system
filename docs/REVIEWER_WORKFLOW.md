@@ -4,11 +4,23 @@ The machine packet is evidence for review, not a decision. Confirm the source qu
 
 Shared machine/human authority boundaries and version compatibility are governed by `docs/CONTRACT_GOVERNANCE.md`.
 
+## Confirm source identity first
+
+Every reviewed PDF must be traceable to a source-batch entry and immutable source SHA-256. A filename or display title is not sufficient proof of identity and must never be interpreted as a document type or legal authority.
+
+Confirm:
+
+- the source PDF SHA-256 matches the registered source;
+- the document ID was explicitly supplied or deterministically derived from source bytes;
+- the revision ID matches the source hash;
+- the parser artifact belongs to the same registered source;
+- the cited page and geometry exist within the verified page bounds.
+
 ## Distinguish the four status domains
 
 Do not interpret similarly named values as interchangeable.
 
-- **Workflow state** reports processing progress, such as `WAITING_TRACK_A`, `INPUT_CONFIRMATION_REQUIRED`, `BLOCKED`, or `READY_FOR_REVIEW`.
+- **Workflow state** reports processing progress, such as `PENDING_PARSER_OUTPUT`, `WAITING_TRACK_A`, `INPUT_CONFIRMATION_REQUIRED`, `BLOCKED`, or `READY_FOR_REVIEW`.
 - **Finalizer status** is only `READY_FOR_HUMAN_REVIEW` or `ABSTAIN`.
 - **Rule status** is the result of one approved Rule-as-Code evaluation.
 - **Human decision** is a separate reviewer record and is never stored in the machine packet.
@@ -29,7 +41,7 @@ Review the matching run-specific `final-review-packet.json` and confirm:
 
 For a native Review Packet v2, also confirm:
 
-- the packet declares `format: ansim/review-packet` and `version: 2`;
+- the packet format and version match the published Review Packet schema;
 - snapshot, rule-manifest, and formula-manifest hashes are present;
 - every claim resolves to an evidence record;
 - every displayed numeric token resolves to source evidence or a Math Engine result;
@@ -63,4 +75,4 @@ Only after completing the review should the named reviewer create the separate a
 python -c "from ansim_review.review_packet.decision_record import _ALLOWED; assert 'ADDITIONAL_REVIEW_REQUIRED' in _ALLOWED"
 ```
 
-A ready packet keeps `human_decision` null until the named reviewer signs a separate record.
+A ready packet keeps `human_decision` null until the named reviewer records a separate decision.
