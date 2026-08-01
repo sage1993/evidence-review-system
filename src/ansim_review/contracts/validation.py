@@ -84,6 +84,13 @@ def expect_sha256(value: object, field: str) -> str:
     return digest
 
 
+def require_fields(payload: Mapping[str, object], required: set[str], field: str) -> None:
+    """Reject documents that omit explicit nullable or collection fields."""
+    missing = sorted(required - set(payload))
+    if missing:
+        raise ValueError(f"{field} is missing required fields: {', '.join(missing)}")
+
+
 def reject_unknown(payload: Mapping[str, object], allowed: set[str], field: str) -> None:
     """Reject keys that are not explicitly part of the contract."""
     unknown = sorted(set(payload) - allowed)
