@@ -15,7 +15,14 @@ evidence-review source-batch ingest `
   --output F:\evidence-review-workspace\evidence\evidence.sqlite
 ```
 
-If a declared PDF has no parser artifact, ingestion stops with `PENDING_PARSER_OUTPUT`. Do not create Track output from an empty or fabricated evidence database.
+Routing is role-aware but never filename-derived:
+
+- parser-ready sources are `READY_FOR_INGESTION` and contribute to the evidence DB;
+- parserless `REFERENCE_DOCUMENT`, `CASE_TABLE`, or `SUPPORTING_IMAGE` sources stop ingestion with `PENDING_PARSER_OUTPUT`;
+- parserless `CASE_DRAWING` sources are `DRAWING_BACKEND_ONLY`, do not block reference evidence ingestion, and must enter the drawing flow in section 4;
+- a batch containing no parser-ready evidence source is rejected with `NO_EVIDENCE_SOURCES` instead of producing an empty database.
+
+Do not create Track output from an empty or fabricated evidence database.
 
 ## 2. Prepare an immutable run
 
@@ -53,7 +60,45 @@ Do not manually advance workflow state or construct a Track B action before that
 
 The frozen next-action v1 namespace remains readable for compatibility with existing runtime packages. It is not a document classification scheme and must not be used to derive a PDF title, role, or document ID.
 
-## 4. Finalize and explicitly publish
+## 4. Handle drawing evidence without granting machine authority
+
+Case drawings are stored separately from reusable reference-document evidence. A `DRAWING_BACKEND_ONLY` source remains registered in the source batch but is excluded from evidence DB records until a parser is explicitly supplied. The drawing backend copies source bytes into case-local immutable storage before quality assessment or candidate creation. After ingest, the external upload path is not runtime authority.
+
+The drawing flow is:
+
+```text
+source-batch CASE_DRAWING registration
+  -> case-local immutable source copy
+  -> quality assessment
+  -> extractor candidate or reviewer-manual annotation
+  -> append-only reviewer confirmation
+  -> confirmed input
+  -> source and confirmation hash revalidation
+  -> Math or Rule Engine binding
+```
+
+Codex may help present candidate evidence or serialize an annotation that the user explicitly created or approved. Codex must not independently:
+
+- infer that a detected value is confirmed;
+- convert `UNCONFIRMED`, `REJECTED`, or `CONFLICT` candidates into engine input;
+- calculate scale, length, area, or ratio from image pixels;
+- alter a candidate file after creation;
+- overwrite a confirmation record;
+- bypass source or confirmation hash verification.
+
+A manual annotation uses `origin: REVIEWER_MANUAL` and `status: CREATED`. It becomes engine-eligible only after a named reviewer creates an append-only `CREATED`, `EDITED`, or `ACCEPTED` confirmation. The runtime binds only the resulting M0 `ConfirmedInput` object.
+
+Drawing workflow states follow the M0 contract:
+
+- no source: `PENDING_DRAWING_INGESTION`;
+- source present but confirmation incomplete or conflicting: `INPUT_CONFIRMATION_REQUIRED`;
+- rejected but replaceable source: `BLOCKED` with `DRAWING_QUALITY_REJECTED`;
+- source-integrity failure: `FAILED` with `SOURCE_HASH_MISMATCH`;
+- complete hash-verified confirmed inputs: `READY_TO_EVALUATE`.
+
+Nonterminal states do not carry reason codes. Detailed drawing-quality and conflict data remain in companion artifacts.
+
+## 5. Finalize and explicitly publish
 
 ```powershell
 evidence-review review-run finalize `
