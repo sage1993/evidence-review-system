@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ansim-review.local/schemas/confirmed-input.schema.json",
+  "title": "Confirmed drawing input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "input_id",
+    "field",
+    "value",
+    "unit",
+    "status",
+    "candidate_status",
+    "source_sha256",
+    "page",
+    "evidence_id",
+    "geometry",
+    "confirmation_record",
+    "confirmation_sha256"
+  ],
+  "properties": {
+    "input_id": {"type": "string", "minLength": 1},
+    "field": {"type": "string", "minLength": 1},
+    "value": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+    "unit": {"type": "string", "minLength": 1},
+    "status": {"const": "CONFIRMED"},
+    "candidate_status": {"enum": ["ACCEPTED", "EDITED", "CREATED"]},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "page": {"type": "integer", "minimum": 1},
+    "evidence_id": {"type": "string", "minLength": 1},
+    "geometry": {"$ref": "drawing-geometry.schema.json"},
+    "confirmation_record": {
+      "type": "string",
+      "pattern": "^confirmations/[^/]+\\.json$"
+    },
+    "confirmation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
