@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Literal, cast
+from typing import Literal
 
 from ansim_review.contracts.attachments import AttachmentRole
 from ansim_review.contracts.identifiers import validate_identifier
@@ -145,7 +145,7 @@ def decode_source_batch(value: object) -> SourceBatch:
     if len(paths) != len(set(paths)):
         raise ValueError("duplicate source_path")
     return SourceBatch(
-        format=cast(SourceBatchFormat, format_value),
+        format=format_value,
         version=1,
         sources=sources,
     )
