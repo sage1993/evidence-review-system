@@ -294,6 +294,7 @@ def track_a_bundle_document(bundle: TrackABundle) -> dict[str, object]:
                 "rule_id": item.rule_id,
                 "rule_version": item.rule_version,
                 "status": item.status,
+                "citations": [_citation_document(citation) for citation in item.citations],
                 "result_hash": item.result_hash,
                 "missing_inputs": list(item.missing_inputs),
                 "calculation_result_ids": list(item.calculation_result_ids),
