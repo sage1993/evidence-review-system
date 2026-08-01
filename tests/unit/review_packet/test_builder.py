@@ -2,49 +2,58 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
+from ansim_review.evidence.store import EvidenceStore
 from ansim_review.review_packet.builder import build_review_view_model
+
+V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
 
 
 def _db(path: Path) -> None:
-    connection = sqlite3.connect(path)
-    connection.executescript(
-        """
-        CREATE TABLE retrieval_records (
-          evidence_id TEXT PRIMARY KEY, evidence_type TEXT, document_id TEXT,
-          revision_id TEXT, page_number INTEGER, bbox_json TEXT, source_hash TEXT,
-          title TEXT, raw_text TEXT, normalized_text TEXT
-        );
-        CREATE TABLE visuals (
-          id TEXT PRIMARY KEY, revision_id TEXT, page_number INTEGER, kind TEXT,
-          relative_path TEXT, sha256 TEXT, bbox_json TEXT, duplicate_group TEXT
-        );
-        """
-    )
-    connection.execute(
-        "INSERT INTO retrieval_records VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (
-            "E1",
-            "clause",
-            "DOC1",
-            "REV1",
-            3,
-            json.dumps([10, 20, 110, 40]),
-            "a" * 64,
-            "제3조",
-            "정확한 인용문",
-            "정규화",
-        ),
-    )
-    connection.commit()
-    connection.close()
+    with EvidenceStore(path, create=True) as store:
+        connection = store.require_connection()
+        connection.execute("INSERT INTO documents(id, title) VALUES('DOC1', 'Document')")
+        connection.execute(
+            """
+            INSERT INTO revisions(id, document_id, source_hash, byte_size, page_count)
+            VALUES('REV1', 'DOC1', ?, 10, 3)
+            """,
+            ("a" * 64,),
+        )
+        connection.execute(
+            """
+            INSERT INTO pages(id, revision_id, page_number, width, height)
+            VALUES('REV1-P3', 'REV1', 3, 120, 200)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO retrieval_records(
+                evidence_id, evidence_type, document_id, revision_id, page_id,
+                page_number, bbox_json, source_hash, title, raw_text,
+                normalized_text
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "E1",
+                "clause",
+                "DOC1",
+                "REV1",
+                "REV1-P3",
+                3,
+                json.dumps([10, 20, 110, 40]),
+                "a" * 64,
+                "제3조",
+                "정확한 인용문",
+                "정규화",
+            ),
+        )
+        connection.commit()
 
 
-def test_view_model_resolves_all_required_sections_and_blank_decision(
-    tmp_path: Path,
-) -> None:
-    database = tmp_path / "evidence.sqlite"
-    _db(database)
-    packet = {
+def _packet() -> dict[str, object]:
+    return {
         "run_id": "RUN-0123456789ABCDEF0123",
         "status": "ABSTAIN",
         "human_decision": None,
@@ -103,7 +112,14 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
         },
         "abstention_reasons": ["UNRESOLVED_CONFLICT"],
     }
-    model = build_review_view_model(packet, database)
+
+
+def test_view_model_resolves_all_required_sections_and_blank_decision(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    model = build_review_view_model(_packet(), database)
     claims = model["claims"]
     calculations = model["calculations"]
     rules = model["rules"]
@@ -125,3 +141,13 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert model["exceptions"] == []
     assert model["conflicts"] == ["UNRESOLVED_CONFLICT"]
     assert model["abstention_reasons"] == ["UNRESOLVED_CONFLICT"]
+
+
+def test_view_model_requires_explicit_v1_migration(tmp_path: Path) -> None:
+    database = tmp_path / "evidence-v1.sqlite"
+    connection = sqlite3.connect(database)
+    connection.executescript(V1_SCHEMA.read_text(encoding="utf-8"))
+    connection.close()
+
+    with pytest.raises(RuntimeError, match="schema version 1"):
+        build_review_view_model(_packet(), database)

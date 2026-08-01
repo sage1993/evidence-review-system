@@ -112,7 +112,7 @@ def _snapshot() -> EvidenceSnapshot:
 
 def test_structured_and_graph_retrieval_are_stable(tmp_path: Path) -> None:
     db_path = tmp_path / "evidence.sqlite"
-    with EvidenceStore(db_path) as store:
+    with EvidenceStore(db_path, create=True) as store:
         ingest_snapshot(store, _snapshot())
         build_fts_index(store.require_connection())
         exact = retrieve_structured(
@@ -150,7 +150,7 @@ def test_structured_and_graph_retrieval_are_stable(tmp_path: Path) -> None:
 
 def test_graph_depth_is_bounded(tmp_path: Path) -> None:
     db_path = tmp_path / "evidence.sqlite"
-    with EvidenceStore(db_path) as store:
+    with EvidenceStore(db_path, create=True) as store:
         ingest_snapshot(store, _snapshot())
         build_fts_index(store.require_connection())
         with pytest.raises(ValueError, match="depth must be between 0 and 3"):

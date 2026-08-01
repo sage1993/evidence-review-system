@@ -9,6 +9,8 @@ from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.index import build_fts_index
 
+V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
+
 
 def _build_db(path: Path) -> str:
     snapshot = EvidenceSnapshot(
@@ -47,10 +49,28 @@ def _build_db(path: Path) -> str:
             },
         ),
     )
-    with EvidenceStore(path) as store:
+    with EvidenceStore(path, create=True) as store:
         snapshot_hash = ingest_snapshot(store, snapshot)
         build_fts_index(store.require_connection())
     return snapshot_hash
+
+
+def _request(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "question": "이면도로",
+                "expansions": [],
+                "synonym_manifest": {},
+                "filters": {},
+                "clause_ids": [],
+                "seed_ids": [],
+                "graph_depth": 1,
+                "limit": 10,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def _run(
@@ -145,25 +165,28 @@ def test_query_cli_refuses_stale_index(tmp_path: Path) -> None:
         )
         connection.commit()
     request = tmp_path / "question.json"
-    request.write_text(
-        json.dumps(
-            {
-                "question": "이면도로",
-                "expansions": [],
-                "synonym_manifest": {},
-                "filters": {},
-                "clause_ids": [],
-                "seed_ids": [],
-                "graph_depth": 1,
-                "limit": 10,
-            }
-        ),
-        encoding="utf-8",
-    )
+    _request(request)
     output = tmp_path / "retrieved.json"
 
     result = _run(db, request, output)
 
     assert result.returncode == 2
     assert "snapshot hash mismatch" in result.stderr
+    assert not output.exists()
+
+
+def test_query_cli_requires_explicit_v1_migration(tmp_path: Path) -> None:
+    db = tmp_path / "evidence-v1.sqlite"
+    connection = sqlite3.connect(db)
+    connection.executescript(V1_SCHEMA.read_text(encoding="utf-8"))
+    connection.close()
+    request = tmp_path / "question.json"
+    _request(request)
+    output = tmp_path / "retrieved.json"
+
+    result = _run(db, request, output)
+
+    assert result.returncode == 2
+    assert "schema version 1" in result.stderr
+    assert "explicit migration is required" in result.stderr
     assert not output.exists()

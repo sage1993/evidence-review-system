@@ -46,16 +46,18 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
     rows: list[tuple[object, ...]] = []
     for row in connection.execute(
         """
-        SELECT e.id, e.element_type, r.document_id, e.revision_id, e.page_number,
-               e.bbox_json, r.source_hash, d.title, e.raw_text, e.normalized_text
+        SELECT e.id, e.element_type, r.document_id, p.revision_id, p.id,
+               p.page_number, e.bbox_json, r.source_hash, d.title,
+               e.raw_text, e.normalized_text
         FROM elements e
-        JOIN revisions r ON r.id = e.revision_id
+        JOIN pages p ON p.id = e.page_id
+        JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
         WHERE e.bbox_json IS NOT NULL
         ORDER BY e.id
         """
     ):
-        bbox = _bbox(row[5])
+        bbox = _bbox(row[6])
         if bbox is None:
             continue
         rows.append(
@@ -65,25 +67,28 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[2],
                 row[3],
                 row[4],
+                row[5],
                 dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
-                row[6],
-                _nfc(row[7]),
+                row[7],
                 _nfc(row[8]),
-                _nfc(row[9] or row[8]),
+                _nfc(row[9]),
+                _nfc(row[10] or row[9]),
             )
         )
     for row in connection.execute(
         """
-        SELECT t.id, r.document_id, t.revision_id, t.page_number, t.bbox_json,
-               r.source_hash, d.title, t.raw_json, t.normalized_json
+        SELECT t.id, r.document_id, p.revision_id, p.id, p.page_number,
+               t.bbox_json, r.source_hash, d.title, t.raw_json,
+               t.normalized_json
         FROM tables t
-        JOIN revisions r ON r.id = t.revision_id
+        JOIN pages p ON p.id = t.page_id
+        JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
         WHERE t.bbox_json IS NOT NULL
         ORDER BY t.id
         """
     ):
-        bbox = _bbox(row[4])
+        bbox = _bbox(row[5])
         if bbox is None:
             continue
         rows.append(
@@ -93,28 +98,30 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[1],
                 row[2],
                 row[3],
+                row[4],
                 dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
-                row[5],
-                _nfc(f"{row[6]} 표 {row[0]}"),
-                _nfc(row[7]),
-                _nfc(row[8] or row[7]),
+                row[6],
+                _nfc(f"{row[7]} 표 {row[0]}"),
+                _nfc(row[8]),
+                _nfc(row[9] or row[8]),
             )
         )
     for row in connection.execute(
         """
-        SELECT v.id, r.document_id, v.revision_id, v.page_number, v.bbox_json,
-               r.source_hash, d.title, v.kind, v.relative_path
+        SELECT v.id, r.document_id, p.revision_id, p.id, p.page_number,
+               v.bbox_json, r.source_hash, d.title, v.kind, v.relative_path
         FROM visuals v
-        JOIN revisions r ON r.id = v.revision_id
+        JOIN pages p ON p.id = v.page_id
+        JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
         WHERE v.bbox_json IS NOT NULL
         ORDER BY v.id
         """
     ):
-        bbox = _bbox(row[4])
+        bbox = _bbox(row[5])
         if bbox is None:
             continue
-        text = _nfc(f"{row[7]} {row[8]}")
+        text = _nfc(f"{row[8]} {row[9]}")
         rows.append(
             (
                 row[0],
@@ -122,9 +129,10 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[1],
                 row[2],
                 row[3],
+                row[4],
                 dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
-                row[5],
-                _nfc(f"{row[6]} {row[7]}"),
+                row[6],
+                _nfc(f"{row[7]} {row[8]}"),
                 text,
                 text,
             )
@@ -143,9 +151,10 @@ def build_fts_index(connection: sqlite3.Connection) -> str:
         connection.executemany(
             """
             INSERT INTO retrieval_records(
-                evidence_id, evidence_type, document_id, revision_id, page_number,
-                bbox_json, source_hash, title, raw_text, normalized_text
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                evidence_id, evidence_type, document_id, revision_id, page_id,
+                page_number, bbox_json, source_hash, title, raw_text,
+                normalized_text
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -154,7 +163,7 @@ def build_fts_index(connection: sqlite3.Connection) -> str:
             INSERT INTO evidence_fts(evidence_id, title, raw_text, normalized_text)
             VALUES(?, ?, ?, ?)
             """,
-            ((row[0], row[7], row[8], row[9]) for row in rows),
+            ((row[0], row[8], row[9], row[10]) for row in rows),
         )
         connection.execute(
             """
