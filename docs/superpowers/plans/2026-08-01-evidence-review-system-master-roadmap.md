@@ -19,6 +19,8 @@
 - Grist remains a human maintenance surface; it is not the execution engine.
 - Review Packet v1 is frozen and remains byte-compatible.
 - Browser review, drawing ingestion, and Codex orchestration must consume shared contracts rather than define duplicate schemas or enums.
+- Case drawings remain separate from reusable reference-document evidence.
+- Only hash-verified reviewer-confirmed drawing inputs may bind to Math or Rule Engine execution.
 
 ---
 
@@ -26,7 +28,8 @@
 
 | Order | Plan | Deliverable |
 |---:|---|---|
-| 0 | `2026-08-02-browser-drawing-shared-contracts.md` | Review Packet v2, workflow, drawing, attachment, next-action, and v1 adapter contracts |
+| M0 | `2026-08-02-browser-drawing-shared-contracts.md` | Review Packet v2, workflow, drawing, attachment, next-action, and v1 adapter contracts |
+| M1 | `2026-08-02-drawing-evidence-backend.md` | immutable case drawing intake, quality gate, candidate repository, append-only confirmations, confirmed-input binding |
 | 1 | `2026-08-01-foundation-and-contracts.md` | package, canonical models, immutable runs, no-network guard |
 | 2 | `2026-08-01-parse-engine-and-evidence-store.md` | coordinate-traceable evidence SQLite snapshot |
 | 3 | `2026-08-01-math-engine.md` | versioned Decimal calculation engine |
@@ -46,17 +49,30 @@ src/ansim_review/
   retrieval/ llm_layer/ confidence/ abstention/ review_packet/ packaging/
 rules/candidates/ rules/approved/ rules/manifests/
 evidence/ source/ runs/ exports/ web_runtime/
+cases/<case_id>/sources/drawings/ candidates/ confirmations/
 tests/unit/ tests/integration/ tests/golden/
 docs/superpowers/specs/ docs/superpowers/plans/
 ```
 
 ## Milestone Gates
 
-0. **M0 Shared contracts:** Review Packet v1 is frozen; v2, workflow, drawing, immutable-attachment, next-action, and deterministic adapter contracts pass automated validation and human contract review. Issues #5, #6, and #7 remain blocked until this gate passes.
-1. **Core v0.1:** Plans 1–4 pass; source, calculations, and rules are deterministic.
-2. **Evidence v0.2:** Plans 5–6 pass; uncited claims and weak evidence abstain.
-3. **Review v0.3:** Plan 7 passes; Codex and ChatGPT web packages execute offline.
-4. **Ansim v1.0:** Plan 8 passes automated and human acceptance; only this milestone may declare production-review readiness.
+0. **M0 Shared contracts — complete:** Review Packet v1 is frozen; v2, workflow, drawing, immutable-attachment, next-action, and deterministic adapter contracts passed automated validation and human contract review in PR #16.
+1. **M1 Drawing evidence backend:** A supported drawing is copied into immutable case storage, quality assessed, represented by extractor or reviewer-manual candidates, confirmed through append-only records, and bound to engines only after source and confirmation hash revalidation. OCR, browser UI, calibration, and automatic semantic drawing recognition are later milestones.
+2. **Core v0.1:** Plans 1–4 pass; source, calculations, and rules are deterministic.
+3. **Evidence v0.2:** Plans 5–6 pass; uncited claims and weak evidence abstain.
+4. **Review v0.3:** Plan 7 passes; Codex and ChatGPT web packages execute offline.
+5. **Ansim v1.0:** Plan 8 passes automated and human acceptance; only this milestone may declare production-review readiness.
+
+## Drawing Follow-Up Order
+
+After M1 backend integration:
+
+1. browser source viewer and reviewer-manual annotation controls;
+2. calibration records and Math Engine formulas for confirmed scale/reference dimensions;
+3. staged automatic candidate extractors for text/table metadata, then lines, then semantic boundaries and entrances;
+4. Review Packet v2 drawing-evidence rendering and reviewer workflow integration.
+
+Automatic detection success is never the sole acceptance criterion. The manual annotation to confirmed input to engine-binding path remains mandatory.
 
 ## Contract Governance
 
