@@ -13,6 +13,7 @@ EXPECTED = {
     "next-action.schema.json",
     "reason-code.schema.json",
     "review-packet-v2.schema.json",
+    "source-batch.schema.json",
     "workflow-state.schema.json",
 }
 

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evidence-review.local/schemas/source-batch.schema.json",
+  "title": "Generic PDF source batch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "sources"],
+  "properties": {
+    "format": {"const": "evidence-review/source-batch"},
+    "version": {"const": 1},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_path",
+          "role",
+          "document_id",
+          "display_title",
+          "parser"
+        ],
+        "properties": {
+          "source_path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?![A-Za-z]:)(?!.*\\\\).+$"
+          },
+          "role": {
+            "enum": [
+              "REFERENCE_DOCUMENT",
+              "CASE_DRAWING",
+              "CASE_TABLE",
+              "SUPPORTING_IMAGE"
+            ]
+          },
+          "document_id": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              }
+            ]
+          },
+          "display_title": {
+            "oneOf": [
+              {"type": "null"},
+              {"type": "string", "minLength": 1}
+            ]
+          },
+          "parser": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "artifact_path"],
+                "properties": {
+                  "kind": {"const": "OPENDATALOADER_JSON"},
+                  "artifact_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?![A-Za-z]:)(?!.*\\\\).+$"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

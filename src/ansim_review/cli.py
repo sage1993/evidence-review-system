@@ -1,4 +1,4 @@
-"""Command-line interface for the deterministic review runtime."""
+"""Command-line interface for the deterministic evidence review runtime."""
 from __future__ import annotations
 
 import argparse
@@ -10,10 +10,12 @@ from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.engines import CalculationResult
+from ansim_review.contracts.source_batch import decode_source_batch
 from ansim_review.math_engine.manifest import calculation_result_document
 from ansim_review.math_engine.requests import decode_calculation_request
 from ansim_review.math_engine.runner import run_calculation_request
 from ansim_review.network_guard import install_network_guard
+from ansim_review.parsing.source_batch_importer import import_source_batch
 from ansim_review.retrieval.bundle import build_evidence_bundle
 from ansim_review.review_run import finalize_review_run, prepare_review_run
 
@@ -21,10 +23,24 @@ from ansim_review.review_run import finalize_review_run, prepare_review_run
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level command-line parser."""
     parser = argparse.ArgumentParser(
-        prog="ansim-review",
-        description="Evidence-first regulatory review runtime",
+        prog="evidence-review",
+        description="Evidence-first regulatory review for arbitrary documents",
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    source_batch = subparsers.add_parser(
+        "source-batch",
+        help="validate and ingest arbitrary user-provided PDF sources",
+    )
+    source_stages = source_batch.add_subparsers(dest="source_stage", required=True)
+    source_ingest = source_stages.add_parser(
+        "ingest",
+        help="build a searchable evidence SQLite database from a source batch",
+    )
+    source_ingest.add_argument("--root", required=True, type=Path)
+    source_ingest.add_argument("--manifest", required=True, type=Path)
+    source_ingest.add_argument("--output", required=True, type=Path)
+
     math_run = subparsers.add_parser(
         "math-run",
         help="run a deterministic calculation request",
@@ -43,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review-run",
         help="prepare or finalize an immutable staged review run",
     )
-    review_stages = review_run.add_subparsers(dest="review_stage")
+    review_stages = review_run.add_subparsers(dest="review_stage", required=True)
     review_prepare = review_stages.add_parser(
         "prepare",
         help="validate deterministic inputs and prepare Track A artifacts",
@@ -70,6 +86,45 @@ def _result_exit_code(result: CalculationResult) -> int:
     return 2
 
 
+def _source_batch_ingest(root: Path, manifest: Path, output: Path) -> int:
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        batch = decode_source_batch(payload)
+        report = import_source_batch(root, batch, output)
+    except FileExistsError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except (
+        FileNotFoundError,
+        OSError,
+        json.JSONDecodeError,
+        sqlite3.Error,
+        ValueError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/source-batch-cli-status",
+            "version": 1,
+            "status": "INGESTED",
+            "output_db": str(report.output_db),
+            "snapshot_hash": report.snapshot_hash,
+            "counts": report.counts,
+            "sources": [
+                {
+                    "document_id": source.document_id,
+                    "revision_id": source.revision_id,
+                    "source_sha256": source.source_sha256,
+                    "state": source.state,
+                }
+                for source in report.sources
+            ],
+        }
+    )
+    return 0
+
+
 def _math_run(request_path: Path, output_path: Path) -> int:
     if output_path.exists():
         print(f"output already exists: {output_path}", file=sys.stderr)
@@ -85,9 +140,7 @@ def _math_run(request_path: Path, output_path: Path) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with output_path.open("xb") as stream:
-            stream.write(
-                dump_bytes(calculation_result_document(result))
-            )
+            stream.write(dump_bytes(calculation_result_document(result)))
     except FileExistsError:
         print(f"output already exists: {output_path}", file=sys.stderr)
         return 1
@@ -148,7 +201,7 @@ def _review_run_prepare(workspace: Path, request: Path) -> int:
         return 2
     _write_stdout(
         {
-            "format": "ansim/review-run-cli-status",
+            "format": "evidence-review/review-run-cli-status",
             "version": 1,
             "stage": "prepare",
             "status": "AWAITING_TRACK_OUTPUTS",
@@ -191,7 +244,7 @@ def _review_run_finalize(
         return 2
     _write_stdout(
         {
-            "format": "ansim/review-run-cli-status",
+            "format": "evidence-review/review-run-cli-status",
             "version": 1,
             "stage": "finalize",
             "status": result.packet.status,
@@ -214,6 +267,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     install_network_guard()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "source-batch" and args.source_stage == "ingest":
+        return _source_batch_ingest(args.root, args.manifest, args.output)
     if args.command == "math-run":
         return _math_run(args.request, args.output)
     if args.command == "query":
@@ -228,4 +283,4 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.track_b_output,
             publish=args.publish,
         )
-    return 0
+    raise RuntimeError("unreachable command state")

@@ -2,6 +2,12 @@
 
 Build or upload the reproducible offline ZIP. The runtime performs no API calls and requires no package installation. Source PDFs are excluded by default; evidence records retain source hashes and coordinates.
 
+## Source registration
+
+Before beginning Track work, register each user-provided PDF through an `evidence-review/source-batch` manifest and create `evidence/evidence.sqlite` locally. Do not infer document roles from filenames or titles.
+
+If a PDF has no parser artifact, keep it in `PENDING_PARSER_OUTPUT`. Do not ask ChatGPT to invent extracted text, tables, coordinates, or page references.
+
 ## Prepared inputs
 
 First run `review-run prepare` in the local workspace. Upload or provide only the generated run files needed for the selected track.
@@ -26,11 +32,11 @@ Audit every Track A claim exactly once and save the returned JSON as `track-b-ou
 Pass both files back to the offline runtime:
 
 ```powershell
-python -m ansim_review review-run finalize `
-  --workspace F:\ansim-workspace `
+evidence-review review-run finalize `
+  --workspace F:\evidence-review-workspace `
   --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
-  --track-a-output F:\ansim-case\track-a-output.json `
-  --track-b-output F:\ansim-case\track-b-output.json `
+  --track-a-output F:\review-case\track-a-output.json `
+  --track-b-output F:\review-case\track-b-output.json `
   --publish
 ```
 

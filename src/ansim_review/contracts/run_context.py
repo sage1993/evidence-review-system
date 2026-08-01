@@ -12,6 +12,16 @@ from ansim_review.canonical_json import sha256_json
 _RUN_ID_PATTERN = re.compile(r"^RUN-[0-9A-F]{20}$")
 
 
+def _run_id(document: Mapping[str, Any]) -> str:
+    digest = sha256_json(dict(document))
+    return f"RUN-{digest[:20].upper()}"
+
+
+def compute_run_id_from_request(request_document: Mapping[str, Any]) -> str:
+    """Compute a stable ID from the complete normalized deterministic request."""
+    return _run_id(request_document)
+
+
 def compute_run_id(
     question: str,
     inputs: Mapping[str, Any],
@@ -19,8 +29,8 @@ def compute_run_id(
     rule_hash: str,
     formula_hash: str,
 ) -> str:
-    """Compute a stable run ID from all deterministic run inputs."""
-    digest = sha256_json(
+    """Compute a legacy run ID from the original fragmented input contract."""
+    return _run_id(
         {
             "evidence_hash": evidence_hash,
             "formula_hash": formula_hash,
@@ -29,7 +39,6 @@ def compute_run_id(
             "rule_hash": rule_hash,
         }
     )
-    return f"RUN-{digest[:20].upper()}"
 
 
 def create_run_directory(root: Path, run_id: str) -> Path:
