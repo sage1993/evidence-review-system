@@ -4,6 +4,7 @@ from __future__ import annotations
 from ansim_review.canonical_json import sha256_json
 from ansim_review.contracts.engines import CalculationResult
 from ansim_review.math_engine.formulas import DEFAULT_REGISTRY, run_calculation
+from ansim_review.math_engine.manifest import finalize_result, formula_manifest_hash
 from ansim_review.math_engine.registry import FormulaRegistry
 from ansim_review.math_engine.requests import CalculationRequest, decode_calculation_request
 
@@ -40,7 +41,10 @@ def run_calculation_request(
             registry=registry,
         )
     except Exception:
-        return _engine_error(request)
+        return finalize_result(
+            _engine_error(request),
+            formula_manifest_hash(registry.values()),
+        )
 
 
 def run_calculation_payload(

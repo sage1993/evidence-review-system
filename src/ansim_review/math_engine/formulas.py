@@ -12,6 +12,7 @@ from ansim_review.contracts.engines import (
     CalculationStatus,
 )
 from ansim_review.math_engine.decimal_context import decimal_context
+from ansim_review.math_engine.manifest import finalize_result, formula_manifest_hash
 from ansim_review.math_engine.registry import FormulaRegistry, FormulaSpec
 
 FRONTAGE_RATIO_ID = "FRONTAGE_RATIO"
@@ -160,13 +161,16 @@ def run_calculation(
     registry: FormulaRegistry = DEFAULT_REGISTRY,
 ) -> CalculationResult:
     """Run a registered deterministic calculation."""
+    manifest_hash = formula_manifest_hash(registry.values())
     spec = registry.get(formula_id, version)
     if spec is None or spec.execute is None:
-        return _error_result(
+        result = _error_result(
             formula_id,
             version,
             inputs,
             status="FORMULA_NOT_FOUND",
             error_code="FORMULA_NOT_FOUND",
         )
-    return spec.execute(inputs)
+    else:
+        result = spec.execute(inputs)
+    return finalize_result(result, manifest_hash)
