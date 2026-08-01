@@ -111,6 +111,7 @@ def test_manual_annotation_reaches_ready_to_evaluate(tmp_path: Path) -> None:
         case_dir,
         [confirmed],
         {attachment.sha256: attachment},
+        candidate_entries={candidate.candidate_id: candidate_entry},
     )
     assert bound["road_width_m"].value == "8.0"
 
