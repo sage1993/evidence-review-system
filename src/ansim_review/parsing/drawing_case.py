@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.contracts.validation import (
     expect_int,
     expect_literal,
@@ -20,8 +20,6 @@ from ansim_review.contracts.validation import (
     reject_unknown,
     require_fields,
 )
-
-_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,10 +48,8 @@ class CaseManifest:
 
 
 def validate_artifact_id(value: str, field: str) -> str:
-    """Validate one stable ASCII identifier used in paths and filenames."""
-    if not _ID_PATTERN.fullmatch(value):
-        raise ValueError(f"{field} must be an ASCII artifact identifier")
-    return value
+    """Validate one stable path-safe identifier using the shared policy."""
+    return validate_identifier(value, field)
 
 
 def case_root(cases_root: Path, case_id: str) -> Path:
