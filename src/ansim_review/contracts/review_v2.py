@@ -22,6 +22,8 @@ from ansim_review.contracts.drawing import (
     drawing_candidate_document,
 )
 from ansim_review.contracts.engines import CalculationResult, RuleResult
+from ansim_review.contracts.formats import REVIEW_PACKET_FORMAT
+from ansim_review.contracts.legacy_formats import LEGACY_REVIEW_PACKET_FORMAT
 from ansim_review.contracts.review import Claim, ConfidenceResult, FinalizerStatus
 from ansim_review.contracts.validation import (
     expect_int,
@@ -35,7 +37,7 @@ from ansim_review.contracts.validation import (
     require_fields,
 )
 
-_FORMATS: tuple[Literal["ansim/review-packet"], ...] = ("ansim/review-packet",)
+_FORMATS = (REVIEW_PACKET_FORMAT, LEGACY_REVIEW_PACKET_FORMAT)
 _FINALIZER_STATUSES: tuple[FinalizerStatus, ...] = (
     "READY_FOR_HUMAN_REVIEW",
     "ABSTAIN",
@@ -56,7 +58,7 @@ class EvidenceRecord:
 class ReviewPacketV2:
     """Versioned final machine packet awaiting a separate human decision."""
 
-    format: Literal["ansim/review-packet"]
+    format: Literal["evidence-review/review-packet"]
     version: Literal[2]
     run_id: str
     case_id: str
@@ -225,7 +227,7 @@ def _validate_claims(
 
 
 def decode_review_packet_v2(value: object) -> ReviewPacketV2:
-    """Decode a strict Review Packet v2 document."""
+    """Decode a generic or legacy Review Packet v2 document."""
     payload = expect_mapping(value, "review_packet_v2")
     required = {
         "format",
@@ -254,7 +256,7 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
     reject_unknown(payload, required, "review_packet_v2")
     if payload.get("human_decision") is not None:
         raise ValueError("human_decision must be null in a machine review packet")
-    format_value = expect_literal(payload.get("format"), "format", _FORMATS)
+    expect_literal(payload.get("format"), "format", _FORMATS)
     version = expect_int(payload.get("version"), "version")
     if version != 2:
         raise ValueError(f"unsupported version: {version}")
@@ -306,7 +308,7 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
     )
     _validate_claims(claims, evidence, calculations, compatibility_source_version)
     return ReviewPacketV2(
-        format=format_value,
+        format=REVIEW_PACKET_FORMAT,
         version=2,
         run_id=expect_string(payload.get("run_id"), "run_id"),
         case_id=expect_string(payload.get("case_id"), "case_id"),
@@ -343,9 +345,9 @@ def decode_review_packet_v2(value: object) -> ReviewPacketV2:
 
 
 def review_packet_v2_document(packet: ReviewPacketV2) -> dict[str, object]:
-    """Return the explicit canonical document for Review Packet v2."""
+    """Return the explicit canonical generic document for Review Packet v2."""
     return {
-        "format": packet.format,
+        "format": REVIEW_PACKET_FORMAT,
         "version": packet.version,
         "run_id": packet.run_id,
         "case_id": packet.case_id,
