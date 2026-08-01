@@ -1,21 +1,29 @@
-"""Traceable visual and table manifest loading."""
+"""Strict visual manifest loading with explicit document, revision, and page identity."""
+
 from __future__ import annotations
 
 import json
+import re
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ansim_review.contracts.common import BBox
+from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.parsing.source_manifest import sha256_file
 
-_KIND_PREFIX = {
-    "unique_image": "PDF",
-    "occurrence_crop": "OCC",
-    "table_crop": "TBL",
-    "composite_diagram": "COMP",
-    "page_render": "PAGE",
-}
+_KINDS = frozenset(
+    {
+        "unique_image",
+        "occurrence_crop",
+        "table_crop",
+        "composite_diagram",
+        "page_render",
+    }
+)
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_FORMAT = "evidence-review/visual-manifest"
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,8 +31,8 @@ class VisualRecord:
     visual_id: str
     document_id: str
     revision_id: str
+    page_id: str
     kind: str
-    page_number: int
     relative_path: str
     sha256: str
     duplicate_group: str
@@ -49,7 +57,14 @@ def _relative_posix_path(value: object) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError("visual path must be a non-empty string")
     path = PurePosixPath(value)
-    if path.is_absolute() or ".." in path.parts or "\\" in value:
+    first = path.parts[0] if path.parts else ""
+    if (
+        path.is_absolute()
+        or not path.parts
+        or ".." in path.parts
+        or "\\" in value
+        or ":" in first
+    ):
         raise ValueError("visual path must be a workspace-relative POSIX path")
     return path.as_posix()
 
@@ -68,120 +83,127 @@ def _bbox(value: object) -> BBox | None:
 
 
 def _source_ids(value: object) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item for item in value
+    ):
         raise ValueError("source_evidence_ids must be an array of non-empty strings")
     return tuple(value)
 
 
-def _generated_id(kind: str, document_id: str, page_number: int, sequence: int) -> str:
-    prefix = _KIND_PREFIX[kind]
-    if kind == "unique_image":
-        return f"PDF-{document_id}-U{sequence:03d}"
-    if kind == "page_render":
-        return f"PAGE-{document_id}-{page_number:03d}"
-    return f"{prefix}-{document_id}-{sequence:03d}"
+def _entry(value: object, index: int) -> dict[str, Any]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise ValueError(f"visual manifest record {index} must be an object")
+    required = {
+        "id",
+        "document_id",
+        "revision_id",
+        "page_id",
+        "kind",
+        "path",
+        "sha256",
+        "bbox",
+        "source_evidence_ids",
+    }
+    missing = sorted(required - set(value))
+    if missing:
+        raise ValueError(f"visual manifest record {index} missing {missing[0]}")
+    unknown = sorted(set(value) - required)
+    if unknown:
+        raise ValueError(f"visual manifest record {index} has unknown field {unknown[0]}")
+    return value
 
 
-def load_visual_manifest(
-    root: Path,
-    manifest_path: Path,
-    *,
-    document_id: str,
-    revision_id: str,
-) -> VisualManifestResult:
-    """Load and verify visual occurrences without collapsing duplicates."""
-    payload: Any = json.loads(manifest_path.read_text(encoding="utf-8"))
-    entries = payload.get("records") if isinstance(payload, dict) else payload
+def load_visual_manifest(root: Path, manifest_path: Path) -> VisualManifestResult:
+    """Load explicit visual identities without filename or folder inference."""
+    payload: object = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("visual manifest format must be an object")
+    if set(payload) != {"format", "version", "records"}:
+        raise ValueError("visual manifest format fields are invalid")
+    if payload.get("format") != _FORMAT or payload.get("version") != 1:
+        raise ValueError("visual manifest format is unsupported")
+    entries = payload.get("records")
     if not isinstance(entries, list):
-        raise ValueError("visual manifest must be an array or contain a records array")
+        raise ValueError("visual manifest records must be an array")
 
-    staged: list[
-        tuple[int, str, int, str, str, BBox | None, tuple[str, ...], str | None]
-    ] = []
+    records: list[VisualRecord] = []
     issues: list[ManifestIssue] = []
+    used_ids: set[str] = set()
     root_resolved = root.resolve()
-    for order, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise ValueError(f"visual manifest entry {order} must be an object")
+    for index, value in enumerate(entries):
+        entry = _entry(value, index)
+        visual_id = validate_identifier(entry.get("id"), "id")
+        document_id = validate_identifier(entry.get("document_id"), "document_id")
+        revision_id = validate_identifier(entry.get("revision_id"), "revision_id")
+        page_id = validate_identifier(entry.get("page_id"), "page_id")
+        if visual_id in used_ids:
+            raise ValueError(f"duplicate visual id: {visual_id}")
+        used_ids.add(visual_id)
         kind = entry.get("kind")
-        if not isinstance(kind, str) or kind not in _KIND_PREFIX:
+        if not isinstance(kind, str) or kind not in _KINDS:
             raise ValueError(f"unsupported visual kind: {kind}")
-        page_number = entry.get("page_number")
-        if isinstance(page_number, bool) or not isinstance(page_number, int) or page_number < 1:
-            raise ValueError("visual page_number must be a positive integer")
-        explicit_id = entry.get("id")
-        if explicit_id is not None and (not isinstance(explicit_id, str) or not explicit_id):
-            raise ValueError("visual id must be a non-empty string")
         relative_path = _relative_posix_path(entry.get("path"))
         absolute_path = (root_resolved / Path(relative_path)).resolve()
-        try:
-            absolute_path.relative_to(root_resolved)
-        except ValueError as exc:
-            raise ValueError("visual path escapes workspace root") from exc
+        if not absolute_path.is_relative_to(root_resolved):
+            raise ValueError("visual path escapes workspace root")
+        expected_hash = entry.get("sha256")
+        if not isinstance(expected_hash, str) or _SHA256.fullmatch(expected_hash) is None:
+            raise ValueError("visual sha256 must be a lowercase SHA-256 digest")
         if not absolute_path.is_file():
             issues.append(ManifestIssue("MISSING_FILE", relative_path, "file does not exist"))
             continue
         actual_hash = sha256_file(absolute_path)
-        expected_hash = entry.get("sha256")
-        if expected_hash is not None:
-            if not isinstance(expected_hash, str):
-                raise ValueError("visual sha256 must be a string")
-            if expected_hash != actual_hash:
-                issues.append(
-                    ManifestIssue(
-                        "HASH_MISMATCH",
-                        relative_path,
-                        f"expected {expected_hash}, actual {actual_hash}",
-                    )
+        if expected_hash != actual_hash:
+            issues.append(
+                ManifestIssue(
+                    "HASH_MISMATCH",
+                    relative_path,
+                    f"expected {expected_hash}, actual {actual_hash}",
                 )
-                continue
-        staged.append(
-            (
-                order,
-                kind,
-                page_number,
-                relative_path,
-                actual_hash,
-                _bbox(entry.get("bbox")),
-                _source_ids(entry.get("source_evidence_ids")),
-                explicit_id,
             )
-        )
-
-    counters: dict[str, int] = {}
-    records: list[VisualRecord] = []
-    used_ids: set[str] = set()
-    for _, kind, page_number, relative_path, digest, bbox, source_ids, explicit_id in sorted(
-        staged,
-        key=lambda item: (item[1], item[2], item[3], item[0]),
-    ):
-        counters[kind] = counters.get(kind, 0) + 1
-        visual_id = explicit_id or _generated_id(
-            kind,
-            document_id,
-            page_number,
-            counters[kind],
-        )
-        if visual_id in used_ids:
-            raise ValueError(f"duplicate visual id: {visual_id}")
-        used_ids.add(visual_id)
+            continue
         records.append(
             VisualRecord(
                 visual_id=visual_id,
                 document_id=document_id,
                 revision_id=revision_id,
+                page_id=page_id,
                 kind=kind,
-                page_number=page_number,
                 relative_path=relative_path,
-                sha256=digest,
-                duplicate_group=f"DUP-{digest[:16]}",
-                bbox=bbox,
-                source_evidence_ids=source_ids,
+                sha256=actual_hash,
+                duplicate_group=f"DUP-{actual_hash[:16]}",
+                bbox=_bbox(entry.get("bbox")),
+                source_evidence_ids=_source_ids(entry.get("source_evidence_ids")),
             )
         )
     return VisualManifestResult(
-        records=tuple(records),
+        records=tuple(sorted(records, key=lambda record: record.visual_id)),
         issues=tuple(sorted(issues, key=lambda issue: (issue.code, issue.relative_path))),
     )
+
+
+def validate_visual_page_identity(
+    connection: sqlite3.Connection,
+    record: VisualRecord,
+) -> None:
+    """Require the explicit page to belong to the declared revision and document."""
+    row = connection.execute(
+        """
+        SELECT d.id, r.id, p.id
+        FROM pages AS p
+        JOIN revisions AS r ON r.id = p.revision_id
+        JOIN documents AS d ON d.id = r.document_id
+        WHERE p.id = ?
+        """,
+        (record.page_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"VISUAL_PAGE_NOT_FOUND: {record.page_id}")
+    actual = (str(row[0]), str(row[1]), str(row[2]))
+    declared = (record.document_id, record.revision_id, record.page_id)
+    if actual != declared:
+        raise ValueError(
+            "VISUAL_PAGE_IDENTITY_MISMATCH: "
+            f"declared={declared[0]}/{declared[1]}/{declared[2]} "
+            f"actual={actual[0]}/{actual[1]}/{actual[2]}"
+        )

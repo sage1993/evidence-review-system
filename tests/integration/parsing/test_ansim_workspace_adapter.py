@@ -41,16 +41,24 @@ def _write_workspace(root: Path) -> None:
     manifest = visuals / "manifests" / "law-1-visuals.json"
     manifest.parent.mkdir(parents=True)
     law1_hash = hashlib.sha256(b"%PDF-1.7\nlaw-1").hexdigest()
-    law1_element_id = f"LAW1-LAW1-{law1_hash[:12]}-P0001-E00001"
+    law1_revision_id = f"LAW1-{law1_hash[:12]}"
+    law1_page_id = f"{law1_revision_id}-P0001"
+    law1_element_id = f"LAW1-{law1_revision_id}-P0001-E00001"
+    image_hash = hashlib.sha256(b"visual-law1").hexdigest()
     manifest.write_text(
         json.dumps(
             {
-                "document_id": "LAW1",
+                "format": "evidence-review/visual-manifest",
+                "version": 1,
                 "records": [
                     {
+                        "id": "VISUAL-LAW1-001",
+                        "document_id": "LAW1",
+                        "revision_id": law1_revision_id,
+                        "page_id": law1_page_id,
                         "kind": "occurrence_crop",
                         "path": "04_visuals/image_context_crops/law1.png",
-                        "page_number": 1,
+                        "sha256": image_hash,
                         "bbox": [10, 20, 30, 40],
                         "source_evidence_ids": [law1_element_id],
                     }

@@ -6,7 +6,19 @@ Shared status, attachment, Review Packet v2, and next-action rules are governed 
 
 ## 1. Register arbitrary PDF sources
 
-Every source PDF must be declared in an `evidence-review/source-batch` manifest. A filename or display title is never used to infer the document type or legal meaning.
+Every source PDF must be declared in an `evidence-review/source-batch` manifest. A filename or display title is never used to infer the document type, parser, page identity, or legal meaning. Writers emit source-batch version 2. Version 1 remains read-only compatibility input for the original OpenDataLoader binding.
+
+Check source routing without creating a database:
+
+```powershell
+evidence-review source-batch prepare `
+  --root F:\evidence-review-workspace `
+  --manifest F:\evidence-review-workspace\manifests\source-batch.json
+```
+
+The prepare result reports each source's parser kind, state, reason codes, and whether it can enter reference ingestion or rule evaluation.
+
+Create the evidence database only after reference sources are parser-ready:
 
 ```powershell
 evidence-review source-batch ingest `
@@ -17,10 +29,17 @@ evidence-review source-batch ingest `
 
 Routing is role-aware but never filename-derived:
 
-- parser-ready sources are `READY_FOR_INGESTION` and contribute to the evidence DB;
-- parserless `REFERENCE_DOCUMENT`, `CASE_TABLE`, or `SUPPORTING_IMAGE` sources stop ingestion with `PENDING_PARSER_OUTPUT`;
-- parserless `CASE_DRAWING` sources are `DRAWING_BACKEND_ONLY`, do not block reference evidence ingestion, and must enter the drawing flow in section 4;
-- a batch containing no parser-ready evidence source is rejected with `NO_EVIDENCE_SOURCES` instead of producing an empty database.
+- a parser-ready reference or case table is `PENDING_REFERENCE_INGESTION` before ingest and `READY_TO_EVALUATE` after successful ingest;
+- a reference or case table with no parser artifact is `PENDING_PARSER_OUTPUT`;
+- a declared but unregistered parser kind is `BLOCKED` with `UNSUPPORTED_PARSER_KIND`;
+- a `CASE_DRAWING` is `PENDING_DRAWING_INGESTION` and enters the drawing flow in section 4;
+- a drawing awaiting reviewer confirmation is `INPUT_CONFIRMATION_REQUIRED`;
+- a supporting image remains supporting evidence and cannot independently authorize rule evaluation;
+- a batch containing no parser-ready reference evidence is rejected with `NO_EVIDENCE_SOURCES` instead of producing an empty database.
+
+Parser adapters register stable uppercase kinds in the deterministic parser registry. Adapters return page-relative normalized contributions. Only the importer creates document, revision, and page IDs.
+
+Visual manifests must explicitly declare `document_id`, `revision_id`, and `page_id`. File and folder names never supply visual identity.
 
 Do not create Track output from an empty or fabricated evidence database.
 
@@ -62,7 +81,7 @@ The frozen next-action v1 namespace remains readable for compatibility with exis
 
 ## 4. Handle drawing evidence without granting machine authority
 
-Case drawings are stored separately from reusable reference-document evidence. A `DRAWING_BACKEND_ONLY` source remains registered in the source batch but is excluded from evidence DB records until a parser is explicitly supplied. The drawing backend copies source bytes into case-local immutable storage before quality assessment or candidate creation. After ingest, the external upload path is not runtime authority.
+Case drawings are stored separately from reusable reference-document evidence. A `PENDING_DRAWING_INGESTION` source remains registered in the source batch but is excluded from reference evidence DB records. The drawing backend copies source bytes into case-local immutable storage before quality assessment or candidate creation. After ingest, the external upload path is not runtime authority.
 
 The drawing flow is:
 

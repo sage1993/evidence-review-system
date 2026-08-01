@@ -1,4 +1,4 @@
-"""CSV, visual, and link import helpers for Ansim workspace migration."""
+"""CSV, visual, and link import helpers for legacy Ansim workspace migration."""
 from __future__ import annotations
 
 import csv
@@ -84,34 +84,12 @@ def import_tables(root: Path, revisions: Mapping[str, str]) -> tuple[dict[str, A
     return tuple(sorted(records, key=lambda record: str(record["id"])))
 
 
-def _manifest_document_id(path: Path, payload: object) -> str | None:
-    if isinstance(payload, dict):
-        candidate = payload.get("document_id")
-        if isinstance(candidate, str) and candidate:
-            return candidate
-    lowered = path.stem.lower()
-    if "law-1" in lowered or "law1" in lowered:
-        return "LAW1"
-    if "law-2" in lowered or "law2" in lowered:
-        return "LAW2"
-    return None
-
-
 def import_visuals(root: Path, revisions: Mapping[str, str]) -> tuple[dict[str, Any], ...]:
     records: list[dict[str, Any]] = []
     manifest_dir = root / "04_visuals" / "manifests"
     if manifest_dir.is_dir():
         for path in sorted(manifest_dir.glob("*.json")):
-            payload: object = json.loads(path.read_text(encoding="utf-8"))
-            document_id = _manifest_document_id(path, payload)
-            if document_id is None or document_id not in revisions:
-                continue
-            result = load_visual_manifest(
-                root,
-                path,
-                document_id=document_id,
-                revision_id=revisions[document_id],
-            )
+            result = load_visual_manifest(root, path)
             for record in result.records:
                 bbox = None
                 if record.bbox is not None:
@@ -124,8 +102,7 @@ def import_visuals(root: Path, revisions: Mapping[str, str]) -> tuple[dict[str, 
                 records.append(
                     {
                         "id": record.visual_id,
-                        "revision_id": record.revision_id,
-                        "page_number": record.page_number,
+                        "page_id": record.page_id,
                         "kind": record.kind,
                         "relative_path": record.relative_path,
                         "sha256": record.sha256,

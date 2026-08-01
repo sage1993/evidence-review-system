@@ -14,6 +14,8 @@ EXPECTED = {
     "reason-code.schema.json",
     "review-packet-v2.schema.json",
     "source-batch.schema.json",
+    "source-batch-v2.schema.json",
+    "visual-manifest.schema.json",
     "workflow-state.schema.json",
 }
 

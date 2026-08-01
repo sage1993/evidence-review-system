@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
@@ -18,11 +19,12 @@ from ansim_review.contracts.validation import (
     require_fields,
 )
 
-ParserKind = Literal["OPENDATALOADER_JSON"]
+ParserKind = str
 SourceBatchFormat = Literal["evidence-review/source-batch"]
 
 _FORMATS: tuple[SourceBatchFormat, ...] = ("evidence-review/source-batch",)
-_PARSER_KINDS: tuple[ParserKind, ...] = ("OPENDATALOADER_JSON",)
+_LEGACY_PARSER_KINDS = ("OPENDATALOADER_JSON",)
+_PARSER_KIND = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _ATTACHMENT_ROLES: tuple[AttachmentRole, ...] = (
     "REFERENCE_DOCUMENT",
     "CASE_DRAWING",
@@ -37,6 +39,7 @@ class ParserBinding:
 
     kind: ParserKind
     artifact_path: str
+    options: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,10 +55,10 @@ class SourceItem:
 
 @dataclass(frozen=True, slots=True)
 class SourceBatch:
-    """Versioned manifest for one or more arbitrary PDF sources."""
+    """Canonical internal source-batch model; writers always emit version 2."""
 
     format: SourceBatchFormat
-    version: Literal[1]
+    version: Literal[2]
     sources: tuple[SourceItem, ...]
 
 
@@ -86,22 +89,37 @@ def _optional_document_id(value: object) -> str | None:
     return validate_identifier(value, "document_id")
 
 
-def _decode_parser(value: object) -> ParserBinding | None:
+def _parser_kind(value: object, *, legacy: bool) -> str:
+    if legacy:
+        return expect_literal(value, "parser.kind", _LEGACY_PARSER_KINDS)
+    kind = expect_string(value, "parser.kind")
+    if _PARSER_KIND.fullmatch(kind) is None:
+        raise ValueError("parser.kind must be a stable machine identifier")
+    return kind
+
+
+def _decode_parser(value: object, *, version: int) -> ParserBinding | None:
     if value is None:
         return None
     payload = expect_mapping(value, "parser")
     required = {"kind", "artifact_path"}
+    if version == 2:
+        required.add("options")
     require_fields(payload, required, "parser")
     reject_unknown(payload, required, "parser")
+    options: dict[str, object] = {}
+    if version == 2:
+        options = dict(expect_mapping(payload.get("options"), "parser.options"))
     return ParserBinding(
-        kind=expect_literal(payload.get("kind"), "parser.kind", _PARSER_KINDS),
+        kind=_parser_kind(payload.get("kind"), legacy=version == 1),
         artifact_path=_safe_relative_path(
             payload.get("artifact_path"), "parser.artifact_path"
         ),
+        options=options,
     )
 
 
-def _decode_source(value: object, index: int) -> SourceItem:
+def _decode_source(value: object, index: int, *, version: int) -> SourceItem:
     field = f"sources[{index}]"
     payload = expect_mapping(value, field)
     required = {
@@ -118,12 +136,12 @@ def _decode_source(value: object, index: int) -> SourceItem:
         role=expect_literal(payload.get("role"), "role", _ATTACHMENT_ROLES),
         document_id=_optional_document_id(payload.get("document_id")),
         display_title=_optional_display_title(payload.get("display_title")),
-        parser=_decode_parser(payload.get("parser")),
+        parser=_decode_parser(payload.get("parser"), version=version),
     )
 
 
 def decode_source_batch(value: object) -> SourceBatch:
-    """Decode a generic PDF source batch without filename inference."""
+    """Decode source-batch versions 1 and 2 without filename inference."""
     payload = expect_mapping(value, "source_batch")
     required = {"format", "version", "sources"}
     require_fields(payload, required, "source_batch")
@@ -133,10 +151,10 @@ def decode_source_batch(value: object) -> SourceBatch:
     except ValueError as error:
         raise ValueError("unsupported format") from error
     version = expect_int(payload.get("version"), "version")
-    if version != 1:
+    if version not in (1, 2):
         raise ValueError(f"unsupported version: {version}")
     sources = tuple(
-        _decode_source(item, index)
+        _decode_source(item, index, version=version)
         for index, item in enumerate(expect_sequence(payload.get("sources"), "sources"))
     )
     if not sources:
@@ -146,16 +164,16 @@ def decode_source_batch(value: object) -> SourceBatch:
         raise ValueError("duplicate source_path")
     return SourceBatch(
         format=format_value,
-        version=1,
+        version=2,
         sources=sources,
     )
 
 
 def source_batch_document(batch: SourceBatch) -> dict[str, object]:
-    """Return the explicit canonical source-batch document."""
+    """Return the canonical version 2 source-batch document."""
     return {
         "format": batch.format,
-        "version": batch.version,
+        "version": 2,
         "sources": [
             {
                 "source_path": source.source_path,
@@ -168,6 +186,7 @@ def source_batch_document(batch: SourceBatch) -> dict[str, object]:
                     else {
                         "kind": source.parser.kind,
                         "artifact_path": source.parser.artifact_path,
+                        "options": dict(source.parser.options),
                     }
                 ),
             }
