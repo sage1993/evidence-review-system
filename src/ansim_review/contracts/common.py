@@ -34,3 +34,9 @@ class Citation:
     evidence_id: str
     bbox: BBox
     source_hash: str
+
+    def __post_init__(self) -> None:
+        if self.citation_id != f"CIT-{self.evidence_id}":
+            raise ValueError(
+                "citation_id must equal CIT- followed by evidence_id"
+            )
