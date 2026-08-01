@@ -128,6 +128,7 @@ def test_v2_rejects_unregistered_numeric_token() -> None:
 
 def test_v2_document_round_trips() -> None:
     review_v2 = _review_v2()
-    payload = _payload()
-    packet = review_v2.decode_review_packet_v2(payload)
-    assert review_v2.review_packet_v2_document(packet) == payload
+    packet = review_v2.decode_review_packet_v2(_payload())
+    expected = _payload()
+    expected["format"] = "evidence-review/review-packet"
+    assert review_v2.review_packet_v2_document(packet) == expected
