@@ -73,6 +73,23 @@ def test_v2_rejects_non_null_human_decision() -> None:
         review_v2.decode_review_packet_v2(payload)
 
 
+def test_v2_requires_explicit_human_decision_and_collections() -> None:
+    review_v2 = _review_v2()
+    for field in ("human_decision", "evidence", "drawing_evidence"):
+        payload = _payload()
+        del payload[field]
+        with pytest.raises(ValueError, match=f"missing required fields: {field}"):
+            review_v2.decode_review_packet_v2(payload)
+
+
+def test_v2_requires_non_empty_case_id() -> None:
+    review_v2 = _review_v2()
+    payload = _payload()
+    payload["case_id"] = ""
+    with pytest.raises(ValueError, match="case_id must not be empty"):
+        review_v2.decode_review_packet_v2(payload)
+
+
 def test_v2_rejects_claim_without_citations() -> None:
     review_v2 = _review_v2()
     payload = _payload()
