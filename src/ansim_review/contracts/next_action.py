@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
 
+from ansim_review.contracts.formats import NEXT_ACTION_FORMAT
+from ansim_review.contracts.legacy_formats import LEGACY_NEXT_ACTION_FORMAT
 from ansim_review.contracts.validation import (
     expect_bool,
     expect_int,
@@ -19,7 +21,6 @@ from ansim_review.contracts.workflow import WorkflowState
 
 NextActionType = Literal["PRODUCE_TRACK_A", "PRODUCE_TRACK_B"]
 WaitingWorkflowState = Literal["WAITING_TRACK_A", "WAITING_TRACK_B"]
-_FORMATS: tuple[Literal["ansim/next-action"], ...] = ("ansim/next-action",)
 _NEXT_ACTIONS: tuple[NextActionType, ...] = ("PRODUCE_TRACK_A", "PRODUCE_TRACK_B")
 _WAITING_STATES: tuple[WaitingWorkflowState, ...] = (
     "WAITING_TRACK_A",
@@ -31,7 +32,7 @@ _WAITING_STATES: tuple[WaitingWorkflowState, ...] = (
 class NextAction:
     """One deterministic handoff that an external Codex agent must perform."""
 
-    format: Literal["ansim/next-action"]
+    format: Literal["evidence-review/next-action"]
     version: Literal[1]
     run_id: str
     workflow_state: WaitingWorkflowState
@@ -72,7 +73,7 @@ def _resume_command(value: object) -> tuple[str, ...]:
 
 
 def decode_next_action(value: object) -> NextAction:
-    """Decode and cross-check an API-free agent handoff document."""
+    """Decode a generic or legacy handoff into the canonical generic model."""
     payload = expect_mapping(value, "next_action")
     allowed = {
         "format",
@@ -87,7 +88,11 @@ def decode_next_action(value: object) -> NextAction:
         "track_a_validated",
     }
     reject_unknown(payload, allowed, "next_action")
-    format_value = expect_literal(payload.get("format"), "format", _FORMATS)
+    expect_literal(
+        payload.get("format"),
+        "format",
+        (NEXT_ACTION_FORMAT, LEGACY_NEXT_ACTION_FORMAT),
+    )
     version = expect_int(payload.get("version"), "version")
     if version != 1:
         raise ValueError(f"unsupported version: {version}")
@@ -108,7 +113,7 @@ def decode_next_action(value: object) -> NextAction:
     if action == "PRODUCE_TRACK_A" and track_a_validated:
         raise ValueError("Track A action cannot claim validated Track A output")
     return NextAction(
-        format=format_value,
+        format=NEXT_ACTION_FORMAT,
         version=1,
         run_id=expect_string(payload.get("run_id"), "run_id"),
         workflow_state=workflow_state,
@@ -126,7 +131,7 @@ def decode_next_action(value: object) -> NextAction:
 def next_action_document(action: NextAction) -> dict[str, object]:
     """Return the explicit canonical next-action document."""
     return {
-        "format": action.format,
+        "format": NEXT_ACTION_FORMAT,
         "version": action.version,
         "run_id": action.run_id,
         "workflow_state": action.workflow_state,
