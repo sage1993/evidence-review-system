@@ -15,7 +15,14 @@ evidence-review source-batch ingest `
   --output F:\evidence-review-workspace\evidence\evidence.sqlite
 ```
 
-If a declared PDF has no parser artifact, ingestion stops with `PENDING_PARSER_OUTPUT`. Do not create Track output from an empty or fabricated evidence database.
+Routing is role-aware but never filename-derived:
+
+- parser-ready sources are `READY_FOR_INGESTION` and contribute to the evidence DB;
+- parserless `REFERENCE_DOCUMENT`, `CASE_TABLE`, or `SUPPORTING_IMAGE` sources stop ingestion with `PENDING_PARSER_OUTPUT`;
+- parserless `CASE_DRAWING` sources are `DRAWING_BACKEND_ONLY`, do not block reference evidence ingestion, and must enter the drawing flow in section 4;
+- a batch containing no parser-ready evidence source is rejected with `NO_EVIDENCE_SOURCES` instead of producing an empty database.
+
+Do not create Track output from an empty or fabricated evidence database.
 
 ## 2. Prepare an immutable run
 
@@ -55,12 +62,13 @@ The frozen next-action v1 namespace remains readable for compatibility with exis
 
 ## 4. Handle drawing evidence without granting machine authority
 
-Case drawings are stored separately from reusable reference-document evidence. The drawing backend copies source bytes into case-local immutable storage before quality assessment or candidate creation. After ingest, the external upload path is not runtime authority.
+Case drawings are stored separately from reusable reference-document evidence. A `DRAWING_BACKEND_ONLY` source remains registered in the source batch but is excluded from evidence DB records until a parser is explicitly supplied. The drawing backend copies source bytes into case-local immutable storage before quality assessment or candidate creation. After ingest, the external upload path is not runtime authority.
 
 The drawing flow is:
 
 ```text
-immutable source
+source-batch CASE_DRAWING registration
+  -> case-local immutable source copy
   -> quality assessment
   -> extractor candidate or reviewer-manual annotation
   -> append-only reviewer confirmation
