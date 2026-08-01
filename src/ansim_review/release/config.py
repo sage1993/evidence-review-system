@@ -6,7 +6,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ansim_review.contracts.identifiers import validate_identifier
-from ansim_review.contracts.legacy_formats import LEGACY_EVIDENCE_DB_NAME
+from ansim_review.contracts.legacy_formats import (
+    LEGACY_EVIDENCE_DB_NAME,
+    LEGACY_RELEASE_ID,
+)
+
+
+def _validate_file_name(value: str, field: str) -> None:
+    if (
+        not value
+        or value in {".", ".."}
+        or "/" in value
+        or "\\" in value
+        or ":" in value
+        or Path(value).name != value
+    ):
+        raise ValueError(f"{field} must be one file name")
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,12 +34,11 @@ class ReleaseConfig:
 
     def __post_init__(self) -> None:
         validate_identifier(self.release_id, "release_id")
-        for field, value in (
-            ("evidence_db_name", self.evidence_db_name),
-            ("acceptance_record_name", self.acceptance_record_name),
-        ):
-            if not value or Path(value).name != value:
-                raise ValueError(f"{field} must be one file name")
+        _validate_file_name(self.evidence_db_name, "evidence_db_name")
+        _validate_file_name(
+            self.acceptance_record_name,
+            "acceptance_record_name",
+        )
 
     def acceptance_path(self, workspace_root: Path) -> Path:
         return (
@@ -41,6 +55,22 @@ def resolve_evidence_database(workspace_root: Path, config: ReleaseConfig) -> Pa
     if generic.is_file():
         return generic
     legacy = workspace_root / "evidence" / LEGACY_EVIDENCE_DB_NAME
+    if legacy.is_file():
+        return legacy
+    return generic
+
+
+def resolve_acceptance_record(workspace_root: Path, config: ReleaseConfig) -> Path:
+    """Prefer the configured record and read the old release folder as fallback."""
+    generic = config.acceptance_path(workspace_root)
+    if generic.is_file():
+        return generic
+    legacy = (
+        workspace_root
+        / "releases"
+        / LEGACY_RELEASE_ID
+        / config.acceptance_record_name
+    )
     if legacy.is_file():
         return legacy
     return generic
