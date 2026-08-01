@@ -6,10 +6,12 @@ import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Literal, cast
+from typing import Literal
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.formats import CASE_MANIFEST_FORMAT
 from ansim_review.contracts.identifiers import validate_identifier
+from ansim_review.contracts.legacy_formats import LEGACY_CASE_MANIFEST_FORMAT
 from ansim_review.contracts.validation import (
     expect_int,
     expect_literal,
@@ -35,7 +37,7 @@ class CaseManifestEntry:
 class CaseManifest:
     """Deterministic index of drawing artifacts belonging to one case."""
 
-    format: Literal["ansim/case-manifest"]
+    format: Literal["evidence-review/case-manifest"]
     version: Literal[1]
     case_id: str
     policy_id: str
@@ -132,7 +134,7 @@ def _decode_entries(value: object, field: str) -> tuple[CaseManifestEntry, ...]:
 
 
 def decode_case_manifest(value: object) -> CaseManifest:
-    """Decode and cross-validate one explicit case-manifest document."""
+    """Decode a generic or legacy case manifest into the generic model."""
     payload = expect_mapping(value, "case_manifest")
     required = {
         "format",
@@ -148,8 +150,10 @@ def decode_case_manifest(value: object) -> CaseManifest:
     }
     require_fields(payload, required, "case_manifest")
     reject_unknown(payload, required, "case_manifest")
-    format_value = expect_literal(
-        payload.get("format"), "format", ("ansim/case-manifest",)
+    expect_literal(
+        payload.get("format"),
+        "format",
+        (CASE_MANIFEST_FORMAT, LEGACY_CASE_MANIFEST_FORMAT),
     )
     version = expect_int(payload.get("version"), "version")
     if version != 1:
@@ -173,7 +177,7 @@ def decode_case_manifest(value: object) -> CaseManifest:
         )
 
     return CaseManifest(
-        format=cast(Literal["ansim/case-manifest"], format_value),
+        format=CASE_MANIFEST_FORMAT,
         version=1,
         case_id=validate_artifact_id(
             expect_string(payload.get("case_id"), "case_id"), "case_id"
@@ -199,9 +203,9 @@ def _entry_document(entry: CaseManifestEntry) -> dict[str, object]:
 
 
 def case_manifest_document(manifest: CaseManifest) -> dict[str, object]:
-    """Return the explicit JSON representation of one case manifest."""
+    """Return the canonical generic JSON representation of one case manifest."""
     return {
-        "format": manifest.format,
+        "format": CASE_MANIFEST_FORMAT,
         "version": manifest.version,
         "case_id": manifest.case_id,
         "policy_id": manifest.policy_id,
