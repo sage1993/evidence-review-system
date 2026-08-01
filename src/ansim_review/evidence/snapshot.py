@@ -1,6 +1,7 @@
 """Canonical hashing and row counts for evidence snapshots."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -55,6 +56,31 @@ def _dict_rows(
         {column: row[index] for index, column in enumerate(columns)}
         for row in connection.execute(query).fetchall()
     ]
+
+
+def _json_document(value: object) -> object:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("stored JSON value must be text or null")
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError("stored JSON value is invalid") from error
+
+
+def _bbox_document(value: object) -> list[float] | None:
+    payload = _json_document(value)
+    if payload is None:
+        return None
+    if not isinstance(payload, list) or len(payload) != 4:
+        raise ValueError("stored bbox must contain four numbers")
+    normalized: list[float] = []
+    for item in payload:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ValueError("stored bbox must contain four numbers")
+        normalized.append(float(item))
+    return normalized
 
 
 def _common_logical_rows(connection: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
@@ -143,17 +169,16 @@ def _logical_elements(
                     "revision_id": row[4],
                     "page_number": row[5],
                     "element_type": row[6],
-                    "raw_json": row[7],
+                    "raw_json": _json_document(row[7]),
                     "raw_text": row[8],
                     "normalized_text": row[9],
                     "raw_payload_hash": row[10],
-                    "bbox_json": row[11],
+                    "bbox": _bbox_document(row[11]),
                     "parser_order": row[12],
                 }
             )
         return logical
-    return _dict_rows(
-        connection,
+    rows = connection.execute(
         """
         SELECT e.id, e.page_id, p.revision_id, p.page_number,
                e.element_type, e.raw_json, e.raw_text, e.normalized_text,
@@ -161,21 +186,24 @@ def _logical_elements(
         FROM elements e
         JOIN pages p ON p.id = e.page_id
         ORDER BY e.id
-        """,
-        (
-            "id",
-            "page_id",
-            "revision_id",
-            "page_number",
-            "element_type",
-            "raw_json",
-            "raw_text",
-            "normalized_text",
-            "raw_payload_hash",
-            "bbox_json",
-            "parser_order",
-        ),
-    )
+        """
+    ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "page_id": row[1],
+            "revision_id": row[2],
+            "page_number": row[3],
+            "element_type": row[4],
+            "raw_json": _json_document(row[5]),
+            "raw_text": row[6],
+            "normalized_text": row[7],
+            "raw_payload_hash": row[8],
+            "bbox": _bbox_document(row[9]),
+            "parser_order": row[10],
+        }
+        for row in rows
+    ]
 
 
 def _logical_tables(
@@ -205,31 +233,33 @@ def _logical_tables(
                     "page_id": row[3],
                     "revision_id": row[4],
                     "page_number": row[5],
-                    "bbox_json": row[6],
-                    "raw_json": row[7],
-                    "normalized_json": row[8],
+                    "bbox": _bbox_document(row[6]),
+                    "raw_json": _json_document(row[7]),
+                    "normalized_json": _json_document(row[8]),
                 }
             )
         return logical
-    return _dict_rows(
-        connection,
+    rows = connection.execute(
         """
         SELECT t.id, t.page_id, p.revision_id, p.page_number,
                t.bbox_json, t.raw_json, t.normalized_json
         FROM tables t
         JOIN pages p ON p.id = t.page_id
         ORDER BY t.id
-        """,
-        (
-            "id",
-            "page_id",
-            "revision_id",
-            "page_number",
-            "bbox_json",
-            "raw_json",
-            "normalized_json",
-        ),
-    )
+        """
+    ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "page_id": row[1],
+            "revision_id": row[2],
+            "page_number": row[3],
+            "bbox": _bbox_document(row[4]),
+            "raw_json": _json_document(row[5]),
+            "normalized_json": _json_document(row[6]),
+        }
+        for row in rows
+    ]
 
 
 def _logical_visuals(
@@ -263,32 +293,34 @@ def _logical_visuals(
                     "kind": row[6],
                     "relative_path": row[7],
                     "sha256": row[8],
-                    "bbox_json": row[9],
+                    "bbox": _bbox_document(row[9]),
                     "duplicate_group": row[10],
                 }
             )
         return logical
-    return _dict_rows(
-        connection,
+    rows = connection.execute(
         """
         SELECT v.id, v.page_id, p.revision_id, p.page_number, v.kind,
                v.relative_path, v.sha256, v.bbox_json, v.duplicate_group
         FROM visuals v
         JOIN pages p ON p.id = v.page_id
         ORDER BY v.id
-        """,
-        (
-            "id",
-            "page_id",
-            "revision_id",
-            "page_number",
-            "kind",
-            "relative_path",
-            "sha256",
-            "bbox_json",
-            "duplicate_group",
-        ),
-    )
+        """
+    ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "page_id": row[1],
+            "revision_id": row[2],
+            "page_number": row[3],
+            "kind": row[4],
+            "relative_path": row[5],
+            "sha256": row[6],
+            "bbox": _bbox_document(row[7]),
+            "duplicate_group": row[8],
+        }
+        for row in rows
+    ]
 
 
 def compute_logical_snapshot_hash(connection: sqlite3.Connection) -> str:
