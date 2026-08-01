@@ -1,0 +1,27 @@
+{
+  "file name": "law-1.pdf",
+  "number of pages": 2,
+  "kids": [
+    {
+      "type": "paragraph",
+      "id": 20,
+      "page number": 2,
+      "bounding box": [20, 30, 120, 60],
+      "content": "second page"
+    },
+    {
+      "type": "list",
+      "id": 10,
+      "page number": 1,
+      "bounding box": [10, 20, 100, 80],
+      "list items": [
+        {
+          "type": "list item",
+          "page number": 1,
+          "bounding box": [12, 42, 90, 60],
+          "content": "nested"
+        }
+      ]
+    }
+  ]
+}
