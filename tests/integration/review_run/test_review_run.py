@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -92,6 +93,27 @@ def _write_request(path: Path, question: str = "접면 기준 충족 여부") ->
     return path
 
 
+def _write_page_assets(workspace: Path) -> None:
+    page_directory = workspace / "page-images" / "REV1"
+    page_directory.mkdir(parents=True)
+    page_bytes = b"\x89PNG\r\n\x1a\nreview-run-fixture"
+    (page_directory / "page-0001.png").write_bytes(page_bytes)
+    metadata = {
+        "format": "ansim/page-image",
+        "version": 1,
+        "revision_id": "REV1",
+        "page_number": 1,
+        "source_hash": "a" * 64,
+        "pdf_width": 10.0,
+        "pdf_height": 10.0,
+        "image_sha256": hashlib.sha256(page_bytes).hexdigest(),
+    }
+    (page_directory / "page-0001.json").write_text(
+        json.dumps(metadata),
+        encoding="utf-8",
+    )
+
+
 def _workspace(path: Path) -> Path:
     path.mkdir(parents=True)
     evidence = path / "evidence"
@@ -128,6 +150,7 @@ def _workspace(path: Path) -> Path:
     )
     connection.commit()
     connection.close()
+    _write_page_assets(path)
     return path
 
 
@@ -239,6 +262,7 @@ def test_finalize_writes_packet_html_manifest_and_published_packet(
     html = result.review_html.read_text(encoding="utf-8")
     assert "Machine evaluation is not the final decision" in html
     assert "9.375%" in html
+    assert "data:image/png;base64," in html
 
 
 def test_finalize_refuses_existing_publication(tmp_path: Path) -> None:
@@ -269,6 +293,31 @@ def test_finalize_refuses_existing_publication(tmp_path: Path) -> None:
             second_b,
             publish=True,
         )
+
+
+def test_finalize_refuses_missing_verified_page_assets(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_run(
+        workspace,
+        _write_request(tmp_path / "request.json"),
+    )
+    track_a, track_b = _write_tracks(tmp_path, prepared.run_id)
+    for path in (workspace / "page-images").rglob("*"):
+        if path.is_file():
+            path.unlink()
+
+    with pytest.raises(FileNotFoundError, match="verified page image"):
+        finalize_review_run(
+            workspace,
+            prepared.run_id,
+            track_a,
+            track_b,
+            publish=True,
+        )
+
+    assert not (prepared.run_directory / "final-review-packet.json").exists()
+    assert not (prepared.run_directory / "review.html").exists()
+    assert not (workspace / "runs" / "final-review-packet.json").exists()
 
 
 def test_prepare_rejects_invalid_request_before_creating_runs(tmp_path: Path) -> None:
