@@ -71,7 +71,12 @@ def _load_citation(value: object, index: int) -> Citation:
         revision_id=_string(payload.get("revision_id"), "revision_id"),
         page_number=page_number,
         evidence_id=_string(payload.get("evidence_id"), "evidence_id"),
-        bbox=BBox(*(float(item) for item in bbox_items)),
+        bbox=BBox(
+            left=float(cast(int | float, bbox_items[0])),
+            bottom=float(cast(int | float, bbox_items[1])),
+            right=float(cast(int | float, bbox_items[2])),
+            top=float(cast(int | float, bbox_items[3])),
+        ),
         source_hash=source_hash,
     )
 
