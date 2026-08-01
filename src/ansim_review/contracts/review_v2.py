@@ -215,6 +215,8 @@ def _validate_claims(
                     continue
                 raise ValueError(f"unresolved claim citation: {citation_id}")
             cited_records.append(record)
+        if compatibility_source_version == 1:
+            continue
         evidence_tokens = {
             token for record in cited_records for token in record.numeric_tokens
         }
