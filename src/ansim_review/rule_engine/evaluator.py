@@ -121,13 +121,13 @@ def _evaluate_node(
     node_type = next(iter(node))
     body = node[node_type]
     if node_type == "all":
-        calc_ids: set[str] = set()
+        all_calc_ids: set[str] = set()
         for child in cast(Sequence[Mapping[str, object]], body):
             passed, child_ids = _evaluate_node(child, rule, inputs, calculations)
-            calc_ids.update(child_ids)
+            all_calc_ids.update(child_ids)
             if not passed:
-                return False, tuple(sorted(calc_ids))
-        return True, tuple(sorted(calc_ids))
+                return False, tuple(sorted(all_calc_ids))
+        return True, tuple(sorted(all_calc_ids))
     if node_type == "any":
         any_calc_ids: set[str] = set()
         for child in cast(Sequence[Mapping[str, object]], body):
@@ -137,10 +137,10 @@ def _evaluate_node(
                 return True, tuple(sorted(any_calc_ids))
         return False, tuple(sorted(any_calc_ids))
     if node_type == "not":
-        passed, calc_ids = _evaluate_node(
+        passed, child_calc_ids = _evaluate_node(
             cast(Mapping[str, object], body), rule, inputs, calculations
         )
-        return not passed, calc_ids
+        return not passed, child_calc_ids
     if node_type == "exists":
         name = str(cast(Mapping[str, object], body)["input"])
         return name in inputs and inputs[name] is not None, ()
