@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+import importlib
+import json
+from pathlib import Path
+
+from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.codecs import decode_review_packet
+from ansim_review.contracts.review_v2 import review_packet_v2_document
+
+FIXTURES = Path(__file__).parents[2] / "golden" / "contracts"
+
+
+def _adapter():  # type: ignore[no-untyped-def]
+    return importlib.import_module(
+        "ansim_review.contracts.adapters.review_v1_to_v2"
+    )
+
+
+def _adapt(name: str):  # type: ignore[no-untyped-def]
+    adapter = _adapter()
+    packet = decode_review_packet(json.loads((FIXTURES / name).read_bytes()))
+    return adapter.adapt_review_packet_v1_to_v2(
+        packet,
+        case_id="CASE-LEGACY",
+        snapshot_sha256="1" * 64,
+        rule_manifest_sha256="2" * 64,
+        formula_manifest_sha256="3" * 64,
+    )
+
+
+def test_ready_v1_packet_adapts_without_inventing_drawing_evidence() -> None:
+    adapted = _adapt("review-packet-v1-ready.json")
+    document = review_packet_v2_document(adapted)
+
+    assert document["format"] == "ansim/review-packet"
+    assert document["version"] == 2
+    assert document["finalizer_status"] == "READY_FOR_HUMAN_REVIEW"
+    assert document["drawing_evidence"] == []
+    assert document["confirmed_inputs"] == []
+    assert document["evidence"] == []
+    assert document["compatibility_source_version"] == 1
+    assert document["human_decision"] is None
+
+
+def test_abstain_v1_packet_preserves_abstention_reasons() -> None:
+    adapted = _adapt("review-packet-v1-abstain.json")
+    document = review_packet_v2_document(adapted)
+
+    assert document["finalizer_status"] == "ABSTAIN"
+    assert document["abstention_reasons"] == ["MISSING_REQUIRED_INPUT"]
+
+
+def test_adapter_output_is_byte_equivalent_across_repeated_runs() -> None:
+    first = dump_bytes(
+        review_packet_v2_document(_adapt("review-packet-v1-ready.json"))
+    )
+    second = dump_bytes(
+        review_packet_v2_document(_adapt("review-packet-v1-ready.json"))
+    )
+    assert first == second
