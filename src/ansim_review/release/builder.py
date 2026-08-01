@@ -15,6 +15,7 @@ from ansim_review.release.acceptance import validate_acceptance_record
 from ansim_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
     ReleaseConfig,
+    resolve_acceptance_record,
     resolve_evidence_database,
 )
 from ansim_review.release.validator import validate_release_workspace
@@ -108,7 +109,7 @@ def build_evidence_release(
     reasons: list[str] = []
     if validation["status"] != "PASS":
         reasons.append("AUTOMATED_VALIDATION_FAILED")
-    acceptance_path = config.acceptance_path(workspace_root)
+    acceptance_path = resolve_acceptance_record(workspace_root, config)
     acceptance: dict[str, object] | None = None
     if not acceptance_path.is_file():
         reasons.append("MANUAL_ACCEPTANCE_MISSING")
