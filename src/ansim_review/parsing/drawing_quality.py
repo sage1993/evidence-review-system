@@ -13,6 +13,7 @@ from ansim_review.contracts.drawing import (
     decode_drawing_quality,
     drawing_quality_document,
 )
+from ansim_review.contracts.formats import DRAWING_QUALITY_FORMAT
 from ansim_review.contracts.validation import expect_sha256, expect_string
 from ansim_review.contracts.workflow import ReasonCode
 from ansim_review.parsing.drawing_case import (
@@ -195,7 +196,7 @@ def drawing_quality_result_document(
 ) -> dict[str, object]:
     """Return a source-bound canonical quality artifact."""
     return {
-        "format": "ansim/drawing-quality",
+        "format": DRAWING_QUALITY_FORMAT,
         "version": 1,
         "source_sha256": expect_sha256(source_sha256, "source_sha256"),
         "policy_id": expect_string(result.policy_id, "policy_id"),
