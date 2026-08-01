@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import cast
 
-from ansim_review.retrieval.fusion import fusion_document, fuse_hits
+from ansim_review.retrieval.fusion import fuse_hits, fusion_document
 from ansim_review.retrieval.graph import traverse_relations
 from ansim_review.retrieval.index import require_fresh_index, search_fts
 from ansim_review.retrieval.models import ChannelScore, RetrievalHit
