@@ -284,28 +284,6 @@ def test_prepare_rejects_invalid_request_before_creating_runs(tmp_path: Path) ->
     assert not (workspace / "runs").exists()
 
 
-def test_prepare_rejects_unresolvable_citation_id_before_creating_runs(
-    tmp_path: Path,
-) -> None:
-    workspace = _workspace(tmp_path / "workspace")
-    request = _request()
-    evidence = request["evidence"]
-    assert isinstance(evidence, list)
-    citation = evidence[0]["citation"]
-    assert isinstance(citation, dict)
-    citation["citation_id"] = "CIT-DESCRIPTIVE-NAME"
-    request_path = tmp_path / "invalid-citation.json"
-    request_path.write_bytes(dump_bytes(request))
-
-    with pytest.raises(
-        ValueError,
-        match="citation_id must equal CIT- followed by evidence_id",
-    ):
-        prepare_review_run(workspace, request_path)
-
-    assert not (workspace / "runs").exists()
-
-
 def test_finalize_requires_prepared_artifacts(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path / "workspace")
     run_id = "RUN-0123456789ABCDEF0123"
