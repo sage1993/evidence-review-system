@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from ansim_review.contracts.source_batch import decode_source_batch
-from ansim_review.parsing.source_batch_importer import prepare_source_batch
+from ansim_review.parsing.source_batch_importer import (
+    PendingParserOutputError,
+    import_source_batch,
+    prepare_source_batch,
+)
 
 
 def _source(
@@ -136,3 +142,71 @@ def test_declared_parser_must_exist(tmp_path: Path) -> None:
                 )
             ),
         )
+
+
+def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "inputs" / "original" / "사용자-제공-기준.pdf"
+    parser = tmp_path / "inputs" / "parser" / "result.json"
+    source.parent.mkdir(parents=True)
+    parser.parent.mkdir(parents=True)
+    source.write_bytes(b"%PDF-1.7\narbitrary-user-document")
+    parser.write_text(
+        json.dumps(
+            {
+                "file name": source.name,
+                "number of pages": 1,
+                "title": "사용자 제공 기준",
+                "kids": [
+                    {
+                        "type": "paragraph",
+                        "page number": 1,
+                        "bounding box": [10, 20, 100, 40],
+                        "content": "임의 문서의 검토 기준 내용",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "evidence" / "evidence.sqlite"
+
+    report = import_source_batch(
+        tmp_path,
+        _batch(
+            _source(
+                "inputs/original/사용자-제공-기준.pdf",
+                parser_path="inputs/parser/result.json",
+            )
+        ),
+        output,
+    )
+
+    assert report.counts["documents"] == 1
+    assert report.counts["elements"] == 1
+    assert output.is_file()
+    with sqlite3.connect(output) as connection:
+        title = connection.execute("SELECT title FROM documents").fetchone()
+        indexed = connection.execute("SELECT COUNT(*) FROM retrieval_records").fetchone()
+    assert title == ("사용자 제공 기준",)
+    assert indexed == (1,)
+
+
+def test_import_refuses_pending_parser_without_creating_empty_database(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "inputs" / "original" / "document.pdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"document")
+    output = tmp_path / "evidence.sqlite"
+
+    with pytest.raises(PendingParserOutputError, match="PENDING_PARSER_OUTPUT"):
+        import_source_batch(
+            tmp_path,
+            _batch(_source("inputs/original/document.pdf")),
+            output,
+        )
+
+    assert not output.exists()
