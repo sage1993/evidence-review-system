@@ -15,7 +15,7 @@ class UnsupportedSchemaVersion(RuntimeError):
     """Raised when an evidence database schema is unknown or too new."""
 
 
-_V1_COLUMNS: dict[str, tuple[str, ...]] = {
+_COMMON_COLUMNS: dict[str, tuple[str, ...]] = {
     "documents": ("id", "title"),
     "revisions": (
         "id",
@@ -25,6 +25,22 @@ _V1_COLUMNS: dict[str, tuple[str, ...]] = {
         "page_count",
     ),
     "pages": ("id", "revision_id", "page_number", "width", "height"),
+    "clauses": (
+        "id",
+        "revision_id",
+        "title",
+        "raw_text",
+        "normalized_text",
+        "review_status",
+    ),
+    "links": ("id", "source_id", "target_id", "relation_type"),
+    "review_flags": ("id", "evidence_id", "code", "status", "detail"),
+    "snapshot_meta": ("key", "value"),
+    "retrieval_meta": ("key", "value"),
+}
+
+_V1_COLUMNS: dict[str, tuple[str, ...]] = {
+    **_COMMON_COLUMNS,
     "elements": (
         "id",
         "revision_id",
@@ -37,14 +53,6 @@ _V1_COLUMNS: dict[str, tuple[str, ...]] = {
         "raw_payload_hash",
         "bbox_json",
         "parser_order",
-    ),
-    "clauses": (
-        "id",
-        "revision_id",
-        "title",
-        "raw_text",
-        "normalized_text",
-        "review_status",
     ),
     "tables": (
         "id",
@@ -64,9 +72,6 @@ _V1_COLUMNS: dict[str, tuple[str, ...]] = {
         "bbox_json",
         "duplicate_group",
     ),
-    "links": ("id", "source_id", "target_id", "relation_type"),
-    "review_flags": ("id", "evidence_id", "code", "status", "detail"),
-    "snapshot_meta": ("key", "value"),
     "retrieval_records": (
         "evidence_id",
         "evidence_type",
@@ -79,7 +84,60 @@ _V1_COLUMNS: dict[str, tuple[str, ...]] = {
         "raw_text",
         "normalized_text",
     ),
-    "retrieval_meta": ("key", "value"),
+}
+
+_V2_COLUMNS: dict[str, tuple[str, ...]] = {
+    **_COMMON_COLUMNS,
+    "schema_meta": ("key", "value"),
+    "elements": (
+        "id",
+        "page_id",
+        "element_type",
+        "raw_json",
+        "raw_text",
+        "normalized_text",
+        "raw_payload_hash",
+        "bbox_json",
+        "parser_order",
+    ),
+    "tables": (
+        "id",
+        "page_id",
+        "bbox_json",
+        "raw_json",
+        "normalized_json",
+    ),
+    "visuals": (
+        "id",
+        "page_id",
+        "kind",
+        "relative_path",
+        "sha256",
+        "bbox_json",
+        "duplicate_group",
+    ),
+    "retrieval_records": (
+        "evidence_id",
+        "evidence_type",
+        "document_id",
+        "revision_id",
+        "page_id",
+        "page_number",
+        "bbox_json",
+        "source_hash",
+        "title",
+        "raw_text",
+        "normalized_text",
+    ),
+}
+
+_FTS_TABLES = {
+    "evidence_fts",
+    "evidence_fts_config",
+    "evidence_fts_content",
+    "evidence_fts_data",
+    "evidence_fts_docsize",
+    "evidence_fts_idx",
 }
 
 
@@ -98,13 +156,31 @@ def _columns(connection: sqlite3.Connection, table: str) -> tuple[str, ...]:
     )
 
 
-def _is_exact_v1_shape(connection: sqlite3.Connection) -> bool:
-    for table, expected_columns in _V1_COLUMNS.items():
+def _table_names(connection: sqlite3.Connection) -> set[str]:
+    return {
+        str(row[0])
+        for row in connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            """
+        ).fetchall()
+    }
+
+
+def _is_exact_shape(
+    connection: sqlite3.Connection,
+    expected: dict[str, tuple[str, ...]],
+) -> bool:
+    for table, expected_columns in expected.items():
         if not _table_exists(connection, table):
             return False
         if _columns(connection, table) != expected_columns:
             return False
-    return _table_exists(connection, "evidence_fts")
+    if not _table_exists(connection, "evidence_fts"):
+        return False
+    return _table_names(connection) == set(expected) | _FTS_TABLES
 
 
 def detect_schema_version(connection: sqlite3.Connection) -> int:
@@ -125,9 +201,17 @@ def detect_schema_version(connection: sqlite3.Connection) -> int:
             raise UnsupportedSchemaVersion(
                 f"unsupported evidence schema version: {version}"
             )
+        if version == SCHEMA_VERSION and not _is_exact_shape(connection, _V2_COLUMNS):
+            raise UnsupportedSchemaVersion(
+                f"evidence schema version {version} shape is invalid"
+            )
+        if version == 1:
+            raise UnsupportedSchemaVersion(
+                "schema version 1 metadata does not match the recognized legacy shape"
+            )
         return version
 
-    if _is_exact_v1_shape(connection):
+    if _is_exact_shape(connection, _V1_COLUMNS):
         return 1
 
     raise UnsupportedSchemaVersion("unrecognized evidence schema")
