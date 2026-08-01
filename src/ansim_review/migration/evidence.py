@@ -1,4 +1,4 @@
-"""Preserve reviewed evidence across deterministic Ansim rebuilds."""
+"""Preserve reviewed evidence across deterministic workspace rebuilds."""
 from __future__ import annotations
 
 import json
@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from ansim_review.canonical_json import dump_bytes, sha256_json
+from ansim_review.contracts.formats import UNRESOLVED_LINKS_FORMAT
 
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -123,7 +124,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
 def migrate_evidence(workspace_root: Path, output_root: Path) -> dict[str, object]:
     """Rebuild records while preserving reviewed identical sources only."""
     records = _load_records(workspace_root)
-    database = output_root / "evidence" / "ansim-evidence.sqlite"
+    database = output_root / "evidence" / "evidence.sqlite"
     database.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(database)
     unresolved: list[dict[str, object]] = []
@@ -209,7 +210,7 @@ def migrate_evidence(workspace_root: Path, output_root: Path) -> dict[str, objec
         {json.dumps(item, ensure_ascii=False, sort_keys=True) for item in unresolved}
     )
     unresolved_document = {
-        "format": "ansim/unresolved-links",
+        "format": UNRESOLVED_LINKS_FORMAT,
         "version": 1,
         "items": [json.loads(item) for item in unique],
     }
