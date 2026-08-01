@@ -54,24 +54,20 @@ def test_contribution_accepts_page_relative_records() -> None:
     assert contribution.elements[0].page_number == 1
 
 
-@pytest.mark.parametrize(
-    ("dimensions", "match"),
-    [
-        ((PageDimensions(2, 100.0, 200.0),), "PARSER_PAGE_SEQUENCE"),
-        ((PageDimensions(1, 0.0, 200.0),), "page dimensions must be positive"),
-    ],
-)
-def test_page_dimensions_are_contiguous_and_positive(
-    dimensions: tuple[PageDimensions, ...], match: str
-) -> None:
-    with pytest.raises(ValueError, match=match):
+def test_page_dimensions_must_start_at_one() -> None:
+    with pytest.raises(ValueError, match="PARSER_PAGE_SEQUENCE"):
         NormalizedParserContribution(
-            page_dimensions=dimensions,
+            page_dimensions=(PageDimensions(2, 100.0, 200.0),),
             elements=(),
             tables=(),
             visuals=(),
             parser_artifact_sha256="a" * 64,
         )
+
+
+def test_page_dimensions_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="page dimensions must be positive"):
+        PageDimensions(1, 0.0, 200.0)
 
 
 def test_contribution_rejects_record_for_unknown_page() -> None:
