@@ -9,6 +9,7 @@ from ansim_review.llm_layer.track_a import (
     build_track_a_bundle,
     validate_track_a_output,
 )
+from ansim_review.llm_layer.validators import validate_track_a_integrity
 
 
 def _bundle():
@@ -93,3 +94,27 @@ def test_valid_track_a_output_is_reduced_to_claim_contract() -> None:
     assert result.draft.claims[0].claim_id == "CL1"
     assert result.citation_ids == ("C1",)
     assert result.calculation_result_ids == ("CALC1",)
+
+
+def test_llm_authored_rounded_percentage_is_rejected() -> None:
+    payload = _valid_output()
+    payload["claims"][0]["text"] = "접면 비율은 9.4%이다."
+    payload["claims"][0]["numeric_tokens"] = ["9.4%"]
+    validated = validate_track_a_output(payload, _bundle())
+    with pytest.raises(ValueError, match="unregistered numeric token: 9.4%"):
+        validate_track_a_integrity(validated, _bundle())
+
+
+def test_exact_math_value_and_rule_reference_are_accepted() -> None:
+    bundle = _bundle()
+    validated = validate_track_a_output(_valid_output(), bundle)
+    validate_track_a_integrity(validated, bundle)
+
+
+def test_rule_reference_hash_or_status_mismatch_is_rejected() -> None:
+    payload = _valid_output()
+    payload["claims"][0]["rule_references"][0]["result_hash"] = "d" * 64
+    bundle = _bundle()
+    validated = validate_track_a_output(payload, bundle)
+    with pytest.raises(ValueError, match="rule result reference mismatch"):
+        validate_track_a_integrity(validated, bundle)
