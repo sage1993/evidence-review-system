@@ -24,6 +24,24 @@ def _text(value: object) -> str:
     return "" if value is None else escape(str(value), quote=True)
 
 
+def _page_number(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("citation page_number must be a positive integer")
+    return value
+
+
+def _bbox(value: object) -> list[float]:
+    items = _sequence(value, "bbox")
+    if len(items) != 4:
+        raise ValueError("citation bbox must have four values")
+    result: list[float] = []
+    for item in items:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ValueError("citation bbox must contain numbers")
+        result.append(float(item))
+    return result
+
+
 def _page_image(page_root: Path, revision_id: str, page_number: int) -> str | None:
     candidates = (
         page_root / revision_id / f"page-{page_number:04d}.png",
@@ -40,12 +58,8 @@ def _page_image(page_root: Path, revision_id: str, page_number: int) -> str | No
 def _citation_html(value: object, page_root: Path) -> str:
     citation = _mapping(value, "citation")
     revision_id = str(citation.get("revision_id", ""))
-    page_number = int(citation.get("page_number", 0))
-    bbox_values = [
-        float(item) for item in _sequence(citation.get("bbox", []), "bbox")
-    ]
-    if len(bbox_values) != 4:
-        raise ValueError("citation bbox must have four values")
+    page_number = _page_number(citation.get("page_number"))
+    bbox_values = _bbox(citation.get("bbox", []))
     left, bottom, right, top = bbox_values
     bbox_text = ",".join(str(item) for item in bbox_values)
     image = _page_image(page_root, revision_id, page_number)
