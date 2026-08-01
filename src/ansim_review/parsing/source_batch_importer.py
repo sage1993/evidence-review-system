@@ -242,9 +242,7 @@ def _source_records(
             elements.append(
                 {
                     "id": element.element_id,
-                    "revision_id": source.revision_id,
                     "page_id": f"{source.revision_id}-P{element.page_number:04d}",
-                    "page_number": element.page_number,
                     "element_type": element.element_type,
                     "raw_json": element.raw_payload,
                     "raw_text": element.raw_text,
