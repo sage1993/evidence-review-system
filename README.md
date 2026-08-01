@@ -319,7 +319,6 @@ python -m compileall -q src scripts web_runtime tests
 - [ChatGPT Web 작업 절차](docs/CHATGPT_WEB_WORKFLOW.md)
 - [검토자 작업 절차](docs/REVIEWER_WORKFLOW.md)
 - [릴리스 acceptance 체크리스트](docs/acceptance/ANSIM_ACCEPTANCE_CHECKLIST.md)
-- [v1.0 릴리스 게이트](releases/ansim-v1.0/README.md)
 
 ## 안전 경계
 
