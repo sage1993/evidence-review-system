@@ -11,10 +11,15 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.formats import RELEASE_VALIDATION_FORMAT
 from ansim_review.network_guard import offline_guard_context
 from ansim_review.offline_policy import APPLICATION_OFFLINE_GUARD, POLICY_VERSION
 from ansim_review.offline_scanner import scan_source_tree
 from ansim_review.packaging.web_bundle import build_web_runtime_zip
+from ansim_review.release.config import (
+    DEFAULT_RELEASE_CONFIG,
+    resolve_evidence_database,
+)
 from ansim_review.release.offline_boundary import resolve_manifest_member
 
 
@@ -120,11 +125,11 @@ def validate_release_workspace(
         workspace_root / "src" / "ansim_review"
     )
     sqlite_result = _sqlite_checks(
-        workspace_root / "evidence" / "ansim-evidence.sqlite"
+        resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG)
     )
     manifests = _manifest_checks(workspace_root)
     with tempfile.TemporaryDirectory(
-        prefix="ansim-release-validation-"
+        prefix="evidence-review-release-validation-"
     ) as temporary:
         first = Path(temporary) / "first.zip"
         second = Path(temporary) / "second.zip"
@@ -144,7 +149,7 @@ def validate_release_workspace(
     if not reproducible:
         errors.append("NON_REPRODUCIBLE_WEB_ZIP")
     report: dict[str, object] = {
-        "format": "ansim/release-validation",
+        "format": RELEASE_VALIDATION_FORMAT,
         "version": 1,
         "status": "PASS" if not errors else "FAIL",
         "errors": errors,
