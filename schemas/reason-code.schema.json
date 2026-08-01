@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ansim-review.local/schemas/reason-code.schema.json",
+  "title": "Review workflow reason code",
+  "type": "string",
+  "enum": [
+    "SOURCE_CONFLICT",
+    "SOURCE_HASH_MISMATCH",
+    "MISSING_REQUIRED_INPUT",
+    "UNAPPROVED_RULE",
+    "MISSING_FORMULA",
+    "STALE_SNAPSHOT",
+    "MATH_ENGINE_ERROR",
+    "CITATION_AUDIT_FAILED",
+    "TRACK_B_REJECTED",
+    "ROLE_CONFIRMATION_REQUIRED",
+    "DRAWING_QUALITY_REJECTED",
+    "DRAWING_CONFIRMATION_REQUIRED"
+  ]
+}
