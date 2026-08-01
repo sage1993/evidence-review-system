@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ansim_review.contracts.drawing import (
@@ -126,7 +126,7 @@ def persist_confirmation(
     validated = _validated_confirmation(confirmation)
     validate_confirmation_for_candidate(candidate, validated)
     timestamp = parse_confirmation_time(validated.confirmed_at)
-    utc_token = timestamp.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    utc_token = timestamp.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     filename = f"{utc_token}-{reviewer_token}-{validated.confirmation_id}.json"
     relative_path = f"confirmations/{filename}"
     path = case_artifact_path(case_dir, relative_path)
