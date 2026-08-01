@@ -1,4 +1,4 @@
-"""Build deterministic Ansim release candidates behind explicit gates."""
+"""Build deterministic evidence-review release candidates behind explicit gates."""
 from __future__ import annotations
 
 import hashlib
@@ -8,9 +8,15 @@ import zipfile
 from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes, sha256_json
+from ansim_review.contracts.formats import RELEASE_FORMAT
 from ansim_review.packaging.codex_bundle import build_codex_bundle
 from ansim_review.packaging.web_bundle import build_web_runtime_zip
 from ansim_review.release.acceptance import validate_acceptance_record
+from ansim_review.release.config import (
+    DEFAULT_RELEASE_CONFIG,
+    ReleaseConfig,
+    resolve_evidence_database,
+)
 from ansim_review.release.validator import validate_release_workspace
 
 _FIXED_TIME = (1980, 1, 1, 0, 0, 0)
@@ -59,16 +65,18 @@ def _artifact_entries(output: Path) -> list[dict[str, object]]:
     ]
 
 
-def build_ansim_release(
+def build_evidence_release(
     workspace_root: Path,
     output_directory: Path,
+    *,
+    config: ReleaseConfig = DEFAULT_RELEASE_CONFIG,
 ) -> dict[str, object]:
-    """Build candidate artifacts and mark ready only after human acceptance."""
+    """Build generic release artifacts and gate readiness on acceptance."""
     if output_directory.exists():
         raise FileExistsError(output_directory)
     output_directory.mkdir(parents=True)
 
-    evidence = workspace_root / "evidence" / "ansim-evidence.sqlite"
+    evidence = resolve_evidence_database(workspace_root, config)
     packet = workspace_root / "runs" / "final-review-packet.json"
     if not evidence.is_file():
         raise FileNotFoundError(evidence)
@@ -77,7 +85,7 @@ def build_ansim_release(
     shutil.copyfile(evidence, output_directory / "evidence.sqlite")
     shutil.copyfile(packet, output_directory / "final-review-packet.json")
 
-    with tempfile.TemporaryDirectory(prefix="ansim-release-build-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="evidence-review-release-build-") as temporary:
         temp = Path(temporary)
         codex = temp / "codex-workspace"
         build_codex_bundle(workspace_root, codex)
@@ -100,9 +108,7 @@ def build_ansim_release(
     reasons: list[str] = []
     if validation["status"] != "PASS":
         reasons.append("AUTOMATED_VALIDATION_FAILED")
-    acceptance_path = (
-        workspace_root / "releases" / "ansim-v1.0" / "acceptance-record.json"
-    )
+    acceptance_path = config.acceptance_path(workspace_root)
     acceptance: dict[str, object] | None = None
     if not acceptance_path.is_file():
         reasons.append("MANUAL_ACCEPTANCE_MISSING")
@@ -119,12 +125,12 @@ def build_ansim_release(
     if acceptance is not None and status == "RELEASE_READY":
         shutil.copyfile(
             acceptance_path,
-            output_directory / "acceptance-record.json",
+            output_directory / config.acceptance_record_name,
         )
     manifest = {
-        "format": "ansim/release",
+        "format": RELEASE_FORMAT,
         "version": 1,
-        "release": "ansim-v1.0",
+        "release": config.release_id,
         "status": status,
         "reason_codes": reasons,
         "candidate_hash": candidate_hash,
@@ -137,3 +143,11 @@ def build_ansim_release(
         dump_bytes(manifest)
     )
     return manifest
+
+
+def build_ansim_release(
+    workspace_root: Path,
+    output_directory: Path,
+) -> dict[str, object]:
+    """Compatibility wrapper for the original public Python function name."""
+    return build_evidence_release(workspace_root, output_directory)
