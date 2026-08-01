@@ -45,7 +45,7 @@ def test_reviewed_value_survives_identical_rebuild_and_revision_change_flags(
         [_record("a" * 64, "자동 재생성값", "AUTOMATIC", "REV1")],
     )
     migrate_evidence(workspace, output)
-    database = output / "evidence/ansim-evidence.sqlite"
+    database = output / "evidence/evidence.sqlite"
     connection = sqlite3.connect(database)
     row = connection.execute(
         "SELECT normalized_text, review_status FROM migration_records"
@@ -68,4 +68,5 @@ def test_reviewed_value_survives_identical_rebuild_and_revision_change_flags(
     unresolved = json.loads(
         (output / "migration/unresolved-links.json").read_text(encoding="utf-8")
     )
+    assert unresolved["format"] == "evidence-review/unresolved-links"
     assert unresolved["items"][0]["code"] == "SOURCE_REVISION_REVIEW_REQUIRED"

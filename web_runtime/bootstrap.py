@@ -9,8 +9,9 @@ from pathlib import Path
 
 
 def self_test(root: Path) -> None:
+    database = root / "evidence/evidence.sqlite"
     required = [
-        root / "evidence/ansim-evidence.sqlite",
+        database,
         root / "rules/manifests/active.json",
         root / "formulas/manifest.json",
         root / "examples/sample-request.json",
@@ -27,7 +28,7 @@ def self_test(root: Path) -> None:
         if hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
             raise SystemExit(f"hash mismatch: {item['path']}")
     try:
-        connection = sqlite3.connect(root / "evidence/ansim-evidence.sqlite")
+        connection = sqlite3.connect(database)
         connection.execute("PRAGMA integrity_check").fetchone()
         connection.close()
     except sqlite3.DatabaseError:

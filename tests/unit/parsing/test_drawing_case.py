@@ -40,7 +40,7 @@ def test_write_canonical_create_only_refuses_overwrite(tmp_path: Path) -> None:
 
 def test_case_manifest_round_trips_explicit_empty_collections() -> None:
     manifest = CaseManifest(
-        format="ansim/case-manifest",
+        format="evidence-review/case-manifest",
         version=1,
         case_id="CASE-001",
         policy_id="DRAWING-INTAKE-1",

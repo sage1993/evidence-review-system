@@ -19,6 +19,7 @@ from ansim_review.contracts.drawing import (
     decode_confirmed_input,
     geometry_document,
 )
+from ansim_review.contracts.formats import CONFIRMED_INPUT_SET_FORMAT
 from ansim_review.contracts.validation import expect_string
 from ansim_review.parsing.drawing_case import (
     CaseManifestEntry,
@@ -177,7 +178,7 @@ def confirmed_inputs_document(
     ]
     ordered = sorted(validated, key=lambda item: (item.field, item.input_id))
     return {
-        "format": "ansim/confirmed-input-set",
+        "format": CONFIRMED_INPUT_SET_FORMAT,
         "version": 1,
         "inputs": [confirmed_input_document(item) for item in ordered],
     }

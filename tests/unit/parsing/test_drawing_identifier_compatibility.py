@@ -16,7 +16,7 @@ def test_drawing_artifact_ids_reuse_shared_identifier_policy() -> None:
 
 def test_case_manifest_accepts_shared_dotted_identifier() -> None:
     manifest = CaseManifest(
-        format="ansim/case-manifest",
+        format="evidence-review/case-manifest",
         version=1,
         case_id="CASE.2026-001",
         policy_id="DRAWING-INTAKE-1",

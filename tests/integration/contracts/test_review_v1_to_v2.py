@@ -48,7 +48,7 @@ def test_ready_v1_packet_adapts_without_inventing_drawing_evidence() -> None:
     adapted = _adapt("review-packet-v1-ready.json")
     document = review_packet_v2_document(adapted)
 
-    assert document["format"] == "ansim/review-packet"
+    assert document["format"] == "evidence-review/review-packet"
     assert document["version"] == 2
     assert document["finalizer_status"] == "READY_FOR_HUMAN_REVIEW"
     assert document["drawing_evidence"] == []

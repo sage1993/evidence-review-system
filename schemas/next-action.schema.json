@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ansim-review.local/schemas/next-action.schema.json",
+  "$id": "https://evidence-review.local/schemas/next-action.schema.json",
   "title": "Agent-mediated next action",
   "type": "object",
   "additionalProperties": false,
@@ -17,7 +17,7 @@
     "track_a_validated"
   ],
   "properties": {
-    "format": {"const": "ansim/next-action"},
+    "format": {"const": "evidence-review/next-action"},
     "version": {"const": 1},
     "run_id": {"type": "string", "minLength": 1},
     "workflow_state": {"enum": ["WAITING_TRACK_A", "WAITING_TRACK_B"]},
