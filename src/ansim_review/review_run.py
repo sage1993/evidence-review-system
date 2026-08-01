@@ -233,10 +233,14 @@ def _decode_request(path: Path) -> tuple[
     calculation_ids = [item.calculation_result_id for item in calculations]
     if len(calculation_ids) != len(set(calculation_ids)):
         raise ValueError("calculation_result_ids must be unique")
-    for result in calculations:
-        if result.formula_manifest_hash is None or result.result_hash is None:
+    for calculation_result in calculations:
+        if (
+            calculation_result.formula_manifest_hash is None
+            or calculation_result.result_hash is None
+        ):
             raise ValueError(
-                f"calculation result is not finalized: {result.calculation_result_id}"
+                "calculation result is not finalized: "
+                f"{calculation_result.calculation_result_id}"
             )
 
     rules = tuple(
@@ -246,9 +250,11 @@ def _decode_request(path: Path) -> tuple[
     rule_ids = [item.rule_result_id for item in rules]
     if len(rule_ids) != len(set(rule_ids)):
         raise ValueError("rule_result_ids must be unique")
-    for result in rules:
-        if result.result_hash is None:
-            raise ValueError(f"rule result is not finalized: {result.rule_result_id}")
+    for rule_result in rules:
+        if rule_result.result_hash is None:
+            raise ValueError(
+                f"rule result is not finalized: {rule_result.rule_result_id}"
+            )
 
     approved = tuple(
         _string(item, f"approved_rule_result_ids[{index}]")
