@@ -41,7 +41,10 @@ def source_pairs(root: Path) -> tuple[tuple[Path, Path, dict[str, Any]], ...]:
     for parser_path in sorted(source_dir.glob("*.json")):
         payload = read_json(parser_path)
         file_name = payload.get("file name")
-        pdf_path = source_dir / file_name if isinstance(file_name, str) and file_name else parser_path.with_suffix(".pdf")
+        if isinstance(file_name, str) and file_name:
+            pdf_path = source_dir / file_name
+        else:
+            pdf_path = parser_path.with_suffix(".pdf")
         if pdf_path.is_file():
             pairs.append((pdf_path, parser_path, payload))
     if not pairs:

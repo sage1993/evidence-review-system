@@ -120,7 +120,9 @@ def _source_records(
                 }
             )
 
-    sorter = lambda record: str(record["id"])
+    def sorter(record: dict[str, Any]) -> str:
+        return str(record["id"])
+
     return (
         tuple(sorted(documents, key=sorter)),
         tuple(sorted(revisions, key=sorter)),

@@ -15,7 +15,7 @@ class EvidenceStore:
         self.path = path
         self.connection: sqlite3.Connection | None = None
 
-    def __enter__(self) -> "EvidenceStore":
+    def __enter__(self) -> EvidenceStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
