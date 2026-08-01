@@ -7,6 +7,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
+from ansim_review.contracts.review import ReviewPacket
+
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
@@ -29,7 +31,7 @@ def _string(value: object, field: str, *, allow_empty: bool = False) -> str:
 def _packet_document(packet: object) -> Mapping[str, object]:
     if isinstance(packet, Mapping):
         return _mapping(packet, "packet")
-    if hasattr(packet, "__dataclass_fields__"):
+    if isinstance(packet, ReviewPacket):
         from ansim_review.abstention.finalizer import review_packet_document
 
         return _mapping(review_packet_document(packet), "packet")
@@ -45,11 +47,14 @@ def _evidence_id(citation_id: str) -> str:
 def _bbox(value: object) -> list[float]:
     parsed = json.loads(_string(value, "bbox_json"))
     items = _sequence(parsed, "bbox_json")
-    if len(items) != 4 or any(
-        isinstance(item, bool) or not isinstance(item, (int, float)) for item in items
-    ):
+    if len(items) != 4:
         raise ValueError("bbox_json must contain four numbers")
-    return [float(item) for item in items]
+    result: list[float] = []
+    for item in items:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ValueError("bbox_json must contain four numbers")
+        result.append(float(item))
+    return result
 
 
 def _resolve_citation(
@@ -85,6 +90,16 @@ def _list_of_mappings(value: object, field: str) -> list[dict[str, object]]:
         dict(_mapping(item, f"{field}[{index}]"))
         for index, item in enumerate(_sequence(value, field))
     ]
+
+
+def _exception_codes(rules: Sequence[Mapping[str, object]]) -> list[str]:
+    codes: set[str] = set()
+    for index, rule in enumerate(rules):
+        for item in _sequence(rule.get("reason_codes", []), f"rules[{index}].reason_codes"):
+            code = _string(item, f"rules[{index}].reason_codes")
+            if "EXCEPTION" in code:
+                codes.add(code)
+    return sorted(codes)
 
 
 def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, object]:
@@ -123,15 +138,9 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
             document.get("abstention_reasons", []), "abstention_reasons"
         )
     ]
-    rules = _list_of_mappings(document.get("rules", []), "rules")
-    exceptions = sorted(
-        {
-            code
-            for rule in rules
-            for code in rule.get("reason_codes", [])
-            if isinstance(code, str) and "EXCEPTION" in code
-        }
-    )
+    rule_documents = _list_of_mappings(document.get("rules", []), "rules")
+    rules: list[Mapping[str, object]] = rule_documents
+    exceptions = _exception_codes(rules)
     conflicts = [reason for reason in reasons if "CONFLICT" in reason]
     confidence_value = document.get("confidence")
     confidence = (
@@ -149,7 +158,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         "calculations": _list_of_mappings(
             document.get("calculations", []), "calculations"
         ),
-        "rules": rules,
+        "rules": rule_documents,
         "confidence": confidence,
         "exceptions": exceptions,
         "conflicts": conflicts,
