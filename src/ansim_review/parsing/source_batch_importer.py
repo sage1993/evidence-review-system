@@ -1,19 +1,35 @@
-"""Prepare arbitrary PDF batches without sample filename assumptions."""
+"""Prepare and ingest arbitrary PDF batches without sample filename assumptions."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from ansim_review.contracts.attachments import AttachmentRole
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.contracts.source_batch import ParserKind, SourceBatch, SourceItem
-from ansim_review.parsing.source_manifest import sha256_file
+from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from ansim_review.evidence.snapshot import compute_snapshot_hash, snapshot_counts
+from ansim_review.evidence.store import EvidenceStore
+from ansim_review.parsing.odl_adapter import load_raw_elements
+from ansim_review.parsing.odl_source import (
+    parser_bbox,
+    parser_document_title,
+    parser_page_count,
+    parser_page_dimensions,
+    read_parser_json,
+)
+from ansim_review.parsing.source_manifest import build_source_entry, sha256_file
+from ansim_review.retrieval.index import build_fts_index
 
 SourcePreparationState = Literal["PENDING_PARSER_OUTPUT", "READY_FOR_INGESTION"]
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class PendingParserOutputError(ValueError):
+    """Raised when one or more registered PDFs have no parser artifact yet."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +45,16 @@ class PreparedSource:
     source_sha256: str
     display_title: str
     state: SourcePreparationState
+
+
+@dataclass(frozen=True, slots=True)
+class SourceBatchImportReport:
+    """Deterministic result of one generic source-batch ingestion."""
+
+    output_db: Path
+    snapshot_hash: str
+    counts: dict[str, int]
+    sources: tuple[PreparedSource, ...]
 
 
 def derive_document_id(source_sha256: str, explicit: str | None) -> str:
@@ -121,4 +147,138 @@ def prepare_source_batch(batch_root: Path, batch: SourceBatch) -> tuple[Prepared
                 source.source_path.as_posix(),
             ),
         )
+    )
+
+
+def _source_records(
+    batch_root: Path,
+    sources: tuple[PreparedSource, ...],
+) -> tuple[
+    tuple[dict[str, Any], ...],
+    tuple[dict[str, Any], ...],
+    tuple[dict[str, Any], ...],
+    tuple[dict[str, Any], ...],
+]:
+    documents: list[dict[str, Any]] = []
+    revisions: list[dict[str, Any]] = []
+    pages: list[dict[str, Any]] = []
+    elements: list[dict[str, Any]] = []
+    for source in sources:
+        if source.parser_path is None or source.parser_kind is None:
+            raise PendingParserOutputError(
+                f"PENDING_PARSER_OUTPUT: {source.source_path.name}"
+            )
+        if source.parser_kind != "OPENDATALOADER_JSON":
+            raise ValueError(f"unsupported parser kind: {source.parser_kind}")
+        parser_payload = read_parser_json(source.parser_path)
+        raw_elements = load_raw_elements(
+            source.parser_path,
+            document_id=source.document_id,
+            revision_id=source.revision_id,
+        )
+        current_page_count = parser_page_count(parser_payload, raw_elements)
+        entry = build_source_entry(
+            source.source_path,
+            document_id=source.document_id,
+            page_count=current_page_count,
+            parser_artifacts=(source.parser_path,),
+            relative_to=batch_root,
+        )
+        if entry.source_hash != source.source_sha256 or entry.revision_id != source.revision_id:
+            raise ValueError("source bytes changed after batch preparation")
+        documents.append(
+            {
+                "id": source.document_id,
+                "title": parser_document_title(parser_payload, source.display_title),
+            }
+        )
+        revisions.append(
+            {
+                "id": source.revision_id,
+                "document_id": source.document_id,
+                "source_hash": source.source_sha256,
+                "byte_size": source.source_path.stat().st_size,
+                "page_count": current_page_count,
+            }
+        )
+        dimensions: dict[int, tuple[float, float]] = {}
+        for page_number in range(1, current_page_count + 1):
+            width, height = parser_page_dimensions(parser_payload, page_number)
+            dimensions[page_number] = (width, height)
+            pages.append(
+                {
+                    "id": f"{source.revision_id}-P{page_number:04d}",
+                    "revision_id": source.revision_id,
+                    "page_number": page_number,
+                    "width": width,
+                    "height": height,
+                }
+            )
+        for element in raw_elements:
+            width, height = dimensions[element.page_number]
+            elements.append(
+                {
+                    "id": element.element_id,
+                    "revision_id": source.revision_id,
+                    "page_id": f"{source.revision_id}-P{element.page_number:04d}",
+                    "page_number": element.page_number,
+                    "element_type": element.element_type,
+                    "raw_json": element.raw_payload,
+                    "raw_text": element.raw_text,
+                    "normalized_text": None,
+                    "raw_payload_hash": element.raw_payload_hash,
+                    "bbox": parser_bbox(element, width, height),
+                    "parser_order": element.parser_order,
+                }
+            )
+
+    def by_id(record: dict[str, Any]) -> str:
+        return str(record["id"])
+
+    return (
+        tuple(sorted(documents, key=by_id)),
+        tuple(sorted(revisions, key=by_id)),
+        tuple(sorted(pages, key=by_id)),
+        tuple(sorted(elements, key=by_id)),
+    )
+
+
+def import_source_batch(
+    batch_root: Path,
+    batch: SourceBatch,
+    output_db: Path,
+) -> SourceBatchImportReport:
+    """Create a searchable evidence SQLite snapshot from arbitrary parsed PDFs."""
+    root = batch_root.resolve()
+    output = output_db.resolve()
+    if output.exists():
+        raise FileExistsError(output)
+    sources = prepare_source_batch(root, batch)
+    pending = tuple(source for source in sources if source.state == "PENDING_PARSER_OUTPUT")
+    if pending:
+        names = ", ".join(source.source_path.name for source in pending)
+        raise PendingParserOutputError(f"PENDING_PARSER_OUTPUT: {names}")
+    documents, revisions, pages, elements = _source_records(root, sources)
+    snapshot = EvidenceSnapshot(
+        documents=documents,
+        revisions=revisions,
+        pages=pages,
+        elements=elements,
+    )
+    with EvidenceStore(output) as store:
+        ingest_snapshot(store, snapshot)
+        snapshot_hash = compute_snapshot_hash(store)
+        connection = store.require_connection()
+        connection.execute(
+            "INSERT INTO snapshot_meta(key, value) VALUES('database_snapshot_hash', ?)",
+            (snapshot_hash,),
+        )
+        connection.commit()
+        build_fts_index(connection)
+        counts = snapshot_counts(store)
+    return SourceBatchImportReport(
+        output_db=output,
+        snapshot_hash=snapshot_hash,
+        counts=counts,
+        sources=sources,
     )
