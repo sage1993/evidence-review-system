@@ -19,7 +19,7 @@
   "properties": {
     "format": {"const": "ansim/case-manifest"},
     "version": {"const": 1},
-    "case_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"},
+    "case_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
     "policy_id": {"type": "string", "minLength": 1},
     "sources": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
     "quality_assessments": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
@@ -44,7 +44,7 @@
       "additionalProperties": false,
       "required": ["artifact_id", "relative_path", "sha256"],
       "properties": {
-        "artifact_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"},
+        "artifact_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
         "relative_path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
