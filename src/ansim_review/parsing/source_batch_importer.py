@@ -114,8 +114,10 @@ def _merge_duplicate(first: PreparedSource, second: PreparedSource) -> PreparedS
     if first.parser_path is None and second.parser_path is not None:
         return replace(
             first,
+            source_path=second.source_path,
             parser_path=second.parser_path,
             parser_kind=second.parser_kind,
+            display_title=second.display_title,
             state="READY_FOR_INGESTION",
         )
     return first
@@ -150,6 +152,18 @@ def prepare_source_batch(batch_root: Path, batch: SourceBatch) -> tuple[Prepared
     )
 
 
+def _validate_parser_source_binding(
+    parser_payload: dict[str, Any], source_path: Path
+) -> None:
+    declared_name = parser_payload.get("file name")
+    if declared_name is None:
+        return
+    if not isinstance(declared_name, str) or not declared_name.strip():
+        raise ValueError("parser file name must be a non-empty string")
+    if Path(declared_name).name != source_path.name:
+        raise ValueError("parser file name does not match source PDF")
+
+
 def _source_records(
     batch_root: Path,
     sources: tuple[PreparedSource, ...],
@@ -171,6 +185,7 @@ def _source_records(
         if source.parser_kind != "OPENDATALOADER_JSON":
             raise ValueError(f"unsupported parser kind: {source.parser_kind}")
         parser_payload = read_parser_json(source.parser_path)
+        _validate_parser_source_binding(parser_payload, source.source_path)
         raw_elements = load_raw_elements(
             source.parser_path,
             document_id=source.document_id,
