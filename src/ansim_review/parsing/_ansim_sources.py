@@ -1,4 +1,4 @@
-"""Source PDF and parser helpers for Ansim workspace migration."""
+"""Helpers for the explicitly supported legacy numbered workspace layout."""
 from __future__ import annotations
 
 import json
@@ -14,16 +14,14 @@ _DEFAULT_PAGE_WIDTH = 595.0
 _DEFAULT_PAGE_HEIGHT = 842.0
 
 
-def document_id(stem: str) -> str:
-    lowered = stem.lower()
-    if lowered == "law-1":
-        return "LAW1"
-    if lowered == "law-2":
-        return "LAW2"
+def document_id(stem: str, source_hash: str | None = None) -> str:
+    """Derive a legacy ID without any privileged sample filenames."""
     value = re.sub(r"[^A-Za-z0-9]+", "", stem).upper()
-    if not value:
-        raise ValueError(f"cannot derive document ID from {stem!r}")
-    return value
+    if value:
+        return value
+    if source_hash is not None and re.fullmatch(r"[0-9a-f]{64}", source_hash):
+        return f"DOC-{source_hash[:20].upper()}"
+    raise ValueError(f"cannot derive document ID from {stem!r}")
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -36,6 +34,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def source_pairs(root: Path) -> tuple[tuple[Path, Path, dict[str, Any]], ...]:
+    """Discover PDF/parser pairs only for the legacy numbered layout."""
     source_dir = root / "02_source_pdf"
     pairs: list[tuple[Path, Path, dict[str, Any]]] = []
     for parser_path in sorted(source_dir.glob("*.json")):
@@ -48,7 +47,7 @@ def source_pairs(root: Path) -> tuple[tuple[Path, Path, dict[str, Any]], ...]:
         if pdf_path.is_file():
             pairs.append((pdf_path, parser_path, payload))
     if not pairs:
-        raise FileNotFoundError("no PDF/parser JSON pairs found under 02_source_pdf")
+        raise FileNotFoundError("no PDF/parser JSON pairs found under legacy 02_source_pdf")
     return tuple(pairs)
 
 
