@@ -88,6 +88,32 @@ CREATE TABLE IF NOT EXISTS snapshot_meta (
     value TEXT NOT NULL
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS retrieval_records (
+    evidence_id TEXT PRIMARY KEY,
+    evidence_type TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    page_number INTEGER NOT NULL CHECK(page_number > 0),
+    bbox_json TEXT NOT NULL,
+    source_hash TEXT NOT NULL CHECK(length(source_hash) = 64),
+    title TEXT NOT NULL,
+    raw_text TEXT NOT NULL,
+    normalized_text TEXT NOT NULL
+) STRICT;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts USING fts5(
+    evidence_id UNINDEXED,
+    title,
+    raw_text,
+    normalized_text,
+    tokenize = 'unicode61'
+);
+
+CREATE TABLE IF NOT EXISTS retrieval_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+) STRICT;
+
 CREATE INDEX IF NOT EXISTS idx_elements_revision_page
     ON elements(revision_id, page_number, parser_order);
 CREATE INDEX IF NOT EXISTS idx_clauses_revision ON clauses(revision_id);
@@ -96,3 +122,5 @@ CREATE INDEX IF NOT EXISTS idx_visuals_revision_page ON visuals(revision_id, pag
 CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_id, relation_type);
 CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_id, relation_type);
 CREATE INDEX IF NOT EXISTS idx_review_flags_evidence ON review_flags(evidence_id, status);
+CREATE INDEX IF NOT EXISTS idx_retrieval_records_source
+    ON retrieval_records(document_id, revision_id, page_number, evidence_type);
