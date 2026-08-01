@@ -27,6 +27,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "ansim_review.evidence" = ["schema.sql"]
+"ansim_review.llm_layer" = ["templates/*.md"]
+"ansim_review.review_packet" = ["assets/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
