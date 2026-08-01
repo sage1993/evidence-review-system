@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import sqlite3
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -276,14 +275,9 @@ def _source_snapshot(connection: sqlite3.Connection) -> EvidenceSnapshot:
     )
 
 
-def _remove_stale_regular_file(path: Path) -> None:
-    try:
-        result = path.lstat()
-    except FileNotFoundError:
-        return
-    if stat.S_ISLNK(result.st_mode) or not stat.S_ISREG(result.st_mode):
-        raise ValueError(f"temporary migration path is not a regular file: {path}")
-    path.unlink()
+def _require_absent(path: Path) -> None:
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(path)
 
 
 def _write_create_only(path: Path, payload: bytes) -> None:
@@ -310,17 +304,15 @@ def migrate_v1_to_v2(source: Path, output: Path) -> MigrationReport:
         raise FileNotFoundError(source_path)
     if source_path == output_path:
         raise ValueError("source and output database paths must differ")
-    if output_path.exists():
-        raise FileExistsError(output_path)
-    if report_path.exists():
-        raise FileExistsError(report_path)
+    _require_absent(output_path)
+    _require_absent(report_path)
     generated_paths = {temporary_path, report_temporary_path}
     if source_path in generated_paths:
         raise ValueError("source path conflicts with migration temporary path")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    _remove_stale_regular_file(temporary_path)
-    _remove_stale_regular_file(report_temporary_path)
+    _require_absent(temporary_path)
+    _require_absent(report_temporary_path)
 
     source_sha256 = _sha256_file(source_path)
     source_connection = _read_only_connection(source_path)
