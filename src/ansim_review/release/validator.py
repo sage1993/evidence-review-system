@@ -51,11 +51,14 @@ def _forbidden_imports(source_root: Path) -> list[dict[str, object]]:
     for path in sorted(source_root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            names: list[str] = []
             if isinstance(node, ast.Import):
-                names.extend(alias.name for alias in node.names)
+                names = [alias.name for alias in node.names]
+                line_number = node.lineno
             elif isinstance(node, ast.ImportFrom) and node.module:
-                names.append(node.module)
+                names = [node.module]
+                line_number = node.lineno
+            else:
+                continue
             for name in names:
                 if any(
                     name == item or name.startswith(item + ".")
@@ -64,7 +67,7 @@ def _forbidden_imports(source_root: Path) -> list[dict[str, object]]:
                     findings.append(
                         {
                             "path": path.relative_to(source_root).as_posix(),
-                            "line": node.lineno,
+                            "line": line_number,
                             "import": name,
                         }
                     )
