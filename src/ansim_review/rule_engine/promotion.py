@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ansim_review.canonical_json import dumps
+from ansim_review.contracts.identifiers import safe_direct_child
 from ansim_review.rule_engine.loader import load_rule
 from ansim_review.rule_engine.manifest import sha256_file
 
@@ -51,6 +52,12 @@ def promote_candidate(
     if not isinstance(payload, dict):
         raise ValueError("candidate rule must be an object")
     rule = load_rule(payload)
+    approved_path = safe_direct_child(
+        approved_dir,
+        f"{rule.rule_id}@{rule.version}.json",
+        "approved_rule_path",
+    )
+    project_root = _project_root(manifest_path)
     candidate_hash = sha256_file(candidate_path)
     approved_payload = dict(payload)
     approved_payload["approval"] = {
@@ -58,17 +65,15 @@ def promote_candidate(
         "review_date": review_date,
         "candidate_sha256": candidate_hash,
     }
-    approved_dir.mkdir(parents=True, exist_ok=True)
-    approved_path = approved_dir / f"{rule.rule_id}@{rule.version}.json"
     approved_text = dumps(approved_payload) + "\n"
     if approved_path.exists() and approved_path.read_text(encoding="utf-8") != approved_text:
         raise FileExistsError(
             f"approved rule already exists with different bytes: {approved_path.name}"
         )
+    approved_path.parent.mkdir(parents=True, exist_ok=True)
     approved_path.write_text(approved_text, encoding="utf-8", newline="\n")
     approved_hash = sha256_file(approved_path)
-    project_root = _project_root(manifest_path)
-    relative_path = approved_path.resolve().relative_to(project_root.resolve()).as_posix()
+    relative_path = approved_path.relative_to(project_root.resolve()).as_posix()
     manifest = _read_manifest(manifest_path)
     entries = [
         entry
