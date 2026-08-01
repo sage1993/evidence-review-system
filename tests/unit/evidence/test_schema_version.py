@@ -1,5 +1,5 @@
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -9,7 +9,6 @@ from ansim_review.evidence.schema_version import (
     detect_schema_version,
     require_current_schema,
 )
-
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
 
