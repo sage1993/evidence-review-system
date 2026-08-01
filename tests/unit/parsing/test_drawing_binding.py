@@ -1,11 +1,17 @@
+import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.drawing import DrawingConfirmation, Geometry
 from ansim_review.parsing.drawing_binding import EngineInputValue, bind_confirmed_inputs
 from ansim_review.parsing.drawing_candidates import create_manual_candidate
-from ansim_review.parsing.drawing_confirmation import persist_confirmation
+from ansim_review.parsing.drawing_confirmation import (
+    drawing_confirmation_document,
+    persist_confirmation,
+)
 from ansim_review.parsing.drawing_inputs import (
     ConfirmedInputBuildRequest,
     build_confirmed_input,
@@ -63,11 +69,17 @@ def complete_case(tmp_path: Path):
             confirmation_entry=entry,
         )
     )
-    return case_dir, attachment, confirmed, entry
+    return case_dir, attachment, confirmed, entry, confirmation
+
+
+def rewrite_confirmation(case_dir: Path, entry, confirmation: DrawingConfirmation):
+    payload = dump_bytes(drawing_confirmation_document(confirmation))
+    (case_dir / entry.relative_path).write_bytes(payload)
+    return hashlib.sha256(payload).hexdigest()
 
 
 def test_binding_returns_deterministic_decimal_strings(tmp_path: Path) -> None:
-    case_dir, attachment, confirmed, _ = complete_case(tmp_path)
+    case_dir, attachment, confirmed, _, _ = complete_case(tmp_path)
     result = bind_confirmed_inputs(
         case_dir,
         [confirmed],
@@ -81,7 +93,7 @@ def test_binding_returns_deterministic_decimal_strings(tmp_path: Path) -> None:
 
 
 def test_binding_reverifies_confirmation_hash(tmp_path: Path) -> None:
-    case_dir, attachment, confirmed, entry = complete_case(tmp_path)
+    case_dir, attachment, confirmed, entry, _ = complete_case(tmp_path)
     confirmation_path = case_dir / entry.relative_path
     confirmation_path.write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="confirmation hash mismatch"):
@@ -92,8 +104,34 @@ def test_binding_reverifies_confirmation_hash(tmp_path: Path) -> None:
         )
 
 
+def test_binding_rejects_confirmation_action_mismatch(tmp_path: Path) -> None:
+    case_dir, attachment, confirmed, entry, confirmation = complete_case(tmp_path)
+    modified = replace(confirmation, action="EDITED")
+    digest = rewrite_confirmation(case_dir, entry, modified)
+    confirmed = replace(confirmed, confirmation_sha256=digest)
+    with pytest.raises(ValueError, match="confirmation action does not match"):
+        bind_confirmed_inputs(
+            case_dir,
+            [confirmed],
+            {attachment.sha256: attachment},
+        )
+
+
+def test_binding_rejects_confirmation_value_mismatch(tmp_path: Path) -> None:
+    case_dir, attachment, confirmed, entry, confirmation = complete_case(tmp_path)
+    modified = replace(confirmation, confirmed_value="9.0")
+    digest = rewrite_confirmation(case_dir, entry, modified)
+    confirmed = replace(confirmed, confirmation_sha256=digest)
+    with pytest.raises(ValueError, match="confirmation value does not match"):
+        bind_confirmed_inputs(
+            case_dir,
+            [confirmed],
+            {attachment.sha256: attachment},
+        )
+
+
 def test_binding_reverifies_source_hash(tmp_path: Path) -> None:
-    case_dir, attachment, confirmed, _ = complete_case(tmp_path)
+    case_dir, attachment, confirmed, _, _ = complete_case(tmp_path)
     source_path = case_dir / "sources" / "drawings" / "ATT-001.png"
     source_path.write_bytes(source_path.read_bytes() + b"tamper")
     with pytest.raises(ValueError, match="immutable source verification failed"):
@@ -105,6 +143,6 @@ def test_binding_reverifies_source_hash(tmp_path: Path) -> None:
 
 
 def test_binding_rejects_missing_source_attachment(tmp_path: Path) -> None:
-    case_dir, _, confirmed, _ = complete_case(tmp_path)
+    case_dir, _, confirmed, _, _ = complete_case(tmp_path)
     with pytest.raises(ValueError, match="source attachment is not registered"):
         bind_confirmed_inputs(case_dir, [confirmed], {})
