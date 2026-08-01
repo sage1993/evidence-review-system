@@ -30,9 +30,9 @@ def install_network_guard() -> None:
     global _GUARD_INSTALLED
     if _GUARD_INSTALLED:
         return
-    setattr(socket, "create_connection", _blocked_create_connection)
-    setattr(socket.socket, "connect", _blocked_socket_connect)
-    setattr(socket.socket, "connect_ex", _blocked_socket_connect_ex)
+    setattr(socket, "create_connection", _blocked_create_connection)  # noqa: B010
+    setattr(socket.socket, "connect", _blocked_socket_connect)  # noqa: B010
+    setattr(socket.socket, "connect_ex", _blocked_socket_connect_ex)  # noqa: B010
     _GUARD_INSTALLED = True
 
 
