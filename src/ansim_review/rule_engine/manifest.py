@@ -92,6 +92,8 @@ def _manifest_error_code(error: ValueError) -> str:
     message = str(error)
     if "duplicate active rule_id" in message:
         return "DUPLICATE_ACTIVE_RULE_ID"
+    if "repository-relative POSIX path" in message:
+        return "UNSAFE_ARTIFACT_PATH"
     return "ACTIVE_MANIFEST_INVALID"
 
 
