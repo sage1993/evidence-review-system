@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Final, Literal, cast
+from typing import Final, Literal
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.formats import HUMAN_ATTESTATION_FORMAT
@@ -93,14 +92,17 @@ def _decode_check(value: object, index: int) -> AttestationCheck:
     check_id = _nonblank(payload.get("check_id"), f"checks[{index}].check_id")
     if check_id not in _REQUIRED_CHECK_SET:
         raise ValueError(f"UNKNOWN_ATTESTATION_CHECK:{check_id}")
-    status = expect_literal(payload.get("status"), "status", ("PASS",))
+    status_value = expect_string(payload.get("status"), f"checks[{index}].status")
+    if status_value != "PASS":
+        raise ValueError(f"ATTESTATION_CHECK_NOT_PASSED:{check_id}")
     evidence = _nonblank(payload.get("evidence"), f"checks[{index}].evidence")
-    return AttestationCheck(check_id=check_id, status=status, evidence=evidence)
+    return AttestationCheck(check_id=check_id, status="PASS", evidence=evidence)
 
 
 def decode_attestation(value: object) -> HumanAttestation:
     """Decode the strict version 1 process-attestation contract."""
     payload = expect_mapping(value, "attestation")
+    expect_literal(payload.get("format"), "format", (HUMAN_ATTESTATION_FORMAT,))
     fields = {
         "format",
         "version",
@@ -114,7 +116,6 @@ def decode_attestation(value: object) -> HumanAttestation:
     }
     require_fields(payload, fields, "attestation")
     reject_unknown(payload, fields, "attestation")
-    expect_literal(payload.get("format"), "format", (HUMAN_ATTESTATION_FORMAT,))
     version = expect_int(payload.get("version"), "version")
     if version != 1:
         raise ValueError(f"unsupported version: {version}")
@@ -168,10 +169,7 @@ def validate_attestation(
         "expected_candidate_hash",
     )
     expected_packet = expect_sha256(expected_packet_hash, "expected_packet_hash")
-    payload = cast(
-        Mapping[str, object],
-        json.loads(path.read_text(encoding="utf-8")),
-    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
     attestation = decode_attestation(payload)
     if attestation.release_candidate_hash != expected_candidate:
         raise ValueError("RELEASE_CANDIDATE_HASH_MISMATCH")
