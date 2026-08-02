@@ -271,7 +271,6 @@ def _status(value: object, field: str) -> GoldenStatus:
 
 def _load_scope(value: object, field: str = "scope") -> RuleScope:
     payload = _object(value, field)
-    _exact_fields(payload, frozenset(payload) | {"document_family"}, field)
     unknown = sorted(set(payload) - _SCOPE_FIELDS)
     if unknown:
         raise ValueError(f"{field} has unknown fields: {', '.join(unknown)}")
@@ -607,7 +606,9 @@ def _semantic_version_key(version: str) -> tuple[int, int, int, int, tuple[str, 
     return (major, minor, patch, 1 if not separator else 0, tuple(prerelease.split(".")))
 
 
-def _entry_sort_key(entry: ActiveRuleEntry) -> tuple[object, ...]:
+def _entry_sort_key(
+    entry: ActiveRuleEntry,
+) -> tuple[str, tuple[int, int, int, int, tuple[str, ...]], str]:
     return (entry.rule_id, _semantic_version_key(entry.rule_version), entry.approval_path)
 
 
@@ -627,14 +628,14 @@ def load_active_rule_manifest_bytes(data: bytes) -> ActiveRuleManifest:
     rule_ids = [item.rule_id for item in rules]
     if len(rule_ids) != len(set(rule_ids)):
         raise ValueError("duplicate active rule_id")
+    if list(rules) != sorted(rules, key=_entry_sort_key):
+        raise ValueError("active manifest rules must be sorted")
     approval_paths = [item.approval_path.casefold() for item in rules]
     if len(approval_paths) != len(set(approval_paths)):
         raise ValueError("duplicate active approval_path")
     approval_hashes = [item.approval_sha256 for item in rules]
     if len(approval_hashes) != len(set(approval_hashes)):
         raise ValueError("duplicate active approval_sha256")
-    if list(rules) != sorted(rules, key=_entry_sort_key):
-        raise ValueError("active manifest rules must be sorted")
     return ActiveRuleManifest(rules=rules)
 
 
