@@ -3,10 +3,39 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import BinaryIO
 
 import pytest
 
 from ansim_review.rule_engine.promotion import approve_candidate
+
+
+class _ReplaceOnExit:
+    def __init__(self, stream: BinaryIO, destination: Path) -> None:
+        self._stream = stream
+        self._destination = destination
+
+    def __enter__(self) -> _ReplaceOnExit:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: object,
+        exc_value: object,
+        traceback: object,
+    ) -> None:
+        self._stream.close()
+        self._destination.unlink()
+        self._destination.write_bytes(b"competing approved copy")
+
+    def write(self, data: bytes) -> int:
+        return self._stream.write(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def fileno(self) -> int:
+        return self._stream.fileno()
 
 
 def _candidate(tmp_path: Path) -> Path:
@@ -53,19 +82,18 @@ def test_write_failure_does_not_delete_concurrent_replacement(
     candidate = _candidate(tmp_path)
     approved_dir = tmp_path / "rules" / "approved"
     approved_path = approved_dir / "PROMOTION-RACE@1.0.0.json"
-    original_fsync = os.fsync
-    intercepted = False
+    original_fdopen = os.fdopen
 
-    def concurrent_fsync(descriptor: int) -> None:
-        nonlocal intercepted
-        if not intercepted:
-            intercepted = True
-            approved_path.unlink()
-            approved_path.write_bytes(b"competing approved copy")
-            raise OSError("simulated write failure")
-        original_fsync(descriptor)
+    def replacement_fdopen(descriptor: int, mode: str) -> _ReplaceOnExit:
+        stream = original_fdopen(descriptor, mode)
+        return _ReplaceOnExit(stream, approved_path)
 
-    monkeypatch.setattr(os, "fsync", concurrent_fsync)
+    def failing_fsync(descriptor: int) -> None:
+        del descriptor
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(os, "fdopen", replacement_fdopen)
+    monkeypatch.setattr(os, "fsync", failing_fsync)
 
     with pytest.raises(OSError, match="simulated write failure"):
         approve_candidate(
