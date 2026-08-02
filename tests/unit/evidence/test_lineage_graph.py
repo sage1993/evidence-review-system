@@ -14,7 +14,6 @@ from ansim_review.evidence.lineage_contract import (
 from ansim_review.evidence.lineage_graph import plan_legacy_lineage_migration
 from ansim_review.evidence.store import EvidenceStore
 
-
 LEGACY_DOCUMENT = "LAW3"
 CANONICAL_DOCUMENT = "DOC-ACFD68E34043268C"
 LEGACY_REVISION = "REV-LAW3-001"
