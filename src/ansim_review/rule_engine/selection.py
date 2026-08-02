@@ -11,6 +11,7 @@ from ansim_review.contracts.formats import RULE_SELECTION_RESULT_FORMAT
 from ansim_review.rule_engine.governance_contract import (
     ActiveRuleEntry,
     ExcludedRule,
+    ExclusionCode,
     RuleScope,
     RuleSelectionContext,
     RuleSelectionResult,
@@ -73,7 +74,7 @@ def _context_values(context: RuleSelectionContext) -> tuple[str | None, ...]:
 def _exclusion_code(
     scope: RuleScope,
     context: RuleSelectionContext,
-) -> str | None:
+) -> ExclusionCode | None:
     for expected, actual in zip(_scope_values(scope), _context_values(context), strict=True):
         if expected is None:
             continue
@@ -115,7 +116,7 @@ def select_active_rules(
                 ExcludedRule(
                     rule_id=entry.rule_id,
                     rule_version=entry.rule_version,
-                    code=cast("MISSING_SCOPE_VALUE | SCOPE_MISMATCH", code),
+                    code=code,
                 )
             )
     if selected:
