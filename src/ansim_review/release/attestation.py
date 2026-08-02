@@ -162,15 +162,23 @@ def validate_attestation(
     *,
     expected_candidate_hash: str,
     expected_packet_hash: str,
+    expected_reviewer_id: str | None = None,
 ) -> HumanAttestation:
-    """Validate a record and bind it to exact current release artifacts."""
+    """Validate a record and bind it to exact artifacts and reviewer policy."""
     expected_candidate = expect_sha256(
         expected_candidate_hash,
         "expected_candidate_hash",
     )
     expected_packet = expect_sha256(expected_packet_hash, "expected_packet_hash")
+    reviewer_id = (
+        None
+        if expected_reviewer_id is None
+        else _nonblank(expected_reviewer_id, "expected_reviewer_id")
+    )
     payload = json.loads(path.read_text(encoding="utf-8"))
     attestation = decode_attestation(payload)
+    if reviewer_id is not None and attestation.reviewer_id != reviewer_id:
+        raise ValueError("REVIEWER_ID_MISMATCH")
     if attestation.release_candidate_hash != expected_candidate:
         raise ValueError("RELEASE_CANDIDATE_HASH_MISMATCH")
     if attestation.packet_hash != expected_packet:
