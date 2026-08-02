@@ -9,10 +9,10 @@ from ansim_review.rule_engine.governance_contract import (
     ActiveRuleManifest,
     RuleActivationApproval,
     RuleGoldenReport,
+    active_rule_manifest_bytes,
     load_active_rule_manifest_bytes,
     load_rule_activation_approval_bytes,
     load_rule_golden_report_bytes,
-    active_rule_manifest_bytes,
     rule_activation_approval_bytes,
     rule_golden_report_bytes,
 )
