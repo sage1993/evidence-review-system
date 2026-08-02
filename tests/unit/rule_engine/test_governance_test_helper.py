@@ -10,7 +10,7 @@ from ansim_review.rule_engine.governance_contract import (
     load_rule_activation_approval_bytes,
     load_rule_golden_report_bytes,
 )
-from tests.helpers.rule_governance import (
+from helpers.rule_governance import (
     GOVERNANCE_MUTATIONS,
     GovernanceTree,
     apply_governance_mutation,
