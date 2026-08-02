@@ -152,7 +152,7 @@ def _verify_archive(
         with zipfile.ZipFile(archive_path, "r") as archive:
             infos = archive.infolist()
             member_count = len(infos)
-            member_names = [info.filename for info in infos]
+            member_names = [info.orig_filename for info in infos]
             for name in member_names:
                 if not _canonical_member_path(name):
                     errors.append(f"ZIP_MEMBER_PATH_INVALID:{archive_name}:{name}")
@@ -247,7 +247,7 @@ def _verify_archive(
 
             counts = Counter(member_names)
             actual_infos: dict[str, zipfile.ZipInfo] = {
-                info.filename: info
+                info.orig_filename: info
                 for info in infos
                 if info.filename != manifest_name
                 and counts[info.filename] == 1
