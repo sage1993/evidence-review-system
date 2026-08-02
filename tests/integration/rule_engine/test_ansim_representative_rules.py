@@ -6,8 +6,8 @@ from ansim_review.canonical_json import dump_bytes, sha256_json
 from ansim_review.contracts.engines import CalculationResult
 from ansim_review.contracts.evidence import EvidenceRecord
 from ansim_review.math_engine.manifest import calculation_result_payload
-from ansim_review.rule_engine.governance_contract import RuleSelectionContext
 from ansim_review.rule_engine.evaluator import evaluate_rule
+from ansim_review.rule_engine.governance_contract import RuleSelectionContext
 from ansim_review.rule_engine.manifest import load_governed_active_rules
 
 ROOT = Path(__file__).parents[3]

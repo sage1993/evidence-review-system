@@ -13,10 +13,10 @@ from pathlib import Path, PurePosixPath
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.formats import RULE_ACTIVATION_REPORT_FORMAT
 from ansim_review.rule_engine.governance_contract import (
-    ActiveRuleEntry,
-    ActiveRuleManifest,
     ActivationFinding,
     ActivationReport,
+    ActiveRuleEntry,
+    ActiveRuleManifest,
     active_rule_manifest_bytes,
     load_active_rule_manifest_bytes,
 )
