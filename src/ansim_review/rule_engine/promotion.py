@@ -22,6 +22,14 @@ def _validate_review(reviewer_id: str, review_date: str) -> None:
         raise ValueError("review date must use ISO YYYY-MM-DD") from error
 
 
+def _same_inode(path: Path, device: int, inode: int) -> bool:
+    try:
+        status = path.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    return not path.is_symlink() and status.st_dev == device and status.st_ino == inode
+
+
 def approve_candidate(
     candidate_path: Path,
     approved_dir: Path,
@@ -48,13 +56,15 @@ def approve_candidate(
     )
     approved_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(approved_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    created = os.fstat(descriptor)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(candidate_bytes)
             stream.flush()
             os.fsync(stream.fileno())
     except BaseException:
-        approved_path.unlink(missing_ok=True)
+        if _same_inode(approved_path, created.st_dev, created.st_ino):
+            approved_path.unlink(missing_ok=True)
         raise
     return approved_path
 
