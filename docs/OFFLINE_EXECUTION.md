@@ -140,6 +140,29 @@ nested\file.txt
 
 Symlink를 따라 resolve한 결과가 workspace 밖이면 거부한다.
 
+## 최종 릴리스 ZIP 검증
+
+Release builder는 candidate hash와 process attestation을 확인하기 전에 다음 최종 산출물을 다시 연다.
+
+- `codex-workspace.zip`의 `bundle-manifest.json`
+- `chatgpt-web-runtime.zip`의 `runtime-manifest.json`
+
+검증기는 ZIP을 **without extracting** 방식으로 처리한다. 파일시스템에 풀지 않고 각각의 고유한 `ZipInfo`를 통해 member bytes를 읽어 내부 manifest의 `path`, `size`, `SHA-256`과 직접 비교한다.
+
+다음 조건은 모두 실패다.
+
+- 출력 디렉터리의 필수 산출물 누락 또는 예상하지 않은 파일
+- manifest 누락·중복·잘못된 format/version/files 구조
+- manifest에 선언된 파일 누락 또는 선언되지 않은 ZIP member
+- ZIP member 또는 manifest entry의 절대경로, `.`·`..`, 빈 경로 요소, 역슬래시, drive-prefixed 경로
+- 동일 경로 중복
+- Windows에서 같은 파일로 취급될 수 있는 **case-fold collisions**
+- 실제 byte size 또는 SHA-256 불일치
+
+오류는 `release-validation.json`의 `release_output`에 기록된다. 하나라도 실패하면 종합 검증 상태는 `FAIL`이고 release reason code에 `RELEASE_OUTPUT_VALIDATION_FAILED`가 추가된다. 유효한 process attestation이 존재하더라도 이 상태에서는 release가 `BLOCKED`이며 tag를 만들 수 없다.
+
+이 검증은 산출물 생성 이후 검증 시점까지의 무결성을 확인한다. 검증 이후 외부 프로세스가 파일을 바꾸는 공격을 막는 배포 서명이나 immutable storage를 제공하지는 않는다.
+
 ## Windows OS 격리 예시
 
 관리자 PowerShell에서 실제 배포 executable 또는 Python executable을 대상으로 outbound 차단 규칙을 만든다.
@@ -180,6 +203,9 @@ docker run --rm --network none \
 [ ] non-loopback TCP와 UDP가 차단됨
 [ ] localhost review UI가 동작함
 [ ] manifest path escape가 거부됨
+[ ] bundle-manifest.json과 runtime-manifest.json이 실제 ZIP bytes와 일치함
+[ ] ZIP member의 duplicate 및 case-fold collisions가 없음
+[ ] release_output 검증 상태가 PASS임
 [ ] OS_ISOLATED를 주장할 경우 별도 운영 증거가 있음
 [ ] release manifest가 PROCESS_ATTESTATION을 기록함
 [ ] release candidate hash와 packet hash가 정확히 일치함
