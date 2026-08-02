@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from ansim_review.rule_engine.governance_contract import (
     RuleSelectionContext,
@@ -54,15 +54,32 @@ def _blocked(
     )
 
 
+def _safe_relative_path(path: Path) -> Path:
+    text = path.as_posix()
+    pure = PurePosixPath(text)
+    if (
+        path.is_absolute()
+        or "\\" in text
+        or ":" in text
+        or text in {"", ".", ".."}
+        or pure.as_posix() != text
+        or any(part in {"", ".", ".."} for part in pure.parts)
+    ):
+        raise ValueError("active manifest must be a repository-relative POSIX path")
+    return Path(*pure.parts)
+
+
 def _resolve_manifest(project_root: Path, manifest_path: Path) -> tuple[Path, Path]:
     root = project_root.resolve(strict=True)
     if project_root.is_symlink() or not root.is_dir():
         raise ValueError("project_root must be a real directory")
-    candidate = manifest_path if manifest_path.is_absolute() else root / manifest_path
-    try:
-        relative = candidate.relative_to(root)
-    except ValueError as error:
-        raise ValueError("active manifest must be below project_root") from error
+    if manifest_path.is_absolute():
+        try:
+            relative = manifest_path.relative_to(root)
+        except ValueError as error:
+            raise ValueError("active manifest must be below project_root") from error
+    else:
+        relative = _safe_relative_path(manifest_path)
     current = root
     for part in relative.parts:
         current = current / part
