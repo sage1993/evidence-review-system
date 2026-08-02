@@ -106,7 +106,7 @@ def test_one_bad_approval_blocks_every_rule_and_publishes_report_only(
 ) -> None:
     tree = build_valid_governance_tree(tmp_path, rule_count=2)
     tree.manifest_path.unlink()
-    apply_governance_mutation(tree, "approval_bytes")
+    apply_governance_mutation(tree, "candidate_bytes")
     manifest_path, report_path = _outputs(tmp_path)
 
     report = build_active_manifest(
