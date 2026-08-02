@@ -8,7 +8,7 @@ import re
 import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from ansim_review.contracts.formats import (
     CODEX_WORKSPACE_FORMAT,
@@ -234,7 +234,7 @@ def _verify_archive(
                     and size_is_valid
                     and path not in valid_records
                 ):
-                    valid_records[path] = (size, digest)
+                    valid_records[path] = (cast(int, size), cast(str, digest))
 
             errors.extend(
                 _collision_errors(
@@ -318,9 +318,9 @@ def validate_release_output(output_directory: Path) -> dict[str, object]:
         )
         for archive_name, manifest_name, expected_format in _ARCHIVE_POLICIES
     ]
-    errors = list(output_report["errors"])
+    errors = list(cast(list[str], output_report["errors"]))
     for archive in archives:
-        errors.extend(archive["errors"])
+        errors.extend(cast(list[str], archive["errors"]))
     ordered = sorted(set(errors))
     return {
         "format": RELEASE_OUTPUT_VALIDATION_FORMAT,
