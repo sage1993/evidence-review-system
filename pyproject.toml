@@ -17,8 +17,8 @@ dev = [
 ]
 
 [project.scripts]
-evidence-review = "ansim_review.cli:main"
-ansim-review = "ansim_review.cli:main"
+evidence-review = "evidence_review.cli:main"
+ansim-review = "evidence_review.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -44,4 +44,4 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-packages = ["ansim_review"]
+packages = ["evidence_review", "ansim_review"]
