@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import datetime
 import hashlib
 import sqlite3
 from dataclasses import replace
-from datetime import datetime
 from pathlib import Path
 
 from ansim_review.evidence.lineage_contract import (
@@ -130,7 +130,7 @@ def build_equivalent_graph(tmp_path: Path) -> tuple[Path, LegacyLineageManifest]
     manifest = LegacyLineageManifest(
         source_database_sha256=_sha256_file(database),
         reviewer_id="ksh",
-        reviewed_at=datetime.fromisoformat("2026-08-02T16:49:00+09:00"),
+        reviewed_at=datetime.datetime.fromisoformat("2026-08-02T16:49:00+09:00"),
         mappings=(
             DocumentLineageMapping(
                 legacy_document_id=LEGACY_DOCUMENT,
