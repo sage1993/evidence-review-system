@@ -65,9 +65,51 @@ Confirm that extractor candidates and reviewer-created annotations are visibly d
 
 ## Record the human decision separately
 
-Only after completing the review should the named reviewer create the separate append-only decision or acceptance record. Never edit the machine packet to insert a human decision. A release acceptance record must bind the exact release candidate hash and packet hash.
+Only after completing the review should the named reviewer create the separate append-only decision record. Never edit the machine packet to insert a human decision.
 
 `REVIEW_COMPLETED` is a display projection derived from a valid separate decision record. It is not a stored machine workflow state.
+
+## Create the release process attestation
+
+Release authorization uses the strict `evidence-review/human-attestation` version 1 contract. The canonical file is:
+
+```text
+releases/evidence-review-v1.0/human-attestation.json
+```
+
+The named reviewer must create this file only after examining the exact release candidate. It is append-only and must not overwrite a prior record. The record must contain:
+
+- `assurance_level: PROCESS_ATTESTATION`;
+- `attestation: REVIEWED_AND_ACCEPTED_FOR_RELEASE`;
+- a non-empty reviewer ID;
+- an ISO-8601 timestamp with timezone;
+- the exact release candidate hash;
+- the exact packet hash;
+- every required manual check with `status: PASS` and a non-empty evidence locator.
+
+Validate the record before release:
+
+```powershell
+evidence-review release validate-attestation `
+  --attestation releases/evidence-review-v1.0/human-attestation.json `
+  --candidate-hash <release-candidate-sha256> `
+  --packet-hash <final-review-packet-sha256>
+```
+
+A successful validation reports:
+
+```json
+{
+  "format": "evidence-review/human-attestation-status",
+  "status": "VALID",
+  "assurance_level": "PROCESS_ATTESTATION",
+  "cryptographic_identity_verified": false
+}
+```
+
+This record is a controlled internal process attestation. Possession of the JSON file is **not cryptographic proof of reviewer identity**. The system does not verify a private key, certificate, account session, or handwritten identity. The release manifest therefore always records `cryptographic_identity_verified: false`.
+
+A legacy `ansim/human-acceptance` record may be inspected for migration history, but it **cannot authorize a new release**. Copying a legacy `signature` string into the new record is prohibited. Missing, malformed, hash-mismatched, stale, or legacy-only records keep the release `BLOCKED`.
 
 ## Ready case smoke check
 
