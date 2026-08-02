@@ -58,7 +58,7 @@ def inspect_legacy_acceptance(path: Path) -> LegacyAcceptanceSummary:
     if reviewed_at.utcoffset() is None:
         raise ValueError("reviewed_at must include timezone")
     return LegacyAcceptanceSummary(
-        format=LEGACY_HUMAN_ACCEPTANCE_FORMAT,
+        format="ansim/human-acceptance",
         reviewer_id=reviewer_id,
         reviewed_at=reviewed_at,
         release_candidate_hash=expect_sha256(
