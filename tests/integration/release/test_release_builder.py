@@ -3,6 +3,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
+from ansim_review.release.attestation import REQUIRED_CHECK_IDS
 from ansim_review.release.builder import build_ansim_release
 
 
@@ -44,25 +45,14 @@ def _workspace(root: Path) -> None:
     )
 
 
-def _acceptance(candidate_hash: str, packet_hash: str) -> dict[str, object]:
-    check_ids = (
-        "SOURCE_IDENTITY",
-        "CITATION_PAGE_BBOX",
-        "TABLE_AND_VISUAL_EVIDENCE",
-        "CALCULATION_TRACE",
-        "RULE_VERSION_AND_STATUS",
-        "TRACK_A_EXPLANATION",
-        "TRACK_B_AUDIT",
-        "CONFIDENCE_FACTORS",
-        "ABSTENTION_BEHAVIOR",
-        "HUMAN_DECISION_SEPARATION",
-    )
+def _attestation(candidate_hash: str, packet_hash: str) -> dict[str, object]:
     return {
-        "format": "ansim/human-acceptance",
+        "format": "evidence-review/human-attestation",
         "version": 1,
+        "assurance_level": "PROCESS_ATTESTATION",
         "reviewer_id": "reviewer@example.com",
-        "reviewed_at": "2026-08-01T16:00:00+09:00",
-        "signature": "reviewer@example.com:approved",
+        "reviewed_at": "2026-08-02T14:00:00+09:00",
+        "attestation": "REVIEWED_AND_ACCEPTED_FOR_RELEASE",
         "release_candidate_hash": candidate_hash,
         "packet_hash": packet_hash,
         "checks": [
@@ -71,12 +61,25 @@ def _acceptance(candidate_hash: str, packet_hash: str) -> dict[str, object]:
                 "status": "PASS",
                 "evidence": f"evidence/{item}",
             }
-            for item in check_ids
+            for item in REQUIRED_CHECK_IDS
         ],
     }
 
 
-def test_release_blocks_without_acceptance_then_readies_with_exact_hashes(
+def _legacy_acceptance(candidate_hash: str, packet_hash: str) -> dict[str, object]:
+    return {
+        "format": "ansim/human-acceptance",
+        "version": 1,
+        "reviewer_id": "reviewer@example.com",
+        "reviewed_at": "2026-08-02T14:00:00+09:00",
+        "signature": "reviewer@example.com:approved",
+        "release_candidate_hash": candidate_hash,
+        "packet_hash": packet_hash,
+        "checks": [],
+    }
+
+
+def test_release_blocks_until_exact_process_attestation_is_present(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "workspace"
@@ -85,25 +88,65 @@ def test_release_blocks_without_acceptance_then_readies_with_exact_hashes(
     assert blocked["format"] == "evidence-review/release"
     assert blocked["release"] == "evidence-review-v1.0"
     assert blocked["status"] == "BLOCKED"
-    assert blocked["reason_codes"] == ["MANUAL_ACCEPTANCE_MISSING"]
+    assert blocked["reason_codes"] == ["PROCESS_ATTESTATION_MISSING"]
+    assert blocked["attestation_assurance"] == "PROCESS_ATTESTATION"
+    assert blocked["cryptographic_identity_verified"] is False
+    assert blocked["attestation"] is None
     assert blocked["tag_allowed"] is False
 
     candidate_hash = blocked["candidate_hash"]
     packet_hash = blocked["packet_hash"]
     assert isinstance(candidate_hash, str)
     assert isinstance(packet_hash, str)
-    acceptance_dir = root / "releases/ansim-v1.0"
-    acceptance_dir.mkdir(parents=True)
-    (acceptance_dir / "acceptance-record.json").write_text(
-        json.dumps(_acceptance(candidate_hash, packet_hash)),
+
+    legacy_dir = root / "releases/ansim-v1.0"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "acceptance-record.json").write_text(
+        json.dumps(_legacy_acceptance(candidate_hash, packet_hash)),
+        encoding="utf-8",
+    )
+    legacy_blocked = build_ansim_release(root, tmp_path / "legacy-blocked")
+    assert legacy_blocked["status"] == "BLOCKED"
+    assert legacy_blocked["reason_codes"] == ["PROCESS_ATTESTATION_MISSING"]
+
+    attestation_dir = root / "releases/evidence-review-v1.0"
+    attestation_dir.mkdir(parents=True)
+    (attestation_dir / "human-attestation.json").write_text(
+        json.dumps(
+            _attestation(
+                str(legacy_blocked["candidate_hash"]),
+                str(legacy_blocked["packet_hash"]),
+            )
+        ),
         encoding="utf-8",
     )
     ready = build_ansim_release(root, tmp_path / "ready")
-    assert ready["candidate_hash"] == candidate_hash
     assert ready["status"] == "RELEASE_READY"
     assert ready["reason_codes"] == []
     assert ready["tag_allowed"] is True
-    assert (tmp_path / "ready/acceptance-record.json").is_file()
+    assert ready["attestation_assurance"] == "PROCESS_ATTESTATION"
+    assert ready["cryptographic_identity_verified"] is False
+    assert isinstance(ready["attestation"], dict)
+    assert (tmp_path / "ready/human-attestation.json").is_file()
+    assert not (tmp_path / "ready/acceptance-record.json").exists()
+
+
+def test_release_rejects_stale_attestation_hashes(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    first = build_ansim_release(root, tmp_path / "first")
+    attestation_dir = root / "releases/evidence-review-v1.0"
+    attestation_dir.mkdir(parents=True)
+    (attestation_dir / "human-attestation.json").write_text(
+        json.dumps(_attestation("0" * 64, str(first["packet_hash"]))),
+        encoding="utf-8",
+    )
+
+    blocked = build_ansim_release(root, tmp_path / "stale")
+
+    assert blocked["status"] == "BLOCKED"
+    assert blocked["reason_codes"] == ["PROCESS_ATTESTATION_INVALID"]
+    assert blocked["tag_allowed"] is False
 
 
 def test_release_candidate_ignores_generated_python_files(
