@@ -126,6 +126,7 @@ def build_evidence_release(
                 attestation_path,
                 expected_candidate_hash=candidate_hash,
                 expected_packet_hash=packet_hash,
+                expected_reviewer_id=config.expected_reviewer_id,
             )
         except (OSError, ValueError):
             reasons.append("PROCESS_ATTESTATION_INVALID")
@@ -147,6 +148,7 @@ def build_evidence_release(
         "artifacts": artifacts,
         "attestation_assurance": PROCESS_ATTESTATION,
         "cryptographic_identity_verified": False,
+        "expected_reviewer_id": config.expected_reviewer_id,
         "attestation": (
             None if attestation is None else attestation_document(attestation)
         ),
