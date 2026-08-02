@@ -76,7 +76,7 @@
 - Modify: `src/ansim_review/cli.py`
 - Modify: `README.md`
 - Modify: `docs/REVIEWER_WORKFLOW.md`
-- Modify: `docs/OFFLINE_ASSURANCE.md`
+- Modify: `docs/OFFLINE_EXECUTION.md`
 - Create or modify documentation contract tests.
 
 - [ ] Add `release validate-attestation` with canonical status output.
