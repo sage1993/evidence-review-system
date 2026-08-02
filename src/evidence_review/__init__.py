@@ -14,6 +14,7 @@ import sys
 from collections.abc import Sequence
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
+from importlib.resources.abc import ResourceReader
 from types import ModuleType
 from typing import Final
 
@@ -29,16 +30,33 @@ _FINDER_MARKER: Final = "_evidence_review_legacy_alias_finder"
 
 
 class _LegacyAliasLoader(Loader):
-    """Return an already imported legacy module for a canonical module name."""
+    """Return a legacy module and expose its resources through the alias."""
 
-    def __init__(self, module: ModuleType) -> None:
+    def __init__(
+        self,
+        module: ModuleType,
+        legacy_name: str,
+        legacy_loader: Loader | None,
+    ) -> None:
         self._module = module
+        self._legacy_name = legacy_name
+        self._legacy_loader = legacy_loader
 
     def create_module(self, spec: ModuleSpec) -> ModuleType:
         return self._module
 
     def exec_module(self, module: ModuleType) -> None:
         return None
+
+    def get_resource_reader(self, fullname: str) -> ResourceReader | None:
+        """Delegate canonical resource access to the physical legacy package."""
+        if self._legacy_loader is None:
+            return None
+        get_reader = getattr(self._legacy_loader, "get_resource_reader", None)
+        if not callable(get_reader):
+            return None
+        reader = get_reader(self._legacy_name)
+        return reader if isinstance(reader, ResourceReader) else None
 
 
 class _LegacyAliasFinder(MetaPathFinder):
@@ -64,7 +82,7 @@ class _LegacyAliasFinder(MetaPathFinder):
         module = importlib.import_module(legacy_name)
         return ModuleSpec(
             fullname,
-            _LegacyAliasLoader(module),
+            _LegacyAliasLoader(module, legacy_name, legacy_spec.loader),
             origin=legacy_spec.origin,
             is_package=legacy_spec.submodule_search_locations is not None,
         )
