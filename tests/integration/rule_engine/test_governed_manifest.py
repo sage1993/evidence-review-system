@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ansim_review.rule_engine.governance_contract import RuleSelectionContext
-from ansim_review.rule_engine.manifest import load_governed_active_rules
 from helpers.rule_governance import (
     apply_governance_mutation,
     build_valid_governance_tree,
 )
+
+from ansim_review.rule_engine.governance_contract import RuleSelectionContext
+from ansim_review.rule_engine.manifest import load_governed_active_rules
 
 
 def test_runtime_verifies_all_authority_then_loads_selected_rules(tmp_path: Path) -> None:
