@@ -74,3 +74,9 @@ RULE_ACTIVATION_REPORT_FORMAT: Final[
 RULE_SELECTION_RESULT_FORMAT: Final[
     Literal["evidence-review/rule-selection-result"]
 ] = "evidence-review/rule-selection-result"
+DOCUMENTATION_INTEGRITY_CONFIG_FORMAT: Final[
+    Literal["evidence-review/documentation-integrity-config"]
+] = "evidence-review/documentation-integrity-config"
+DOCUMENTATION_INTEGRITY_REPORT_FORMAT: Final[
+    Literal["evidence-review/documentation-integrity-report"]
+] = "evidence-review/documentation-integrity-report"
