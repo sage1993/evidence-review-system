@@ -305,14 +305,22 @@ evidence-review review-run finalize `
 releases/evidence-review-v1.0/human-attestation.json
 ```
 
-계약 핵심값:
+Attestation 계약의 핵심값:
 
 ```json
 {
   "format": "evidence-review/human-attestation",
   "version": 1,
   "assurance_level": "PROCESS_ATTESTATION",
-  "attestation": "REVIEWED_AND_ACCEPTED_FOR_RELEASE",
+  "attestation": "REVIEWED_AND_ACCEPTED_FOR_RELEASE"
+}
+```
+
+Release manifest는 검증 범위를 별도 필드로 명시한다.
+
+```json
+{
+  "attestation_assurance": "PROCESS_ATTESTATION",
   "cryptographic_identity_verified": false
 }
 ```
