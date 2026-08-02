@@ -37,12 +37,20 @@ def _manifest(format_name: str, files: list[dict[str, object]]) -> bytes:
     ).encode("utf-8")
 
 
+def _raw_zip_info(name: str) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo("placeholder")
+    info.filename = name
+    info.orig_filename = name
+    info.compress_type = zipfile.ZIP_DEFLATED
+    return info
+
+
 def _write_zip(path: Path, entries: list[tuple[str, bytes]]) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for name, data in entries:
-                archive.writestr(name, data)
+                archive.writestr(_raw_zip_info(name), data)
 
 
 def _valid_archive(
