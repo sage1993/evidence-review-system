@@ -35,6 +35,16 @@ from ansim_review.parsing.source_batch_importer import (
 from ansim_review.release.attestation import PROCESS_ATTESTATION, validate_attestation
 from ansim_review.retrieval.bundle import build_evidence_bundle
 from ansim_review.review_run import finalize_review_run, prepare_review_run
+from ansim_review.rule_engine.activation import (
+    activation_report_bytes,
+    build_active_manifest,
+)
+from ansim_review.rule_engine.golden import run_rule_golden
+from ansim_review.rule_engine.manifest import load_governed_active_rules
+from ansim_review.rule_engine.selection import (
+    load_rule_selection_context,
+    rule_selection_result_bytes,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -117,6 +127,39 @@ def build_parser() -> argparse.ArgumentParser:
     release_attestation.add_argument("--attestation", required=True, type=Path)
     release_attestation.add_argument("--candidate-hash", required=True)
     release_attestation.add_argument("--packet-hash", required=True)
+
+    rules = subparsers.add_parser(
+        "rules",
+        help="run governed rule golden tests, activation, and scope selection",
+    )
+    rule_stages = rules.add_subparsers(dest="rules_stage", required=True)
+    run_golden = rule_stages.add_parser(
+        "run-golden",
+        help="evaluate one strict rule golden fixture manifest",
+    )
+    run_golden.add_argument("--repository-root", required=True, type=Path)
+    run_golden.add_argument("--fixture-manifest", required=True, type=Path)
+    run_golden.add_argument("--actual-root", required=True, type=Path)
+    run_golden.add_argument("--report", required=True, type=Path)
+    run_golden.add_argument("--source-commit", required=True)
+    run_golden.add_argument("--command", required=True, dest="golden_command")
+
+    build_active = rule_stages.add_parser(
+        "build-active-manifest",
+        help="derive a scoped active manifest from verified approval artifacts",
+    )
+    build_active.add_argument("--repository-root", required=True, type=Path)
+    build_active.add_argument("--approvals", required=True, type=Path)
+    build_active.add_argument("--output", required=True, type=Path)
+    build_active.add_argument("--report", required=True, type=Path)
+
+    select_rules = rule_stages.add_parser(
+        "select",
+        help="verify active authority and select exact-scope rules",
+    )
+    select_rules.add_argument("--repository-root", required=True, type=Path)
+    select_rules.add_argument("--manifest", required=True, type=Path)
+    select_rules.add_argument("--context", required=True, type=Path)
 
     math_run = subparsers.add_parser(
         "math-run",
@@ -311,9 +354,7 @@ def _source_batch_ingest(root: Path, manifest: Path, output: Path) -> int:
             "output_db": str(report.output_db),
             "snapshot_hash": report.snapshot_hash,
             "counts": report.counts,
-            "sources": [
-                _source_projection(source) for source in report.sources
-            ],
+            "sources": [_source_projection(source) for source in report.sources],
         }
     )
     return 0
@@ -403,6 +444,100 @@ def _release_validate_attestation(
         }
     )
     return 0
+
+
+def _rules_run_golden(
+    repository_root: Path,
+    fixture_manifest: Path,
+    actual_root: Path,
+    report_path: Path,
+    source_commit: str,
+    command: str,
+) -> int:
+    try:
+        report = run_rule_golden(
+            repository_root,
+            fixture_manifest,
+            actual_root,
+            report_path,
+            source_commit=source_commit,
+            command=command,
+        )
+    except FileExistsError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except (FileNotFoundError, OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/rule-golden-cli-status",
+            "version": 1,
+            "status": report.status,
+            "rule_id": report.rule_id,
+            "rule_version": report.rule_version,
+            "report": str(report_path),
+            "case_count": report.case_count,
+            "passed_count": report.passed_count,
+            "failed_count": report.failed_count,
+        }
+    )
+    return 0 if report.status == "PASS" else 2
+
+
+def _approval_files(approvals: Path) -> tuple[Path, ...]:
+    if approvals.is_symlink() or not approvals.is_dir():
+        raise ValueError("approvals must be a real directory")
+    paths = tuple(
+        sorted(
+            (
+                path
+                for path in approvals.iterdir()
+                if path.suffix == ".json" and path.is_file() and not path.is_symlink()
+            ),
+            key=lambda path: path.name,
+        )
+    )
+    return paths
+
+
+def _rules_build_active_manifest(
+    repository_root: Path,
+    approvals: Path,
+    output: Path,
+    report_path: Path,
+) -> int:
+    try:
+        result = build_active_manifest(
+            repository_root,
+            _approval_files(approvals),
+            output,
+            report_path,
+        )
+    except FileExistsError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except (FileNotFoundError, OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    sys.stdout.buffer.write(activation_report_bytes(result))
+    return 0 if result.status == "ACTIVATED" else 2
+
+
+def _rules_select(
+    repository_root: Path,
+    manifest: Path,
+    context_path: Path,
+) -> int:
+    try:
+        context_payload = json.loads(context_path.read_text(encoding="utf-8"))
+        context = load_rule_selection_context(context_payload)
+        loaded = load_governed_active_rules(repository_root, manifest, context)
+    except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    sys.stdout.buffer.write(rule_selection_result_bytes(loaded.selection))
+    return 2 if loaded.selection.status == "BLOCKED" else 0
 
 
 def _math_run(request_path: Path, output_path: Path) -> int:
@@ -533,9 +668,7 @@ def _review_run_finalize(
             "packet": str(result.packet_path),
             "review_html": str(result.review_html),
             "published_packet": (
-                None
-                if result.published_packet is None
-                else str(result.published_packet)
+                None if result.published_packet is None else str(result.published_packet)
             ),
         }
     )
@@ -565,6 +698,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.candidate_hash,
             args.packet_hash,
         )
+    if args.command == "rules" and args.rules_stage == "run-golden":
+        return _rules_run_golden(
+            args.repository_root,
+            args.fixture_manifest,
+            args.actual_root,
+            args.report,
+            args.source_commit,
+            args.golden_command,
+        )
+    if args.command == "rules" and args.rules_stage == "build-active-manifest":
+        return _rules_build_active_manifest(
+            args.repository_root,
+            args.approvals,
+            args.output,
+            args.report,
+        )
+    if args.command == "rules" and args.rules_stage == "select":
+        return _rules_select(args.repository_root, args.manifest, args.context)
     if args.command == "math-run":
         return _math_run(args.request, args.output)
     if args.command == "query":
