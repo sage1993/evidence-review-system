@@ -84,6 +84,16 @@ def _run_validator(root: Path) -> tuple[subprocess.CompletedProcess[str], dict[s
     return result, json.loads(result.stdout)
 
 
+def _missing_paths(payload: dict[str, object]) -> set[str]:
+    details = payload.get("error_details")
+    assert isinstance(details, list)
+    return {
+        str(item["path"])
+        for item in details
+        if isinstance(item, dict) and item.get("code") == "MISSING_REQUIRED_FILE"
+    }
+
+
 def test_validator_accepts_canonical_agents_without_legacy_agent_md(
     tmp_path: Path,
 ) -> None:
@@ -95,5 +105,34 @@ def test_validator_accepts_canonical_agents_without_legacy_agent_md(
     result, payload = _run_validator(root)
 
     assert "missing: agent.md" not in payload["errors"]
+    assert _missing_paths(payload) == set()
     assert result.returncode == 0
     assert payload["status"] == "PASS"
+
+
+def test_validator_rejects_legacy_agent_md_as_instruction_authority(
+    tmp_path: Path,
+) -> None:
+    root = _create_valid_legacy_workspace(
+        tmp_path,
+        instruction_names=("agent.md",),
+    )
+
+    result, payload = _run_validator(root)
+
+    assert result.returncode == 1
+    assert "missing: AGENTS.md" in payload["errors"]
+    assert _missing_paths(payload) == {"AGENTS.md"}
+
+
+def test_validator_requires_exact_agents_md_case(tmp_path: Path) -> None:
+    root = _create_valid_legacy_workspace(
+        tmp_path,
+        instruction_names=("agents.md",),
+    )
+
+    result, payload = _run_validator(root)
+
+    assert result.returncode == 1
+    assert "missing: AGENTS.md" in payload["errors"]
+    assert _missing_paths(payload) == {"AGENTS.md"}
