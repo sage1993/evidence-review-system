@@ -143,26 +143,27 @@ def test_all_bound_files_and_inspection_semantics_validate(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
-    "unsafe_path",
+    ("invalid_path", "error"),
     [
-        "../workspace.grist",
-        "/workspace.grist",
-        "C:/workspace.grist",
-        "legacy\\workspace.grist",
-        "legacy/./workspace.grist",
-        "legacy//workspace.grist",
-        "legacy/workspace.grist/",
+        ("../workspace.grist", "UNSAFE_GRIST_QA_PATH"),
+        ("/workspace.grist", "UNSAFE_GRIST_QA_PATH"),
+        ("C:/workspace.grist", "UNSAFE_GRIST_QA_PATH"),
+        ("legacy\\workspace.grist", "UNSAFE_GRIST_QA_PATH"),
+        ("legacy/./workspace.grist", "UNSAFE_GRIST_QA_PATH"),
+        ("legacy//workspace.grist", "UNSAFE_GRIST_QA_PATH"),
+        ("legacy/workspace.grist/", "GRIST_FILE_SUFFIX_INVALID"),
     ],
 )
-def test_workspace_paths_must_be_safe_posix(
+def test_workspace_paths_are_rejected_before_file_access(
     tmp_path: Path,
-    unsafe_path: str,
+    invalid_path: str,
+    error: str,
 ) -> None:
     payload = _workspace_payload(tmp_path)
-    _binding(payload, "grist_file")["path"] = unsafe_path
+    _binding(payload, "grist_file")["path"] = invalid_path
     artifact = decode_grist_qa(payload)
 
-    with pytest.raises(ValueError, match="UNSAFE_GRIST_QA_PATH"):
+    with pytest.raises(ValueError, match=error):
         validate_grist_qa_files(artifact, tmp_path)
 
 
