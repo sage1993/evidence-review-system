@@ -14,6 +14,13 @@
 - Validation time: `2026-08-03T01:47:35+09:00`
 - Timezone: `Korea Standard Time`
 
+Environment setup command ledger:
+
+- `py -3.13 -m venv .venv`: exit `0`.
+- `python -m pip install --upgrade pip`: exit `0`.
+- `python -m pip install -e ".[dev]"`: exit `0`.
+- `python -m pip install build`: exit `0`.
+
 The original worktree, the previous validation worktree, and their existing user
 changes were preserved. The inherited `docs/acceptance/issue-46/` modifications were
 not staged or changed. The previous failed acceptance commit `58bc6ad` was preserved
@@ -59,6 +66,10 @@ release path coverage. The initial sandbox-only rerun could not create a new tem
 directory (`WinError 5`); the final commands above were rerun with normal Windows
 filesystem permissions and are the authoritative post-documentation results.
 
+Fast-gate command ledger: the focused pytest command, `python -m ruff check src tests`,
+`python -m mypy src`, and `python -m compileall -q src scripts web_runtime tests` each
+exited `0` after the minimal fix.
+
 ## E. Ruff, mypy, and compileall
 
 - `python -m ruff check src tests`: exit 0, **PASS**.
@@ -80,6 +91,9 @@ All six tracked fixture manifests were executed with each tracked report's
 Generated reports are under `build/manual-validation/golden-reports/`; actuals are under
 `build/rules/golden/actual/`.
 
+The six invocations of `evidence-review.exe rules run-golden` used the tracked fixture
+manifest, `source_commit`, and command fields; all six exited `0`.
+
 ## G. Activation 6/6
 
 - CLI exit code: `0`.
@@ -92,6 +106,9 @@ Generated reports are under `build/manual-validation/golden-reports/`; actuals a
   `docs/acceptance/issue-48/activation-report.json`: **PASS**.
 - Active manifest SHA-256:
   `c4d41a402d39fea712a7ba6d80568595ef7be6fc1acc9cb63416b8c75020af76`.
+
+`evidence-review.exe rules build-active-manifest` exited `0`; both
+`evidence-review.exe rules select` invocations exited `0`.
 
 ## H. Runtime selection
 
@@ -113,6 +130,8 @@ keys, canonical CLI behavior, and blocked exit behavior.
 Partial fallback was not observed. Candidate directories and unmanifested approved
 rules were not scanned. Normal scope mismatch remained `ABSTAIN`; `BLOCKED` was not
 downgraded to `ABSTAIN`.
+
+The tamper/entrypoint/CLI pytest command exited `0`; all 25 collected tests passed.
 
 ## J. Wheel 3.13/3.11
 
