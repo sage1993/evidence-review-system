@@ -111,6 +111,22 @@ This record is a controlled internal process attestation. Possession of the JSON
 
 A legacy `ansim/human-acceptance` record may be inspected for migration history, but it **cannot authorize a new release**. Copying a legacy `signature` string into the new record is prohibited. Missing, malformed, hash-mismatched, stale, or legacy-only records keep the release `BLOCKED`.
 
+### Threat model and operational assumptions
+
+The process attestation is designed to reject stale or mismatched release artifacts, incomplete checklist records, accidental reuse of an older packet, configured reviewer ID mismatch, and legacy acceptance files presented as current authorization.
+
+It does not protect against a malicious reviewer, a stolen or copied JSON file, a compromised filesystem, an operator who supplies a false reviewer ID when no expected reviewer policy is configured, or artifact changes made after validation outside the controlled release process.
+
+Operational use therefore assumes:
+
+- reviewer identity is checked through an external access control or organizational process;
+- only authorized reviewers can create files in the attestation directory;
+- checklist evidence is retained and independently reviewable;
+- the release build and attestation validation run on a trusted host;
+- outputs are not modified after validation and before distribution.
+
+These assumptions explain why the assurance level is `PROCESS_ATTESTATION` and why `cryptographic_identity_verified` remains `false`.
+
 ## Ready case smoke check
 
 ```bash smoke
