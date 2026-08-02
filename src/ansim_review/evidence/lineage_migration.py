@@ -345,13 +345,17 @@ def _publish_atomically(
     temporary_paths: tuple[Path, Path, Path],
     final_paths: tuple[Path, Path, Path],
 ) -> None:
+    """Publish same-directory files without ever replacing an existing path."""
+
     published: list[Path] = []
     try:
         for temporary, final in zip(temporary_paths, final_paths, strict=True):
-            temporary.replace(final)
+            os.link(temporary, final)
             published.append(final)
+        for temporary in temporary_paths:
+            temporary.unlink()
     except BaseException:
-        for final in published:
+        for final in reversed(published):
             final.unlink(missing_ok=True)
         raise
 
@@ -450,7 +454,7 @@ def apply_legacy_lineage_migration(
             generated_final_paths,
         )
     except BaseException:
-        for path in (*generated_temp_paths, *generated_final_paths):
+        for path in generated_temp_paths:
             path.unlink(missing_ok=True)
         raise
 
