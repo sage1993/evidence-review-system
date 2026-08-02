@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from ansim_review.rule_engine.governance_contract import (
     RuleSelectionContext,
     RuleSelectionResult,
+    active_rule_manifest_bytes,
     load_active_rule_manifest_bytes,
 )
 from ansim_review.rule_engine.governance_verify import (
@@ -120,6 +121,8 @@ def load_governed_active_rules(
             (_manifest_error_code(error),),
             manifest_sha256,
         )
+    if active_rule_manifest_bytes(manifest) != manifest_bytes:
+        return _blocked(context, ("ACTIVE_MANIFEST_INVALID",), manifest_sha256)
 
     verified_by_identity: dict[tuple[str, str], RuleSpec] = {}
     reasons: list[str] = []
