@@ -5,7 +5,9 @@ import hashlib
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 
 from ansim_review.canonical_json import dump_bytes, sha256_json
 from ansim_review.contracts.formats import RELEASE_FORMAT
@@ -24,6 +26,7 @@ from ansim_review.release.config import (
     resolve_attestation_record,
     resolve_evidence_database,
 )
+from ansim_review.release.output_verifier import validate_release_output
 from ansim_review.release.validator import validate_release_workspace
 
 _FIXED_TIME = (1980, 1, 1, 0, 0, 0)
@@ -72,6 +75,40 @@ def _artifact_entries(output: Path) -> list[dict[str, object]]:
     ]
 
 
+def _automated_reason_codes(
+    workspace_validation: Mapping[str, object],
+    output_validation: Mapping[str, object],
+) -> list[str]:
+    """Return stable independent release-gate reasons in policy order."""
+    reasons: list[str] = []
+    if workspace_validation.get("status") != "PASS":
+        reasons.append("AUTOMATED_VALIDATION_FAILED")
+    if output_validation.get("status") != "PASS":
+        reasons.append("RELEASE_OUTPUT_VALIDATION_FAILED")
+    return reasons
+
+
+def _combined_validation_report(
+    workspace_validation: dict[str, object],
+    output_validation: dict[str, object],
+) -> dict[str, object]:
+    """Embed final-output verification without changing the report contract."""
+    errors = list(cast(list[str], workspace_validation.get("errors", [])))
+    if output_validation.get("status") != "PASS":
+        errors.append("RELEASE_OUTPUT_VALIDATION_FAILED")
+    return {
+        **workspace_validation,
+        "status": (
+            "PASS"
+            if workspace_validation.get("status") == "PASS"
+            and output_validation.get("status") == "PASS"
+            else "FAIL"
+        ),
+        "errors": errors,
+        "release_output": output_validation,
+    }
+
+
 def build_evidence_release(
     workspace_root: Path,
     output_directory: Path,
@@ -105,16 +142,24 @@ def build_evidence_release(
         workspace_root,
         output_directory / "chatgpt-web-runtime.zip",
     )
-    validation = validate_release_workspace(
-        workspace_root,
-        output_directory / "release-validation.json",
+
+    workspace_validation = validate_release_workspace(workspace_root)
+    output_validation = validate_release_output(output_directory)
+    validation = _combined_validation_report(
+        workspace_validation,
+        output_validation,
     )
+    (output_directory / "release-validation.json").write_bytes(
+        dump_bytes(validation)
+    )
+
     artifacts = _artifact_entries(output_directory)
     candidate_hash = sha256_json(artifacts)
     packet_hash = _sha(output_directory / "final-review-packet.json")
-    reasons: list[str] = []
-    if validation["status"] != "PASS":
-        reasons.append("AUTOMATED_VALIDATION_FAILED")
+    reasons = _automated_reason_codes(
+        workspace_validation,
+        output_validation,
+    )
 
     attestation_path = resolve_attestation_record(workspace_root, config)
     attestation: HumanAttestation | None = None

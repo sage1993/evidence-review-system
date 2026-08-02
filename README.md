@@ -338,6 +338,21 @@ evidence-review release validate-attestation `
 
 JSON 기록 보유 자체는 reviewer identity의 암호학적 증명이 아니다. 시스템은 공개키, 인증서 또는 계정 세션을 검증하지 않으며 release manifest의 `cryptographic_identity_verified`는 항상 `false`다. Attestation 누락, 형식 오류, reviewer policy 불일치, 오래된 candidate hash 또는 packet hash 불일치가 있으면 release는 `BLOCKED`로 유지된다.
 
+## 10. 최종 릴리스 ZIP 재검증
+
+Release builder는 process attestation을 검증하기 전에 최종 `codex-workspace.zip`과 `chatgpt-web-runtime.zip`을 다시 연다. `codex-workspace.zip`의 `bundle-manifest.json`과 `chatgpt-web-runtime.zip`의 `runtime-manifest.json`을 실제 member bytes와 비교한다.
+
+검증은 **without extracting** 방식으로 수행된다. 각 고유 `ZipInfo`를 직접 읽으며 다음 항목을 확인한다.
+
+- 최종 출력 디렉터리의 필수 파일 누락과 예상하지 않은 파일
+- manifest와 실제 ZIP member의 누락·추가·중복
+- 절대경로, `.`·`..`, 빈 경로 요소, 역슬래시, drive-prefixed 경로
+- Windows에서 충돌하는 case-fold collisions
+- manifest의 size와 실제 byte 수
+- manifest의 SHA-256과 실제 member hash
+
+결과는 `release-validation.json`의 `release_output`에 기록된다. 하나라도 불일치하면 `RELEASE_OUTPUT_VALIDATION_FAILED`가 추가되고, process attestation이 있더라도 release는 `BLOCKED` 상태를 유지한다.
+
 ## 안전 경계
 
 - PDF 파일명이나 제목으로 문서 종류를 추정하지 않는다.
