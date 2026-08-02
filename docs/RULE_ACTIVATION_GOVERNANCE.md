@@ -118,17 +118,22 @@ docs/acceptance/issue-48/
 ├─ activation-report.json
 ├─ ansim-selection.json
 ├─ non-ansim-abstention.json
+├─ MANUAL_VALIDATION.md
 └─ README.md
 ```
 
-예상 검증:
+검증 명령:
 
 ```powershell
+pytest -v
 pytest -v tests/unit/rule_engine tests/integration/rule_engine
+pytest -v tests/integration/test_workspace_validator.py
 ruff check src tests
 mypy src
 python -m compileall -q src scripts web_runtime tests
 python -m build --wheel
 ```
 
-2026-08-02 현재 GitHub Actions job이 step 시작 전에 `steps=null`로 종료되는 인프라 장애가 지속되고 있다. 따라서 acceptance JSON과 governance graph는 생성됐지만 Task 3 이후 전체 실행 검증 완료 또는 Issue #48 완료를 주장하지 않는다.
+2026-08-03 Windows 격리 worktree에서 전체 수동 acceptance가 완료됐으며 상태는 `MANUAL_PASS / ACTIONS_BILLING_BLOCKED`이다. GitHub Actions는 계정의 Actions 결제·spending limit 문제로 실행되지 않았으므로 이 상태는 GitHub Actions PASS가 아니다. 상세 명령, exit code, golden 6개 fixture·13개 case, activation 6개 rule, scope selection, tamper matrix, Python 3.13·3.11 wheel 결과는 `docs/acceptance/issue-48/MANUAL_VALIDATION.md`에 기록한다.
+
+수동 acceptance는 구현과 artifact의 재현성을 검증하지만 reviewer identity의 암호학적 증명이나 사람의 최종 법률 판단을 제공하지 않는다.
