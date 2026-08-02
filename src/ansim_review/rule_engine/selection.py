@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from typing import cast
@@ -25,6 +26,15 @@ _CONTEXT_FIELDS = (
     "jurisdiction",
     "program",
 )
+
+
+def _duplicate_free_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
 
 
 def _optional_string(value: object, field: str) -> str | None:
@@ -51,6 +61,19 @@ def load_rule_selection_context(value: object) -> RuleSelectionContext:
         jurisdiction=_optional_string(payload.get("jurisdiction"), "jurisdiction"),
         program=_optional_string(payload.get("program"), "program"),
     )
+
+
+def load_rule_selection_context_bytes(data: bytes) -> RuleSelectionContext:
+    """Decode UTF-8 JSON while rejecting duplicate keys."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("selection context must be UTF-8 JSON") from error
+    try:
+        value: object = json.loads(text, object_pairs_hook=_duplicate_free_object)
+    except json.JSONDecodeError as error:
+        raise ValueError("selection context must be valid JSON") from error
+    return load_rule_selection_context(value)
 
 
 def _scope_values(scope: RuleScope) -> tuple[str | None, ...]:
