@@ -18,6 +18,11 @@ from ansim_review.math_engine.manifest import calculation_result_document
 from ansim_review.math_engine.requests import decode_calculation_request
 from ansim_review.math_engine.runner import run_calculation_request
 from ansim_review.network_guard import install_network_guard
+from ansim_review.parsing.legacy_grist_qa import (
+    derive_grist_qa_status,
+    grist_qa_status_document,
+    load_and_validate_grist_qa,
+)
 from ansim_review.parsing.legacy_visual_manifest import (
     inspect_legacy_visual_manifest,
 )
@@ -85,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     legacy_visuals.add_argument("--manifest", required=True, type=Path)
     legacy_visuals.add_argument("--root", type=Path)
     legacy_visuals.add_argument("--output", required=True, type=Path)
+    legacy_grist_qa = legacy_stages.add_parser(
+        "validate-grist-qa",
+        help="validate a manual Grist Desktop QA artifact",
+    )
+    legacy_grist_qa.add_argument("--artifact", required=True, type=Path)
+    legacy_grist_qa.add_argument("--root", required=True, type=Path)
 
     release = subparsers.add_parser(
         "release",
@@ -302,6 +313,26 @@ def _legacy_visual_inspect(
     return 0
 
 
+def _legacy_grist_qa_validate(artifact_path: Path, root: Path) -> int:
+    try:
+        artifact, artifact_hash = load_and_validate_grist_qa(
+            artifact_path,
+            root,
+        )
+    except (
+        FileNotFoundError,
+        OSError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+    status = derive_grist_qa_status(artifact)
+    _write_stdout(grist_qa_status_document(artifact, artifact_hash))
+    return 0 if status == "PASS" else 1
+
+
 def _release_validate_attestation(
     attestation_path: Path,
     candidate_hash: str,
@@ -482,6 +513,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _source_batch_ingest(args.root, args.manifest, args.output)
     if args.command == "legacy" and args.legacy_stage == "inspect-visual-manifest":
         return _legacy_visual_inspect(args.manifest, args.root, args.output)
+    if args.command == "legacy" and args.legacy_stage == "validate-grist-qa":
+        return _legacy_grist_qa_validate(args.artifact, args.root)
     if args.command == "release" and args.release_stage == "validate-attestation":
         return _release_validate_attestation(
             args.attestation,
