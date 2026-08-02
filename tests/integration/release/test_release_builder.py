@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from ansim_review.release.attestation import REQUIRED_CHECK_IDS
-from ansim_review.release.builder import build_ansim_release
+from ansim_review.release.builder import build_ansim_release, build_evidence_release
 from ansim_review.release.config import ReleaseConfig
 
 
@@ -162,7 +162,7 @@ def test_release_rejects_configured_reviewer_identity_mismatch(
     root = tmp_path / "workspace"
     _workspace(root)
     config = ReleaseConfig(expected_reviewer_id="reviewer-b@example.com")
-    first = build_ansim_release(root, tmp_path / "first", config=config)
+    first = build_evidence_release(root, tmp_path / "first", config=config)
     attestation_dir = root / "releases/evidence-review-v1.0"
     attestation_dir.mkdir(parents=True)
     (attestation_dir / "human-attestation.json").write_text(
@@ -176,7 +176,7 @@ def test_release_rejects_configured_reviewer_identity_mismatch(
         encoding="utf-8",
     )
 
-    blocked = build_ansim_release(root, tmp_path / "mismatch", config=config)
+    blocked = build_evidence_release(root, tmp_path / "mismatch", config=config)
 
     assert blocked["status"] == "BLOCKED"
     assert blocked["reason_codes"] == ["PROCESS_ATTESTATION_INVALID"]
