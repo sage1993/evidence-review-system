@@ -52,7 +52,7 @@ def test_attestation_requires_named_reviewer_and_all_manual_evidence(
     assert isinstance(first, dict)
     first["status"] = "PENDING"
     path.write_text(json.dumps(record), encoding="utf-8")
-    with pytest.raises(ValueError, match="unsupported status"):
+    with pytest.raises(ValueError, match="ATTESTATION_CHECK_NOT_PASSED"):
         validate_attestation(
             path,
             expected_candidate_hash=candidate_hash,
