@@ -189,7 +189,8 @@ def _row_by_id(
     row_id: str,
 ) -> sqlite3.Row | None:
     query = f"SELECT * FROM {table} WHERE id = ?"  # noqa: S608
-    return connection.execute(query, (row_id,)).fetchone()
+    row: sqlite3.Row | None = connection.execute(query, (row_id,)).fetchone()
+    return row
 
 
 def _json_text(value: object, field: str) -> object:
