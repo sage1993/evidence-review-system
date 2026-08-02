@@ -6,8 +6,9 @@ from ansim_review.canonical_json import dump_bytes, sha256_json
 from ansim_review.contracts.engines import CalculationResult
 from ansim_review.contracts.evidence import EvidenceRecord
 from ansim_review.math_engine.manifest import calculation_result_payload
+from ansim_review.rule_engine.governance_contract import RuleSelectionContext
 from ansim_review.rule_engine.evaluator import evaluate_rule
-from ansim_review.rule_engine.manifest import load_active_rules
+from ansim_review.rule_engine.manifest import load_governed_active_rules
 
 ROOT = Path(__file__).parents[3]
 MANIFEST = ROOT / "rules" / "manifests" / "active.json"
@@ -52,7 +53,13 @@ def _evidence(rule):
 
 
 def _execute_cases() -> tuple[bytes, ...]:
-    rules = {rule.rule_id: rule for rule in load_active_rules(ROOT, MANIFEST)}
+    loaded = load_governed_active_rules(
+        ROOT,
+        MANIFEST,
+        RuleSelectionContext(document_family="ANSIM"),
+    )
+    assert loaded.selection.status == "SELECTED"
+    rules = {rule.rule_id: rule for rule in loaded.rules}
     payload = json.loads(GOLDEN.read_text(encoding="utf-8"))
     outputs: list[bytes] = []
     for case in payload["cases"]:
