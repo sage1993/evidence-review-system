@@ -5,6 +5,7 @@ from pathlib import Path
 SOURCE_ROOT = Path("src/ansim_review")
 LEGACY_FILE = SOURCE_ROOT / "contracts" / "legacy_formats.py"
 LEGACY_READERS = {
+    SOURCE_ROOT / "parsing" / "legacy_visual_manifest.py",
     SOURCE_ROOT / "release" / "legacy_acceptance.py",
     SOURCE_ROOT / "review_run.py",
     SOURCE_ROOT / "review_packet" / "html_renderer.py",
@@ -46,8 +47,12 @@ def test_legacy_boundaries_are_explicitly_read_only() -> None:
         "LEGACY_REVIEW_RUN_REQUEST_FORMAT",
         "LEGACY_EVIDENCE_DB_NAME",
         "LEGACY_RELEASE_ID",
+        "LEGACY_VISUAL_MANIFEST_CSV",
+        "LEGACY_VISUAL_STATUS",
     ):
         assert required in text
     for reader in sorted(LEGACY_READERS):
         reader_text = reader.read_text(encoding="utf-8")
-        assert any(token in reader_text for token in TOKENS)
+        assert any(token in reader_text for token in TOKENS) or (
+            "LEGACY_VISUAL_STATUS" in reader_text
+        )
