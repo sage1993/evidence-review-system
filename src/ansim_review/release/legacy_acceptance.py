@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from ansim_review.contracts.legacy_formats import LEGACY_HUMAN_ACCEPTANCE_FORMAT
 from ansim_review.contracts.validation import (
@@ -17,7 +17,9 @@ from ansim_review.contracts.validation import (
     expect_string,
 )
 
-LEGACY_UNVERIFIED_ACCEPTANCE = "LEGACY_UNVERIFIED_ACCEPTANCE"
+LEGACY_UNVERIFIED_ACCEPTANCE: Final[
+    Literal["LEGACY_UNVERIFIED_ACCEPTANCE"]
+] = "LEGACY_UNVERIFIED_ACCEPTANCE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +41,7 @@ def inspect_legacy_acceptance(path: Path) -> LegacyAcceptanceSummary:
         json.loads(path.read_text(encoding="utf-8")),
         "legacy_acceptance",
     )
-    format_value = expect_literal(
+    expect_literal(
         payload.get("format"),
         "format",
         (LEGACY_HUMAN_ACCEPTANCE_FORMAT,),
@@ -56,7 +58,7 @@ def inspect_legacy_acceptance(path: Path) -> LegacyAcceptanceSummary:
     if reviewed_at.utcoffset() is None:
         raise ValueError("reviewed_at must include timezone")
     return LegacyAcceptanceSummary(
-        format=format_value,
+        format=LEGACY_HUMAN_ACCEPTANCE_FORMAT,
         reviewer_id=reviewer_id,
         reviewed_at=reviewed_at,
         release_candidate_hash=expect_sha256(
