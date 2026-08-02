@@ -77,6 +77,16 @@ def _issue(
     }
 
 
+def _issue_sort_key(item: dict[str, object]) -> tuple[int, str]:
+    row_number = item.get("row_number")
+    code = item.get("code")
+    if not isinstance(row_number, int) or isinstance(row_number, bool):
+        raise TypeError("legacy visual issue row_number must be an integer")
+    if not isinstance(code, str):
+        raise TypeError("legacy visual issue code must be a string")
+    return row_number, code
+
+
 def _asset_issue(
     root: Path,
     row_number: int,
@@ -246,10 +256,7 @@ def inspect_legacy_visual_manifest(
                 if asset_issue is not None:
                     issues.append(asset_issue)
 
-    ordered_issues = sorted(
-        issues,
-        key=lambda item: (int(item["row_number"]), str(item["code"])),
-    )
+    ordered_issues = sorted(issues, key=_issue_sort_key)
     issue_counts = Counter(str(item["code"]) for item in ordered_issues)
     return {
         "format": "evidence-review/legacy-visual-inspection",
