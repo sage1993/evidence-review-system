@@ -46,6 +46,7 @@ _REQUIRED_SAMPLE_SET = frozenset(REQUIRED_SAMPLE_KINDS)
 ViewStatus = Literal["PASS", "FAIL", "NOT_RUN"]
 SampleResult = Literal["PASS", "FAIL"]
 FindingStatus = Literal["OPEN", "RESOLVED"]
+GristQaStatus = Literal["PASS", "FAIL", "INCOMPLETE"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,7 +338,9 @@ def _decode_finding(value: object, index: int) -> GristQaFinding:
 
 
 def _unique_by_id(
-    values: tuple[EvidenceFile, ...] | tuple[GristQaSample, ...] | tuple[GristQaFinding, ...],
+    values: tuple[EvidenceFile, ...]
+    | tuple[GristQaSample, ...]
+    | tuple[GristQaFinding, ...],
     *,
     attribute: Literal["evidence_id", "sample_id", "finding_id"],
     error_code: str,
@@ -531,4 +534,52 @@ def grist_qa_document(artifact: GristQaArtifact) -> dict[str, object]:
             }
             for item in artifact.findings
         ],
+    }
+
+
+def derive_grist_qa_status(artifact: GristQaArtifact) -> GristQaStatus:
+    """Derive fail-closed status from manual observations and findings."""
+    if any(view.status == "FAIL" for view in artifact.views):
+        return "FAIL"
+    if any(sample.result == "FAIL" for sample in artifact.samples):
+        return "FAIL"
+    if any(finding.status == "OPEN" for finding in artifact.findings):
+        return "FAIL"
+    if any(view.status == "NOT_RUN" for view in artifact.views):
+        return "INCOMPLETE"
+    passed_kinds = {
+        sample.content_kind
+        for sample in artifact.samples
+        if sample.result == "PASS"
+    }
+    if any(kind not in passed_kinds for kind in REQUIRED_SAMPLE_KINDS):
+        return "INCOMPLETE"
+    return "PASS"
+
+
+def grist_qa_status_document(
+    artifact: GristQaArtifact,
+    artifact_sha256: str,
+) -> dict[str, object]:
+    """Return the deterministic validation status for one exact artifact."""
+    digest = expect_sha256(artifact_sha256, "artifact_sha256")
+    status = derive_grist_qa_status(artifact)
+    view_counts = {
+        view_status: sum(
+            1 for view in artifact.views if view.status == view_status
+        )
+        for view_status in ("PASS", "FAIL", "NOT_RUN")
+    }
+    return {
+        "format": GRIST_QA_STATUS_FORMAT,
+        "version": 1,
+        "status": status,
+        "accepted": status == "PASS",
+        "artifact_sha256": digest,
+        "reviewer_id": artifact.review.reviewer_id,
+        "reviewed_at": artifact.review.reviewed_at.isoformat(),
+        "view_counts": view_counts,
+        "open_finding_count": sum(
+            1 for finding in artifact.findings if finding.status == "OPEN"
+        ),
     }
