@@ -47,3 +47,6 @@ RELEASE_FORMAT: Final[Literal["evidence-review/release"]] = (
 RELEASE_VALIDATION_FORMAT: Final[
     Literal["evidence-review/release-validation"]
 ] = "evidence-review/release-validation"
+RELEASE_OUTPUT_VALIDATION_FORMAT: Final[
+    Literal["evidence-review/release-output-validation"]
+] = "evidence-review/release-output-validation"

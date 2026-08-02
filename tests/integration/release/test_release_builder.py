@@ -90,7 +90,8 @@ def test_release_blocks_until_exact_process_attestation_is_present(
 ) -> None:
     root = tmp_path / "workspace"
     _workspace(root)
-    blocked = build_ansim_release(root, tmp_path / "blocked")
+    blocked_output = tmp_path / "blocked"
+    blocked = build_ansim_release(root, blocked_output)
     assert blocked["format"] == "evidence-review/release"
     assert blocked["release"] == "evidence-review-v1.0"
     assert blocked["status"] == "BLOCKED"
@@ -100,6 +101,19 @@ def test_release_blocks_until_exact_process_attestation_is_present(
     assert blocked["expected_reviewer_id"] is None
     assert blocked["attestation"] is None
     assert blocked["tag_allowed"] is False
+
+    validation = json.loads(
+        (blocked_output / "release-validation.json").read_text(encoding="utf-8")
+    )
+    assert validation["format"] == "evidence-review/release-validation"
+    assert validation["status"] == "PASS"
+    output_validation = validation["release_output"]
+    assert output_validation["format"] == "evidence-review/release-output-validation"
+    assert output_validation["status"] == "PASS"
+    assert {item["archive"] for item in output_validation["archives"]} == {
+        "codex-workspace.zip",
+        "chatgpt-web-runtime.zip",
+    }
 
     candidate_hash = blocked["candidate_hash"]
     packet_hash = blocked["packet_hash"]
