@@ -104,7 +104,10 @@ def _final_plan(
     unresolved: Iterable[UnresolvedLineageItem],
 ) -> LegacyLineagePlan:
     sorted_mappings = tuple(
-        sorted(set(mappings), key=lambda item: (item.table, item.legacy_id, item.canonical_id))
+        sorted(
+            set(mappings),
+            key=lambda item: (item.table, item.legacy_id, item.canonical_id),
+        )
     )
     sorted_unresolved = tuple(
         sorted(
@@ -163,7 +166,8 @@ def _schema_is_supported(connection: sqlite3.Connection) -> bool:
     unexpected = {
         table
         for table in tables
-        if table not in _EXPECTED_USER_TABLES and not table.startswith("evidence_fts_")
+        if table not in _EXPECTED_USER_TABLES
+        and not table.startswith("evidence_fts_")
     }
     missing = _EXPECTED_USER_TABLES - tables
     return not unexpected and not missing
@@ -184,10 +188,8 @@ def _row_by_id(
     table: str,
     row_id: str,
 ) -> sqlite3.Row | None:
-    return connection.execute(
-        f"SELECT * FROM {table} WHERE id = ?",  # noqa: S608 - fixed internal table names
-        (row_id,),
-    ).fetchone()
+    query = f"SELECT * FROM {table} WHERE id = ?"  # noqa: S608
+    return connection.execute(query, (row_id,)).fetchone()
 
 
 def _json_text(value: object, field: str) -> object:
@@ -238,7 +240,8 @@ def _table_payload(row: sqlite3.Row) -> dict[str, object]:
         "bbox": _json_text(row["bbox_json"], "tables.bbox_json"),
         "raw_json": _json_text(row["raw_json"], "tables.raw_json"),
         "normalized_json": _json_text(
-            row["normalized_json"], "tables.normalized_json"
+            row["normalized_json"],
+            "tables.normalized_json",
         ),
     }
 
@@ -259,12 +262,11 @@ def _rows_for_parent(
     parent_column: str,
     parent_id: str,
 ) -> tuple[sqlite3.Row, ...]:
-    return tuple(
-        connection.execute(
-            f"SELECT * FROM {table} WHERE {parent_column} = ? ORDER BY id",  # noqa: S608
-            (parent_id,),
-        ).fetchall()
+    query = (
+        f"SELECT * FROM {table} "
+        f"WHERE {parent_column} = ? ORDER BY id"  # noqa: S608
     )
+    return tuple(connection.execute(query, (parent_id,)).fetchall())
 
 
 def _match_payload_rows(
@@ -306,7 +308,10 @@ def _match_payload_rows(
                     code=ambiguous_code,
                     legacy_id=legacy_id,
                     canonical_id="",
-                    detail=f"{table} payload has {len(candidates)} canonical counterparts",
+                    detail=(
+                        f"{table} payload has {len(candidates)} "
+                        "canonical counterparts"
+                    ),
                 )
             )
             continue
@@ -358,18 +363,23 @@ def _match_clauses(
             )
 
     replaced_ids = {item.legacy_id for item in replacement}
-    unresolved = [item for item in unresolved if item.legacy_id not in replaced_ids]
+    unresolved = [
+        item for item in unresolved if item.legacy_id not in replaced_ids
+    ]
     unresolved.extend(replacement)
     return mappings, unresolved
 
 
 def _revision_rows(
     connection: sqlite3.Connection,
-    mapping: DocumentLineageMapping,
     revision: RevisionMapping,
 ) -> tuple[sqlite3.Row | None, sqlite3.Row | None]:
     legacy = _row_by_id(connection, "revisions", revision.legacy_revision_id)
-    canonical = _row_by_id(connection, "revisions", revision.canonical_revision_id)
+    canonical = _row_by_id(
+        connection,
+        "revisions",
+        revision.canonical_revision_id,
+    )
     return legacy, canonical
 
 
@@ -380,7 +390,7 @@ def _plan_revision(
     mappings: list[EntityMapping],
     unresolved: list[UnresolvedLineageItem],
 ) -> dict[str, str]:
-    legacy, canonical = _revision_rows(connection, document_mapping, revision_mapping)
+    legacy, canonical = _revision_rows(connection, revision_mapping)
     if legacy is None or canonical is None:
         unresolved.append(
             UnresolvedLineageItem(
@@ -501,10 +511,16 @@ def _plan_revision(
             entity_mappings, entity_unresolved = _match_payload_rows(
                 table=table,
                 legacy_rows=_rows_for_parent(
-                    connection, table, "page_id", legacy_page_id
+                    connection,
+                    table,
+                    "page_id",
+                    legacy_page_id,
                 ),
                 canonical_rows=_rows_for_parent(
-                    connection, table, "page_id", canonical_page_id
+                    connection,
+                    table,
+                    "page_id",
+                    canonical_page_id,
                 ),
                 payload=payload,
             )
@@ -542,10 +558,16 @@ def _match_links(
     unresolved: list[UnresolvedLineageItem] = []
     legacy_ids = set(id_map)
     rows = connection.execute("SELECT * FROM links ORDER BY id").fetchall()
-    canonical_index: dict[tuple[str, str, str], list[sqlite3.Row]] = defaultdict(list)
+    canonical_index: dict[tuple[str, str, str], list[sqlite3.Row]] = (
+        defaultdict(list)
+    )
     for row in rows:
         canonical_index[
-            (str(row["source_id"]), str(row["target_id"]), str(row["relation_type"]))
+            (
+                str(row["source_id"]),
+                str(row["target_id"]),
+                str(row["relation_type"]),
+            )
         ].append(row)
     for row in rows:
         source_id = str(row["source_id"])
@@ -585,7 +607,9 @@ def _match_review_flags(
     mappings: list[EntityMapping] = []
     unresolved: list[UnresolvedLineageItem] = []
     rows = connection.execute("SELECT * FROM review_flags ORDER BY id").fetchall()
-    canonical_index: dict[tuple[object, ...], list[sqlite3.Row]] = defaultdict(list)
+    canonical_index: dict[tuple[object, ...], list[sqlite3.Row]] = (
+        defaultdict(list)
+    )
     for row in rows:
         canonical_index[
             (
@@ -612,7 +636,9 @@ def _match_review_flags(
                     code="REVIEW_FLAG_COUNTERPART_MISSING",
                     legacy_id=str(row["id"]),
                     canonical_id="",
-                    detail="mapped review flag counterpart is missing or ambiguous",
+                    detail=(
+                        "mapped review flag counterpart is missing or ambiguous"
+                    ),
                 )
             )
             continue
@@ -639,7 +665,10 @@ def _retrieval_payload(
         "revision_id": revision_id,
         "page_id": page_id,
         "page_number": row["page_number"],
-        "bbox": _json_text(row["bbox_json"], "retrieval_records.bbox_json"),
+        "bbox": _json_text(
+            row["bbox_json"],
+            "retrieval_records.bbox_json",
+        ),
         "source_hash": row["source_hash"],
         "title": row["title"],
         "raw_text": row["raw_text"],
@@ -650,15 +679,11 @@ def _retrieval_payload(
 def _match_retrieval_records(
     connection: sqlite3.Connection,
     id_map: Mapping[str, str],
+    legacy_document_ids: set[str],
 ) -> tuple[list[EntityMapping], list[UnresolvedLineageItem]]:
     rows = connection.execute(
         "SELECT * FROM retrieval_records ORDER BY evidence_id"
     ).fetchall()
-    legacy_documents = {
-        item.legacy_id: item.canonical_id
-        for item in id_map_to_entity_mappings(id_map)
-        if item.table == "documents"
-    }
     canonical_index: dict[str, list[sqlite3.Row]] = defaultdict(list)
     for row in rows:
         payload = _retrieval_payload(
@@ -675,7 +700,7 @@ def _match_retrieval_records(
         document_id = str(row["document_id"])
         revision_id = str(row["revision_id"])
         page_id = str(row["page_id"])
-        if document_id not in legacy_documents:
+        if document_id not in legacy_document_ids:
             continue
         payload = _retrieval_payload(
             row,
@@ -690,7 +715,9 @@ def _match_retrieval_records(
                     code="RETRIEVAL_COUNTERPART_MISSING",
                     legacy_id=str(row["evidence_id"]),
                     canonical_id="",
-                    detail="mapped retrieval counterpart is missing or ambiguous",
+                    detail=(
+                        "mapped retrieval counterpart is missing or ambiguous"
+                    ),
                 )
             )
             continue
@@ -702,19 +729,6 @@ def _match_retrieval_records(
             )
         )
     return mappings, unresolved
-
-
-def id_map_to_entity_mappings(id_map: Mapping[str, str]) -> tuple[EntityMapping, ...]:
-    """Project an internal ID map when only document membership is needed."""
-
-    return tuple(
-        EntityMapping(
-            table="documents" if legacy.startswith("LAW") else "internal",
-            legacy_id=legacy,
-            canonical_id=canonical,
-        )
-        for legacy, canonical in sorted(id_map.items())
-    )
 
 
 def plan_legacy_lineage_migration(
@@ -738,7 +752,10 @@ def plan_legacy_lineage_migration(
         if not _schema_is_supported(connection):
             return _blocked(
                 "SOURCE_SCHEMA_VERSION_UNSUPPORTED",
-                detail="source must contain only the exact evidence schema version 2 tables",
+                detail=(
+                    "source must contain only the exact evidence schema "
+                    "version 2 tables"
+                ),
             )
         integrity_error = _source_integrity_error(connection)
         if integrity_error is not None:
@@ -747,12 +764,19 @@ def plan_legacy_lineage_migration(
         mappings: list[EntityMapping] = []
         unresolved: list[UnresolvedLineageItem] = []
         id_map: dict[str, str] = {}
+        legacy_document_ids = {
+            mapping.legacy_document_id for mapping in manifest.mappings
+        }
         for document_mapping in manifest.mappings:
             legacy_document = _row_by_id(
-                connection, "documents", document_mapping.legacy_document_id
+                connection,
+                "documents",
+                document_mapping.legacy_document_id,
             )
             canonical_document = _row_by_id(
-                connection, "documents", document_mapping.canonical_document_id
+                connection,
+                "documents",
+                document_mapping.canonical_document_id,
             )
             if legacy_document is None:
                 unresolved.append(
@@ -774,7 +798,9 @@ def plan_legacy_lineage_migration(
                     )
                 )
                 continue
-            if _document_payload(legacy_document) != _document_payload(canonical_document):
+            if _document_payload(legacy_document) != _document_payload(
+                canonical_document
+            ):
                 unresolved.append(
                     UnresolvedLineageItem(
                         code="DOCUMENT_METADATA_MISMATCH",
@@ -804,14 +830,24 @@ def plan_legacy_lineage_migration(
                 )
                 id_map.update(revision_id_map)
 
+        # Structural and evidence conflicts make downstream relation checks
+        # derivative and noisy. Stop at the highest valid comparison layer.
+        if unresolved:
+            return _final_plan(mappings, unresolved)
+
         link_mappings, link_unresolved = _match_links(connection, id_map)
         mappings.extend(link_mappings)
         unresolved.extend(link_unresolved)
-        flag_mappings, flag_unresolved = _match_review_flags(connection, id_map)
+        flag_mappings, flag_unresolved = _match_review_flags(
+            connection,
+            id_map,
+        )
         mappings.extend(flag_mappings)
         unresolved.extend(flag_unresolved)
         retrieval_mappings, retrieval_unresolved = _match_retrieval_records(
-            connection, id_map
+            connection,
+            id_map,
+            legacy_document_ids,
         )
         mappings.extend(retrieval_mappings)
         unresolved.extend(retrieval_unresolved)
