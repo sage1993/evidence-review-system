@@ -114,7 +114,7 @@ def test_governance_documentation_is_explicit_and_fail_closed() -> None:
         "BLOCKED",
         "human_decision",
         "암호학적 증명이 아니다",
-        "steps=null",
+        "MANUAL_PASS / ACTIONS_BILLING_BLOCKED",
     )
     for phrase in required:
         assert phrase in text
@@ -204,9 +204,11 @@ def test_all_acceptance_references_exist_and_decode() -> None:
             assert (ROOT / case.expected_path).is_file()
 
 
-def test_acceptance_status_does_not_claim_completed_verification() -> None:
+def test_acceptance_status_reports_manual_pass_without_claiming_ci() -> None:
     text = (ACCEPTANCE / "README.md").read_text(encoding="utf-8")
 
-    assert "CI_BLOCKED" in text
-    assert "최종 acceptance가 아니다" in text
-    assert "reviewer identity의 암호학적 증명" in text
+    assert "MANUAL_PASS / ACTIONS_BILLING_BLOCKED" in text
+    assert "not a claim that GitHub Actions passed" in text
+    assert "Reviewer identity is not cryptographically verified" in text
+    assert "machine rule results are not human legal decisions" in text
+    assert "최종 acceptance가 아니다" not in text
