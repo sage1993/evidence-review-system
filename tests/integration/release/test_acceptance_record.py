@@ -3,28 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.release.acceptance import validate_acceptance_record
+from ansim_review.release.attestation import REQUIRED_CHECK_IDS, validate_attestation
 
 
 def _record(candidate_hash: str, packet_hash: str) -> dict[str, object]:
-    check_ids = (
-        "SOURCE_IDENTITY",
-        "CITATION_PAGE_BBOX",
-        "TABLE_AND_VISUAL_EVIDENCE",
-        "CALCULATION_TRACE",
-        "RULE_VERSION_AND_STATUS",
-        "TRACK_A_EXPLANATION",
-        "TRACK_B_AUDIT",
-        "CONFIDENCE_FACTORS",
-        "ABSTENTION_BEHAVIOR",
-        "HUMAN_DECISION_SEPARATION",
-    )
     return {
-        "format": "ansim/human-acceptance",
+        "format": "evidence-review/human-attestation",
         "version": 1,
+        "assurance_level": "PROCESS_ATTESTATION",
         "reviewer_id": "reviewer@example.com",
-        "reviewed_at": "2026-08-01T16:00:00+09:00",
-        "signature": "reviewer@example.com:approved",
+        "reviewed_at": "2026-08-02T14:00:00+09:00",
+        "attestation": "REVIEWED_AND_ACCEPTED_FOR_RELEASE",
         "release_candidate_hash": candidate_hash,
         "packet_hash": packet_hash,
         "checks": [
@@ -33,27 +22,29 @@ def _record(candidate_hash: str, packet_hash: str) -> dict[str, object]:
                 "status": "PASS",
                 "evidence": f"evidence/{check_id}",
             }
-            for check_id in check_ids
+            for check_id in REQUIRED_CHECK_IDS
         ],
     }
 
 
-def test_acceptance_requires_named_reviewer_and_all_manual_evidence(
+def test_attestation_requires_named_reviewer_and_all_manual_evidence(
     tmp_path: Path,
 ) -> None:
     candidate_hash = "a" * 64
     packet_hash = "b" * 64
-    path = tmp_path / "acceptance-record.json"
+    path = tmp_path / "human-attestation.json"
     path.write_text(
         json.dumps(_record(candidate_hash, packet_hash)),
         encoding="utf-8",
     )
-    accepted = validate_acceptance_record(
+    accepted = validate_attestation(
         path,
         expected_candidate_hash=candidate_hash,
         expected_packet_hash=packet_hash,
     )
-    assert accepted["reviewer_id"] == "reviewer@example.com"
+    assert accepted.reviewer_id == "reviewer@example.com"
+    assert accepted.assurance_level == "PROCESS_ATTESTATION"
+
     record = _record(candidate_hash, packet_hash)
     checks = record["checks"]
     assert isinstance(checks, list)
@@ -61,8 +52,8 @@ def test_acceptance_requires_named_reviewer_and_all_manual_evidence(
     assert isinstance(first, dict)
     first["status"] = "PENDING"
     path.write_text(json.dumps(record), encoding="utf-8")
-    with pytest.raises(ValueError, match="did not pass"):
-        validate_acceptance_record(
+    with pytest.raises(ValueError, match="unsupported status"):
+        validate_attestation(
             path,
             expected_candidate_hash=candidate_hash,
             expected_packet_hash=packet_hash,
