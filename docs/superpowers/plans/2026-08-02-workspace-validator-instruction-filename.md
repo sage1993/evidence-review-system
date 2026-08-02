@@ -4,7 +4,7 @@
 
 **Goal:** Make `scripts/validate_workspace.py` require only the canonical root instruction file `AGENTS.md`, report a stable missing-file code, and enforce the same exact-case filename policy on Linux and Windows.
 
-**Architecture:** Extract the required-file policy into focused functions inside the existing validator script, preserve the existing JSON `errors` field for compatibility, and add structured `error_details` records for stable machine handling. Test the script against isolated temporary workspace fixtures and run the focused tests on Ubuntu and Windows GitHub Actions runners.
+**Architecture:** Preserve the existing legacy Grist validation flow and change only the required instruction-file policy. Add one exact-directory-entry helper for cross-platform case enforcement, preserve the existing JSON `errors` field, and add structured `error_details` records for stable machine handling. Test the script against isolated temporary workspace fixtures and run the focused tests on Ubuntu and Windows GitHub Actions runners.
 
 **Tech Stack:** Python 3.11+, `pytest`, `sqlite3`, GitHub Actions.
 
@@ -41,14 +41,13 @@
 - Test: `tests/integration/test_workspace_validator.py`
 
 **Interfaces:**
-- Produces: `required_workspace_paths(root: Path) -> tuple[Path, ...]`.
-- Produces: `missing_required_files(root: Path) -> tuple[str, ...]` using exact directory-entry names.
+- Produces: `_has_exact_filename(path: Path) -> bool` for the canonical instruction file.
 - Produces: JSON `error_details` entries shaped as `{"code": "MISSING_REQUIRED_FILE", "path": "AGENTS.md"}`.
 
 - [ ] Replace the duplicate `agent.md`/`AGENTS.md` requirement with `AGENTS.md` only.
-- [ ] Add exact-case existence checking so Windows does not accept `agents.md` for `AGENTS.md`.
+- [ ] Add exact-case directory-entry checking so Windows does not accept `agents.md` for `AGENTS.md`.
 - [ ] Preserve `errors` strings while adding stable structured `error_details`.
-- [ ] Add `main()` and a `__main__` guard so the validation helpers can be imported without executing the script.
+- [ ] Leave the remaining database, attachment, reference, count, and visual-manifest checks unchanged.
 - [ ] Run the focused tests and confirm they pass.
 - [ ] Commit as `fix: align workspace validator instruction filename`.
 
@@ -75,5 +74,5 @@
 - Create: pull request from `agent/issue39-workspace-validator-instruction` to `main`.
 
 - [ ] Record the RED failure and GREEN verification results.
-- [ ] Open a pull request with `Closes #39` only after both platform jobs pass.
+- [ ] Update the pull request with `Closes #39` only after both platform jobs pass.
 - [ ] Confirm no unrelated files changed.
