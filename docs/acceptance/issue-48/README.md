@@ -9,10 +9,6 @@ GitHub Actions did not run because of the repository Actions billing/spending li
 that GitHub Actions passed. See [MANUAL_VALIDATION.md](MANUAL_VALIDATION.md) for the
 complete rerun record.
 
-Compatibility warning retained from the acceptance contract: `CI_BLOCKED`.
-이 문서는 최종 acceptance가 아니다. reviewer identity의 암호학적 증명은
-수행되지 않았으며, 기계 판정은 human legal decision이 아니다.
-
 The deterministic acceptance artifacts in this directory are:
 
 - `activation-report.json`: activation report for six approved rules.
