@@ -4,12 +4,15 @@ from copy import deepcopy
 
 import pytest
 
+from ansim_review.canonical_json import dump_bytes
 from ansim_review.parsing.legacy_grist_qa import (
     GRIST_QA_FORMAT,
     REQUIRED_SAMPLE_KINDS,
     REQUIRED_VIEW_IDS,
     decode_grist_qa,
+    derive_grist_qa_status,
     grist_qa_document,
+    grist_qa_status_document,
 )
 
 
@@ -220,3 +223,89 @@ def test_fail_view_requires_open_finding_for_same_view() -> None:
     artifact = decode_grist_qa(payload)
     assert artifact.views[0].status == "FAIL"
     assert artifact.findings[0].status == "OPEN"
+
+
+def test_all_required_observations_derive_pass() -> None:
+    artifact = decode_grist_qa(valid_payload())
+
+    assert derive_grist_qa_status(artifact) == "PASS"
+
+
+def test_failure_signals_take_precedence() -> None:
+    payload = valid_payload()
+    views = payload["views"]
+    assert isinstance(views, list)
+    view = views[0]
+    assert isinstance(view, dict)
+    view["status"] = "FAIL"
+    payload["findings"] = [
+        {
+            "finding_id": "F-1",
+            "view_id": view["view_id"],
+            "status": "OPEN",
+            "row_id": "ROW-FAIL",
+            "file_path": None,
+            "description": "broken attachment preview",
+            "evidence_ids": [],
+        }
+    ]
+    assert derive_grist_qa_status(decode_grist_qa(payload)) == "FAIL"
+
+    payload = valid_payload()
+    samples = payload["samples"]
+    assert isinstance(samples, list)
+    sample = samples[0]
+    assert isinstance(sample, dict)
+    sample["result"] = "FAIL"
+    assert derive_grist_qa_status(decode_grist_qa(payload)) == "FAIL"
+
+    payload = valid_payload()
+    payload["findings"] = [
+        {
+            "finding_id": "F-2",
+            "view_id": "PAGE_RENDER",
+            "status": "OPEN",
+            "row_id": "ROW-OPEN",
+            "file_path": None,
+            "description": "open issue despite PASS view",
+            "evidence_ids": [],
+        }
+    ]
+    assert derive_grist_qa_status(decode_grist_qa(payload)) == "FAIL"
+
+
+def test_not_run_or_missing_pass_sample_derives_incomplete() -> None:
+    payload = valid_payload()
+    views = payload["views"]
+    assert isinstance(views, list)
+    view = views[0]
+    assert isinstance(view, dict)
+    view["status"] = "NOT_RUN"
+    assert derive_grist_qa_status(decode_grist_qa(payload)) == "INCOMPLETE"
+
+    payload = valid_payload()
+    samples = payload["samples"]
+    assert isinstance(samples, list)
+    samples.pop()
+    assert derive_grist_qa_status(decode_grist_qa(payload)) == "INCOMPLETE"
+
+
+def test_status_document_is_deterministic_and_explicit() -> None:
+    artifact = decode_grist_qa(valid_payload())
+
+    document = grist_qa_status_document(artifact, "e" * 64)
+
+    assert document == {
+        "format": "evidence-review/grist-desktop-qa-status",
+        "version": 1,
+        "status": "PASS",
+        "accepted": True,
+        "artifact_sha256": "e" * 64,
+        "reviewer_id": "reviewer@example.com",
+        "reviewed_at": "2026-08-02T15:30:00+09:00",
+        "view_counts": {"PASS": 9, "FAIL": 0, "NOT_RUN": 0},
+        "open_finding_count": 0,
+    }
+    assert dump_bytes(document) == dump_bytes(
+        grist_qa_status_document(artifact, "e" * 64)
+    )
