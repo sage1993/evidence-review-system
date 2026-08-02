@@ -133,24 +133,24 @@ def _publish_create_only(publications: Sequence[tuple[Path, bytes]]) -> None:
     try:
         for destination, payload in publications:
             prepared.append(_prepare_publication(destination, payload))
-        for item in prepared:
-            os.link(item.private_path, item.destination)
-            status = item.destination.stat(follow_symlinks=False)
+        for prepared_item in prepared:
+            os.link(prepared_item.private_path, prepared_item.destination)
+            status = prepared_item.destination.stat(follow_symlinks=False)
             published.append(
                 _PublishedInode(
-                    destination=item.destination,
+                    destination=prepared_item.destination,
                     device=status.st_dev,
                     inode=status.st_ino,
                 )
             )
     except BaseException:
-        for item in reversed(published):
-            if _same_inode(item.destination, item):
-                item.destination.unlink(missing_ok=True)
+        for published_item in reversed(published):
+            if _same_inode(published_item.destination, published_item):
+                published_item.destination.unlink(missing_ok=True)
         raise
     finally:
-        for item in prepared:
-            item.private_path.unlink(missing_ok=True)
+        for prepared_item in prepared:
+            prepared_item.private_path.unlink(missing_ok=True)
 
 
 def _finding_payload(finding: ActivationFinding) -> dict[str, object]:
