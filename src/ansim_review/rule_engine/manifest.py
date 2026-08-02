@@ -88,6 +88,13 @@ def _resolve_manifest(project_root: Path, manifest_path: Path) -> tuple[Path, Pa
     return root, current
 
 
+def _manifest_error_code(error: ValueError) -> str:
+    message = str(error)
+    if "duplicate active rule_id" in message:
+        return "DUPLICATE_ACTIVE_RULE_ID"
+    return "ACTIVE_MANIFEST_INVALID"
+
+
 def load_governed_active_rules(
     project_root: Path,
     manifest_path: Path,
@@ -105,10 +112,10 @@ def load_governed_active_rules(
     manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
     try:
         manifest = load_active_rule_manifest_bytes(manifest_bytes)
-    except ValueError:
+    except ValueError as error:
         return _blocked(
             context,
-            ("INVALID_ACTIVE_RULE_MANIFEST",),
+            (_manifest_error_code(error),),
             manifest_sha256,
         )
 
