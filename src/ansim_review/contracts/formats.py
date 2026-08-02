@@ -50,3 +50,12 @@ RELEASE_VALIDATION_FORMAT: Final[
 RELEASE_OUTPUT_VALIDATION_FORMAT: Final[
     Literal["evidence-review/release-output-validation"]
 ] = "evidence-review/release-output-validation"
+LEGACY_LINEAGE_MANIFEST_FORMAT: Final[
+    Literal["evidence-review/legacy-lineage-manifest"]
+] = "evidence-review/legacy-lineage-manifest"
+LEGACY_LINEAGE_ALIASES_FORMAT: Final[
+    Literal["evidence-review/legacy-lineage-aliases"]
+] = "evidence-review/legacy-lineage-aliases"
+LEGACY_LINEAGE_MIGRATION_REPORT_FORMAT: Final[
+    Literal["evidence-review/legacy-lineage-migration-report"]
+] = "evidence-review/legacy-lineage-migration-report"
