@@ -163,6 +163,7 @@ branch must pass the documentation test, Ruff, mypy, and compileall before integ
 ## L. Push, PR, and Issue status
 
 - Push: completed through remote commit `3c61cf5fdc5708996bbcac30e642c9ba361d8f73` before wording-only consistency corrections.
+- Acceptance wording corrections are present on the remote branch after that commit; Git history is the authoritative final-head record.
 - PR #49: remained Draft and was not merged during validation.
 - Issue #48: remained open during validation.
 - GitHub Actions: unavailable due `ACTIONS_BILLING_BLOCKED`; no CI PASS is claimed.
