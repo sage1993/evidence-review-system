@@ -9,6 +9,7 @@ EXPECTED = {
     "drawing-candidate.schema.json",
     "drawing-confirmation.schema.json",
     "drawing-geometry.schema.json",
+    "human-attestation.schema.json",
     "immutable-attachment.schema.json",
     "next-action.schema.json",
     "reason-code.schema.json",

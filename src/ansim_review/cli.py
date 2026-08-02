@@ -10,6 +10,7 @@ from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.engines import CalculationResult
+from ansim_review.contracts.formats import HUMAN_ATTESTATION_STATUS_FORMAT
 from ansim_review.contracts.source_batch import SourceBatch, decode_source_batch
 from ansim_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
 from ansim_review.evidence.store import EvidenceStore
@@ -22,6 +23,7 @@ from ansim_review.parsing.source_batch_importer import (
     import_source_batch,
     prepare_source_batch,
 )
+from ansim_review.release.attestation import PROCESS_ATTESTATION, validate_attestation
 from ansim_review.retrieval.bundle import build_evidence_bundle
 from ansim_review.review_run import finalize_review_run, prepare_review_run
 
@@ -67,6 +69,19 @@ def build_parser() -> argparse.ArgumentParser:
     source_ingest.add_argument("--root", required=True, type=Path)
     source_ingest.add_argument("--manifest", required=True, type=Path)
     source_ingest.add_argument("--output", required=True, type=Path)
+
+    release = subparsers.add_parser(
+        "release",
+        help="validate release authorization artifacts",
+    )
+    release_stages = release.add_subparsers(dest="release_stage", required=True)
+    release_attestation = release_stages.add_parser(
+        "validate-attestation",
+        help="validate a named process attestation against exact artifact hashes",
+    )
+    release_attestation.add_argument("--attestation", required=True, type=Path)
+    release_attestation.add_argument("--candidate-hash", required=True)
+    release_attestation.add_argument("--packet-hash", required=True)
 
     math_run = subparsers.add_parser(
         "math-run",
@@ -235,6 +250,36 @@ def _source_batch_ingest(root: Path, manifest: Path, output: Path) -> int:
     return 0
 
 
+def _release_validate_attestation(
+    attestation_path: Path,
+    candidate_hash: str,
+    packet_hash: str,
+) -> int:
+    try:
+        attestation = validate_attestation(
+            attestation_path,
+            expected_candidate_hash=candidate_hash,
+            expected_packet_hash=packet_hash,
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": HUMAN_ATTESTATION_STATUS_FORMAT,
+            "version": 1,
+            "status": "VALID",
+            "assurance_level": PROCESS_ATTESTATION,
+            "cryptographic_identity_verified": False,
+            "reviewer_id": attestation.reviewer_id,
+            "reviewed_at": attestation.reviewed_at.isoformat(),
+            "release_candidate_hash": attestation.release_candidate_hash,
+            "packet_hash": attestation.packet_hash,
+        }
+    )
+    return 0
+
+
 def _math_run(request_path: Path, output_path: Path) -> int:
     if output_path.exists():
         print(f"output already exists: {output_path}", file=sys.stderr)
@@ -383,6 +428,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _source_batch_prepare(args.root, args.manifest)
     if args.command == "source-batch" and args.source_stage == "ingest":
         return _source_batch_ingest(args.root, args.manifest, args.output)
+    if args.command == "release" and args.release_stage == "validate-attestation":
+        return _release_validate_attestation(
+            args.attestation,
+            args.candidate_hash,
+            args.packet_hash,
+        )
     if args.command == "math-run":
         return _math_run(args.request, args.output)
     if args.command == "query":
