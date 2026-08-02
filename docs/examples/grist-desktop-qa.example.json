@@ -1,0 +1,87 @@
+{
+  "format": "evidence-review/grist-desktop-qa",
+  "version": 1,
+  "scope": "LEGACY_UI_QA",
+  "identity_claim": "LEGACY_NON_CANONICAL",
+  "review": {
+    "reviewer_id": "replace-with-reviewer-id",
+    "reviewed_at": "2026-08-02T15:30:00+09:00"
+  },
+  "environment": {
+    "grist_desktop_version": "replace-with-actual-version",
+    "os": "Windows 11 replace-with-actual-build"
+  },
+  "sources": {
+    "grist_file": {
+      "path": "legacy/workspace.grist",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "visual_manifest": {
+      "path": "04_visuals/manifests/visual_manifest.csv",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "inspection_report": {
+      "path": "runs/legacy-visual-inspection.json",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "evidence_files": [],
+  "views": [
+    {
+      "view_id": "ATTACHMENTS_FILE_LINK",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "VISUALS_THUMBNAIL",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "REFERENCE_LINK_PREVIEW",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "PAGE_RENDER",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "IMAGE_CONTEXT_CROP",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "TABLE_CROP",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "COMPOSITE_DIAGRAM",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "MISSING_BROKEN_LINK_SCAN",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    },
+    {
+      "view_id": "LEGACY_CANONICAL_SEPARATION",
+      "status": "NOT_RUN",
+      "evidence_ids": [],
+      "notes": "Replace with the actual manual observation."
+    }
+  ],
+  "samples": [],
+  "findings": []
+}
