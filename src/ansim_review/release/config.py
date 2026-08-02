@@ -21,13 +21,19 @@ def _validate_file_name(value: str, field: str) -> None:
         raise ValueError(f"{field} must be one file name")
 
 
+def _validate_optional_reviewer_id(value: str | None) -> None:
+    if value is not None and (not value or value != value.strip()):
+        raise ValueError("expected_reviewer_id must be a non-blank exact identifier")
+
+
 @dataclass(frozen=True, slots=True)
 class ReleaseConfig:
-    """Names and paths that identify one release product."""
+    """Names, paths, and reviewer policy for one release product."""
 
     release_id: str = "evidence-review-v1.0"
     evidence_db_name: str = "evidence.sqlite"
     attestation_record_name: str = "human-attestation.json"
+    expected_reviewer_id: str | None = None
 
     def __post_init__(self) -> None:
         validate_identifier(self.release_id, "release_id")
@@ -36,6 +42,7 @@ class ReleaseConfig:
             self.attestation_record_name,
             "attestation_record_name",
         )
+        _validate_optional_reviewer_id(self.expected_reviewer_id)
 
     def attestation_path(self, workspace_root: Path) -> Path:
         return (
