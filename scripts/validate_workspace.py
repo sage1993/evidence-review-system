@@ -7,14 +7,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / '01_database' / '안심주택DB.grist'
+CANONICAL_INSTRUCTION_FILE = 'AGENTS.md'
+
+
+def _has_exact_filename(path: Path) -> bool:
+    """Require exact directory-entry case on every supported filesystem."""
+    try:
+        return path.parent.is_dir() and any(
+            entry.name == path.name and entry.is_file()
+            for entry in path.parent.iterdir()
+        )
+    except OSError:
+        return False
+
+
 required = [
     ROOT / '02_source_pdf' / 'law-1.pdf', ROOT / '02_source_pdf' / 'law-1.json',
     ROOT / '02_source_pdf' / 'law-2.pdf', ROOT / '02_source_pdf' / 'law-2.json',
-    DB, ROOT / 'agent.md', ROOT / 'AGENTS.md',
+    DB, ROOT / CANONICAL_INSTRUCTION_FILE,
 ]
 errors=[]
+error_details=[]
 for p in required:
-    if not p.exists(): errors.append(f'missing: {p.relative_to(ROOT)}')
+    exists = _has_exact_filename(p) if p.name == CANONICAL_INSTRUCTION_FILE else p.exists()
+    if not exists:
+        relative_path = p.relative_to(ROOT).as_posix()
+        errors.append(f'missing: {relative_path}')
+        error_details.append({'code': 'MISSING_REQUIRED_FILE', 'path': relative_path})
 
 if DB.exists():
     con=sqlite3.connect(DB); cur=con.cursor()
@@ -67,6 +86,11 @@ if manifest.exists():
 else:
     errors.append('missing visual manifest')
 
-result={'status':'PASS' if not errors else 'FAIL','counts':counts,'errors':errors}
+result={
+    'status':'PASS' if not errors else 'FAIL',
+    'counts':counts,
+    'errors':errors,
+    'error_details':error_details,
+}
 print(json.dumps(result,ensure_ascii=False,indent=2))
 raise SystemExit(0 if not errors else 1)
