@@ -32,6 +32,19 @@ def test_reviewer_docs_deny_cryptographic_identity_claims() -> None:
     assert "cannot authorize a new release" in reviewer
 
 
+def test_process_attestation_threat_model_is_explicit() -> None:
+    reviewer = REVIEWER.read_text(encoding="utf-8")
+
+    for required in (
+        "Threat model and operational assumptions",
+        "stale or mismatched release artifacts",
+        "malicious reviewer",
+        "stolen or copied JSON file",
+        "external access control",
+    ):
+        assert required in reviewer
+
+
 def test_offline_and_human_assurance_are_separate() -> None:
     offline = OFFLINE.read_text(encoding="utf-8")
 
