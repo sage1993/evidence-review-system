@@ -1,0 +1,8 @@
+{
+  "format": "evidence-review/legacy-lineage-manifest",
+  "version": 1,
+  "source_database_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "reviewer_id": "EXAMPLE_ONLY_NOT_REVIEWED",
+  "reviewed_at": "2026-08-02T16:49:00+09:00",
+  "mappings": []
+}

@@ -12,6 +12,7 @@ from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.engines import CalculationResult
 from ansim_review.contracts.formats import HUMAN_ATTESTATION_STATUS_FORMAT
 from ansim_review.contracts.source_batch import SourceBatch, decode_source_batch
+from ansim_review.evidence.lineage_migration import apply_legacy_lineage_migration
 from ansim_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.math_engine.manifest import calculation_result_document
@@ -58,6 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evidence_migrate.add_argument("--source", required=True, type=Path)
     evidence_migrate.add_argument("--output", required=True, type=Path)
+    evidence_lineage = evidence_stages.add_parser(
+        "migrate-lineage",
+        help="copy equivalent legacy document aliases into one canonical lineage",
+    )
+    evidence_lineage.add_argument("--source", required=True, type=Path)
+    evidence_lineage.add_argument("--manifest", required=True, type=Path)
+    evidence_lineage.add_argument("--output", required=True, type=Path)
 
     source_batch = subparsers.add_parser(
         "source-batch",
@@ -184,6 +192,40 @@ def _evidence_migrate(source: Path, output: Path) -> int:
             "output_sha256": report.output_sha256,
             "logical_snapshot_hash": report.logical_snapshot_hash,
             "counts": report.counts,
+        }
+    )
+    return 0
+
+
+def _evidence_migrate_lineage(
+    source: Path,
+    manifest: Path,
+    output: Path,
+) -> int:
+    try:
+        result = apply_legacy_lineage_migration(source, manifest, output)
+    except FileExistsError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except (
+        FileNotFoundError,
+        OSError,
+        json.JSONDecodeError,
+        sqlite3.Error,
+        ValueError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/legacy-lineage-migration-status",
+            "version": 1,
+            "status": "MIGRATED",
+            "output_database": str(result.output_database),
+            "aliases": str(result.aliases_path),
+            "report": str(result.report_path),
+            "output_sha256": result.output_sha256,
+            "logical_lineage_digest": result.logical_lineage_digest,
         }
     )
     return 0
@@ -507,6 +549,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "evidence" and args.evidence_stage == "migrate":
         return _evidence_migrate(args.source, args.output)
+    if args.command == "evidence" and args.evidence_stage == "migrate-lineage":
+        return _evidence_migrate_lineage(args.source, args.manifest, args.output)
     if args.command == "source-batch" and args.source_stage == "prepare":
         return _source_batch_prepare(args.root, args.manifest)
     if args.command == "source-batch" and args.source_stage == "ingest":

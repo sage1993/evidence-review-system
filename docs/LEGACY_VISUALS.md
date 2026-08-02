@@ -78,6 +78,19 @@ Legacy inspector는 다음 작업을 하지 않는다.
 - filename/path 기반 identity 보정
 - legacy row 수정 또는 정규화
 
+## Document lineage migration과의 분리
+
+Issue #46의 **document lineage migration**은 evidence schema v2 database에서 사람이 명시한 legacy document/revision alias의 graph-equivalent duplicate를 copy-on-write로 정리한다.
+
+이 migration은 다음 작업을 하지 않는다.
+
+- legacy visual CSV row를 읽어 document/revision/page identity를 추론
+- visual kind 또는 asset path를 canonical 값으로 매핑
+- visual CSV를 canonical visual manifest로 변환
+- Grist visual table이나 attachment row 수정
+
+즉, document lineage migration **does not canonicalize legacy visual CSV**. `legacy-lineage-aliases.json`도 canonical visual loader의 identity authority가 아니다. Document lineage 절차는 `docs/LEGACY_LINEAGE_MIGRATION.md`를 따르고, visual canonical conversion은 별도의 명시적 mapping 정책이 승인되기 전까지 지원하지 않는다.
+
 ## Grist QA와 보존
 
 Issue #38의 Grist Desktop QA에서는 이 inspection report를 legacy artifact inventory의 입력으로 사용할 수 있다. 그러나 Grist 화면에서 이미지가 보인다는 사실만으로 canonical identity가 증명되지는 않는다. QA artifact에는 원본 Grist 파일 hash, CSV hash, asset hash, 표시 결과와 검토자 기록을 별도로 보존해야 한다.
