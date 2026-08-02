@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -89,6 +90,29 @@ def _resolve_manifest(project_root: Path, manifest_path: Path) -> tuple[Path, Pa
     return root, current
 
 
+def _duplicate_free_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _is_legacy_manifest(data: bytes) -> bool:
+    try:
+        text = data.decode("utf-8")
+        value: object = json.loads(text, object_pairs_hook=_duplicate_free_object)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return False
+    return (
+        isinstance(value, dict)
+        and "rules" in value
+        and "format" not in value
+        and "version" not in value
+    )
+
+
 def _manifest_error_code(error: ValueError) -> str:
     message = str(error)
     if "duplicate active rule_id" in message:
@@ -116,11 +140,12 @@ def load_governed_active_rules(
     try:
         manifest = load_active_rule_manifest_bytes(manifest_bytes)
     except ValueError as error:
-        return _blocked(
-            context,
-            (_manifest_error_code(error),),
-            manifest_sha256,
+        reason = (
+            "RULE_GOVERNANCE_LEGACY_MANIFEST"
+            if _is_legacy_manifest(manifest_bytes)
+            else _manifest_error_code(error)
         )
+        return _blocked(context, (reason,), manifest_sha256)
     if active_rule_manifest_bytes(manifest) != manifest_bytes:
         return _blocked(context, ("ACTIVE_MANIFEST_INVALID",), manifest_sha256)
 
