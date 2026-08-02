@@ -353,6 +353,21 @@ Release builder는 process attestation을 검증하기 전에 최종 `codex-work
 
 결과는 `release-validation.json`의 `release_output`에 기록된다. 하나라도 불일치하면 `RELEASE_OUTPUT_VALIDATION_FAILED`가 추가되고, process attestation이 있더라도 release는 `BLOCKED` 상태를 유지한다.
 
+## 11. Legacy document lineage migration
+
+동일 PDF가 legacy document ID와 canonical document ID로 중복 등록된 evidence schema v2 database는 사람이 검토한 manifest를 사용해 copy-on-write로 정리한다.
+
+```powershell
+evidence-review evidence migrate-lineage `
+  --source 01_database/evidence.sqlite `
+  --manifest migration/legacy-lineage-manifest.json `
+  --output migrated/evidence.sqlite
+```
+
+`evidence migrate-lineage`는 source database hash, 명시적 revision mapping, page geometry, evidence payload, link, review flag와 retrieval counterpart가 모두 일치할 때만 legacy duplicate graph를 제거한다. 어떤 unresolved 항목도 부분 적용하지 않으며 원본 database를 수정하지 않는다.
+
+상세 manifest 계약, output artifact, 종료 코드와 사후 검증 절차는 [LEGACY_LINEAGE_MIGRATION.md](docs/LEGACY_LINEAGE_MIGRATION.md)를 따른다. Alias registry는 historical lookup metadata일 뿐 신규 source-batch 또는 visual identity authority가 아니다.
+
 ## 안전 경계
 
 - PDF 파일명이나 제목으로 문서 종류를 추정하지 않는다.
@@ -394,5 +409,6 @@ python -m compileall -q src scripts web_runtime tests
 - [ChatGPT Web 작업 절차](docs/CHATGPT_WEB_WORKFLOW.md)
 - [검토자 작업 절차](docs/REVIEWER_WORKFLOW.md)
 - [오프라인 실행 경계](docs/OFFLINE_EXECUTION.md)
+- [Legacy document lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
 - [Track A 숫자 문법](docs/TRACK_A_NUMERIC_GRAMMAR.md)
 - [범용 PDF 및 hardening 설계](docs/superpowers/specs/2026-08-02-generic-pdf-and-hardening-design.md)
