@@ -266,7 +266,7 @@ Query strings do not affect file existence. Fragments are validated separately.
 
 Allowed external URLs must use `https://` with a non-empty host. The validator does not perform DNS lookup, HTTP requests, redirects, certificate checks, or status-code checks.
 
-Invalid schemes, including `http://`, `ftp://`, and protocol-relative URLs, produce `EXTERNAL_URL_SCHEME_INVALID`. This is a `WARNING` unless the URL is presented as a required security, installation, or release command dependency in a current document; those cases are `ERROR`.
+Invalid schemes, including `http://`, `ftp://`, and protocol-relative URLs, produce `EXTERNAL_URL_SCHEME_INVALID` with severity `WARNING`. External URL syntax findings never fail validation by themselves.
 
 Mail addresses and repository-local fragments are not external URLs.
 
