@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evidence-review.local/schemas/human-attestation.schema.json",
+  "title": "Evidence Review Human Process Attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "assurance_level",
+    "reviewer_id",
+    "reviewed_at",
+    "attestation",
+    "release_candidate_hash",
+    "packet_hash",
+    "checks"
+  ],
+  "properties": {
+    "format": {"const": "evidence-review/human-attestation"},
+    "version": {"const": 1},
+    "assurance_level": {"const": "PROCESS_ATTESTATION"},
+    "reviewer_id": {"type": "string", "minLength": 1},
+    "reviewed_at": {"type": "string", "format": "date-time"},
+    "attestation": {"const": "REVIEWED_AND_ACCEPTED_FOR_RELEASE"},
+    "release_candidate_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "packet_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check_id", "status", "evidence"],
+        "properties": {
+          "check_id": {
+            "enum": [
+              "SOURCE_IDENTITY",
+              "CITATION_PAGE_BBOX",
+              "TABLE_AND_VISUAL_EVIDENCE",
+              "CALCULATION_TRACE",
+              "RULE_VERSION_AND_STATUS",
+              "TRACK_A_EXPLANATION",
+              "TRACK_B_AUDIT",
+              "CONFIDENCE_FACTORS",
+              "ABSTENTION_BEHAVIOR",
+              "HUMAN_DECISION_SEPARATION"
+            ]
+          },
+          "status": {"const": "PASS"},
+          "evidence": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}
