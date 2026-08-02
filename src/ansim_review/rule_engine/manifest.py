@@ -75,7 +75,7 @@ def _resolve_manifest(project_root: Path, manifest_path: Path) -> tuple[Path, Pa
         raise ValueError("project_root must be a real directory")
     if manifest_path.is_absolute():
         try:
-            relative = manifest_path.relative_to(root)
+            relative = _safe_relative_path(manifest_path.relative_to(root))
         except ValueError as error:
             raise ValueError("active manifest must be below project_root") from error
     else:
