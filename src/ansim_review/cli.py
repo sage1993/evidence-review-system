@@ -18,6 +18,9 @@ from ansim_review.math_engine.manifest import calculation_result_document
 from ansim_review.math_engine.requests import decode_calculation_request
 from ansim_review.math_engine.runner import run_calculation_request
 from ansim_review.network_guard import install_network_guard
+from ansim_review.parsing.legacy_visual_manifest import (
+    inspect_legacy_visual_manifest,
+)
 from ansim_review.parsing.source_batch_importer import (
     PreparedSource,
     import_source_batch,
@@ -69,6 +72,19 @@ def build_parser() -> argparse.ArgumentParser:
     source_ingest.add_argument("--root", required=True, type=Path)
     source_ingest.add_argument("--manifest", required=True, type=Path)
     source_ingest.add_argument("--output", required=True, type=Path)
+
+    legacy = subparsers.add_parser(
+        "legacy",
+        help="inspect read-only legacy artifacts without canonical promotion",
+    )
+    legacy_stages = legacy.add_subparsers(dest="legacy_stage", required=True)
+    legacy_visuals = legacy_stages.add_parser(
+        "inspect-visual-manifest",
+        help="inspect a legacy Grist visual CSV as non-canonical data",
+    )
+    legacy_visuals.add_argument("--manifest", required=True, type=Path)
+    legacy_visuals.add_argument("--root", type=Path)
+    legacy_visuals.add_argument("--output", required=True, type=Path)
 
     release = subparsers.add_parser(
         "release",
@@ -245,6 +261,42 @@ def _source_batch_ingest(root: Path, manifest: Path, output: Path) -> int:
             "sources": [
                 _source_projection(source) for source in report.sources
             ],
+        }
+    )
+    return 0
+
+
+def _legacy_visual_inspect(
+    manifest: Path,
+    root: Path | None,
+    output: Path,
+) -> int:
+    if output.exists():
+        print(f"output already exists: {output}", file=sys.stderr)
+        return 1
+    try:
+        report = inspect_legacy_visual_manifest(manifest, root=root)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("xb") as stream:
+            stream.write(dump_bytes(report))
+    except FileExistsError:
+        print(f"output already exists: {output}", file=sys.stderr)
+        return 1
+    except (FileNotFoundError, OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+    issues = report.get("issues")
+    issue_count = len(issues) if isinstance(issues, list) else 0
+    _write_stdout(
+        {
+            "format": "evidence-review/legacy-visual-inspection-status",
+            "version": 1,
+            "status": report["status"],
+            "output": str(output.resolve()),
+            "row_count": report["row_count"],
+            "issue_count": issue_count,
+            "conversion_supported": report["conversion_supported"],
         }
     )
     return 0
@@ -428,6 +480,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _source_batch_prepare(args.root, args.manifest)
     if args.command == "source-batch" and args.source_stage == "ingest":
         return _source_batch_ingest(args.root, args.manifest, args.output)
+    if args.command == "legacy" and args.legacy_stage == "inspect-visual-manifest":
+        return _legacy_visual_inspect(args.manifest, args.root, args.output)
     if args.command == "release" and args.release_stage == "validate-attestation":
         return _release_validate_attestation(
             args.attestation,

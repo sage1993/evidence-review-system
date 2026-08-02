@@ -1,0 +1,45 @@
+{
+  "format": "evidence-review/legacy-visual-inspection",
+  "version": 1,
+  "status": "LEGACY_NON_CANONICAL",
+  "source_path": "visual_manifest.csv",
+  "source_sha256": "a3e762a0b2300c7d906736b456b26369758f91fa153c8401879f6a80e4eb54dd",
+  "row_count": 1,
+  "header": [
+    "visual_id",
+    "document_id",
+    "clause_row_id",
+    "clause_id",
+    "page",
+    "visual_type",
+    "source_key",
+    "related_table_row_id",
+    "source_path",
+    "crop_path",
+    "bbox_left",
+    "bbox_bottom",
+    "bbox_right",
+    "bbox_top",
+    "pixel_width",
+    "pixel_height",
+    "sha256"
+  ],
+  "identity_gaps": [
+    "page_id",
+    "revision_id"
+  ],
+  "document_ids": [
+    "1"
+  ],
+  "issue_counts": {},
+  "issues": [],
+  "conversion_supported": false,
+  "conversion_requirements": [
+    "ASSET_SHA256_MATCH",
+    "DB_RESOLVED_PAGE_ID",
+    "EXPLICIT_ASSET_PATH_POLICY",
+    "EXPLICIT_DOCUMENT_ALIAS",
+    "EXPLICIT_REVISION_ID",
+    "EXPLICIT_VISUAL_KIND_MAP"
+  ]
+}
