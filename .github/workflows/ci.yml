@@ -94,3 +94,22 @@ jobs:
           .wheel-venv/bin/ansim-review --help
           .wheel-venv/bin/python -m evidence_review --help
           .wheel-venv/bin/python -m ansim_review --help
+
+  workspace-validator-platforms:
+    name: Workspace validator (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: pytest -v tests/integration/test_workspace_validator.py
