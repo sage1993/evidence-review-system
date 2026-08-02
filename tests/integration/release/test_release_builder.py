@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ansim_review.release.attestation import REQUIRED_CHECK_IDS
 from ansim_review.release.builder import build_ansim_release
+from ansim_review.release.config import ReleaseConfig
 
 
 def _workspace(root: Path) -> None:
@@ -45,12 +46,17 @@ def _workspace(root: Path) -> None:
     )
 
 
-def _attestation(candidate_hash: str, packet_hash: str) -> dict[str, object]:
+def _attestation(
+    candidate_hash: str,
+    packet_hash: str,
+    *,
+    reviewer_id: str = "reviewer@example.com",
+) -> dict[str, object]:
     return {
         "format": "evidence-review/human-attestation",
         "version": 1,
         "assurance_level": "PROCESS_ATTESTATION",
-        "reviewer_id": "reviewer@example.com",
+        "reviewer_id": reviewer_id,
         "reviewed_at": "2026-08-02T14:00:00+09:00",
         "attestation": "REVIEWED_AND_ACCEPTED_FOR_RELEASE",
         "release_candidate_hash": candidate_hash,
@@ -91,6 +97,7 @@ def test_release_blocks_until_exact_process_attestation_is_present(
     assert blocked["reason_codes"] == ["PROCESS_ATTESTATION_MISSING"]
     assert blocked["attestation_assurance"] == "PROCESS_ATTESTATION"
     assert blocked["cryptographic_identity_verified"] is False
+    assert blocked["expected_reviewer_id"] is None
     assert blocked["attestation"] is None
     assert blocked["tag_allowed"] is False
 
@@ -147,6 +154,33 @@ def test_release_rejects_stale_attestation_hashes(tmp_path: Path) -> None:
     assert blocked["status"] == "BLOCKED"
     assert blocked["reason_codes"] == ["PROCESS_ATTESTATION_INVALID"]
     assert blocked["tag_allowed"] is False
+
+
+def test_release_rejects_configured_reviewer_identity_mismatch(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    config = ReleaseConfig(expected_reviewer_id="reviewer-b@example.com")
+    first = build_ansim_release(root, tmp_path / "first", config=config)
+    attestation_dir = root / "releases/evidence-review-v1.0"
+    attestation_dir.mkdir(parents=True)
+    (attestation_dir / "human-attestation.json").write_text(
+        json.dumps(
+            _attestation(
+                str(first["candidate_hash"]),
+                str(first["packet_hash"]),
+                reviewer_id="reviewer-a@example.com",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    blocked = build_ansim_release(root, tmp_path / "mismatch", config=config)
+
+    assert blocked["status"] == "BLOCKED"
+    assert blocked["reason_codes"] == ["PROCESS_ATTESTATION_INVALID"]
+    assert blocked["expected_reviewer_id"] == "reviewer-b@example.com"
 
 
 def test_release_candidate_ignores_generated_python_files(
