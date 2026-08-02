@@ -19,3 +19,37 @@ jobs:
       - run: ruff check src tests
       - run: mypy src
       - run: python -m compileall -q src scripts web_runtime tests
+      - name: Build wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel
+      - name: Install wheel in isolated environment
+        run: |
+          python -m venv .wheel-venv
+          .wheel-venv/bin/python -m pip install dist/*.whl
+      - name: Verify canonical wheel resources and entrypoints
+        run: |
+          .wheel-venv/bin/python - <<'PY'
+          from importlib.resources import files
+
+          import ansim_review.contracts.source_batch as legacy
+          import evidence_review.contracts.source_batch as canonical
+
+          assert canonical is legacy
+          assert canonical.SourceBatch is legacy.SourceBatch
+
+          schema = files("evidence_review.evidence").joinpath("schema.sql")
+          assert schema.is_file(), schema
+
+          templates = files("evidence_review.llm_layer").joinpath("templates")
+          assert templates.is_dir(), templates
+          assert any(item.name.endswith(".md") for item in templates.iterdir())
+
+          assets = files("evidence_review.review_packet").joinpath("assets")
+          assert assets.is_dir(), assets
+          assert any(item.name.endswith(".css") for item in assets.iterdir())
+          PY
+          .wheel-venv/bin/evidence-review --help
+          .wheel-venv/bin/ansim-review --help
+          .wheel-venv/bin/python -m evidence_review --help
+          .wheel-venv/bin/python -m ansim_review --help
