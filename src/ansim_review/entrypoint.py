@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 from ansim_review import cli as legacy_cli
 from ansim_review.network_guard import install_network_guard
@@ -30,11 +32,11 @@ def _approval_entries(directory: Path) -> tuple[Path, ...]:
     )
 
 
-def _build_active(args: object) -> int:
-    repository_root = getattr(args, "repository_root")
-    approvals = getattr(args, "approvals")
-    output = getattr(args, "output")
-    report_path = getattr(args, "report")
+def _build_active(args: argparse.Namespace) -> int:
+    repository_root = cast(Path, args.repository_root)
+    approvals = cast(Path, args.approvals)
+    output = cast(Path, args.output)
+    report_path = cast(Path, args.report)
     try:
         result = build_active_manifest(
             repository_root,
@@ -52,10 +54,10 @@ def _build_active(args: object) -> int:
     return 0 if result.status == "ACTIVATED" else 2
 
 
-def _select(args: object) -> int:
-    repository_root = getattr(args, "repository_root")
-    manifest = getattr(args, "manifest")
-    context_path = getattr(args, "context")
+def _select(args: argparse.Namespace) -> int:
+    repository_root = cast(Path, args.repository_root)
+    manifest = cast(Path, args.manifest)
+    context_path = cast(Path, args.context)
     try:
         context = load_rule_selection_context_bytes(context_path.read_bytes())
         loaded = load_governed_active_rules(repository_root, manifest, context)
