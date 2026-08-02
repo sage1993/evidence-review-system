@@ -24,6 +24,8 @@ c4d41a402d39fea712a7ba6d80568595ef7be6fc1acc9cb63416b8c75020af76
 
 See [docs/RULE_ACTIVATION_GOVERNANCE.md](../../RULE_ACTIVATION_GOVERNANCE.md) for
 the governance model. Reviewer identity is not cryptographically verified, and
-machine rule results are not human legal decisions. A final documentation-test and
-static-check rerun is required after wording-only acceptance corrections before PR
-integration.
+machine rule results are not human legal decisions.
+
+Integration gate: wording-only acceptance corrections made after the passing manual
+run must pass the documentation test, Ruff, mypy, and compileall before PR #49 is
+marked Ready or merged.
