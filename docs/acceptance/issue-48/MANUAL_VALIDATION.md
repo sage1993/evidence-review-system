@@ -33,7 +33,7 @@ by backup branch `backup/issue48-manual-fail-58bc6ad` and was not cherry-picked.
 Local manual acceptance is complete. GitHub Actions was unavailable because of the
 repository billing/spending limit (`ACTIONS_BILLING_BLOCKED`). This report must not be
 read as a GitHub Actions PASS. PR merge, Ready-for-review transition, and Issue #48
-closure were not performed.
+closure were not performed during validation.
 
 ## C. Previous three failures
 
@@ -148,15 +148,22 @@ The tamper/entrypoint/CLI pytest command exited `0`; all 25 collected tests pass
 ## K. Acceptance documents and commits
 
 This document and `README.md` were written from the new passing rerun; commit
-`58bc6ad` was not cherry-picked. The code fix commit is `29e1101`. The final
-post-documentation validation listed above passed before the acceptance-document
-commit is created.
+`58bc6ad` was not cherry-picked.
+
+- Code fix: `29e1101 fix: validate raw archive member paths`.
+- Initial passing acceptance record: `5425150 docs: record passing manual rule governance validation`.
+- Command and exit-code ledger: `3c61cf5 docs: record passing manual rule governance validation`.
+
+The full post-documentation validation listed above passed before the acceptance
+commits were pushed. Later wording-only consistency corrections do not modify the
+validated code, golden artifacts, approvals, or active manifest and require a final
+documentation-test and static-check rerun before integration.
 
 ## L. Push, PR, and Issue status
 
-- Push: pending until post-document validation completes.
-- PR: not changed to Ready; not merged.
-- Issue #48: not closed.
+- Push: completed through remote commit `3c61cf5fdc5708996bbcac30e642c9ba361d8f73` before the wording-only consistency correction.
+- PR #49: remained Draft and was not merged during validation.
+- Issue #48: remained open during validation.
 - GitHub Actions: unavailable due `ACTIONS_BILLING_BLOCKED`; no CI PASS is claimed.
 
 ## M. Unverified items and limitations
