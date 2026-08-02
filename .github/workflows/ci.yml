@@ -50,9 +50,24 @@ jobs:
           assert any(item.name.endswith(".css") for item in assets.iterdir())
           PY
           .wheel-venv/bin/evidence-review --help
+          .wheel-venv/bin/evidence-review rules --help
           .wheel-venv/bin/ansim-review --help
           .wheel-venv/bin/python -m evidence_review --help
           .wheel-venv/bin/python -m ansim_review --help
+          PYTHONPATH="" .wheel-venv/bin/evidence-review rules select \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --manifest "$GITHUB_WORKSPACE/rules/manifests/active.json" \
+            --context "$GITHUB_WORKSPACE/docs/acceptance/issue-48/non-ansim-context.json" \
+            > .wheel-non-ansim-selection.json
+          .wheel-venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path(".wheel-non-ansim-selection.json").read_text())
+          assert result["status"] == "ABSTAIN"
+          assert result["reasons"] == ["NO_APPLICABLE_ACTIVE_RULE"]
+          assert result["selected_rules"] == []
+          PY
 
   wheel-python313:
     runs-on: ubuntu-latest
@@ -91,9 +106,24 @@ jobs:
           )
           PY
           .wheel-venv/bin/evidence-review --help
+          .wheel-venv/bin/evidence-review rules --help
           .wheel-venv/bin/ansim-review --help
           .wheel-venv/bin/python -m evidence_review --help
           .wheel-venv/bin/python -m ansim_review --help
+          PYTHONPATH="" .wheel-venv/bin/evidence-review rules select \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --manifest "$GITHUB_WORKSPACE/rules/manifests/active.json" \
+            --context "$GITHUB_WORKSPACE/docs/acceptance/issue-48/non-ansim-context.json" \
+            > .wheel-non-ansim-selection.json
+          .wheel-venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path(".wheel-non-ansim-selection.json").read_text())
+          assert result["status"] == "ABSTAIN"
+          assert result["reasons"] == ["NO_APPLICABLE_ACTIVE_RULE"]
+          assert result["selected_rules"] == []
+          PY
 
   workspace-validator-platforms:
     name: Workspace validator (${{ matrix.os }})

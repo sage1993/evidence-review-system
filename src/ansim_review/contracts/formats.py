@@ -59,3 +59,18 @@ LEGACY_LINEAGE_ALIASES_FORMAT: Final[
 LEGACY_LINEAGE_MIGRATION_REPORT_FORMAT: Final[
     Literal["evidence-review/legacy-lineage-migration-report"]
 ] = "evidence-review/legacy-lineage-migration-report"
+RULE_GOLDEN_REPORT_FORMAT: Final[
+    Literal["evidence-review/rule-golden-report"]
+] = "evidence-review/rule-golden-report"
+RULE_ACTIVATION_APPROVAL_FORMAT: Final[
+    Literal["evidence-review/rule-activation-approval"]
+] = "evidence-review/rule-activation-approval"
+ACTIVE_RULE_MANIFEST_FORMAT: Final[
+    Literal["evidence-review/active-rule-manifest"]
+] = "evidence-review/active-rule-manifest"
+RULE_ACTIVATION_REPORT_FORMAT: Final[
+    Literal["evidence-review/rule-activation-report"]
+] = "evidence-review/rule-activation-report"
+RULE_SELECTION_RESULT_FORMAT: Final[
+    Literal["evidence-review/rule-selection-result"]
+] = "evidence-review/rule-selection-result"
