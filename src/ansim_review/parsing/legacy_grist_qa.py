@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Final, Literal, cast
 
 from ansim_review.contracts.validation import (
@@ -17,6 +20,7 @@ from ansim_review.contracts.validation import (
     reject_unknown,
     require_fields,
 )
+from ansim_review.parsing.source_manifest import sha256_file
 
 GRIST_QA_FORMAT: Final = "evidence-review/grist-desktop-qa"
 GRIST_QA_STATUS_FORMAT: Final = "evidence-review/grist-desktop-qa-status"
@@ -583,3 +587,117 @@ def grist_qa_status_document(
             1 for finding in artifact.findings if finding.status == "OPEN"
         ),
     }
+
+
+def _safe_workspace_path(value: str, field: str) -> str:
+    if not value or "\\" in value or "\x00" in value:
+        raise ValueError(f"UNSAFE_GRIST_QA_PATH:{field}:{value}")
+    if value.startswith("/") or value.endswith("/"):
+        raise ValueError(f"UNSAFE_GRIST_QA_PATH:{field}:{value}")
+    if len(value) >= 2 and value[1] == ":":
+        raise ValueError(f"UNSAFE_GRIST_QA_PATH:{field}:{value}")
+    if any(part in {"", ".", ".."} for part in value.split("/")):
+        raise ValueError(f"UNSAFE_GRIST_QA_PATH:{field}:{value}")
+    return value
+
+
+def _resolve_required_file(root: Path, value: str, field: str) -> Path:
+    relative = _safe_workspace_path(value, field)
+    root_resolved = root.resolve()
+    target = (root_resolved / relative).resolve()
+    if not target.is_relative_to(root_resolved):
+        raise ValueError(f"UNSAFE_GRIST_QA_PATH:{field}:{value}")
+    if not target.is_file():
+        raise ValueError(f"GRIST_QA_FILE_MISSING:{value}")
+    return target
+
+
+def _verify_file_binding(
+    root: Path,
+    binding: FileBinding,
+    field: str,
+) -> Path:
+    target = _resolve_required_file(root, binding.path, field)
+    actual_hash = sha256_file(target)
+    if actual_hash != binding.sha256:
+        raise ValueError(
+            f"GRIST_QA_HASH_MISMATCH:{binding.path}:"
+            f"expected={binding.sha256}:actual={actual_hash}"
+        )
+    return target
+
+
+def _validate_legacy_inspection(
+    inspection_path: Path,
+    expected_manifest_hash: str,
+) -> None:
+    payload = expect_mapping(
+        json.loads(inspection_path.read_text(encoding="utf-8")),
+        "legacy_inspection",
+    )
+    if payload.get("format") != "evidence-review/legacy-visual-inspection":
+        raise ValueError("LEGACY_INSPECTION_FORMAT_INVALID")
+    version = payload.get("version")
+    if isinstance(version, bool) or version != 1:
+        raise ValueError("LEGACY_INSPECTION_VERSION_INVALID")
+    if payload.get("status") != GRIST_QA_IDENTITY_CLAIM:
+        raise ValueError("LEGACY_INSPECTION_STATUS_INVALID")
+    if payload.get("conversion_supported") is not False:
+        raise ValueError("LEGACY_CONVERSION_CLAIM_INVALID")
+    source_hash = expect_sha256(
+        payload.get("source_sha256"),
+        "legacy_inspection.source_sha256",
+    )
+    if source_hash != expected_manifest_hash:
+        raise ValueError("LEGACY_INSPECTION_SOURCE_MISMATCH")
+
+
+def validate_grist_qa_files(artifact: GristQaArtifact, root: Path) -> None:
+    """Verify all artifact file bindings without promoting legacy identity."""
+    if artifact.sources.grist_file.path.lower().endswith(".grist") is False:
+        raise ValueError("GRIST_FILE_SUFFIX_INVALID")
+    _verify_file_binding(root, artifact.sources.grist_file, "sources.grist_file")
+    _verify_file_binding(
+        root,
+        artifact.sources.visual_manifest,
+        "sources.visual_manifest",
+    )
+    inspection_path = _verify_file_binding(
+        root,
+        artifact.sources.inspection_report,
+        "sources.inspection_report",
+    )
+    for evidence in artifact.evidence_files:
+        _verify_file_binding(
+            root,
+            FileBinding(path=evidence.path, sha256=evidence.sha256),
+            f"evidence_files[{evidence.evidence_id}]",
+        )
+    for sample in artifact.samples:
+        _verify_file_binding(
+            root,
+            FileBinding(path=sample.asset_path, sha256=sample.asset_sha256),
+            f"samples[{sample.sample_id}].asset_path",
+        )
+    for finding in artifact.findings:
+        if finding.file_path is not None:
+            _safe_workspace_path(
+                finding.file_path,
+                f"findings[{finding.finding_id}].file_path",
+            )
+    _validate_legacy_inspection(
+        inspection_path,
+        artifact.sources.visual_manifest.sha256,
+    )
+
+
+def load_and_validate_grist_qa(
+    path: Path,
+    root: Path,
+) -> tuple[GristQaArtifact, str]:
+    """Load one artifact, bind it to exact files, and return its byte hash."""
+    raw = path.read_bytes()
+    artifact_hash = hashlib.sha256(raw).hexdigest()
+    artifact = decode_grist_qa(json.loads(raw.decode("utf-8")))
+    validate_grist_qa_files(artifact, root)
+    return artifact, artifact_hash
