@@ -297,6 +297,47 @@ evidence-review review-run finalize `
 
 `--publish`는 release builder가 사용할 packet을 선택할 뿐, 승인이나 전자서명을 의미하지 않는다.
 
+## 9. 릴리스 Process Attestation
+
+릴리스 승인은 공개키 전자서명이 아니라 내부 절차용 `PROCESS_ATTESTATION` 모델을 사용한다. Named reviewer는 정확한 release candidate hash와 packet hash를 확인한 뒤 다음 canonical 기록을 append-only로 생성한다.
+
+```text
+releases/evidence-review-v1.0/human-attestation.json
+```
+
+Attestation 계약의 핵심값:
+
+```json
+{
+  "format": "evidence-review/human-attestation",
+  "version": 1,
+  "assurance_level": "PROCESS_ATTESTATION",
+  "attestation": "REVIEWED_AND_ACCEPTED_FOR_RELEASE"
+}
+```
+
+Release manifest는 검증 범위를 별도 필드로 명시한다.
+
+```json
+{
+  "attestation_assurance": "PROCESS_ATTESTATION",
+  "cryptographic_identity_verified": false
+}
+```
+
+실제 attestation에는 reviewer ID, timezone 포함 검토 시각, release candidate hash, packet hash와 모든 필수 checklist evidence가 포함되어야 한다. 현재 release policy에 expected reviewer ID가 설정된 경우 exact string mismatch는 실패한다.
+
+검증 명령:
+
+```powershell
+evidence-review release validate-attestation `
+  --attestation releases/evidence-review-v1.0/human-attestation.json `
+  --candidate-hash <release-candidate-sha256> `
+  --packet-hash <final-review-packet-sha256>
+```
+
+JSON 기록 보유 자체는 reviewer identity의 암호학적 증명이 아니다. 시스템은 공개키, 인증서 또는 계정 세션을 검증하지 않으며 release manifest의 `cryptographic_identity_verified`는 항상 `false`다. Attestation 누락, 형식 오류, reviewer policy 불일치, 오래된 candidate hash 또는 packet hash 불일치가 있으면 release는 `BLOCKED`로 유지된다.
+
 ## 안전 경계
 
 - PDF 파일명이나 제목으로 문서 종류를 추정하지 않는다.
@@ -318,9 +359,9 @@ evidence-review review-run finalize `
 - source-batch version 1 reader
 - `ansim/*` 기존 review-run format
 - 번호 폴더 기반 legacy migration adapter
-- 기존 `ansim-v1.0` release artifact
+- 기존 `ansim-v1.0` release artifact와 `ansim/human-acceptance` inspection reader
 
-신규 프로젝트는 위 구조를 기본 입력 방식으로 사용하지 않는다.
+Legacy acceptance는 이력 확인에만 사용하며 신규 릴리스를 승인할 수 없다. 신규 프로젝트는 위 legacy 구조를 기본 입력 방식으로 사용하지 않는다.
 
 ## 개발 검증
 

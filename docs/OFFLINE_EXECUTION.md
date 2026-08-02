@@ -2,7 +2,7 @@
 
 ## 보증 수준
 
-이 프로젝트는 다음 두 보증 수준을 구분한다.
+이 프로젝트는 오프라인 실행 보증과 사람의 릴리스 승인 보증을 서로 독립된 보증 차원(independent assurance dimensions)으로 구분한다.
 
 ### `APPLICATION_OFFLINE_GUARD`
 
@@ -50,6 +50,33 @@ Release report의 기본값은 다음과 같다.
 ```
 
 OS 격리를 별도로 적용하더라도 현재 자동 release validator는 해당 host 설정을 증명하지 않는다. 운영 기록에서 방화벽 규칙, container command, namespace 설정 등의 증거를 별도로 보관해야 한다.
+
+### `PROCESS_ATTESTATION`
+
+사람이 특정 release candidate와 final review packet을 검토했다는 내부 절차 기록이다. Canonical contract는 `evidence-review/human-attestation`이고 파일명은 `human-attestation.json`이다.
+
+이 보증은 다음 내용을 확인한다.
+
+- named reviewer ID가 비어 있지 않음
+- 검토 시각에 timezone이 포함됨
+- `REVIEWED_AND_ACCEPTED_FOR_RELEASE` 문구가 정확함
+- release candidate hash가 현재 산출물과 정확히 일치함
+- packet hash가 현재 packet과 정확히 일치함
+- 필수 checklist 항목이 모두 `PASS`이고 evidence locator를 가짐
+- 기록이 append-only 방식으로 생성됨
+
+Release manifest는 사람 절차 보증을 다음과 같이 별도로 기록한다.
+
+```json
+{
+  "attestation_assurance": "PROCESS_ATTESTATION",
+  "cryptographic_identity_verified": false
+}
+```
+
+`PROCESS_ATTESTATION`은 전자서명이나 신원 인증이 아니다. JSON 파일 보유만으로 reviewer identity가 암호학적으로 증명되지 않는다. 공개키, 인증서, 계정 세션 또는 서명 검증을 수행하지 않으므로 `cryptographic_identity_verified`는 항상 `false`다.
+
+오프라인 보증과 사람 절차 보증은 독립된 값이다. 예를 들어 `APPLICATION_OFFLINE_GUARD`가 통과해도 process attestation이 없으면 release는 `BLOCKED`이며, 유효한 process attestation이 있어도 `OS_ISOLATED`를 주장할 수 없다.
 
 ## 애플리케이션 guard가 보장하지 않는 항목
 
@@ -154,4 +181,7 @@ docker run --rm --network none \
 [ ] localhost review UI가 동작함
 [ ] manifest path escape가 거부됨
 [ ] OS_ISOLATED를 주장할 경우 별도 운영 증거가 있음
+[ ] release manifest가 PROCESS_ATTESTATION을 기록함
+[ ] release candidate hash와 packet hash가 정확히 일치함
+[ ] cryptographic_identity_verified가 false임
 ```

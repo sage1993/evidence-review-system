@@ -11,11 +11,17 @@ from ansim_review.canonical_json import dump_bytes, sha256_json
 from ansim_review.contracts.formats import RELEASE_FORMAT
 from ansim_review.packaging.codex_bundle import build_codex_bundle
 from ansim_review.packaging.web_bundle import build_web_runtime_zip
-from ansim_review.release.acceptance import validate_acceptance_record
+from ansim_review.release.attestation import (
+    PROCESS_ATTESTATION,
+    HumanAttestation,
+    attestation_document,
+    validate_attestation,
+    write_attestation,
+)
 from ansim_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
     ReleaseConfig,
-    resolve_acceptance_record,
+    resolve_attestation_record,
     resolve_evidence_database,
 )
 from ansim_review.release.validator import validate_release_workspace
@@ -72,7 +78,7 @@ def build_evidence_release(
     *,
     config: ReleaseConfig = DEFAULT_RELEASE_CONFIG,
 ) -> dict[str, object]:
-    """Build generic release artifacts and gate readiness on acceptance."""
+    """Build release artifacts and require exact named process attestation."""
     if output_directory.exists():
         raise FileExistsError(output_directory)
     output_directory.mkdir(parents=True)
@@ -109,24 +115,27 @@ def build_evidence_release(
     reasons: list[str] = []
     if validation["status"] != "PASS":
         reasons.append("AUTOMATED_VALIDATION_FAILED")
-    acceptance_path = resolve_acceptance_record(workspace_root, config)
-    acceptance: dict[str, object] | None = None
-    if not acceptance_path.is_file():
-        reasons.append("MANUAL_ACCEPTANCE_MISSING")
+
+    attestation_path = resolve_attestation_record(workspace_root, config)
+    attestation: HumanAttestation | None = None
+    if not attestation_path.is_file():
+        reasons.append("PROCESS_ATTESTATION_MISSING")
     else:
         try:
-            acceptance = validate_acceptance_record(
-                acceptance_path,
+            attestation = validate_attestation(
+                attestation_path,
                 expected_candidate_hash=candidate_hash,
                 expected_packet_hash=packet_hash,
+                expected_reviewer_id=config.expected_reviewer_id,
             )
         except (OSError, ValueError):
-            reasons.append("ACCEPTANCE_RECORD_INVALID")
+            reasons.append("PROCESS_ATTESTATION_INVALID")
+
     status = "RELEASE_READY" if not reasons else "BLOCKED"
-    if acceptance is not None and status == "RELEASE_READY":
-        shutil.copyfile(
-            acceptance_path,
-            output_directory / config.acceptance_record_name,
+    if attestation is not None and status == "RELEASE_READY":
+        write_attestation(
+            output_directory / config.attestation_record_name,
+            attestation,
         )
     manifest = {
         "format": RELEASE_FORMAT,
@@ -137,7 +146,12 @@ def build_evidence_release(
         "candidate_hash": candidate_hash,
         "packet_hash": packet_hash,
         "artifacts": artifacts,
-        "acceptance": acceptance,
+        "attestation_assurance": PROCESS_ATTESTATION,
+        "cryptographic_identity_verified": False,
+        "expected_reviewer_id": config.expected_reviewer_id,
+        "attestation": (
+            None if attestation is None else attestation_document(attestation)
+        ),
         "tag_allowed": status == "RELEASE_READY",
     }
     (output_directory / "release-manifest.json").write_bytes(

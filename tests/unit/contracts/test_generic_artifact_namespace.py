@@ -5,6 +5,7 @@ from pathlib import Path
 SOURCE_ROOT = Path("src/ansim_review")
 LEGACY_FILE = SOURCE_ROOT / "contracts" / "legacy_formats.py"
 LEGACY_READERS = {
+    SOURCE_ROOT / "release" / "legacy_acceptance.py",
     SOURCE_ROOT / "review_run.py",
     SOURCE_ROOT / "review_packet" / "html_renderer.py",
 }
