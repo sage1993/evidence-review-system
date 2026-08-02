@@ -1,5 +1,5 @@
-"""Module entry point for ``python -m ansim_review``."""
+"""Compatibility entry point for ``python -m ansim_review``."""
 
-from ansim_review.cli import main
+from evidence_review.cli import main
 
 raise SystemExit(main())
