@@ -82,6 +82,16 @@ Legacy inspector는 다음 작업을 하지 않는다.
 
 Issue #38의 Grist Desktop QA에서는 이 inspection report를 legacy artifact inventory의 입력으로 사용할 수 있다. 그러나 Grist 화면에서 이미지가 보인다는 사실만으로 canonical identity가 증명되지는 않는다. QA artifact에는 원본 Grist 파일 hash, CSV hash, asset hash, 표시 결과와 검토자 기록을 별도로 보존해야 한다.
 
+실제 Windows 수동 검토 절차와 version 1 acceptance artifact 작성법은 `docs/GRIST_DESKTOP_QA.md`를 따른다. 검증 명령은 다음과 같다.
+
+```powershell
+evidence-review legacy validate-grist-qa `
+  --artifact qa/grist-desktop-qa.json `
+  --root .
+```
+
+예제 `docs/examples/grist-desktop-qa.example.json`은 모든 view가 `NOT_RUN`인 `INCOMPLETE` 시작점이며 acceptance evidence가 아니다. Issue #38은 실제 Grist Desktop에서 작성한 artifact의 validator 결과가 `PASS`이고 exit code가 0인 기록이 제출될 때까지 열린 상태로 유지한다.
+
 ## Legacy reader 제거 조건
 
 legacy reader 제거는 다음 조건을 모두 만족한 후 별도 호환성 변경으로 진행한다.
