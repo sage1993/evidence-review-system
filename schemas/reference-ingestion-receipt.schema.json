@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/evidence-review/reference-ingestion-receipt.schema.json",
+  "$id": "https://evidence-review.local/schemas/reference-ingestion-receipt.schema.json",
   "title": "Evidence Review Reference Ingestion Receipt",
   "type": "object",
   "additionalProperties": false,
