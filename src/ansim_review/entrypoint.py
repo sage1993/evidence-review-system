@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from ansim_review import cli as legacy_cli
+from ansim_review.documentation_integrity.cli import run_documentation_validation
 from ansim_review.network_guard import install_network_guard
 from ansim_review.rule_engine.activation import (
     activation_report_bytes,
@@ -68,9 +69,21 @@ def _select(args: argparse.Namespace) -> int:
     return 2 if loaded.selection.status == "BLOCKED" else 0
 
 
+def _documentation_validate(args: argparse.Namespace) -> int:
+    return run_documentation_validation(
+        cast(Path, args.repository_root),
+        cast(Path, args.config),
+        cast(Path, args.output),
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Dispatch governance-sensitive commands strictly and delegate the remainder."""
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if len(arguments) >= 2 and arguments[:2] == ["documentation", "validate"]:
+        install_network_guard()
+        args = legacy_cli.build_parser().parse_args(arguments)
+        return _documentation_validate(args)
     if len(arguments) < 2 or arguments[0] != "rules":
         return legacy_cli.main(arguments)
     if arguments[1] not in {"build-active-manifest", "select"}:

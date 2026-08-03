@@ -12,6 +12,15 @@ from pathlib import Path
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.formats import RELEASE_VALIDATION_FORMAT
+from ansim_review.documentation_integrity.contract import (
+    DocumentationFinding,
+    DocumentationIntegrityReport,
+    report_document,
+)
+from ansim_review.documentation_integrity.validator import (
+    DocumentationAuthorityError,
+    validate_documentation,
+)
 from ansim_review.network_guard import offline_guard_context
 from ansim_review.offline_policy import APPLICATION_OFFLINE_GUARD, POLICY_VERSION
 from ansim_review.offline_scanner import scan_source_tree
@@ -116,6 +125,34 @@ def _manifest_checks(workspace_root: Path) -> dict[str, object]:
     }
 
 
+def _documentation_checks(workspace_root: Path) -> dict[str, object]:
+    try:
+        report = validate_documentation(
+            workspace_root,
+            workspace_root / "documentation-integrity.json",
+        )
+    except DocumentationAuthorityError:
+        report = DocumentationIntegrityReport(
+            current_documents=(),
+            historical_documents=(),
+            generated_documents=(),
+            findings=(
+                DocumentationFinding(
+                    severity="ERROR",
+                    code="DOCUMENTATION_AUTHORITY_UNAVAILABLE",
+                    document_path="documentation-integrity.json",
+                    line=1,
+                    column=1,
+                    target="documentation-integrity.json",
+                    message=(
+                        "Documentation integrity authority is missing or unreadable."
+                    ),
+                ),
+            ),
+        )
+    return report_document(report)
+
+
 def validate_release_workspace(
     workspace_root: Path,
     output_path: Path | None = None,
@@ -128,6 +165,7 @@ def validate_release_workspace(
         resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG)
     )
     manifests = _manifest_checks(workspace_root)
+    documentation = _documentation_checks(workspace_root)
     with tempfile.TemporaryDirectory(
         prefix="evidence-review-release-validation-"
     ) as temporary:
@@ -146,6 +184,8 @@ def validate_release_workspace(
         errors.append("SQLITE_VALIDATION_FAILED")
     if manifests["status"] != "PASS":
         errors.append("MANIFEST_VALIDATION_FAILED")
+    if documentation["status"] != "PASS":
+        errors.append("DOCUMENTATION_INTEGRITY_FAILED")
     if not reproducible:
         errors.append("NON_REPRODUCIBLE_WEB_ZIP")
     report: dict[str, object] = {
@@ -156,6 +196,7 @@ def validate_release_workspace(
         "forbidden_imports": forbidden,
         "sqlite": sqlite_result,
         "manifests": manifests,
+        "documentation": documentation,
         "web_zip": {
             "first_hash": first_hash,
             "second_hash": second_hash,

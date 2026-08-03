@@ -1,0 +1,176 @@
+"""Dependency-safe construction of the evidence-review CLI parser."""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level command-line parser."""
+    parser = argparse.ArgumentParser(
+        prog="evidence-review",
+        description="Evidence-first regulatory review for arbitrary documents",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    evidence = subparsers.add_parser(
+        "evidence",
+        help="manage versioned evidence databases",
+    )
+    evidence_stages = evidence.add_subparsers(
+        dest="evidence_stage",
+        required=True,
+    )
+    evidence_migrate = evidence_stages.add_parser(
+        "migrate",
+        help="copy an evidence schema v1 database to schema v2",
+    )
+    evidence_migrate.add_argument("--source", required=True, type=Path)
+    evidence_migrate.add_argument("--output", required=True, type=Path)
+    evidence_lineage = evidence_stages.add_parser(
+        "migrate-lineage",
+        help="copy equivalent legacy document aliases into one canonical lineage",
+    )
+    evidence_lineage.add_argument("--source", required=True, type=Path)
+    evidence_lineage.add_argument("--manifest", required=True, type=Path)
+    evidence_lineage.add_argument("--output", required=True, type=Path)
+
+    source_batch = subparsers.add_parser(
+        "source-batch",
+        help="validate and ingest arbitrary user-provided PDF sources",
+    )
+    source_stages = source_batch.add_subparsers(dest="source_stage", required=True)
+    source_prepare = source_stages.add_parser(
+        "prepare",
+        help="validate a source batch and report parser and routing states",
+    )
+    source_prepare.add_argument("--root", required=True, type=Path)
+    source_prepare.add_argument("--manifest", required=True, type=Path)
+    source_ingest = source_stages.add_parser(
+        "ingest",
+        help="build a searchable evidence SQLite database from a source batch",
+    )
+    source_ingest.add_argument("--root", required=True, type=Path)
+    source_ingest.add_argument("--manifest", required=True, type=Path)
+    source_ingest.add_argument("--output", required=True, type=Path)
+
+    legacy = subparsers.add_parser(
+        "legacy",
+        help="inspect read-only legacy artifacts without canonical promotion",
+    )
+    legacy_stages = legacy.add_subparsers(dest="legacy_stage", required=True)
+    legacy_visuals = legacy_stages.add_parser(
+        "inspect-visual-manifest",
+        help="inspect a legacy Grist visual CSV as non-canonical data",
+    )
+    legacy_visuals.add_argument("--manifest", required=True, type=Path)
+    legacy_visuals.add_argument("--root", type=Path)
+    legacy_visuals.add_argument("--output", required=True, type=Path)
+    legacy_grist_qa = legacy_stages.add_parser(
+        "validate-grist-qa",
+        help="validate a manual Grist Desktop QA artifact",
+    )
+    legacy_grist_qa.add_argument("--artifact", required=True, type=Path)
+    legacy_grist_qa.add_argument("--root", required=True, type=Path)
+
+    release = subparsers.add_parser(
+        "release",
+        help="validate release authorization artifacts",
+    )
+    release_stages = release.add_subparsers(dest="release_stage", required=True)
+    release_attestation = release_stages.add_parser(
+        "validate-attestation",
+        help="validate a named process attestation against exact artifact hashes",
+    )
+    release_attestation.add_argument("--attestation", required=True, type=Path)
+    release_attestation.add_argument("--candidate-hash", required=True)
+    release_attestation.add_argument("--packet-hash", required=True)
+
+    rules = subparsers.add_parser(
+        "rules",
+        help="run governed rule golden tests, activation, and scope selection",
+    )
+    rule_stages = rules.add_subparsers(dest="rules_stage", required=True)
+    run_golden = rule_stages.add_parser(
+        "run-golden",
+        help="evaluate one strict rule golden fixture manifest",
+    )
+    run_golden.add_argument("--repository-root", required=True, type=Path)
+    run_golden.add_argument("--fixture-manifest", required=True, type=Path)
+    run_golden.add_argument("--actual-root", required=True, type=Path)
+    run_golden.add_argument("--report", required=True, type=Path)
+    run_golden.add_argument("--source-commit", required=True)
+    run_golden.add_argument("--command", required=True, dest="golden_command")
+
+    build_active = rule_stages.add_parser(
+        "build-active-manifest",
+        help="derive a scoped active manifest from verified approval artifacts",
+    )
+    build_active.add_argument("--repository-root", required=True, type=Path)
+    build_active.add_argument("--approvals", required=True, type=Path)
+    build_active.add_argument("--output", required=True, type=Path)
+    build_active.add_argument("--report", required=True, type=Path)
+
+    select_rules = rule_stages.add_parser(
+        "select",
+        help="verify active authority and select exact-scope rules",
+    )
+    select_rules.add_argument("--repository-root", required=True, type=Path)
+    select_rules.add_argument("--manifest", required=True, type=Path)
+    select_rules.add_argument("--context", required=True, type=Path)
+
+    documentation = subparsers.add_parser(
+        "documentation",
+        help="validate repository documentation integrity",
+    )
+    documentation_stages = documentation.add_subparsers(
+        dest="documentation_stage",
+        required=True,
+    )
+    documentation_validate = documentation_stages.add_parser(
+        "validate",
+        help="write a canonical documentation integrity report",
+    )
+    documentation_validate.add_argument(
+        "--repository-root",
+        required=True,
+        type=Path,
+    )
+    documentation_validate.add_argument("--config", required=True, type=Path)
+    documentation_validate.add_argument("--output", required=True, type=Path)
+
+    math_run = subparsers.add_parser(
+        "math-run",
+        help="run a deterministic calculation request",
+    )
+    math_run.add_argument("--request", required=True, type=Path)
+    math_run.add_argument("--output", required=True, type=Path)
+    query = subparsers.add_parser(
+        "query",
+        help="retrieve a deterministic evidence bundle",
+    )
+    query.add_argument("--db", required=True, type=Path)
+    query.add_argument("--request", required=True, type=Path)
+    query.add_argument("--output", required=True, type=Path)
+
+    review_run = subparsers.add_parser(
+        "review-run",
+        help="prepare or finalize an immutable staged review run",
+    )
+    review_stages = review_run.add_subparsers(dest="review_stage", required=True)
+    review_prepare = review_stages.add_parser(
+        "prepare",
+        help="validate deterministic inputs and prepare Track A artifacts",
+    )
+    review_prepare.add_argument("--workspace", required=True, type=Path)
+    review_prepare.add_argument("--request", required=True, type=Path)
+    review_finalize = review_stages.add_parser(
+        "finalize",
+        help="bind external Track outputs and finalize the review packet",
+    )
+    review_finalize.add_argument("--workspace", required=True, type=Path)
+    review_finalize.add_argument("--run-id", required=True)
+    review_finalize.add_argument("--track-a-output", required=True, type=Path)
+    review_finalize.add_argument("--track-b-output", required=True, type=Path)
+    review_finalize.add_argument("--publish", action="store_true")
+    return parser

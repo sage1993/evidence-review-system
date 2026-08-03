@@ -83,6 +83,12 @@ def _automated_reason_codes(
     reasons: list[str] = []
     if workspace_validation.get("status") != "PASS":
         reasons.append("AUTOMATED_VALIDATION_FAILED")
+    workspace_errors = workspace_validation.get("errors", [])
+    if (
+        isinstance(workspace_errors, list)
+        and "DOCUMENTATION_INTEGRITY_FAILED" in workspace_errors
+    ):
+        reasons.append("DOCUMENTATION_INTEGRITY_FAILED")
     if output_validation.get("status") != "PASS":
         reasons.append("RELEASE_OUTPUT_VALIDATION_FAILED")
     return reasons

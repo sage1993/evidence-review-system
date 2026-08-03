@@ -30,6 +30,25 @@ Do not use network APIs or remote search from project code.
 """
 
 
+def render_validation_document() -> str:
+    """Return the canonical offline validation procedure for Codex bundles."""
+    return (
+        "# Offline validation\n\n"
+        "Run these checks from the repository or extracted bundle root. "
+        "They do not require network access.\n\n"
+        "```bash\n"
+        "python -m ansim_review --help\n"
+        "python -m ansim_review source-batch --help\n"
+        "python -m ansim_review rules --help\n"
+        "python -m ansim_review documentation validate --help\n"
+        "python -m compileall -q src\n"
+        "pytest -q\n"
+        "ruff check src tests\n"
+        "mypy src\n"
+        "```\n"
+    )
+
+
 def _copy_tree(source: Path, destination: Path) -> None:
     for path in iter_bundle_source_files(source):
         relative = path.relative_to(source)
@@ -104,14 +123,8 @@ def build_codex_bundle(
             output_directory / "skills" / source.parent.name / "SKILL.md",
         )
 
-    validation = (
-        "# Offline validation\n\n"
-        "```bash\n"
-        "PYTHONPATH=src python -m ansim_review --help\n"
-        "```\n"
-    )
     (output_directory / "VALIDATE.md").write_text(
-        validation,
+        render_validation_document(),
         encoding="utf-8",
         newline="\n",
     )
