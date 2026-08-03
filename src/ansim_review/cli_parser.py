@@ -97,8 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
         "collect",
         help="write a warning report and stable review queue",
     )
-    warning_collect.add_argument("--source", required=True, type=Path)
-    warning_collect.add_argument("--run", required=True, type=Path)
+    warning_collect.add_argument(
+        "--source-manifest",
+        required=True,
+        type=Path,
+    )
+    warning_collect.add_argument(
+        "--parser-artifacts",
+        required=True,
+        type=Path,
+    )
     warning_collect.add_argument("--config", required=True, type=Path)
     warning_collect.add_argument("--warning-output", required=True, type=Path)
     warning_collect.add_argument("--queue-output", required=True, type=Path)
