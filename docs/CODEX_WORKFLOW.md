@@ -137,7 +137,9 @@ The browser may submit only:
 
 - an existing candidate ID for `ACCEPTED`, `REJECTED`, or `EDITED`;
 - a reviewer-selected annotation ID and candidate type for `CREATED`;
-- reviewer ID, offset-aware timestamp, optional confirmed value and unit, and optional replacement geometry.
+- reviewer identity, offset-aware timestamp, optional confirmed value and unit, and optional replacement geometry.
+
+Reviewer identity is preserved in the confirmation document and may contain Unicode. It cannot contain path separators or control characters. The confirmation filename uses a server-derived hash token, so the browser identity string never becomes a path component.
 
 The browser cannot set source hashes, confirmation IDs, output paths, artifact hashes, or a manual candidate ID. The server derives those values and routes persistence through the existing create-only candidate repository and append-only confirmation repository.
 
