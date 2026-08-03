@@ -72,6 +72,15 @@ def _replace_object_path(
     return True
 
 
+def _normalize_run_local_value(value: str, run_root: Path) -> str:
+    for root_form in _root_forms(run_root):
+        if not value.startswith(root_form):
+            continue
+        suffix = value[len(root_form) :]
+        return "<RUN_ROOT>" + suffix.replace("\\", "/")
+    return value
+
+
 def normalize_json_artifact(
     payload: JsonValue,
     config: ReproducibilityConfig,
@@ -84,7 +93,9 @@ def normalize_json_artifact(
     for path in config.allowed_nondeterministic_fields:
         if path == "$.metadata.parsed_at":
             if _replace_object_path(value, path, "<NONDETERMINISTIC>"):
-                applied.append(AppliedNormalization(path, "EXECUTION_TIMESTAMP"))
+                applied.append(
+                    AppliedNormalization(path, "EXECUTION_TIMESTAMP")
+                )
             continue
         if path == "$.metadata.output_directory":
             if _replace_object_path(value, path, "<RUN_ROOT>"):
@@ -94,10 +105,7 @@ def normalize_json_artifact(
 
     def replace_run_paths(current: JsonValue, path: str) -> JsonValue:
         if isinstance(current, str):
-            replaced = current
-            for root_form in _root_forms(run_root):
-                replaced = replaced.replace(root_form, "<RUN_ROOT>")
-            replaced = replaced.replace("<RUN_ROOT>\\", "<RUN_ROOT>/")
+            replaced = _normalize_run_local_value(current, run_root)
             if replaced != current:
                 applied.append(AppliedNormalization(path, "RUN_LOCAL_PATH"))
             return replaced
@@ -119,7 +127,9 @@ def normalize_json_artifact(
         value=value,
         canonical_bytes=encoded,
         sha256=hashlib.sha256(encoded).hexdigest().upper(),
-        applied=tuple(sorted(set(applied), key=lambda item: (item.path, item.kind))),
+        applied=tuple(
+            sorted(set(applied), key=lambda item: (item.path, item.kind))
+        ),
     )
 
 
@@ -154,5 +164,7 @@ def normalize_markdown_artifact(
         text=text,
         canonical_bytes=encoded,
         sha256=hashlib.sha256(encoded).hexdigest().upper(),
-        applied=tuple(sorted(set(applied), key=lambda item: (item.path, item.kind))),
+        applied=tuple(
+            sorted(set(applied), key=lambda item: (item.path, item.kind))
+        ),
     )
