@@ -7,10 +7,11 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Final, Literal, Protocol
+from typing import Literal, Protocol, cast
 
 from ansim_review import canonical_json
 from ansim_review.contracts.attachments import ImmutableAttachment
+from ansim_review.contracts.formats import REFERENCE_INGESTION_RECEIPT_FORMAT
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.contracts.source_batch import SourceBatch
 from ansim_review.contracts.validation import (
@@ -27,10 +28,6 @@ from ansim_review.parsing.parser_registry import ParserRegistry
 from ansim_review.parsing.source_batch_importer import import_source_batch
 from ansim_review.workflow.request import ReviewRequest, review_request_sha256
 from ansim_review.workflow.run_layout import ReviewRunLayout, reject_link_ancestors
-
-REFERENCE_INGESTION_RECEIPT_FORMAT: Final[
-    Literal["evidence-review/reference-ingestion-receipt"]
-] = "evidence-review/reference-ingestion-receipt"
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,11 +132,11 @@ def _decode_source_result(value: object) -> ReferenceSourceResult:
             payload.get("attachment_ids"), "attachment_ids"
         )
     )
-    if not attachment_ids:
-        raise ValueError("attachment_ids must not be empty")
     original_names = _decode_string_tuple(
         payload.get("original_names"), "original_names"
     )
+    if not attachment_ids:
+        raise ValueError("attachment_ids must not be empty")
     if not original_names:
         raise ValueError("original_names must not be empty")
     return ReferenceSourceResult(
@@ -399,10 +396,13 @@ def _strict_json(raw: bytes) -> object:
         return result
 
     try:
-        return json.loads(
-            raw.decode("utf-8"),
-            parse_constant=reject_constant,
-            object_pairs_hook=reject_duplicates,
+        return cast(
+            object,
+            json.loads(
+                raw.decode("utf-8"),
+                parse_constant=reject_constant,
+                object_pairs_hook=reject_duplicates,
+            ),
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(
@@ -461,6 +461,7 @@ def persist_reference_ingestion_receipt(
             0o600,
         )
     except FileExistsError:
+        reject_link_ancestors(target)
         if target.read_bytes() == encoded:
             return target
         raise FileExistsError(
@@ -505,6 +506,8 @@ class SourceBatchReferenceBackend:
         output = run_dir.joinpath(*output_relative.split("/"))
         if not output.resolve(strict=False).is_relative_to(run_dir.resolve()):
             raise ValueError("source batch output escapes run directory")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        reject_link_ancestors(output.parent)
         report = import_source_batch(
             run_dir,
             self.batch,
