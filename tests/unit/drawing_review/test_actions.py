@@ -137,22 +137,44 @@ def test_rejects_timestamp_without_timezone() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    "payload,match",
+_INVALID_PAYLOADS: tuple[tuple[Mapping[str, object], str], ...] = (
     (
-        (_existing_payload(action="ACCEPTED", confirmed_value="8.0", unit="m"), "ACCEPTED"),
-        (_existing_payload(action="REJECTED", geometry={
-            "type": "POINT",
-            "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
-            "coordinates": [1.0, 2.0],
-        }), "REJECTED"),
-        (_existing_payload(action="EDITED", confirmed_value=None, unit=None, geometry=None), "EDITED"),
-        (_manual_payload(confirmed_value="8.0", unit=None), "unit"),
-        (_manual_payload(confirmed_value=None, unit="m"), "confirmed_value"),
+        _existing_payload(
+            action="ACCEPTED",
+            confirmed_value="8.0",
+            unit="m",
+        ),
+        "ACCEPTED",
     ),
+    (
+        _existing_payload(
+            action="REJECTED",
+            geometry={
+                "type": "POINT",
+                "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
+                "coordinates": [1.0, 2.0],
+            },
+        ),
+        "REJECTED",
+    ),
+    (
+        _existing_payload(
+            action="EDITED",
+            confirmed_value=None,
+            unit=None,
+            geometry=None,
+        ),
+        "EDITED",
+    ),
+    (_manual_payload(confirmed_value="8.0", unit=None), "unit"),
+    (_manual_payload(confirmed_value=None, unit="m"), "confirmed_value"),
 )
+
+
+@pytest.mark.parametrize("payload,match", _INVALID_PAYLOADS)
 def test_rejects_invalid_action_payload_combinations(
-    payload: Mapping[str, object], match: str
+    payload: Mapping[str, object],
+    match: str,
 ) -> None:
     with pytest.raises(ValueError, match=match):
         decode_annotation_action(payload)
