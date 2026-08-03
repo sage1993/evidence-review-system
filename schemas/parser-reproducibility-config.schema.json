@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sage1993/evidence-review-system/schemas/parser-reproducibility-config.schema.json",
+  "title": "Parser Reproducibility Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "parser_kind",
+    "adapter_version",
+    "json_artifact_names",
+    "markdown_artifact_names",
+    "warning_sources",
+    "normalization_profile",
+    "allowed_nondeterministic_fields"
+  ],
+  "properties": {
+    "format": {
+      "const": "evidence-review/parser-reproducibility-config"
+    },
+    "version": {
+      "const": 1
+    },
+    "parser_kind": {
+      "const": "opendataloader"
+    },
+    "adapter_version": {
+      "const": 1
+    },
+    "json_artifact_names": {
+      "$ref": "#/$defs/relativePathList"
+    },
+    "markdown_artifact_names": {
+      "$ref": "#/$defs/relativePathList"
+    },
+    "warning_sources": {
+      "$ref": "#/$defs/relativePathList"
+    },
+    "normalization_profile": {
+      "const": "opendataloader-v1"
+    },
+    "allowed_nondeterministic_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "$.metadata.parsed_at",
+          "$.metadata.output_directory"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "relativePathList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*:)(?!.*//).+$"
+      }
+    }
+  }
+}
