@@ -8,9 +8,13 @@ import stat
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Final, Literal
+from typing import Literal, cast
 
 from ansim_review import canonical_json
+from ansim_review.contracts.formats import (
+    WORKFLOW_EVENT_FORMAT,
+    WORKFLOW_STATE_FORMAT,
+)
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.contracts.review import FinalizerStatus
 from ansim_review.contracts.validation import (
@@ -37,9 +41,6 @@ from ansim_review.workflow.state_machine import (
     validate_transition,
 )
 
-WORKFLOW_EVENT_FORMAT: Final[Literal["evidence-review/workflow-event"]] = (
-    "evidence-review/workflow-event"
-)
 _REASON_CODES: tuple[ReasonCode, ...] = (
     "SOURCE_CONFLICT",
     "SOURCE_HASH_MISMATCH",
@@ -99,7 +100,7 @@ def _projection_document(
     resumable: bool,
 ) -> dict[str, object]:
     return {
-        "format": "evidence-review/workflow-state",
+        "format": WORKFLOW_STATE_FORMAT,
         "version": 1,
         "run_id": run_id,
         "workflow_state": state,
@@ -163,16 +164,15 @@ def decode_workflow_event(value: object) -> WorkflowEvent:
     )
     if len(reason_codes) != len(set(reason_codes)):
         raise ValueError("reason_codes must be unique")
-    reason_codes = tuple(sorted(reason_codes))
+    canonical_reasons = tuple(sorted(reason_codes))
     resumable = expect_bool(payload.get("resumable"), "resumable")
     run_id = validate_identifier(payload.get("run_id"), "run_id")
-
     projection = decode_workflow_state_record(
         _projection_document(
             run_id=run_id,
             state=next_state,
             finalizer_status=finalizer_status,
-            reason_codes=reason_codes,
+            reason_codes=canonical_reasons,
             resumable=resumable,
         )
     )
@@ -209,7 +209,7 @@ def make_workflow_event(
     payload_sha256: str,
     recorded_at: str,
 ) -> WorkflowEvent:
-    """Construct an event through the same strict decoder used for disk input."""
+    """Construct an event through the strict disk decoder."""
     return decode_workflow_event(
         {
             "format": WORKFLOW_EVENT_FORMAT,
@@ -279,7 +279,9 @@ def _load_json_document(raw: bytes) -> object:
     def reject_constant(value: str) -> object:
         raise ValueError(f"invalid JSON constant: {value}")
 
-    def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
         result: dict[str, object] = {}
         for key, value in pairs:
             if key in result:
@@ -288,10 +290,13 @@ def _load_json_document(raw: bytes) -> object:
         return result
 
     try:
-        return json.loads(
-            raw.decode("utf-8"),
-            parse_constant=reject_constant,
-            object_pairs_hook=reject_duplicate_keys,
+        return cast(
+            object,
+            json.loads(
+                raw.decode("utf-8"),
+                parse_constant=reject_constant,
+                object_pairs_hook=reject_duplicate_keys,
+            ),
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("workflow event must be valid UTF-8 JSON") from exc
@@ -308,12 +313,16 @@ def load_workflow_events(events_dir: Path) -> tuple[WorkflowEvent, ...]:
     loaded: list[WorkflowEvent] = []
     for path in sorted(events_dir.iterdir(), key=lambda item: item.name):
         if path.is_dir() or path.suffix != ".json":
-            raise ValueError("workflow event directory contains an unexpected entry")
+            raise ValueError(
+                "workflow event directory contains an unexpected entry"
+            )
         _reject_link_ancestors(path)
         raw = path.read_bytes()
         event = decode_workflow_event(_load_json_document(raw))
         if path.name != workflow_event_filename(event):
-            raise ValueError("workflow event filename does not match event identity")
+            raise ValueError(
+                "workflow event filename does not match event identity"
+            )
         if raw != workflow_event_bytes(event):
             raise ValueError("workflow event bytes are not canonical")
         loaded.append(event)
@@ -329,7 +338,9 @@ def load_workflow_events(events_dir: Path) -> tuple[WorkflowEvent, ...]:
         elif event.run_id != run_id:
             raise ValueError("workflow journal contains multiple run IDs")
         if event.previous_state != previous:
-            raise ValueError("workflow event previous_state does not match journal")
+            raise ValueError(
+                "workflow event previous_state does not match journal"
+            )
         validate_transition(event.previous_state, event.next_state, event.kind)
         previous = event.next_state
     return tuple(loaded)
@@ -349,7 +360,9 @@ def append_workflow_event(events_dir: Path, event: WorkflowEvent) -> Path:
         recorded_path = events_dir / workflow_event_filename(recorded)
         if recorded_path == target and workflow_event_bytes(recorded) == encoded:
             return target
-        raise FileExistsError("workflow sequence already contains different bytes")
+        raise FileExistsError(
+            "workflow sequence already contains different bytes"
+        )
 
     expected_sequence = len(existing) + 1
     if event.sequence != expected_sequence:
@@ -359,13 +372,19 @@ def append_workflow_event(events_dir: Path, event: WorkflowEvent) -> Path:
         raise ValueError("event previous_state does not match journal state")
     validate_transition(event.previous_state, event.next_state, event.kind)
 
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     try:
-        descriptor = os.open(target, flags, 0o600)
+        descriptor = os.open(
+            target,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
     except FileExistsError:
+        _reject_link_ancestors(target)
         if target.read_bytes() == encoded:
             return target
-        raise FileExistsError("workflow event path contains different bytes") from None
+        raise FileExistsError(
+            "workflow event path contains different bytes"
+        ) from None
     with os.fdopen(descriptor, "wb") as stream:
         stream.write(encoded)
         stream.flush()
