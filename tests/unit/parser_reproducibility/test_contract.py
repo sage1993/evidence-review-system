@@ -58,6 +58,9 @@ def test_decodes_exact_config_and_run_authority() -> None:
     run = decode_parser_run_metadata(encode(run_payload()))
 
     assert config.parser_kind == "opendataloader"
+    assert config.json_artifact_names == ("document.json",)
+    assert config.markdown_artifact_names == ("document.md",)
+    assert config.warning_sources == ("document.json", "parser.log")
     assert config.allowed_nondeterministic_fields == (
         "$.metadata.parsed_at",
         "$.metadata.output_directory",
@@ -73,15 +76,34 @@ def test_decodes_exact_config_and_run_authority() -> None:
     ("field", "value", "message"),
     [
         ("parser_kind", "other", "unsupported parser kind"),
-        ("normalization_profile", "other-v1", "unsupported normalization profile"),
+        (
+            "normalization_profile",
+            "other-v1",
+            "unsupported normalization profile",
+        ),
         ("json_artifact_names", ["a\\b.json"], "backslash"),
+        ("json_artifact_names", ["other.json"], "unsupported JSON"),
+        ("markdown_artifact_names", ["other.md"], "unsupported Markdown"),
         ("warning_sources", ["../parser.log"], "unsafe path"),
-        ("allowed_nondeterministic_fields", ["$..parsed_at"], "recursive"),
-        ("allowed_nondeterministic_fields", ["$.pages[*].id"], "wildcard"),
+        ("warning_sources", ["document.json"], "unsupported warning sources"),
+        (
+            "allowed_nondeterministic_fields",
+            ["$..parsed_at"],
+            "recursive",
+        ),
+        (
+            "allowed_nondeterministic_fields",
+            ["$.pages[*].id"],
+            "wildcard",
+        ),
         ("adapter_version", 2, "unsupported adapter version"),
     ],
 )
-def test_config_rejects_invalid_values(field: str, value: object, message: str) -> None:
+def test_config_rejects_invalid_values(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
     payload = config_payload()
     payload[field] = value
     with pytest.raises(ValueError, match=message):
@@ -103,7 +125,9 @@ def test_config_rejects_invalid_values(field: str, value: object, message: str) 
     ],
 )
 def test_run_authority_rejects_invalid_values(
-    field: str, value: object, message: str
+    field: str,
+    value: object,
+    message: str,
 ) -> None:
     payload = run_payload()
     payload[field] = value
