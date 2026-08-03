@@ -24,6 +24,25 @@ def config() -> ReproducibilityConfig:
     )
 
 
+def write_config(path: Path) -> Path:
+    payload = {
+        "format": "evidence-review/parser-reproducibility-config",
+        "version": 1,
+        "parser_kind": "opendataloader",
+        "adapter_version": 1,
+        "json_artifact_names": ["document.json"],
+        "markdown_artifact_names": ["document.md"],
+        "warning_sources": ["document.json", "parser.log"],
+        "normalization_profile": "opendataloader-v1",
+        "allowed_nondeterministic_fields": [
+            "$.metadata.parsed_at",
+            "$.metadata.output_directory",
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
 def write_pdf(path: Path, pages: int = 1) -> Path:
     writer = PdfWriter()
     for _ in range(pages):
@@ -97,3 +116,32 @@ def write_run(
         encoding="utf-8",
     )
     return root
+
+
+def write_source_manifest(
+    path: Path,
+    run_root: Path,
+    *,
+    parser_kind: str = "OPENDATALOADER_JSON",
+    document_id: str | None = None,
+) -> Path:
+    metadata = json.loads((run_root / "parser-run.json").read_text(encoding="utf-8"))
+    payload = {
+        "format": "evidence-review/source-batch",
+        "version": 2,
+        "sources": [
+            {
+                "source_path": metadata["source_relative_path"],
+                "role": "REFERENCE_DOCUMENT",
+                "document_id": document_id,
+                "display_title": "Reference",
+                "parser": {
+                    "kind": parser_kind,
+                    "artifact_path": "inputs/parser/document.json",
+                    "options": {},
+                },
+            }
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
