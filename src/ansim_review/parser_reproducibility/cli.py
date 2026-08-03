@@ -17,6 +17,13 @@ from ansim_review.parser_reproducibility.report import (
     report_bytes,
     validate_opendataloader_reproducibility,
 )
+from ansim_review.parser_reproducibility.run_manifest import (
+    read_parser_run_metadata,
+)
+from ansim_review.parser_reproducibility.source_identity import (
+    SourceIdentityAuthorityError,
+    resolve_source_identity,
+)
 
 
 def reserve_outputs(paths: Sequence[Path]) -> tuple[int, ...]:
@@ -125,9 +132,26 @@ def validate_command(
     return 3
 
 
+def _warning_authority(
+    source_manifest: Path,
+    parser_artifacts: Path,
+):
+    try:
+        metadata = read_parser_run_metadata(parser_artifacts)
+    except FileNotFoundError as exc:
+        raise SourceIdentityAuthorityError(
+            "PARSER_RUN_AUTHORITY_MISSING"
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise SourceIdentityAuthorityError(
+            "PARSER_RUN_AUTHORITY_INVALID"
+        ) from exc
+    return resolve_source_identity(source_manifest, metadata)
+
+
 def collect_warnings_command(
-    source: Path,
-    run: Path,
+    source_manifest: Path,
+    parser_artifacts: Path,
     config_path: Path,
     warning_output: Path,
     queue_output: Path,
@@ -142,9 +166,17 @@ def collect_warnings_command(
             if previous_queue_path is None
             else decode_review_queue(previous_queue_path.read_bytes())
         )
+        source_identity = _warning_authority(
+            source_manifest,
+            parser_artifacts,
+        )
+    except SourceIdentityAuthorityError as exc:
+        print(exc.code, file=sys.stderr)
+        return 2
     except (OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+
     paths = (warning_output, queue_output)
     try:
         descriptors = reserve_outputs(paths)
@@ -153,8 +185,8 @@ def collect_warnings_command(
         return 2
     try:
         result = collect_opendataloader_warnings(
-            source,
-            run,
+            source_identity,
+            parser_artifacts,
             config,
             previous,
         )
