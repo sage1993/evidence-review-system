@@ -4,7 +4,7 @@
 
 **Goal:** Provide a secure localhost browser workspace that projects verified drawing candidates and records reviewer manual annotations through the existing append-only drawing backend.
 
-**Architecture:** Add a pure deterministic view-model layer first, then an SVG renderer, then a strict browser action decoder and localhost server. All persistence is delegated to existing candidate and confirmation functions; the browser never computes calibration, dimensions, area, rule results, or confidence.
+**Architecture:** A deterministic view-model feeds a self-contained SVG renderer. A strict browser-action decoder and loopback-only server route all writes through the existing create-only candidate and append-only confirmation repositories. The browser performs viewport-to-page coordinate conversion only; calibration, dimensions, area, rules, and confidence remain outside this subsystem.
 
 **Tech Stack:** Python 3.11/3.13, standard-library HTTP server, existing `ansim_review.contracts.drawing` contracts, HTML/SVG/CSS/vanilla JavaScript, pytest.
 
@@ -12,10 +12,31 @@
 
 - No OpenAI API or external model API calls.
 - No new runtime dependency.
-- Reuse the M0 drawing contracts and M1 backend; do not create duplicate status or geometry enums.
-- All source, candidate, and confirmation writes remain create-only or append-only.
-- Browser-supplied paths, hashes, candidate IDs for manual creation, and confirmation IDs are not authoritative.
-- Calibration arithmetic and automatic extraction are out of scope.
+- Reuse the M0 drawing contracts and M1 backend; do not define duplicate status, geometry, coordinate-system, or confirmation contracts.
+- Source, candidate, and confirmation writes remain immutable, create-only, or append-only.
+- Browser-supplied paths, hashes, manual candidate IDs, and confirmation IDs are never authoritative.
+- Calibration arithmetic, OCR, automatic semantic extraction, DWG/DXF parsing, final Review Packet v2 rendering, and issue #7 orchestration are out of scope.
+
+## Execution Status
+
+Implementation and test contracts are present in Draft PR #54 for Tasks 1–7.
+
+- [x] Deterministic drawing review view model implemented.
+- [x] Self-contained SVG renderer and package assets implemented.
+- [x] Strict existing-candidate and manual-create action contracts implemented.
+- [x] Append-only action service implemented with candidate manifest hash verification.
+- [x] Loopback-only tokenized HTTP server implemented.
+- [x] POINT, BBOX, LINESTRING, and POLYGON browser capture implemented.
+- [x] Browser-to-confirmation-to-confirmed-input-to-engine-binding E2E test contract added.
+- [x] Workflow, roadmap, package-data, and documentation-integrity configuration updated.
+- [ ] Focused tests executed on the exact PR HEAD.
+- [ ] Repository-wide pytest, Ruff, strict mypy, and compileall passed.
+- [ ] Python 3.11 and 3.13 wheel installation and asset access passed.
+- [ ] Windows and Ubuntu verification passed.
+- [ ] Human browser QA at 100%, 200%, and fit-to-page zoom passed.
+- [ ] Exact HEAD, clean worktree, test counts, browser, OS, and acceptance evidence recorded.
+
+GitHub Actions runs that terminate before executing job steps are `ACTIONS_UNAVAILABLE`; they do not satisfy any verification checkbox.
 
 ---
 
@@ -27,75 +48,21 @@
 - Test: `tests/unit/drawing_review/test_view_model.py`
 
 **Interfaces:**
-- Consumes: `DrawingCandidate`, `Geometry`, `geometry_document()` from `ansim_review.contracts.drawing`.
-- Produces: `DrawingPage`, `build_drawing_review_view_model(page: DrawingPage, candidates: Sequence[DrawingCandidate]) -> dict[str, object]`.
+- Consumes: `CoordinateSystem`, `DrawingCandidate`, `Geometry`, and `geometry_document()` from `ansim_review.contracts.drawing`.
+- Produces: `DrawingPage` and `build_drawing_review_view_model(page: DrawingPage, candidates: Sequence[DrawingCandidate]) -> dict[str, object]`.
 
-- [ ] **Step 1: Write the failing deterministic-order test**
+Required behavior:
 
-```python
-def test_build_view_model_sorts_candidates_by_stable_id() -> None:
-    model = build_drawing_review_view_model(page, (candidate_b, candidate_a))
-    assert [item["candidate_id"] for item in model["candidates"]] == [
-        "CAND-A",
-        "CAND-B",
-    ]
-```
+- validate immutable source SHA-256, positive page, coordinate system, and finite page bounds;
+- reject candidate source, page, or coordinate-system mismatch;
+- reject POINT, BBOX, LINESTRING, or POLYGON geometry outside page bounds;
+- sort projection candidates by stable candidate ID;
+- expose no mutable path or browser-owned authority field.
 
-- [ ] **Step 2: Run the focused test and verify RED**
-
-Run:
+Focused verification:
 
 ```bash
 pytest tests/unit/drawing_review/test_view_model.py -q
-```
-
-Expected: FAIL because `ansim_review.drawing_review.view_model` does not exist.
-
-- [ ] **Step 3: Implement the minimal view model**
-
-```python
-@dataclass(frozen=True, slots=True)
-class DrawingPage:
-    source_sha256: str
-    page: int
-    coordinate_system: CoordinateSystem
-    width: float
-    height: float
-
-
-def build_drawing_review_view_model(
-    page: DrawingPage,
-    candidates: Sequence[DrawingCandidate],
-) -> dict[str, object]:
-    validated = [_candidate_document(page, item) for item in candidates]
-    validated.sort(key=lambda item: cast(str, item["candidate_id"]))
-    return {
-        "format": "evidence-review/drawing-review-view",
-        "version": 1,
-        "source_sha256": page.source_sha256,
-        "page": page.page,
-        "coordinate_system": page.coordinate_system,
-        "page_width": page.width,
-        "page_height": page.height,
-        "candidates": validated,
-    }
-```
-
-- [ ] **Step 4: Add source, page, coordinate-system, and page-bound rejection tests**
-
-- [ ] **Step 5: Run focused tests and full unit drawing tests**
-
-```bash
-pytest tests/unit/drawing_review/test_view_model.py -q
-pytest tests/unit/parsing/test_drawing_candidates.py tests/unit/parsing/test_drawing_confirmation.py -q
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/ansim_review/drawing_review tests/unit/drawing_review
-
-git commit -m "feat: build deterministic drawing review model"
 ```
 
 ### Task 2: Self-contained SVG annotation renderer
@@ -106,16 +73,30 @@ git commit -m "feat: build deterministic drawing review model"
 - Create: `src/ansim_review/drawing_review/assets/annotation.js`
 - Test: `tests/integration/drawing_review/test_html_renderer.py`
 
-**Interfaces:**
-- Consumes: Task 1 view-model dictionary and verified page-image bytes.
-- Produces: `render_annotation_html(model: Mapping[str, object], page_image: bytes, mime: str) -> str`.
+**Interface:**
 
-- [ ] **Step 1: Write a failing test proving all four geometry types produce SVG elements**
-- [ ] **Step 2: Verify RED**
-- [ ] **Step 3: Render POINT as `circle`, BBOX as `rect`, LINESTRING as `polyline`, and POLYGON as `polygon`**
-- [ ] **Step 4: Add external-resource and escaping tests**
-- [ ] **Step 5: Add candidate/list synchronization attributes and no-default-action test**
-- [ ] **Step 6: Run renderer tests and commit**
+```python
+render_annotation_html(
+    view_model: Mapping[str, object],
+    page_image: bytes,
+    mime: str,
+) -> str
+```
+
+Required behavior:
+
+- embed one verified page image and all CSS/JavaScript without external resources;
+- render POINT as `circle`, BBOX as `rect`, LINESTRING as `polyline`, and POLYGON as `polygon`;
+- escape candidate text;
+- keep candidate list and geometry selection synchronized;
+- leave every reviewer action unselected by default;
+- include drawing-review CSS and JavaScript in wheel package data.
+
+Focused verification:
+
+```bash
+pytest tests/integration/drawing_review/test_html_renderer.py -q
+```
 
 ### Task 3: Strict browser action contract
 
@@ -124,14 +105,28 @@ git commit -m "feat: build deterministic drawing review model"
 - Test: `tests/unit/drawing_review/test_actions.py`
 
 **Interfaces:**
-- Produces: `ExistingCandidateAction`, `ManualCreateAction`, and `decode_annotation_action(value: object)`.
-- Manual creation accepts an annotation ID and geometry but derives the candidate ID in backend code.
 
-- [ ] **Step 1: Write failing action decoder tests**
-- [ ] **Step 2: Verify RED**
-- [ ] **Step 3: Implement exact-field decoding and identifier length limits**
-- [ ] **Step 4: Reject browser-supplied source hash, output path, candidate ID for manual creation, and confirmation ID**
-- [ ] **Step 5: Run focused tests and commit**
+```python
+ExistingCandidateAction
+ManualCreateAction
+decode_annotation_action(value: object) -> AnnotationAction
+```
+
+Required behavior:
+
+- accept exact fields only;
+- enforce path-safe identifiers and explicit-offset timestamps;
+- require confirmed value and unit together;
+- reject confirmed replacement data for ACCEPTED and REJECTED;
+- require a value or geometry for EDITED;
+- require geometry for CREATED;
+- reject browser-supplied source hash, output path, confirmation ID, artifact hash, and manual candidate ID.
+
+Focused verification:
+
+```bash
+pytest tests/unit/drawing_review/test_actions.py -q
+```
 
 ### Task 4: Append-only action service
 
@@ -140,15 +135,37 @@ git commit -m "feat: build deterministic drawing review model"
 - Test: `tests/integration/drawing_review/test_action_service.py`
 
 **Interfaces:**
-- Consumes: Task 3 actions and existing drawing candidate/confirmation repositories.
-- Produces: `record_annotation_action(case_dir: Path, page: DrawingPage, action: AnnotationAction) -> CaseManifestEntry`.
 
-- [ ] **Step 1: Write failing acceptance, rejection, edit, and manual-create tests**
-- [ ] **Step 2: Verify RED**
-- [ ] **Step 3: Route existing actions through `validate_confirmation_for_candidate()` and `persist_confirmation()`**
-- [ ] **Step 4: Route manual creation through `create_manual_candidate()`, `persist_candidate()`, and `persist_confirmation()`**
-- [ ] **Step 5: Add stale-source, tamper, duplicate-write, and coordinate mismatch tests**
-- [ ] **Step 6: Run integration tests and commit**
+```python
+@dataclass(frozen=True, slots=True)
+class AnnotationActionResult:
+    candidate_entry: CaseManifestEntry | None
+    confirmation_entry: CaseManifestEntry
+
+
+def record_annotation_action(
+    case_dir: Path,
+    page: DrawingPage,
+    candidate_entries: Mapping[str, CaseManifestEntry],
+    action: AnnotationAction,
+) -> AnnotationActionResult: ...
+```
+
+Required behavior:
+
+- verify indexed candidate ID, canonical relative path, and recorded SHA-256 before loading;
+- validate source, page, coordinate system, and page bounds before writing;
+- derive confirmation ID in backend code;
+- route existing actions through `persist_confirmation()`;
+- route manual creation through `create_manual_candidate()`, `persist_candidate()`, and `persist_confirmation()`;
+- return both new manifest entries for manual creation;
+- preserve existing bytes when a duplicate create-only path is attempted.
+
+Focused verification:
+
+```bash
+pytest tests/integration/drawing_review/test_action_service.py -q
+```
 
 ### Task 5: Secure localhost server
 
@@ -156,15 +173,36 @@ git commit -m "feat: build deterministic drawing review model"
 - Create: `src/ansim_review/drawing_review/local_server.py`
 - Test: `tests/integration/drawing_review/test_local_server.py`
 
-**Interfaces:**
-- Produces: `serve_annotation_workspace(...) -> AnnotationServer` and routes `GET /annotation/<token>` and `POST /annotation/<token>/actions`.
+**Interface:**
 
-- [ ] **Step 1: Write failing localhost-only and token tests**
-- [ ] **Step 2: Verify RED**
-- [ ] **Step 3: Implement exact Host/Origin checks, no CORS, and body limits**
-- [ ] **Step 4: Connect POST actions to Task 4 service**
-- [ ] **Step 5: Add traversal, symlink/junction, malformed JSON, and filesystem-disclosure tests**
-- [ ] **Step 6: Run integration tests and commit**
+```python
+serve_annotation_workspace(...) -> AnnotationServer
+```
+
+Routes:
+
+```text
+GET  /annotation/<token>
+POST /annotation/<token>/actions
+```
+
+Required behavior:
+
+- bind only to `127.0.0.1`;
+- require a 32–128 character URL-safe access token;
+- verify exact Host and same-origin Origin;
+- emit no CORS permission;
+- apply CSP, no-store, no-referrer, and nosniff headers;
+- accept only bounded `application/json` POST bodies;
+- reject symlink or Windows reparse-point case roots;
+- disclose stable error codes without filesystem paths;
+- serialize writes behind one action lock and route them through Task 4.
+
+Focused verification:
+
+```bash
+pytest tests/integration/drawing_review/test_local_server.py -q
+```
 
 ### Task 6: Manual annotation browser interaction
 
@@ -173,15 +211,21 @@ git commit -m "feat: build deterministic drawing review model"
 - Modify: `src/ansim_review/drawing_review/assets/annotation.css`
 - Test: `tests/integration/drawing_review/test_browser_contract.py`
 
-**Interfaces:**
-- Uses SVG pointer coordinates only for annotation geometry capture and viewport transforms.
-- Does not calculate real-world length, scale, area, rule results, or confidence.
+Required behavior:
 
-- [ ] **Step 1: Write static contract tests for supported tools and forbidden arithmetic**
-- [ ] **Step 2: Implement POINT, BBOX, LINESTRING, and POLYGON capture**
-- [ ] **Step 3: Implement accept, reject, edit, and create request generation**
-- [ ] **Step 4: Keep all actions initially unselected**
-- [ ] **Step 5: Run tests and commit**
+- use SVG `getScreenCTM()` and `createSVGPoint()` for viewport-to-page conversion;
+- support POINT click, BBOX drag, LINESTRING point sequence, and closed POLYGON point sequence;
+- invert display Y only for `PDF_BOTTOM_LEFT_POINTS`;
+- generate only Task 3 action fields;
+- avoid real-world scale, length, area, ratio, threshold, rule, or confidence calculations;
+- avoid external resources, dynamic code evaluation, browser storage, and `innerHTML`;
+- leave reviewer actions unselected until explicit input.
+
+Focused verification:
+
+```bash
+pytest tests/integration/drawing_review/test_browser_contract.py -q
+```
 
 ### Task 7: End-to-end acceptance and documentation
 
@@ -189,20 +233,40 @@ git commit -m "feat: build deterministic drawing review model"
 - Create: `tests/integration/drawing_review/test_manual_annotation_browser_flow.py`
 - Modify: `docs/CODEX_WORKFLOW.md`
 - Modify: `docs/superpowers/plans/2026-08-01-evidence-review-system-master-roadmap.md`
+- Modify: `documentation-integrity.json`
 
-- [ ] **Step 1: Add one raster source fixture with extractor and manual candidates**
-- [ ] **Step 2: Verify existing candidate acceptance reaches an append-only confirmation**
-- [ ] **Step 3: Verify manual annotation creates candidate and confirmation artifacts**
-- [ ] **Step 4: Verify unconfirmed candidates remain unavailable to engine binding**
-- [ ] **Step 5: Run repository verification**
+Automated E2E contract:
+
+```text
+immutable PNG intake
+  -> extractor candidate
+  -> deterministic HTML
+  -> loopback GET/POST
+  -> ACCEPTED confirmation
+  -> manual CREATED candidate and confirmation
+  -> ConfirmedInput construction
+  -> immutable source/candidate/confirmation hash revalidation
+  -> deterministic engine binding
+```
+
+The same test must prove an `UNCONFIRMED` candidate cannot become a confirmed engine input.
+
+Repository verification:
 
 ```bash
 pytest -q
 ruff check src tests
 mypy src
 python -m compileall -q src scripts web_runtime tests
+python -m build --wheel
 ```
 
-- [ ] **Step 6: Perform human browser QA at 100%, 200%, and fit-to-page zoom**
-- [ ] **Step 7: Record exact HEAD, clean worktree, test counts, browser, OS, and PASS/FAIL evidence**
-- [ ] **Step 8: Commit documentation and acceptance evidence**
+Human browser QA:
+
+- candidate overlays align at 100%, 200%, and fit-to-page zoom;
+- candidate list and SVG selection remain synchronized;
+- POINT, BBOX, LINESTRING, and POLYGON can be created;
+- ACCEPTED, REJECTED, EDITED, and CREATED actions save append-only artifacts;
+- no action is selected by default;
+- malformed or unauthorized requests do not create files;
+- browser, OS, display scale, exact commit, and PASS/FAIL evidence are recorded.
