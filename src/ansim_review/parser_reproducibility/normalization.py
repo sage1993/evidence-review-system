@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,24 @@ from ansim_review.parser_reproducibility.contract import (
     JsonValue,
     ReproducibilityConfig,
 )
+
+_RUN_LOCAL_PATH_FIELDS = frozenset(
+    {
+        "artifact_path",
+        "asset",
+        "file",
+        "file_name",
+        "filename",
+        "image",
+        "image_path",
+        "output_directory",
+        "path",
+        "relative_path",
+        "source",
+        "src",
+    }
+)
+_RUN_TOKEN_PATH = re.compile(r"<RUN_ROOT>(?P<suffix>(?:[\\/][^\s)\]}>;,]+)*)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +100,11 @@ def _normalize_run_local_value(value: str, run_root: Path) -> str:
     return value
 
 
+def _field_name(path: str) -> str:
+    final = path.rsplit(".", 1)[-1]
+    return final.split("[", 1)[0].casefold()
+
+
 def normalize_json_artifact(
     payload: JsonValue,
     config: ReproducibilityConfig,
@@ -105,6 +129,8 @@ def normalize_json_artifact(
 
     def replace_run_paths(current: JsonValue, path: str) -> JsonValue:
         if isinstance(current, str):
+            if _field_name(path) not in _RUN_LOCAL_PATH_FIELDS:
+                return current
             replaced = _normalize_run_local_value(current, run_root)
             if replaced != current:
                 applied.append(AppliedNormalization(path, "RUN_LOCAL_PATH"))
@@ -133,6 +159,13 @@ def normalize_json_artifact(
     )
 
 
+def _normalize_markdown_path_separators(text: str) -> str:
+    return _RUN_TOKEN_PATH.sub(
+        lambda match: "<RUN_ROOT>" + match.group("suffix").replace("\\", "/"),
+        text,
+    )
+
+
 def normalize_markdown_artifact(
     data: bytes,
     run_root: Path,
@@ -155,7 +188,7 @@ def normalize_markdown_artifact(
         if replaced != text:
             applied.append(AppliedNormalization("$", "RUN_ROOT"))
         text = replaced
-    replaced = text.replace("<RUN_ROOT>\\", "<RUN_ROOT>/")
+    replaced = _normalize_markdown_path_separators(text)
     if replaced != text:
         applied.append(AppliedNormalization("$", "PATH_SEPARATOR"))
     text = replaced
