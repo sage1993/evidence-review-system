@@ -11,6 +11,15 @@ REVIEW_PACKET_FORMAT: Final[Literal["evidence-review/review-packet"]] = (
 WORKFLOW_STATE_FORMAT: Final[Literal["evidence-review/workflow-state"]] = (
     "evidence-review/workflow-state"
 )
+REVIEW_REQUEST_FORMAT: Final[Literal["evidence-review/review-request"]] = (
+    "evidence-review/review-request"
+)
+WORKFLOW_EVENT_FORMAT: Final[Literal["evidence-review/workflow-event"]] = (
+    "evidence-review/workflow-event"
+)
+REFERENCE_INGESTION_RECEIPT_FORMAT: Final[
+    Literal["evidence-review/reference-ingestion-receipt"]
+] = "evidence-review/reference-ingestion-receipt"
 CASE_MANIFEST_FORMAT: Final[Literal["evidence-review/case-manifest"]] = (
     "evidence-review/case-manifest"
 )
