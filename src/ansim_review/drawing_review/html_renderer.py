@@ -138,13 +138,13 @@ def _geometry_html(
         second_y = _number(items[3], "candidate.geometry.coordinates[3]")
         if left > right or first_y > second_y:
             raise ValueError("BBOX coordinates are inverted")
-        y = first_y
+        display_y = first_y
         if coordinate_system == "PDF_BOTTOM_LEFT_POINTS":
-            y = page_height - second_y
+            display_y = page_height - second_y
         return (
             f'<rect data-candidate-id="{candidate_attr}" '
             'class="candidate-geometry" '
-            f'x="{left}" y="{y}" width="{right - left}" '
+            f'x="{left}" y="{display_y}" width="{right - left}" '
             f'height="{second_y - first_y}"></rect>'
         )
 
@@ -202,6 +202,54 @@ def _candidate_button(value: object) -> str:
     )
 
 
+def _review_controls() -> str:
+    return "".join(
+        (
+            '<section class="detail-section"><h2>Selected candidate</h2>',
+            '<p>ID: <code data-detail-id></code></p>',
+            '<p>Type: <span data-detail-type></span></p>',
+            '<p>Origin: <span data-detail-origin></span></p>',
+            '<p>Status: <span data-detail-status></span></p>',
+            '<p class="detail-value" data-detail-value></p></section>',
+            '<section class="detail-section"><h2>Reviewer input</h2>',
+            '<label>Reviewer ID<input type="text" maxlength="128" '
+            'autocomplete="off" data-reviewer></label>',
+            '<label>Confirmed value<input type="text" maxlength="256" '
+            'inputmode="decimal" autocomplete="off" data-confirmed-value></label>',
+            '<label>Unit<input type="text" maxlength="32" '
+            'autocomplete="off" data-unit></label></section>',
+            '<section class="detail-section"><h2>Manual geometry</h2>',
+            '<label>Geometry tool<select data-geometry-tool>',
+            '<option value="">Select tool</option>',
+            '<option value="POINT">POINT</option>',
+            '<option value="BBOX">BBOX</option>',
+            '<option value="LINESTRING">LINESTRING</option>',
+            '<option value="POLYGON">POLYGON</option>',
+            "</select></label>",
+            '<div class="button-row"><button type="button" '
+            'data-finish-geometry>Finish line/area</button>',
+            '<button type="button" data-clear-geometry>Clear geometry</button></div>',
+            '<label>Annotation ID<input type="text" maxlength="128" '
+            'autocomplete="off" data-annotation-id></label>',
+            '<label>Candidate type<input type="text" maxlength="128" '
+            'autocomplete="off" data-candidate-type-input></label></section>',
+            '<fieldset><legend>Reviewer action</legend>',
+            '<label><input type="radio" name="review-action" '
+            'value="ACCEPTED"> Accept</label>',
+            '<label><input type="radio" name="review-action" '
+            'value="REJECTED"> Reject</label>',
+            '<label><input type="radio" name="review-action" '
+            'value="EDITED"> Edit</label>',
+            '<label><input type="radio" name="review-action" '
+            'value="CREATED"> Create</label></fieldset>',
+            '<button class="primary-action" type="button" '
+            'data-submit-action>Save append-only action</button>',
+            '<output class="action-status" role="status" '
+            'aria-live="polite" data-action-status></output>',
+        )
+    )
+
+
 def render_annotation_html(
     view_model: Mapping[str, object],
     page_image: bytes,
@@ -250,6 +298,7 @@ def render_annotation_html(
     javascript = (asset_root / "annotation.js").read_text(encoding="utf-8")
     encoded = base64.b64encode(page_image).decode("ascii")
     image_uri = f"data:{mime};base64,{encoded}"
+    coordinate_attr = escape(coordinate_system, quote=True)
 
     return "".join(
         (
@@ -266,22 +315,16 @@ def render_annotation_html(
             "</ul></aside>",
             '<main class="canvas-panel"><div class="page-canvas">',
             f'<img alt="verified drawing page" src="{image_uri}">',
-            f'<svg viewBox="0 0 {page_width} {page_height}" '
+            '<svg data-annotation-overlay '
+            f'data-coordinate-system="{coordinate_attr}" '
+            f'data-page-width="{page_width}" data-page-height="{page_height}" '
+            f'viewBox="0 0 {page_width} {page_height}" '
             'preserveAspectRatio="none" aria-label="drawing candidate overlay">',
             "".join(geometries),
             "</svg></div></main>",
-            '<aside class="panel detail-panel"><h2>Selected candidate</h2>',
-            '<p>ID: <code data-detail-id></code></p>',
-            '<p>Type: <span data-detail-type></span></p>',
-            '<p>Origin: <span data-detail-origin></span></p>',
-            '<p>Status: <span data-detail-status></span></p>',
-            '<p class="detail-value" data-detail-value></p>',
-            '<fieldset><legend>Reviewer action</legend>',
-            '<label><input type="radio" name="review-action" value="ACCEPTED"> Accept</label>',
-            '<label><input type="radio" name="review-action" value="REJECTED"> Reject</label>',
-            '<label><input type="radio" name="review-action" value="EDITED"> Edit</label>',
-            '<label><input type="radio" name="review-action" value="CREATED"> Create</label>',
-            "</fieldset></aside></div>",
+            '<aside class="panel detail-panel">',
+            _review_controls(),
+            "</aside></div>",
             f"<script>{javascript}</script></body></html>",
         )
     )
