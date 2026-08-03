@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,9 @@ from tests.unit.parser_reproducibility._helpers import config, write_pdf, write_
 
 def tree_hashes(root: Path) -> dict[str, str]:
     return {
-        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        path.relative_to(root).as_posix(): hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
@@ -68,7 +71,10 @@ def test_report_is_byte_deterministic_and_has_no_absolute_path(
     assert first.endswith(b"\n")
 
 
-@pytest.mark.parametrize("failure_kind", ["malformed", "encrypted", "zero-page"])
+@pytest.mark.parametrize(
+    "failure_kind",
+    ["malformed", "encrypted", "zero-page"],
+)
 def test_invalid_pdf_fails_closed_without_exception(
     tmp_path: Path,
     failure_kind: str,
@@ -103,6 +109,14 @@ def test_source_and_parser_page_count_must_match(tmp_path: Path) -> None:
     source = write_pdf(tmp_path / "source.pdf", pages=2)
     run_a = write_run(tmp_path / "run-a", source)
     run_b = write_run(tmp_path / "run-b", source)
+    document_path = run_a / "document.json"
+    document = json.loads(document_path.read_text(encoding="utf-8"))
+    document["number of pages"] = 1
+    document["pages"] = document["pages"][:1]
+    document_path.write_text(
+        json.dumps(document, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
     report = validate_opendataloader_reproducibility(
         source,
