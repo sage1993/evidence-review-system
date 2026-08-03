@@ -8,6 +8,7 @@ import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.contracts.workflow import WorkflowStateRecord
@@ -53,10 +54,13 @@ def _strict_json(raw: bytes, field: str) -> object:
         return result
 
     try:
-        return json.loads(
-            raw.decode("utf-8"),
-            parse_constant=reject_constant,
-            object_pairs_hook=reject_duplicate_keys,
+        return cast(
+            object,
+            json.loads(
+                raw.decode("utf-8"),
+                parse_constant=reject_constant,
+                object_pairs_hook=reject_duplicate_keys,
+            ),
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"{field} must be valid UTF-8 JSON") from exc
@@ -72,6 +76,7 @@ def _write_create_only_or_identical(path: Path, payload: bytes) -> None:
             0o600,
         )
     except FileExistsError:
+        reject_link_ancestors(path)
         if path.read_bytes() == payload:
             return
         raise FileExistsError(
@@ -160,6 +165,7 @@ class ReviewRunLayout:
 
 def review_run_layout(runs_root: Path, run_id: str) -> ReviewRunLayout:
     """Return canonical direct-child paths for one validated run ID."""
+    reject_link_ancestors(runs_root)
     validated_run_id = validate_identifier(run_id, "run_id")
     root = runs_root.resolve()
     run_dir = root / validated_run_id
