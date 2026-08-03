@@ -93,8 +93,8 @@ def test_request_tamper_prevents_resume(tmp_path: Path) -> None:
     ingest_pending_references(layout, FakeReferenceBackend())
     layout.request_path.write_text("{}\n", encoding="utf-8")
 
-    reopened = open_review_run(runs_root, "RUN-001")
     try:
+        reopened = open_review_run(runs_root, "RUN-001")
         resume_review_run(
             reopened,
             recorded_at="2026-08-04T00:01:00+09:00",
