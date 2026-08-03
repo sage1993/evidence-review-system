@@ -11,6 +11,7 @@ from pypdf import PdfReader
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parser_reproducibility.contract import (
+    ParserRunMetadata,
     ReproducibilityConfig,
     decode_parser_run_metadata,
 )
@@ -22,6 +23,7 @@ from ansim_review.parser_reproducibility.paths import (
     canonical_relative_path,
     resolve_run_artifact,
 )
+from ansim_review.parser_reproducibility.source_identity import SourceIdentity
 from ansim_review.parser_reproducibility.warnings import (
     ParserWarning,
     WarningContext,
@@ -78,6 +80,13 @@ def count_source_pdf_pages(path: Path) -> int:
     return count
 
 
+def read_parser_run_metadata(run_root: Path) -> ParserRunMetadata:
+    """Read strict immutable parser-run authority from one artifact directory."""
+
+    metadata_path = resolve_run_artifact(run_root, "parser-run.json")
+    return decode_parser_run_metadata(metadata_path.read_bytes())
+
+
 def _configuration_sha256(configuration: object) -> str:
     return hashlib.sha256(dump_bytes(configuration)).hexdigest().upper()
 
@@ -117,33 +126,55 @@ def _read_optional_log(
     return log_text, tuple(sorted(set(present)))
 
 
-def load_parser_run(
-    source_pdf: Path,
+def _require_identity(
+    metadata: ParserRunMetadata,
+    identity: SourceIdentity,
+) -> None:
+    checks = (
+        (
+            metadata.source_relative_path == identity.source_relative_path,
+            "source path does not match parser-run.json",
+        ),
+        (
+            metadata.source_sha256 == identity.source_sha256,
+            "source hash does not match parser-run.json",
+        ),
+        (
+            metadata.source_size == identity.source_size,
+            "source size does not match parser-run.json",
+        ),
+        (
+            metadata.source_page_count == identity.source_page_count,
+            "source page count does not match parser-run.json",
+        ),
+        (
+            metadata.document_id == identity.document_id,
+            "document identity does not match parser-run.json",
+        ),
+        (
+            metadata.revision_id == identity.revision_id,
+            "revision identity does not match parser-run.json",
+        ),
+    )
+    for valid, message in checks:
+        if not valid:
+            raise ValueError(message)
+
+
+def load_parser_run_for_identity(
+    identity: SourceIdentity,
     run_root: Path,
     config: ReproducibilityConfig,
 ) -> LoadedParserRun:
-    """Load and verify one parser run without changing source or artifacts."""
+    """Load one run using source identity already verified by an authority."""
 
-    source = source_pdf.resolve()
-    if not source.is_file():
-        raise FileNotFoundError(source)
     root = run_root.resolve()
-    metadata_path = resolve_run_artifact(root, "parser-run.json")
-    metadata = decode_parser_run_metadata(metadata_path.read_bytes())
+    metadata = read_parser_run_metadata(root)
     if metadata.parser_kind != config.parser_kind:
         raise ValueError("parser run kind does not match configuration")
     if metadata.adapter_version != config.adapter_version:
         raise ValueError("parser run adapter version does not match configuration")
-
-    source_size = source.stat().st_size
-    source_sha256 = sha256_file(source)
-    source_page_count = count_source_pdf_pages(source)
-    if source_size != metadata.source_size:
-        raise ValueError("source PDF size does not match parser-run.json")
-    if source_sha256 != metadata.source_sha256:
-        raise ValueError("source PDF hash does not match parser-run.json")
-    if source_page_count != metadata.source_page_count:
-        raise ValueError("source PDF page count does not match parser-run.json")
+    _require_identity(metadata, identity)
 
     json_name = _single_name(config.json_artifact_names, "json_artifact_names")
     markdown_name = _single_name(
@@ -159,7 +190,7 @@ def load_parser_run(
     except UnicodeDecodeError as exc:
         raise ValueError("OpenDataLoader Markdown must be UTF-8") from exc
     artifact = decode_opendataloader_json(json_bytes)
-    if artifact.page_count != metadata.source_page_count:
+    if artifact.page_count != identity.source_page_count:
         raise ValueError("parser page count does not match parser-run.json")
 
     configuration_sha256 = _configuration_sha256(metadata.parser_configuration)
@@ -167,7 +198,7 @@ def load_parser_run(
     markdown_sha256 = hashlib.sha256(markdown_bytes).hexdigest().upper()
     run_id = _run_id(
         {
-            "source_sha256": source_sha256,
+            "source_sha256": identity.source_sha256,
             "parser_kind": metadata.parser_kind,
             "parser_version": metadata.parser_version,
             "adapter_version": metadata.adapter_version,
@@ -178,9 +209,9 @@ def load_parser_run(
     )
     log_text, warning_paths = _read_optional_log(root, config)
     warning_context = WarningContext(
-        source_sha256=source_sha256,
-        document_id=metadata.document_id,
-        revision_id=metadata.revision_id,
+        source_sha256=identity.source_sha256,
+        document_id=identity.document_id,
+        revision_id=identity.revision_id,
         parser_kind=metadata.parser_kind,
         parser_version=metadata.parser_version,
         configuration_sha256=configuration_sha256,
@@ -197,13 +228,13 @@ def load_parser_run(
         format="evidence-review/parser-run-manifest",
         version=1,
         run_id=run_id,
-        source_relative_path=metadata.source_relative_path,
-        source_sha256=source_sha256,
-        source_size=source_size,
-        source_page_count=source_page_count,
+        source_relative_path=identity.source_relative_path,
+        source_sha256=identity.source_sha256,
+        source_size=identity.source_size,
+        source_page_count=identity.source_page_count,
         parser_page_count=artifact.page_count,
-        document_id=metadata.document_id,
-        revision_id=metadata.revision_id,
+        document_id=identity.document_id,
+        revision_id=identity.revision_id,
         parser_kind=metadata.parser_kind,
         parser_version=metadata.parser_version,
         adapter_version=metadata.adapter_version,
@@ -227,6 +258,28 @@ def load_parser_run(
         warnings=warnings,
         run_root=root,
     )
+
+
+def load_parser_run(
+    source_pdf: Path,
+    run_root: Path,
+    config: ReproducibilityConfig,
+) -> LoadedParserRun:
+    """Load a run after independently verifying actual source PDF bytes."""
+
+    source = source_pdf.resolve()
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    metadata = read_parser_run_metadata(run_root)
+    identity = SourceIdentity(
+        source_relative_path=metadata.source_relative_path,
+        source_sha256=sha256_file(source),
+        source_size=source.stat().st_size,
+        source_page_count=count_source_pdf_pages(source),
+        document_id=metadata.document_id,
+        revision_id=metadata.revision_id,
+    )
+    return load_parser_run_for_identity(identity, run_root, config)
 
 
 def build_parser_run_manifest(
