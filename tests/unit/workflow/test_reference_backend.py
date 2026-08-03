@@ -67,7 +67,7 @@ def test_source_batch_backend_delegates_to_existing_importer(
         assert root == tmp_path
         assert supplied_batch == batch
         assert registry is None
-        output.parent.mkdir(parents=True, exist_ok=True)
+        assert output.parent.is_dir()
         output.write_bytes(b"sqlite-bytes")
         return SimpleNamespace(
             snapshot_hash="b" * 64,
