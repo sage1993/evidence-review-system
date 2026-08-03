@@ -49,10 +49,18 @@ Screenshots:
 
 ## Automated results
 
-See [manual-qa-report.json](./manual-qa-report.json) for exact counts and
-environment limitations. Fresh local validation recorded 950 passed and 5
-skipped pytest tests, Ruff PASS, mypy PASS for 156 files, compileall PASS,
-documentation integrity PASS, and Python 3.13 wheel/resource smoke PASS.
-Python 3.11 was unavailable. The observed GitHub Actions run had failed jobs
-with no executed steps, so the report remains `MANUAL_PASS` and does not mark
-the PR ready.
+See [cross-platform-validation.json](./cross-platform-validation.json) for the
+current Python 3.11 acceptance evidence and
+[manual-qa-report.json](./manual-qa-report.json) for the browser observations.
+
+Windows Python 3.11.15 validation passed: documentation integrity, 950 pytest
+tests with 5 skips, Ruff, mypy, compileall, 59 focused drawing/workspace tests
+with 1 skip, wheel build/install, package-resource and namespace smoke, and all
+four CLI entrypoint help checks.
+
+Ubuntu Python 3.11 validation was not executed. WSL distro enumeration returned
+`E_ACCESSDENIED`, and the Docker Desktop Linux daemon was unavailable. This is
+recorded as `UBUNTU_ENV_UNAVAILABLE`, not as a code PASS. The observed GitHub
+Actions run (`30822953376`) had no executed steps (`steps=null`), so the report
+remains `MANUAL_PASS / CROSS_PLATFORM_VALIDATION_INCOMPLETE`, the PR remains
+Draft, and no Ready, merge, or Issue #6 closure action was performed.

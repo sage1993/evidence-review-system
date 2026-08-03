@@ -5,6 +5,8 @@
   "pull_request": 54,
   "starting_head": "ea14453e47554fa0e2d4a886845b292657c3a649",
   "head": "e30f0b0e2d9728f8a9bf4e9dd9e25752bc762213",
+  "validated_implementation_head": "e30f0b0e2d9728f8a9bf4e9dd9e25752bc762213",
+  "acceptance_evidence_head": "8bd3e85222137bee631bc765eaf8ef28f534480b",
   "final_local_head": "e30f0b0e2d9728f8a9bf4e9dd9e25752bc762213",
   "repository_state": "clean_after_acceptance_commit",
   "branch": "agent/issue-6-browser-manual-annotation",
@@ -48,10 +50,15 @@
       "asset_and_namespace_smoke": "WHEEL_ALIAS_ASSET_PASS",
       "install_note": "Wheel installed with --no-deps because the sandbox could not reach PyPI for pypdf."
     },
-    "wheel_python_311": "PYTHON_311_UNAVAILABLE",
+    "wheel_python_311": {
+      "status": "PASS",
+      "python": "3.11.15",
+      "asset_and_namespace_smoke": "WINDOWS_PY311_WHEEL_PASS",
+      "entrypoint_smoke": "PASS"
+    },
     "github_actions": {
       "status": "ACTIONS_UNAVAILABLE",
-      "run_id": 30817017738,
+      "run_id": 30822953376,
       "jobs": [
         "Workspace validator (windows-latest)",
         "validate",
@@ -96,8 +103,8 @@
   "overall": "MANUAL_PASS",
   "ready_for_human_review": false,
   "blocking_items": [
-    "Python 3.11 is not installed in this Windows environment.",
-    "The observed GitHub Actions run completed with failure and no executed steps; Ubuntu validation is therefore unavailable from Actions.",
+    "Ubuntu Python 3.11 validation could not run because WSL distro enumeration returned E_ACCESSDENIED and the Docker Desktop Linux daemon was unavailable.",
+    "The observed GitHub Actions run completed with failure and no executed steps; Actions evidence remains unavailable.",
     "The final acceptance-evidence commit is separate from the implementation commit; no PR readiness transition was performed."
   ],
   "confirmation_artifact_ids": [
