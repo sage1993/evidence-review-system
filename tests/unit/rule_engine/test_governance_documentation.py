@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from ansim_review.cli import build_parser
@@ -45,6 +46,10 @@ def _load_strict(path: Path) -> dict[str, object]:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _normalized_markdown(path: Path) -> str:
+    return re.sub(r"\s+", " ", path.read_text(encoding="utf-8")).strip()
 
 
 def test_real_cli_parsers_expose_governance_commands() -> None:
@@ -101,7 +106,7 @@ def test_real_cli_parsers_expose_governance_commands() -> None:
 
 
 def test_governance_documentation_is_explicit_and_fail_closed() -> None:
-    text = DOC.read_text(encoding="utf-8")
+    text = _normalized_markdown(DOC)
 
     required = (
         "candidate rule",
@@ -205,7 +210,7 @@ def test_all_acceptance_references_exist_and_decode() -> None:
 
 
 def test_acceptance_status_reports_manual_pass_without_claiming_ci() -> None:
-    text = (ACCEPTANCE / "README.md").read_text(encoding="utf-8")
+    text = _normalized_markdown(ACCEPTANCE / "README.md")
 
     assert "MANUAL_PASS / ACTIONS_BILLING_BLOCKED" in text
     assert "not a claim that GitHub Actions passed" in text

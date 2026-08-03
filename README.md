@@ -411,4 +411,4 @@ python -m compileall -q src scripts web_runtime tests
 - [오프라인 실행 경계](docs/OFFLINE_EXECUTION.md)
 - [Legacy document lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
 - [Track A 숫자 문법](docs/TRACK_A_NUMERIC_GRAMMAR.md)
-- [범용 PDF 및 hardening 설계](docs/superpowers/specs/2026-08-02-generic-pdf-and-hardening-design.md)
+- [Historical: 범용 PDF 및 hardening 설계](docs/superpowers/specs/2026-08-02-generic-pdf-and-hardening-design.md)
