@@ -141,6 +141,13 @@ def _difference_kind(
     return "UNAPPROVED_NONDETERMINISM"
 
 
+def _missing_difference_kind(path: str) -> DifferenceKind | None:
+    kind = _difference_kind(path, None, None)
+    if kind == "UNAPPROVED_NONDETERMINISM":
+        return None
+    return kind
+
+
 def _page_from_path(path: str) -> int | None:
     marker = "$.pages["
     if not path.startswith(marker):
@@ -175,9 +182,10 @@ def _recursive_differences(
         for key in sorted(set(left) | set(right)):
             child_path = f"{path}.{key}"
             if key not in left:
+                kind = _missing_difference_kind(child_path)
                 differences.append(
                     StructuralDifference(
-                        kind="ELEMENT_ADDED",
+                        kind=kind or "ELEMENT_ADDED",
                         artifact="document.json",
                         page_number=_page_from_path(child_path),
                         path=child_path,
@@ -186,9 +194,10 @@ def _recursive_differences(
                     )
                 )
             elif key not in right:
+                kind = _missing_difference_kind(child_path)
                 differences.append(
                     StructuralDifference(
-                        kind="ELEMENT_REMOVED",
+                        kind=kind or "ELEMENT_REMOVED",
                         artifact="document.json",
                         page_number=_page_from_path(child_path),
                         path=child_path,
@@ -213,9 +222,10 @@ def _recursive_differences(
                 )
             )
         for index in range(common, len(left)):
+            kind = _missing_difference_kind(f"{path}[{index}]")
             differences.append(
                 StructuralDifference(
-                    kind="ELEMENT_REMOVED",
+                    kind=kind or "ELEMENT_REMOVED",
                     artifact="document.json",
                     page_number=_page_from_path(path),
                     path=f"{path}[{index}]",
@@ -224,9 +234,10 @@ def _recursive_differences(
                 )
             )
         for index in range(common, len(right)):
+            kind = _missing_difference_kind(f"{path}[{index}]")
             differences.append(
                 StructuralDifference(
-                    kind="ELEMENT_ADDED",
+                    kind=kind or "ELEMENT_ADDED",
                     artifact="document.json",
                     page_number=_page_from_path(path),
                     path=f"{path}[{index}]",

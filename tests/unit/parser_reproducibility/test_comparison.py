@@ -136,6 +136,43 @@ def test_table_cell_and_bbox_changes_are_classified(tmp_path: Path) -> None:
     assert kinds & {"TABLE_STRUCTURE_CHANGED", "TABLE_CELL_VALUE_CHANGED"}
 
 
+def test_table_row_addition_is_classified_as_table_structure_change(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf(tmp_path / "source.pdf")
+    run_a = write_run(tmp_path / "run-a", source)
+    run_b = write_run(tmp_path / "run-b", source)
+    for run in (run_a, run_b):
+        document = read_document(run)
+        pages = document["pages"]
+        assert isinstance(pages, list)
+        page = pages[0]
+        assert isinstance(page, dict)
+        kids = page["kids"]
+        assert isinstance(kids, list)
+        element = kids[0]
+        assert isinstance(element, dict)
+        element["type"] = "table"
+        element["rows"] = [{"cells": [{"content": "Base"}]}]
+        write_document(run, document)
+
+    document = read_document(run_b)
+    pages = document["pages"]
+    assert isinstance(pages, list)
+    page = pages[0]
+    assert isinstance(page, dict)
+    kids = page["kids"]
+    assert isinstance(kids, list)
+    element = kids[0]
+    assert isinstance(element, dict)
+    rows = element["rows"]
+    assert isinstance(rows, list)
+    rows.append({"cells": [{"content": "Added"}]})
+    write_document(run_b, document)
+
+    assert "TABLE_STRUCTURE_CHANGED" in difference_kinds(source, run_a, run_b)
+
+
 def test_image_occurrence_change_is_classified(tmp_path: Path) -> None:
     source = write_pdf(tmp_path / "source.pdf")
     run_a = write_run(tmp_path / "run-a", source)
