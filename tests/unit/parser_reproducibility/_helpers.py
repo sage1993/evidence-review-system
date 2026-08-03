@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 from ansim_review.parser_reproducibility.contract import ReproducibilityConfig
 
@@ -52,6 +52,22 @@ def write_pdf(path: Path, pages: int = 1) -> Path:
     return path
 
 
+def _page_payload(page_number: int, content: str) -> dict[str, object]:
+    return {
+        "page number": page_number,
+        "width": 595,
+        "height": 842,
+        "kids": [
+            {
+                "type": "paragraph",
+                "page number": page_number,
+                "bounding box": [10, 20, 30, 40],
+                "content": f"{content} {page_number}",
+            }
+        ],
+    }
+
+
 def write_run(
     root: Path,
     source: Path,
@@ -66,27 +82,18 @@ def write_run(
     source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
     document_id = "DOC-" + source_sha256[:20].upper()
     revision_id = f"{document_id}-{source_sha256[:12]}"
+    with source.open("rb") as stream:
+        page_count = len(PdfReader(stream, strict=True).pages)
     payload: dict[str, object] = {
         "file name": source.name,
-        "number of pages": 1,
+        "number of pages": page_count,
         "metadata": {
             "parsed_at": parsed_at,
             "output_directory": str(root),
         },
         "pages": [
-            {
-                "page number": 1,
-                "width": 595,
-                "height": 842,
-                "kids": [
-                    {
-                        "type": "paragraph",
-                        "page number": 1,
-                        "bounding box": [10, 20, 30, 40],
-                        "content": content,
-                    }
-                ],
-            }
+            _page_payload(page_number, content)
+            for page_number in range(1, page_count + 1)
         ],
     }
     if warning is not None:
@@ -102,7 +109,7 @@ def write_run(
         "source_relative_path": f"inputs/original/{source.name}",
         "source_sha256": source_sha256,
         "source_size": source.stat().st_size,
-        "source_page_count": 1,
+        "source_page_count": page_count,
         "document_id": document_id,
         "revision_id": revision_id,
         "parser_kind": "opendataloader",
