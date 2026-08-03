@@ -1,109 +1,85 @@
-> Document status: HISTORICAL RECORD
+> Document status: CURRENT MANUAL ACCEPTANCE RECORD
 
 # Issue #50 Documentation Integrity Acceptance
 
-## A. Basis
+## Verdict
 
-- Issue: #50 — Repository-wide documentation integrity
-- Parent: #27
+`MANUAL_PASS — READY FOR REVIEW`
+
+GitHub Actions is excluded from the acceptance decision under the manual
+acceptance policy. `ACTIONS_UNOBSERVABLE_BLOCKED` and `ACTIONS_NOT_RUN` are not
+used as blockers.
+
+## Basis and exact validation HEAD
+
+- Repository: `sage1993/evidence-review-system`
 - Branch: `agent/issue-50-documentation-integrity`
-- Plan baseline: `454a6abde49a1453e0c91738bc3cf51a0206ef43`
-- Implementation evidence HEAD: `44ea8cb74ea636ffb3e74a7aeb5293250e83e0ec`
-- Draft PR: #51
-- Current evidence state: implementation and CI wiring are present; repository-wide remote acceptance remains blocked
+- Evidence HEAD: `eff3d7fadb18c0a52a3647092fcc39ac57491bba`
+- Remote HEAD at validation: `eff3d7fadb18c0a52a3647092fcc39ac57491bba`
+- Worktree at validation: clean
+- Normalization commit: `eff3d7f Normalize issue 46 JSON line endings`
+- Scope of normalization: only the two Issue #46 JSON files; content was
+  unchanged apart from `.gitattributes`-required LF normalization.
 
-## B. Automated result
+## Environment
 
-The canonical repository report must have `status=PASS` and `error_count=0` before this record may state acceptance. That exact repository report has not been produced from a clean remote checkout because GitHub Actions is terminating before any job step is created.
+- OS: Microsoft Windows `[Version 10.0.26200.8875]`
+- Python 3.11: `3.11.9`
+- Python 3.13: `3.13.7`
 
-A separated local TDD harness covering the new documentation-integrity package reported:
+## Local acceptance gates
 
-- Python: 3.13.5
-- Tests: 56 passed
-- `compileall`: PASS
+All commands below exited with code `0` unless stated otherwise.
 
-This isolated result is implementation evidence only. It is not the full repository pytest result and is not GitHub Actions PASS.
+| Gate | Command/result |
+| --- | --- |
+| Canonical documentation report | `python -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output <fresh report>` — `PASS`; 59 documents, current=21, historical=36, generated=2; errors=0, warnings=42; SHA-256 `4B422B2E11CD66DA2DB2EB20F3E73A3469D7293E2F6D34521F2045B67C49A5C1` |
+| Report determinism | Two fresh reports were byte-identical and had the SHA-256 above |
+| Create-only behavior | Existing output rejected with exit code `2`; existing file remained unchanged |
+| Documentation/CLI targeted tests | `91 passed, 1 skipped` |
+| Release fail-closed and offline fixture tests | `9 passed`; documentation error blocks release and warning-only documentation remains passable |
+| Boundary fixtures | `8 passed`, including broken current link, HTTP warning, missing config, historical marker handling, missing current script, current-to-historical labeling, and release documentation blocking |
+| Full pytest | `807 passed, 3 skipped` |
+| Ruff | `python -m ruff check src tests` — `All checks passed` |
+| mypy | `python -m mypy src` — no issues in 138 source files |
+| compileall | `python -m compileall -q src scripts web_runtime tests` — PASS |
+| Diff check | `git diff --check` and `git diff --check origin/main...HEAD` — PASS |
 
-## C. Repository document counts
+## Independent wheel acceptance
 
-Counts are produced only by `evidence-review documentation validate` from `documentation-integrity.json`. Final exact repository counts remain pending because no clean-checkout report artifact is available.
+Each wheel was built and installed in a fresh environment for its Python
+version. `pip check`, all three CLI help entry points, and an actual installed
+wheel documentation validation were run independently.
 
-## D. Error and warning counts
+| Python | Build | Install | pip check | Three CLI help commands | Installed-wheel validation | Wheel SHA-256 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 3.11.9 | 0 | 0 | 0 | 0, 0, 0 | 0; PASS, errors=0, warnings=42; report SHA matches canonical | `F8F27AE8AF99BCF6F79854081C82420CB3E9DBF2AE6D0D6FBA6D86C1C2856D7D` |
+| 3.13.7 | 0 | 0 | 0 | 0, 0, 0 | 0; PASS, errors=0, warnings=42; report SHA matches canonical | `028F0E2227B53BF0050D53B37D6F515D8A6750BB3920E2AED4F397FE3B60EC22` |
 
-- Repository errors: pending exact clean-checkout report
-- Repository warnings: pending exact clean-checkout report
-- Warning policy: warnings do not block by default
+The three CLI entry points were:
 
-## E. Generated Markdown result
+1. `evidence-review documentation validate --help`
+2. `python -m evidence_review documentation validate --help`
+3. `python -m ansim_review documentation validate --help`
 
-Registered generated documents are rendered without arguments through explicit `package.module:function` references. Import, callable, execution, and return-type failures become stable canonical findings.
+## GitHub and release state
 
-The Codex `VALIDATE.md` generator now includes the complete offline parser/help, documentation validation, pytest, Ruff, mypy, and compileall sequence.
+- GitHub Actions: excluded from the manual acceptance decision; no Actions
+  result is represented as a local test result.
+- Issue comment and PR #51 body: this same acceptance result is to be posted
+  after the ledger commit is pushed.
+- PR ready transition: not performed.
+- Merge: not performed.
+- Issue closure: not performed.
+- Release tag/authorization: not performed.
 
-## F. Static command result
+## Human review still required
 
-Documented commands are parsed but never executed. Project commands are checked through the shared argparse parser; pytest, Ruff, mypy, and compileall use a bounded option registry; clear repository-local script invocations are checked for existence.
+Reviewers must inspect the evidence packet, the PR diff, and the acceptance
+ledger before any ready-for-merge, merge, release, or issue-closure action.
 
-Historical documents preserve recorded command examples without reinterpreting them under the current CLI contract.
+## Post-ledger recheck requirement
 
-## G. Current documentation repair
-
-`AGENTS.md` was replaced with current source-batch, review-run, documentation-integrity, release, and legacy Grist boundary guidance. Removed wrapper commands are no longer presented as current runtime commands.
-
-## H. Release fail-closed result
-
-A documentation report containing any `ERROR` adds `DOCUMENTATION_INTEGRITY_FAILED` to workspace validation and blocks release independently of process attestation. The reason ordering is:
-
-1. `AUTOMATED_VALIDATION_FAILED`
-2. `DOCUMENTATION_INTEGRITY_FAILED`
-3. `RELEASE_OUTPUT_VALIDATION_FAILED`
-
-## I. Determinism result
-
-The report contract uses canonical JSON, stable finding ordering, duplicate elimination, and repository-relative paths. A two-root byte-identity acceptance test is present, but the exact repository report SHA-256 remains pending remote execution.
-
-## J. Python 3.11/3.13 wheel result
-
-Both wheel jobs are configured to expose:
-
-- `evidence-review documentation validate --help`
-- `python -m evidence_review documentation validate --help`
-- `python -m ansim_review documentation validate --help`
-
-The commands have not been observed running in GitHub Actions because the jobs terminate before step creation.
-
-## K. GitHub Actions observation
-
-- Workflow run: `30774226452`
-- Conclusion: `failure`
-- Jobs: `validate`, `wheel-python313`, `Workspace validator (ubuntu-latest)`, `Workspace validator (windows-latest)`
-- Job steps: unavailable (`steps=null`)
-- Job logs: unavailable (`logs_url=null`)
-
-This run cannot support a code-failure or code-pass conclusion. It is recorded as `ACTIONS_UNOBSERVABLE_BLOCKED`, not as a test failure caused by a specific implementation defect.
-
-## L. Limitations
-
-- External URL availability is not checked; only scheme and host shape are validated.
-- Markdown commands are not executed.
-- Warnings do not block by default.
-- Historical content is not rewritten and safe missing historical targets are preserved.
-- The connector environment does not provide a clean repository checkout for full local regression, Ruff, mypy, wheel build, or exact repository report generation.
-- Manual or isolated test results are not equivalent to GitHub Actions PASS.
-
-## Final ledger
-
-- Implementation evidence HEAD: `44ea8cb74ea636ffb3e74a7aeb5293250e83e0ec`
-- Draft PR: #51 — draft retained
-- GitHub Actions: `ACTIONS_UNOBSERVABLE_BLOCKED`
-- Isolated documentation-integrity pytest: 56 passed
-- Isolated documentation-integrity compileall: PASS
-- Full repository pytest: NOT VERIFIED
-- Ruff: NOT VERIFIED
-- mypy: NOT VERIFIED
-- Python 3.11 wheel: NOT VERIFIED
-- Python 3.13 wheel: NOT VERIFIED
-- Canonical repository report status/counts/SHA-256: NOT VERIFIED
-- PR Ready transition: NOT PERFORMED
-- Merge: NOT PERFORMED
-- Issue closure: NOT PERFORMED
+Updating this ledger creates a new HEAD. Before merge, recheck the exact local
+and remote HEAD, clean worktree, canonical documentation report, full pytest,
+Ruff, mypy, compileall, and `git diff --check` on that post-ledger HEAD.
