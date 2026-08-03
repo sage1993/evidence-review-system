@@ -103,3 +103,20 @@ def test_request_tamper_prevents_resume(tmp_path: Path) -> None:
         assert "request" in str(exc).lower()
     else:
         raise AssertionError("tampered request must prevent resume")
+
+
+def test_output_database_tamper_prevents_resume(tmp_path: Path) -> None:
+    runs_root, layout = _prepare(tmp_path)
+    ingest_pending_references(layout, FakeReferenceBackend())
+    (layout.machine_dir / "evidence.sqlite").write_bytes(b"tampered-db")
+
+    reopened = open_review_run(runs_root, "RUN-001")
+    try:
+        resume_review_run(
+            reopened,
+            recorded_at="2026-08-04T00:01:00+09:00",
+        )
+    except ValueError as exc:
+        assert "output database" in str(exc).lower()
+    else:
+        raise AssertionError("tampered evidence database must prevent resume")
