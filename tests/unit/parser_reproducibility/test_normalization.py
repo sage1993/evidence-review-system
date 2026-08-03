@@ -40,6 +40,19 @@ def test_only_approved_metadata_is_replaced(tmp_path: Path) -> None:
     assert payload["metadata"]["parsed_at"] == "2026-08-03T00:00:00Z"
 
 
+def test_json_run_local_path_requires_value_prefix(tmp_path: Path) -> None:
+    run_root = tmp_path / "run-a"
+    payload = {
+        "asset": str(run_root) + "\\images\\a.png",
+        "content": "Evidence mentions " + str(run_root) + " but is not a path value.",
+    }
+    result = normalize_json_artifact(payload, config(), run_root)
+
+    assert isinstance(result.value, dict)
+    assert result.value["asset"] == "<RUN_ROOT>/images/a.png"
+    assert result.value["content"] == payload["content"]
+
+
 def test_markdown_normalization_is_bounded(tmp_path: Path) -> None:
     run_root = tmp_path / "run-a"
     raw = (
