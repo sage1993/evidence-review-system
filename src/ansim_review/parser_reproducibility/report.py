@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, cast
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parser_reproducibility.comparison import (
+    ParsedRunPair,
     ReproducibilityStatus,
     StructuralDifference,
     compare_parser_runs,
     parse_loaded_run,
-    ParsedRunPair,
 )
 from ansim_review.parser_reproducibility.contract import ReproducibilityConfig
 from ansim_review.parser_reproducibility.normalization import AppliedNormalization
@@ -26,11 +26,8 @@ from ansim_review.parser_reproducibility.run_manifest import (
 )
 from ansim_review.parser_reproducibility.warnings import (
     ParserWarningReport,
+    WarningContext,
     build_warning_report,
-)
-
-CanonicalReport: TypeAlias = (
-    "ParserReproducibilityReport | ParserWarningReport | ParserReviewQueue"
 )
 
 
@@ -64,6 +61,11 @@ class WarningCollectionResult:
     review_queue: ParserReviewQueue
 
 
+PublicReport: TypeAlias = (
+    ParserReproducibilityReport | ParserWarningReport | ParserReviewQueue
+)
+
+
 def _failure_code(exc: Exception) -> str:
     if isinstance(exc, FileNotFoundError):
         return "PARSER_ARTIFACT_MISSING"
@@ -83,9 +85,15 @@ def _failure_message(code: str) -> str:
     messages = {
         "PARSER_ARTIFACT_MISSING": "A required parser artifact is missing.",
         "PARSER_ARTIFACT_UNREADABLE": "A required parser artifact is unreadable.",
-        "PARSER_PAGE_COUNT_MISMATCH": "Source and parser page authority do not match.",
-        "PARSER_AUTHORITY_MISMATCH": "Source bytes do not match parser-run authority.",
-        "PARSER_ARTIFACT_INVALID": "A parser artifact is not valid UTF-8 JSON or text.",
+        "PARSER_PAGE_COUNT_MISMATCH": (
+            "Source and parser page authority do not match."
+        ),
+        "PARSER_AUTHORITY_MISMATCH": (
+            "Source bytes do not match parser-run authority."
+        ),
+        "PARSER_ARTIFACT_INVALID": (
+            "A parser artifact is not valid UTF-8 JSON or text."
+        ),
         "PARSER_VALIDATION_FAILED": "Parser run validation failed closed.",
     }
     return messages[code]
@@ -159,7 +167,11 @@ def validate_opendataloader_reproducibility(
         applied_normalizations=result.applied_normalizations,
         differences=result.differences,
         findings=(),
-        error_count=1 if result.status == "MISMATCH" else 0,
+        error_count=(
+            1
+            if result.status in {"MISMATCH", "ENVIRONMENT_MISMATCH"}
+            else 0
+        ),
         warning_count=warning_count,
         summary=summary,
     )
@@ -174,37 +186,22 @@ def collect_opendataloader_warnings(
     """Collect one run's warnings and merge immutable review history."""
 
     loaded = load_parser_run(source_pdf, run_root, config)
-    context = loaded.warnings[0] if loaded.warnings else None
-    if context is None:
-        from ansim_review.parser_reproducibility.warnings import WarningContext
-
-        warning_context = WarningContext(
-            source_sha256=loaded.manifest.source_sha256,
-            document_id=loaded.manifest.document_id,
-            revision_id=loaded.manifest.revision_id,
-            parser_kind=loaded.manifest.parser_kind,
-            parser_version=loaded.manifest.parser_version,
-            configuration_sha256=loaded.manifest.configuration_sha256,
-            run_id=loaded.manifest.run_id,
-            run_root=loaded.run_root,
-            parser_page_count=loaded.manifest.parser_page_count,
-        )
-    else:
-        from ansim_review.parser_reproducibility.warnings import WarningContext
-
-        warning_context = WarningContext(
-            source_sha256=context.source_sha256,
-            document_id=context.document_id,
-            revision_id=context.revision_id,
-            parser_kind=context.parser_kind,
-            parser_version=context.parser_version,
-            configuration_sha256=context.configuration_sha256,
-            run_id=loaded.manifest.run_id,
-            run_root=loaded.run_root,
-            parser_page_count=loaded.manifest.parser_page_count,
-        )
+    warning_context = WarningContext(
+        source_sha256=loaded.manifest.source_sha256,
+        document_id=loaded.manifest.document_id,
+        revision_id=loaded.manifest.revision_id,
+        parser_kind=loaded.manifest.parser_kind,
+        parser_version=loaded.manifest.parser_version,
+        configuration_sha256=loaded.manifest.configuration_sha256,
+        run_id=loaded.manifest.run_id,
+        run_root=loaded.run_root,
+        parser_page_count=loaded.manifest.parser_page_count,
+    )
     return WarningCollectionResult(
-        warning_report=build_warning_report(loaded.warnings, warning_context),
+        warning_report=build_warning_report(
+            loaded.warnings,
+            warning_context,
+        ),
         review_queue=build_review_queue(
             loaded.warnings,
             loaded.manifest.run_id,
@@ -213,15 +210,13 @@ def collect_opendataloader_warnings(
     )
 
 
-def report_document(report: object) -> dict[str, object]:
+def report_document(report: PublicReport) -> dict[str, object]:
     """Convert a frozen public report to JSON-ready values."""
 
-    if not hasattr(report, "__dataclass_fields__"):
-        raise TypeError("report must be a dataclass contract")
-    return asdict(report)
+    return cast(dict[str, object], asdict(report))
 
 
-def report_bytes(report: object) -> bytes:
+def report_bytes(report: PublicReport) -> bytes:
     """Encode one canonical report with LF and one trailing newline."""
 
     return dump_bytes(report_document(report)) + b"\n"
