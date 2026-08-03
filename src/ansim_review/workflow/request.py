@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Literal
 
 from ansim_review import canonical_json
 from ansim_review.contracts.attachments import (
@@ -13,6 +13,7 @@ from ansim_review.contracts.attachments import (
     decode_immutable_attachment,
     immutable_attachment_document,
 )
+from ansim_review.contracts.formats import REVIEW_REQUEST_FORMAT
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.contracts.validation import (
     expect_int,
@@ -24,9 +25,6 @@ from ansim_review.contracts.validation import (
     require_fields,
 )
 
-REVIEW_REQUEST_FORMAT: Final[Literal["evidence-review/review-request"]] = (
-    "evidence-review/review-request"
-)
 _ROLE_CONFIRMATIONS: tuple[Literal["USER_CONFIRMED"], ...] = (
     "USER_CONFIRMED",
 )
