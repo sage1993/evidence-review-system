@@ -25,6 +25,21 @@ def _workspace(root: Path) -> None:
     (root / "formulas/manifest.json").write_text("{}", encoding="utf-8")
     (root / "examples").mkdir()
     (root / "examples/sample-request.json").write_text("{}", encoding="utf-8")
+    (root / "README.md").write_text("# Release fixture\n", encoding="utf-8")
+    (root / "documentation-integrity.json").write_text(
+        json.dumps(
+            {
+                "format": "evidence-review/documentation-integrity-config",
+                "version": 1,
+                "current_roots": ["README.md"],
+                "historical_roots": [],
+                "current_overrides": [],
+                "historical_overrides": [],
+                "generated_documents": [],
+            }
+        ),
+        encoding="utf-8",
+    )
     shutil.copytree(repository_root / "web_runtime", root / "web_runtime")
     (root / "tests/golden/questions").mkdir(parents=True)
     shutil.copy2(

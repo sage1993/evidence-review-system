@@ -5,8 +5,8 @@ import importlib
 from dataclasses import dataclass
 
 from ansim_review.documentation_integrity.contract import (
-    DocumentClassification,
     DocumentationIntegrityConfig,
+    DocumentClassification,
     GeneratedDocumentConfig,
 )
 

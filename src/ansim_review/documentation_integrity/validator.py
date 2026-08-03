@@ -13,9 +13,9 @@ from ansim_review.documentation_integrity.commands import (
     validate_command_lines,
 )
 from ansim_review.documentation_integrity.contract import (
-    DocumentClassification,
     DocumentationFinding,
     DocumentationIntegrityReport,
+    DocumentClassification,
     decode_config_bytes,
 )
 from ansim_review.documentation_integrity.discovery import (
@@ -42,8 +42,11 @@ class DocumentationAuthorityError(ValueError):
 
 
 class ValidationDocument(Protocol):
-    path: str
-    classification: DocumentClassification
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def classification(self) -> DocumentClassification: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +105,7 @@ def _empty_failure(
     )
 
 
-def _read_repository_document(document: ValidationDocument) -> str:
+def _read_repository_document(document: object) -> str:
     filesystem_path = getattr(document, "filesystem_path", None)
     if not isinstance(filesystem_path, Path):
         raise OSError("repository document path is unavailable")
@@ -192,23 +195,27 @@ def validate_documentation(
         )
 
     parsed_documents: list[_ParsedDocument] = []
-    for document in repository_documents:
+    for repository_document in repository_documents:
         try:
-            text = _read_repository_document(document)
+            text = _read_repository_document(repository_document)
         except (UnicodeDecodeError, OSError):
             findings.append(
                 _finding(
                     severity="ERROR",
                     code="DOCUMENT_READ_FAILED",
-                    document_path=document.path,
-                    target=document.path,
+                    document_path=repository_document.path,
+                    target=repository_document.path,
                     message="Repository Markdown could not be read as UTF-8 text.",
                 )
             )
             continue
-        parsed_documents.append(_ParsedDocument(document, parse_markdown(text)))
-    for document in generated_documents:
-        parsed_documents.append(_ParsedDocument(document, parse_markdown(document.text)))
+        parsed_documents.append(
+            _ParsedDocument(repository_document, parse_markdown(text))
+        )
+    for generated_document in generated_documents:
+        parsed_documents.append(
+            _ParsedDocument(generated_document, parse_markdown(generated_document.text))
+        )
 
     classifications = {
         item.document.path: item.document.classification for item in parsed_documents

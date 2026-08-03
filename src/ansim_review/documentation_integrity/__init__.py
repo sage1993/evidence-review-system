@@ -5,10 +5,10 @@ from ansim_review.documentation_integrity.classification import (
     classify_document,
 )
 from ansim_review.documentation_integrity.contract import (
-    DocumentClassification,
     DocumentationFinding,
     DocumentationIntegrityConfig,
     DocumentationIntegrityReport,
+    DocumentClassification,
     FindingSeverity,
     GeneratedDocumentConfig,
     decode_config_bytes,

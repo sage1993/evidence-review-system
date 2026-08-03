@@ -6,8 +6,8 @@ from pathlib import Path
 
 from ansim_review.documentation_integrity.classification import classify_document
 from ansim_review.documentation_integrity.contract import (
-    DocumentClassification,
     DocumentationIntegrityConfig,
+    DocumentClassification,
 )
 
 

@@ -210,7 +210,7 @@ def _decode_generated(value: object) -> tuple[GeneratedDocumentConfig, ...]:
                 id=document_id,
                 generator=generator,
                 virtual_path=virtual_path,
-                classification=cast(DocumentClassification, classification),
+                classification=classification,
             )
         )
     return tuple(documents)
