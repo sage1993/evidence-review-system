@@ -7,9 +7,12 @@
 `MANUAL_PASS — READY FOR REVIEW`
 
 Local manual acceptance was completed against implementation HEAD
-`5e9c7f1910d5afeb79ce5ec21e0756b41e10a62c5` plus the local verification fix
-commit `662f9757fc1b674518ea071d31e5b9728fa74c9f`. The ledger update itself is
-the next evidence commit. GitHub Actions remains excluded from acceptance.
+`5e9c7f1910d5afeb79ce5ec21e0756b41e10a62c` plus the local verification fix
+commit `662f9757fc1b674518ea071d31e5b9728fa74c9f` and the review-fix commit
+`2cb34149d766340b59fd589a0d1243159b827819`. The final evidence code HEAD is
+`2cb34149d766340b59fd589a0d1243159b827819`; the remote implementation branch
+was verified at the same HEAD before this ledger update. GitHub Actions remains
+excluded from acceptance.
 
 ## Environment
 
@@ -56,7 +59,7 @@ matrix remains covered by the integration tests.
 | Gate | Result |
 |---|---|
 | Target parser reproducibility tests | `81 passed, 1 skipped` |
-| Full pytest | `885 passed, 4 skipped` |
+| Full pytest | `894 passed, 4 skipped` |
 | Ruff | PASS |
 | strict mypy | PASS, 150 source files |
 | compileall | PASS |
@@ -68,6 +71,13 @@ matrix remains covered by the integration tests.
 | Python 3.11 installed entrypoints | PASS: `evidence-review.exe`, `python -m evidence_review`, `python -m ansim_review` |
 | Python 3.13 wheel | PASS; SHA-256 `F49994D33DCEB226270F9AE4DC4AA15B4617BE8636B83C8E3174AAD0E8F47DFC` |
 | Python 3.13 `pip check` | PASS |
+
+## Evidence lineage and revalidation
+
+- Correct implementation base HEAD: `5e9c7f1910d5afeb79ce5ec21e0756b41e10a62c`.
+- Final evidence code HEAD: `2cb34149d766340b59fd589a0d1243159b827819`.
+- Final evidence HEAD was pushed to `origin/agent/issue-52-opendataloader-reproducibility` and matched by `git ls-remote`.
+- The post-ledger revalidation was run at the exact ledger-update HEAD and is recorded in the PR update together with the clean worktree, `git diff --check`, full pytest, Ruff, mypy, compileall, and documentation report SHA.
 
 ## Human review and release controls
 
