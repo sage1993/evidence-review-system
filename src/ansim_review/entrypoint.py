@@ -77,13 +77,44 @@ def _documentation_validate(args: argparse.Namespace) -> int:
     )
 
 
+def _parser_dispatch(args: argparse.Namespace) -> int:
+    from ansim_review.parser_reproducibility.cli import (
+        collect_warnings_command,
+        validate_command,
+    )
+
+    if args.parser_stage == "reproducibility" and args.parser_action == "validate":
+        return validate_command(
+            cast(Path, args.source),
+            cast(Path, args.run_a),
+            cast(Path, args.run_b),
+            cast(Path, args.config),
+            cast(Path, args.output),
+        )
+    if args.parser_stage == "warnings" and args.parser_action == "collect":
+        return collect_warnings_command(
+            cast(Path, args.source),
+            cast(Path, args.run),
+            cast(Path, args.config),
+            cast(Path, args.warning_output),
+            cast(Path, args.queue_output),
+            cast(Path | None, args.previous_queue),
+        )
+    raise RuntimeError("unreachable parser command state")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Dispatch governance-sensitive commands strictly and delegate the remainder."""
+
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) >= 2 and arguments[:2] == ["documentation", "validate"]:
         install_network_guard()
         args = legacy_cli.build_parser().parse_args(arguments)
         return _documentation_validate(args)
+    if arguments and arguments[0] == "parser":
+        install_network_guard()
+        args = legacy_cli.build_parser().parse_args(arguments)
+        return _parser_dispatch(args)
     if len(arguments) < 2 or arguments[0] != "rules":
         return legacy_cli.main(arguments)
     if arguments[1] not in {"build-active-manifest", "select"}:
