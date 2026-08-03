@@ -1,4 +1,4 @@
-> Document status: CURRENT MANUAL ACCEPTANCE RECORD
+> Document status: HISTORICAL RECORD
 
 # Issue #50 Documentation Integrity Acceptance
 
