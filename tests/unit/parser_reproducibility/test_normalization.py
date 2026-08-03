@@ -62,7 +62,7 @@ def test_markdown_normalization_is_bounded(tmp_path: Path) -> None:
     )
     result = normalize_markdown_artifact(raw, run_root)
 
-    assert result.text == "# Title\n\n<RUN_ROOT>/images\\a.png  \n"
+    assert result.text == "# Title\n\n<RUN_ROOT>/images/a.png  \n"
     assert result.text.endswith("  \n")
     assert "# Title\n\n" in result.text
 
