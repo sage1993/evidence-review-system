@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, replace
-from typing import Literal, Sequence
+from typing import Literal, Sequence, cast
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parser_reproducibility.warnings import (
     ParserWarning,
     warning_sort_key,
 )
+
+_SHA256 = re.compile(r"^[0-9A-Fa-f]{64}$")
+_QUEUE_ID = re.compile(r"^PQUE-[0-9A-F]{24}$")
+_WARNING_ID = re.compile(r"^PWRN-[0-9A-F]{24}$")
+_RUN_ID = re.compile(r"^PRUN-[0-9A-F]{24}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,17 +45,58 @@ class ParserReviewQueue:
     entries: tuple[ParserReviewQueueEntry, ...]
 
 
-def queue_id_for(warning: ParserWarning) -> str:
+def _queue_id(
+    *,
+    source_sha256: str,
+    parser_version: str,
+    configuration_sha256: str,
+    page_number: int | None,
+    warning_code: str,
+    normalized_message_sha256: str,
+) -> str:
     authority = {
-        "source_sha256": warning.source_sha256,
-        "parser_version": warning.parser_version,
-        "configuration_sha256": warning.configuration_sha256,
-        "page_number": warning.page_number,
-        "warning_code": warning.code,
-        "normalized_message_sha256": warning.normalized_message_sha256,
+        "source_sha256": source_sha256,
+        "parser_version": parser_version,
+        "configuration_sha256": configuration_sha256,
+        "page_number": page_number,
+        "warning_code": warning_code,
+        "normalized_message_sha256": normalized_message_sha256,
     }
     digest = hashlib.sha256(dump_bytes(authority)).hexdigest()[:24].upper()
     return f"PQUE-{digest}"
+
+
+def _warning_id(
+    *,
+    source_sha256: str,
+    parser_version: str,
+    configuration_sha256: str,
+    page_number: int | None,
+    warning_code: str,
+    normalized_message_sha256: str,
+) -> str:
+    authority = {
+        "source_sha256": source_sha256,
+        "parser_kind": "opendataloader",
+        "parser_version": parser_version,
+        "configuration_sha256": configuration_sha256,
+        "page_number": page_number,
+        "code": warning_code,
+        "normalized_message_sha256": normalized_message_sha256,
+    }
+    digest = hashlib.sha256(dump_bytes(authority)).hexdigest()[:24].upper()
+    return f"PWRN-{digest}"
+
+
+def queue_id_for(warning: ParserWarning) -> str:
+    return _queue_id(
+        source_sha256=warning.source_sha256,
+        parser_version=warning.parser_version,
+        configuration_sha256=warning.configuration_sha256,
+        page_number=warning.page_number,
+        warning_code=warning.code,
+        normalized_message_sha256=warning.normalized_message_sha256,
+    )
 
 
 def _new_entry(warning: ParserWarning, run_id: str) -> ParserReviewQueueEntry:
@@ -90,8 +137,8 @@ def build_review_queue(
 ) -> ParserReviewQueue:
     """Merge warnings without deleting immutable historical queue evidence."""
 
-    if not run_id:
-        raise ValueError("run_id must not be empty")
+    if _RUN_ID.fullmatch(run_id) is None:
+        raise ValueError("run_id must be a canonical parser run ID")
     prior_entries = () if previous is None else previous.entries
     entries = {entry.queue_id: entry for entry in prior_entries}
     if len(entries) != len(prior_entries):
@@ -116,7 +163,7 @@ def build_review_queue(
 
 
 def queue_document(queue: ParserReviewQueue) -> dict[str, object]:
-    return asdict(queue)
+    return cast(dict[str, object], asdict(queue))
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -135,7 +182,10 @@ def _required_string(raw: dict[str, object], field: str, index: int) -> str:
     return value
 
 
-def _entry_from_object(raw: dict[str, object], index: int) -> ParserReviewQueueEntry:
+def _entry_from_object(
+    raw: dict[str, object],
+    index: int,
+) -> ParserReviewQueueEntry:
     expected = set(ParserReviewQueueEntry.__dataclass_fields__)
     if set(raw) != expected:
         raise ValueError(f"previous queue entry {index} has an invalid contract")
@@ -149,28 +199,79 @@ def _entry_from_object(raw: dict[str, object], index: int) -> ParserReviewQueueE
         isinstance(page, bool) or not isinstance(page, int) or page < 1
     ):
         raise ValueError(f"previous queue entry {index} has an invalid page")
+
+    source_sha256 = _required_string(raw, "source_sha256", index)
+    configuration_sha256 = _required_string(
+        raw,
+        "configuration_sha256",
+        index,
+    )
+    normalized_message_sha256 = _required_string(
+        raw,
+        "normalized_message_sha256",
+        index,
+    )
+    parser_version = _required_string(raw, "parser_version", index)
+    warning_code = _required_string(raw, "warning_code", index)
+    queue_id = _required_string(raw, "queue_id", index)
+    warning_id = _required_string(raw, "warning_id", index)
+    first_seen_run_id = _required_string(raw, "first_seen_run_id", index)
+    last_seen_run_id = _required_string(raw, "last_seen_run_id", index)
+
+    if any(
+        _SHA256.fullmatch(value) is None
+        for value in (
+            source_sha256,
+            configuration_sha256,
+            normalized_message_sha256,
+        )
+    ):
+        raise ValueError(f"previous queue entry {index} has an invalid digest")
+    if _QUEUE_ID.fullmatch(queue_id) is None:
+        raise ValueError(f"previous queue entry {index} has an invalid queue_id")
+    if _WARNING_ID.fullmatch(warning_id) is None:
+        raise ValueError(f"previous queue entry {index} has an invalid warning_id")
+    if any(
+        _RUN_ID.fullmatch(value) is None
+        for value in (first_seen_run_id, last_seen_run_id)
+    ):
+        raise ValueError(f"previous queue entry {index} has an invalid run_id")
+
+    expected_queue_id = _queue_id(
+        source_sha256=source_sha256,
+        parser_version=parser_version,
+        configuration_sha256=configuration_sha256,
+        page_number=page,
+        warning_code=warning_code,
+        normalized_message_sha256=normalized_message_sha256,
+    )
+    expected_warning_id = _warning_id(
+        source_sha256=source_sha256,
+        parser_version=parser_version,
+        configuration_sha256=configuration_sha256,
+        page_number=page,
+        warning_code=warning_code,
+        normalized_message_sha256=normalized_message_sha256,
+    )
+    if queue_id != expected_queue_id:
+        raise ValueError(f"previous queue entry {index} queue_id mismatch")
+    if warning_id != expected_warning_id:
+        raise ValueError(f"previous queue entry {index} warning_id mismatch")
+
     return ParserReviewQueueEntry(
-        queue_id=_required_string(raw, "queue_id", index),
+        queue_id=queue_id,
         status="REVIEW_REQUIRED",
-        warning_id=_required_string(raw, "warning_id", index),
+        warning_id=warning_id,
         document_id=_required_string(raw, "document_id", index),
         revision_id=_required_string(raw, "revision_id", index),
-        source_sha256=_required_string(raw, "source_sha256", index),
-        parser_version=_required_string(raw, "parser_version", index),
-        configuration_sha256=_required_string(
-            raw,
-            "configuration_sha256",
-            index,
-        ),
+        source_sha256=source_sha256,
+        parser_version=parser_version,
+        configuration_sha256=configuration_sha256,
         page_number=page,
-        warning_code=_required_string(raw, "warning_code", index),
-        normalized_message_sha256=_required_string(
-            raw,
-            "normalized_message_sha256",
-            index,
-        ),
-        first_seen_run_id=_required_string(raw, "first_seen_run_id", index),
-        last_seen_run_id=_required_string(raw, "last_seen_run_id", index),
+        warning_code=warning_code,
+        normalized_message_sha256=normalized_message_sha256,
+        first_seen_run_id=first_seen_run_id,
+        last_seen_run_id=last_seen_run_id,
         occurrence_count=count,
     )
 
