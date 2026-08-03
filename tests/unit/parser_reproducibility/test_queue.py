@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ansim_review.parser_reproducibility.queue import (
     build_review_queue,
     decode_review_queue,
     queue_document,
 )
 from ansim_review.parser_reproducibility.report import report_bytes
-from ansim_review.parser_reproducibility.warnings import ParserWarning
+from ansim_review.parser_reproducibility.warnings import (
+    ParserWarning,
+    warning_id_for,
+)
 
 
 def parser_warning(page_number: int | None = 3) -> ParserWarning:
-    return ParserWarning(
-        warning_id="PWRN-" + "A" * 24,
+    provisional = ParserWarning(
+        warning_id="",
         severity="WARNING",
         code="PARSER_WARNING_LAYOUT",
         document_id="DOC-TEST",
@@ -27,6 +32,7 @@ def parser_warning(page_number: int | None = 3) -> ParserWarning:
         normalized_message_sha256="C" * 64,
         run_id="PRUN-" + "D" * 24,
     )
+    return replace(provisional, warning_id=warning_id_for(provisional))
 
 
 def test_repeated_warning_updates_one_entry() -> None:
@@ -64,3 +70,18 @@ def test_queue_round_trip_is_strict_and_deterministic() -> None:
     assert decode_review_queue(encoded) == queue
     assert report_bytes(decode_review_queue(encoded)) == encoded
     assert queue_document(queue)["format"] == "evidence-review/parser-review-queue"
+
+
+def test_queue_decoder_rejects_tampered_identity() -> None:
+    queue = build_review_queue(
+        (parser_warning(),),
+        "PRUN-" + "A" * 24,
+    )
+    encoded = report_bytes(queue).replace(b"PQUE-", b"PQUE-F")
+
+    try:
+        decode_review_queue(encoded)
+    except ValueError as error:
+        assert "queue_id" in str(error)
+    else:
+        raise AssertionError("tampered queue identity was accepted")
