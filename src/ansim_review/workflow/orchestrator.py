@@ -137,6 +137,7 @@ def ingest_pending_references(
     state = layout.load_state()
     if state.workflow_state not in {
         "PENDING_REFERENCE_INGESTION",
+        "PENDING_DRAWING_INGESTION",
         "READY_TO_EVALUATE",
     }:
         raise ValueError("run is not awaiting reference ingestion")
@@ -146,6 +147,8 @@ def ingest_pending_references(
     attachments = _reference_attachments(request)
     if not attachments:
         raise ValueError("review request contains no reference attachments")
+    if state.workflow_state != "PENDING_REFERENCE_INGESTION":
+        raise ValueError("reference receipt is missing after reference lane completion")
     result = backend.ingest(
         request=request,
         attachments=attachments,
@@ -183,7 +186,10 @@ def resume_review_run(
     layout.verify_request_attachments(request)
     state = layout.load_state()
     references = _reference_attachments(request)
-    if state.workflow_state == "READY_TO_EVALUATE":
+    if state.workflow_state in {
+        "PENDING_DRAWING_INGESTION",
+        "READY_TO_EVALUATE",
+    }:
         if references:
             load_reference_ingestion_receipt(layout)
         return state
@@ -200,9 +206,14 @@ def resume_review_run(
         payload_sha256=receipt_hash,
         recorded_at=recorded_at,
     )
+    next_state: WorkflowState = (
+        "PENDING_DRAWING_INGESTION"
+        if _has_drawing(request)
+        else "READY_TO_EVALUATE"
+    )
     return _append_state(
         layout,
-        next_state="READY_TO_EVALUATE",
+        next_state=next_state,
         payload_sha256=receipt_hash,
         recorded_at=recorded_at,
     )
