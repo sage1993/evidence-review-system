@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pypdf import PdfReader
 
@@ -78,7 +78,7 @@ def count_source_pdf_pages(path: Path) -> int:
     return count
 
 
-def _configuration_sha256(configuration: dict[str, object]) -> str:
+def _configuration_sha256(configuration: object) -> str:
     return hashlib.sha256(dump_bytes(configuration)).hexdigest().upper()
 
 
@@ -93,7 +93,10 @@ def _single_name(names: tuple[str, ...], field: str) -> str:
     return names[0]
 
 
-def _read_optional_log(run_root: Path, config: ReproducibilityConfig) -> tuple[str | None, tuple[str, ...]]:
+def _read_optional_log(
+    run_root: Path,
+    config: ReproducibilityConfig,
+) -> tuple[str | None, tuple[str, ...]]:
     log_text: str | None = None
     present: list[str] = []
     for name in config.warning_sources:
@@ -160,16 +163,19 @@ def load_parser_run(
         raise ValueError("parser page count does not match parser-run.json")
 
     configuration_sha256 = _configuration_sha256(metadata.parser_configuration)
-    preliminary = {
-        "source_sha256": source_sha256,
-        "parser_kind": metadata.parser_kind,
-        "parser_version": metadata.parser_version,
-        "adapter_version": metadata.adapter_version,
-        "configuration_sha256": configuration_sha256,
-        "json_sha256": hashlib.sha256(json_bytes).hexdigest().upper(),
-        "markdown_sha256": hashlib.sha256(markdown_bytes).hexdigest().upper(),
-    }
-    run_id = _run_id(preliminary)
+    json_sha256 = hashlib.sha256(json_bytes).hexdigest().upper()
+    markdown_sha256 = hashlib.sha256(markdown_bytes).hexdigest().upper()
+    run_id = _run_id(
+        {
+            "source_sha256": source_sha256,
+            "parser_kind": metadata.parser_kind,
+            "parser_version": metadata.parser_version,
+            "adapter_version": metadata.adapter_version,
+            "configuration_sha256": configuration_sha256,
+            "json_sha256": json_sha256,
+            "markdown_sha256": markdown_sha256,
+        }
+    )
     log_text, warning_paths = _read_optional_log(root, config)
     warning_context = WarningContext(
         source_sha256=source_sha256,
@@ -204,10 +210,10 @@ def load_parser_run(
         configuration_sha256=configuration_sha256,
         platform_family=metadata.platform_family,
         json_relative_path=canonical_relative_path(root, json_path),
-        json_sha256=preliminary["json_sha256"],
+        json_sha256=json_sha256,
         json_size=len(json_bytes),
         markdown_relative_path=canonical_relative_path(root, markdown_path),
-        markdown_sha256=preliminary["markdown_sha256"],
+        markdown_sha256=markdown_sha256,
         markdown_size=len(markdown_bytes),
         warning_source_relative_paths=warning_paths,
         warning_count=len(warnings),
@@ -233,7 +239,9 @@ def build_parser_run_manifest(
     return load_parser_run(source_pdf, run_root, config).manifest
 
 
-def parser_run_manifest_document(manifest: ParserRunManifest) -> dict[str, object]:
+def parser_run_manifest_document(
+    manifest: ParserRunManifest,
+) -> dict[str, object]:
     """Convert a manifest to canonical-JSON-ready values."""
 
-    return asdict(manifest)
+    return cast(dict[str, object], asdict(manifest))
