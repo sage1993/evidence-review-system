@@ -23,7 +23,9 @@ from ansim_review.parser_reproducibility.queue import (
 from ansim_review.parser_reproducibility.run_manifest import (
     ParserRunManifest,
     load_parser_run,
+    load_parser_run_for_identity,
 )
+from ansim_review.parser_reproducibility.source_identity import SourceIdentity
 from ansim_review.parser_reproducibility.warnings import (
     ParserWarningReport,
     WarningContext,
@@ -178,14 +180,14 @@ def validate_opendataloader_reproducibility(
 
 
 def collect_opendataloader_warnings(
-    source_pdf: Path,
+    source_identity: SourceIdentity,
     run_root: Path,
     config: ReproducibilityConfig,
     previous_queue: ParserReviewQueue | None = None,
 ) -> WarningCollectionResult:
-    """Collect one run's warnings and merge immutable review history."""
+    """Collect warnings after source-manifest identity resolution."""
 
-    loaded = load_parser_run(source_pdf, run_root, config)
+    loaded = load_parser_run_for_identity(source_identity, run_root, config)
     warning_context = WarningContext(
         source_sha256=loaded.manifest.source_sha256,
         document_id=loaded.manifest.document_id,
