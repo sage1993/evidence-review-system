@@ -83,6 +83,11 @@ def _confirmation_id(
     return f"CONF-{sha256_json(payload)[:24].upper()}"
 
 
+def _reviewer_token(reviewer: str) -> str:
+    digest = hashlib.sha256(reviewer.encode("utf-8")).hexdigest()[:20].upper()
+    return f"REV-{digest}"
+
+
 def _confirmation(
     candidate: DrawingCandidate,
     action: AnnotationAction,
@@ -100,6 +105,19 @@ def _confirmation(
     )
 
 
+def _persist_action_confirmation(
+    case_dir: Path,
+    candidate: DrawingCandidate,
+    action: AnnotationAction,
+) -> CaseManifestEntry:
+    return persist_confirmation(
+        case_dir,
+        _reviewer_token(action.reviewer),
+        candidate,
+        _confirmation(candidate, action),
+    )
+
+
 def _record_existing(
     case_dir: Path,
     page: DrawingPage,
@@ -108,12 +126,7 @@ def _record_existing(
 ) -> AnnotationActionResult:
     candidate = _verified_existing_candidate(case_dir, action.candidate_id, entries)
     build_drawing_review_view_model(page, (candidate,))
-    confirmation_entry = persist_confirmation(
-        case_dir,
-        action.reviewer,
-        candidate,
-        _confirmation(candidate, action),
-    )
+    confirmation_entry = _persist_action_confirmation(case_dir, candidate, action)
     return AnnotationActionResult(
         candidate_entry=None,
         confirmation_entry=confirmation_entry,
@@ -138,12 +151,7 @@ def _record_manual(
     )
     build_drawing_review_view_model(page, (candidate,))
     candidate_entry = persist_candidate(case_dir, candidate)
-    confirmation_entry = persist_confirmation(
-        case_dir,
-        action.reviewer,
-        candidate,
-        _confirmation(candidate, action),
-    )
+    confirmation_entry = _persist_action_confirmation(case_dir, candidate, action)
     return AnnotationActionResult(
         candidate_entry=candidate_entry,
         confirmation_entry=confirmation_entry,
