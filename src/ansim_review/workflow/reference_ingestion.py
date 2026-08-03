@@ -50,6 +50,8 @@ class ReferenceIngestionBatchResult:
 
     snapshot_sha256: str
     output_db_relative_path: str
+    output_db_sha256: str
+    output_db_byte_size: int
     sources: tuple[ReferenceSourceResult, ...]
 
 
@@ -62,6 +64,8 @@ class ReferenceIngestionReceipt:
     request_sha256: str
     snapshot_sha256: str
     output_db_relative_path: str
+    output_db_sha256: str
+    output_db_byte_size: int
     sources: tuple[ReferenceSourceResult, ...]
     changed_original_names: tuple[str, ...]
     review_required: bool
@@ -97,6 +101,13 @@ def _safe_machine_path(value: object) -> str:
     return path
 
 
+def _positive_size(value: object, field: str) -> int:
+    size = expect_int(value, field)
+    if size < 1:
+        raise ValueError(f"{field} must be positive")
+    return size
+
+
 def _decode_string_tuple(value: object, field: str) -> tuple[str, ...]:
     items = tuple(
         expect_string(item, f"{field}[{index}]")
@@ -120,7 +131,9 @@ def _decode_source_result(value: object) -> ReferenceSourceResult:
     reject_unknown(payload, required, "reference_source")
     attachment_ids = tuple(
         validate_identifier(item, "attachment_id")
-        for item in _decode_string_tuple(payload.get("attachment_ids"), "attachment_ids")
+        for item in _decode_string_tuple(
+            payload.get("attachment_ids"), "attachment_ids"
+        )
     )
     if not attachment_ids:
         raise ValueError("attachment_ids must not be empty")
@@ -135,8 +148,12 @@ def _decode_source_result(value: object) -> ReferenceSourceResult:
         source_sha256=expect_sha256(
             payload.get("source_sha256"), "source_sha256"
         ),
-        document_id=validate_identifier(payload.get("document_id"), "document_id"),
-        revision_id=validate_identifier(payload.get("revision_id"), "revision_id"),
+        document_id=validate_identifier(
+            payload.get("document_id"), "document_id"
+        ),
+        revision_id=validate_identifier(
+            payload.get("revision_id"), "revision_id"
+        ),
     )
 
 
@@ -165,7 +182,9 @@ def _merge_source_results(
             existing.document_id != validated.document_id
             or existing.revision_id != validated.revision_id
         ):
-            raise ValueError("one source hash maps to conflicting reference identities")
+            raise ValueError(
+                "one source hash maps to conflicting reference identities"
+            )
         grouped[validated.source_sha256] = ReferenceSourceResult(
             attachment_ids=tuple(
                 sorted(set(existing.attachment_ids + validated.attachment_ids))
@@ -189,7 +208,11 @@ def _changed_names(
             attachment.sha256
         )
     return tuple(
-        sorted(name for name, digests in hashes_by_name.items() if len(digests) > 1)
+        sorted(
+            name
+            for name, digests in hashes_by_name.items()
+            if len(digests) > 1
+        )
     )
 
 
@@ -197,7 +220,9 @@ def _validate_result_coverage(
     attachments: tuple[ImmutableAttachment, ...],
     result: ReferenceIngestionBatchResult,
 ) -> tuple[ReferenceSourceResult, ...]:
-    expected_by_id = {attachment.attachment_id: attachment for attachment in attachments}
+    expected_by_id = {
+        attachment.attachment_id: attachment for attachment in attachments
+    }
     if len(expected_by_id) != len(attachments):
         raise ValueError("reference attachment IDs must be unique")
     merged = _merge_source_results(result.sources)
@@ -206,18 +231,26 @@ def _validate_result_coverage(
         for attachment_id in source.attachment_ids:
             attachment = expected_by_id.get(attachment_id)
             if attachment is None:
-                raise ValueError("ingestion result references an unknown attachment")
+                raise ValueError(
+                    "ingestion result references an unknown attachment"
+                )
             if attachment.sha256 != source.source_sha256:
-                raise ValueError("ingestion result source hash does not match attachment")
+                raise ValueError(
+                    "ingestion result source hash does not match attachment"
+                )
             seen_ids.add(attachment_id)
         expected_names = {
             expected_by_id[attachment_id].original_name
             for attachment_id in source.attachment_ids
         }
         if set(source.original_names) != expected_names:
-            raise ValueError("ingestion result original names do not match attachments")
+            raise ValueError(
+                "ingestion result original names do not match attachments"
+            )
     if seen_ids != set(expected_by_id):
-        raise ValueError("ingestion result does not cover all reference attachments")
+        raise ValueError(
+            "ingestion result does not cover all reference attachments"
+        )
     return merged
 
 
@@ -239,6 +272,12 @@ def make_reference_ingestion_receipt(
         output_db_relative_path=_safe_machine_path(
             result.output_db_relative_path
         ),
+        output_db_sha256=expect_sha256(
+            result.output_db_sha256, "output_db_sha256"
+        ),
+        output_db_byte_size=_positive_size(
+            result.output_db_byte_size, "output_db_byte_size"
+        ),
         sources=sources,
         changed_original_names=changed_original_names,
         review_required=bool(changed_original_names),
@@ -255,13 +294,19 @@ def reference_ingestion_receipt_document(
         "request_sha256": receipt.request_sha256,
         "snapshot_sha256": receipt.snapshot_sha256,
         "output_db_relative_path": receipt.output_db_relative_path,
-        "sources": [reference_source_document(source) for source in receipt.sources],
+        "output_db_sha256": receipt.output_db_sha256,
+        "output_db_byte_size": receipt.output_db_byte_size,
+        "sources": [
+            reference_source_document(source) for source in receipt.sources
+        ],
         "changed_original_names": list(receipt.changed_original_names),
         "review_required": receipt.review_required,
     }
 
 
-def decode_reference_ingestion_receipt(value: object) -> ReferenceIngestionReceipt:
+def decode_reference_ingestion_receipt(
+    value: object,
+) -> ReferenceIngestionReceipt:
     """Decode one strict generic receipt."""
     payload = expect_mapping(value, "reference_ingestion_receipt")
     required = {
@@ -270,6 +315,8 @@ def decode_reference_ingestion_receipt(value: object) -> ReferenceIngestionRecei
         "request_sha256",
         "snapshot_sha256",
         "output_db_relative_path",
+        "output_db_sha256",
+        "output_db_byte_size",
         "sources",
         "changed_original_names",
         "review_required",
@@ -292,7 +339,9 @@ def decode_reference_ingestion_receipt(value: object) -> ReferenceIngestionRecei
     changed_names = _decode_string_tuple(
         payload.get("changed_original_names"), "changed_original_names"
     )
-    review_required = expect_bool(payload.get("review_required"), "review_required")
+    review_required = expect_bool(
+        payload.get("review_required"), "review_required"
+    )
     if review_required != bool(changed_names):
         raise ValueError("review_required must match changed_original_names")
     return ReferenceIngestionReceipt(
@@ -306,6 +355,12 @@ def decode_reference_ingestion_receipt(value: object) -> ReferenceIngestionRecei
         ),
         output_db_relative_path=_safe_machine_path(
             payload.get("output_db_relative_path")
+        ),
+        output_db_sha256=expect_sha256(
+            payload.get("output_db_sha256"), "output_db_sha256"
+        ),
+        output_db_byte_size=_positive_size(
+            payload.get("output_db_byte_size"), "output_db_byte_size"
         ),
         sources=sources,
         changed_original_names=changed_names,
@@ -333,7 +388,9 @@ def _strict_json(raw: bytes) -> object:
     def reject_constant(value: str) -> object:
         raise ValueError(f"invalid JSON constant: {value}")
 
-    def reject_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    def reject_duplicates(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
         result: dict[str, object] = {}
         for key, value in pairs:
             if key in result:
@@ -348,13 +405,27 @@ def _strict_json(raw: bytes) -> object:
             object_pairs_hook=reject_duplicates,
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("reference receipt must be valid UTF-8 JSON") from exc
+        raise ValueError(
+            "reference receipt must be valid UTF-8 JSON"
+        ) from exc
+
+
+def _output_path(
+    layout: ReviewRunLayout,
+    receipt: ReferenceIngestionReceipt,
+) -> Path:
+    path = layout.run_dir.joinpath(
+        *receipt.output_db_relative_path.split("/")
+    )
+    if not path.resolve(strict=False).is_relative_to(layout.run_dir.resolve()):
+        raise ValueError("reference output database escapes the run directory")
+    return path
 
 
 def load_reference_ingestion_receipt(
     layout: ReviewRunLayout,
 ) -> ReferenceIngestionReceipt:
-    """Load and byte-revalidate the create-only receipt."""
+    """Load and byte-revalidate the receipt and its evidence database."""
     reject_link_ancestors(layout.reference_receipt_path)
     raw = layout.reference_receipt_path.read_bytes()
     receipt = decode_reference_ingestion_receipt(_strict_json(raw))
@@ -362,12 +433,15 @@ def load_reference_ingestion_receipt(
         raise ValueError("reference receipt bytes are not canonical")
     if receipt.request_sha256 != layout.load_request_sha256():
         raise ValueError("reference receipt request SHA-256 is stale")
-    output_path = layout.run_dir.joinpath(
-        *receipt.output_db_relative_path.split("/")
-    )
+    output_path = _output_path(layout, receipt)
     if not output_path.is_file():
         raise ValueError("reference receipt output database is missing")
     reject_link_ancestors(output_path)
+    payload = output_path.read_bytes()
+    if len(payload) != receipt.output_db_byte_size:
+        raise ValueError("reference output database byte size mismatch")
+    if hashlib.sha256(payload).hexdigest() != receipt.output_db_sha256:
+        raise ValueError("reference output database SHA-256 mismatch")
     return receipt
 
 
@@ -381,11 +455,17 @@ def persist_reference_ingestion_receipt(
     target.parent.mkdir(parents=True, exist_ok=True)
     reject_link_ancestors(target.parent)
     try:
-        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        descriptor = os.open(
+            target,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
     except FileExistsError:
         if target.read_bytes() == encoded:
             return target
-        raise FileExistsError("reference receipt already contains different bytes") from None
+        raise FileExistsError(
+            "reference receipt already contains different bytes"
+        ) from None
     with os.fdopen(descriptor, "wb") as stream:
         stream.write(encoded)
         stream.flush()
@@ -395,7 +475,7 @@ def persist_reference_ingestion_receipt(
 
 @dataclass(slots=True)
 class SourceBatchReferenceBackend:
-    """Adapter that delegates all parser and EvidenceStore work to the importer."""
+    """Delegate parser and EvidenceStore work to the existing importer."""
 
     batch: SourceBatch
     output_db_relative_path: str = "machine/evidence.sqlite"
@@ -415,7 +495,9 @@ class SourceBatchReferenceBackend:
             for source in self.batch.sources
             if source.role in {"REFERENCE_DOCUMENT", "CASE_TABLE"}
         }
-        expected_paths = {attachment.stored_path for attachment in attachments}
+        expected_paths = {
+            attachment.stored_path for attachment in attachments
+        }
         if declared_paths != expected_paths:
             raise ValueError(
                 "source batch reference paths do not match request attachments"
@@ -431,7 +513,10 @@ class SourceBatchReferenceBackend:
         )
         attachments_by_hash: dict[str, list[ImmutableAttachment]] = {}
         for attachment in attachments:
-            attachments_by_hash.setdefault(attachment.sha256, []).append(attachment)
+            attachments_by_hash.setdefault(
+                attachment.sha256,
+                [],
+            ).append(attachment)
         sources: list[ReferenceSourceResult] = []
         for prepared in report.sources:
             if prepared.role not in {"REFERENCE_DOCUMENT", "CASE_TABLE"}:
@@ -444,18 +529,29 @@ class SourceBatchReferenceBackend:
             sources.append(
                 ReferenceSourceResult(
                     attachment_ids=tuple(
-                        sorted(attachment.attachment_id for attachment in matching)
+                        sorted(
+                            attachment.attachment_id
+                            for attachment in matching
+                        )
                     ),
                     original_names=tuple(
-                        sorted({attachment.original_name for attachment in matching})
+                        sorted(
+                            {
+                                attachment.original_name
+                                for attachment in matching
+                            }
+                        )
                     ),
                     source_sha256=prepared.source_sha256,
                     document_id=prepared.document_id,
                     revision_id=prepared.revision_id,
                 )
             )
+        output_payload = output.read_bytes()
         return ReferenceIngestionBatchResult(
             snapshot_sha256=report.snapshot_hash,
             output_db_relative_path=output_relative,
+            output_db_sha256=hashlib.sha256(output_payload).hexdigest(),
+            output_db_byte_size=len(output_payload),
             sources=tuple(sources),
         )
