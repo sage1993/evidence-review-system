@@ -53,6 +53,17 @@ def test_json_run_local_path_requires_value_prefix(tmp_path: Path) -> None:
     assert result.value["content"] == payload["content"]
 
 
+def test_json_run_local_path_does_not_match_sibling_prefix(tmp_path: Path) -> None:
+    run_root = tmp_path / "run-a"
+    sibling = str(tmp_path / "run-a-cache" / "images" / "a.png")
+    payload = {"asset": sibling}
+
+    result = normalize_json_artifact(payload, config(), run_root)
+
+    assert isinstance(result.value, dict)
+    assert result.value["asset"] == sibling
+
+
 def test_markdown_normalization_is_bounded(tmp_path: Path) -> None:
     run_root = tmp_path / "run-a"
     raw = (
@@ -65,6 +76,15 @@ def test_markdown_normalization_is_bounded(tmp_path: Path) -> None:
     assert result.text == "# Title\n\n<RUN_ROOT>/images/a.png  \n"
     assert result.text.endswith("  \n")
     assert "# Title\n\n" in result.text
+
+
+def test_markdown_run_root_does_not_match_sibling_prefix(tmp_path: Path) -> None:
+    run_root = tmp_path / "run-a"
+    sibling = str(tmp_path / "run-a-cache" / "images" / "a.png")
+
+    result = normalize_markdown_artifact(sibling.encode("utf-8"), run_root)
+
+    assert result.text == sibling
 
 
 def test_content_whitespace_remains_meaningful(tmp_path: Path) -> None:

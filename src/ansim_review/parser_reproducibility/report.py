@@ -150,10 +150,13 @@ def validate_opendataloader_reproducibility(
     except (OSError, ValueError, PyPdfError) as exc:
         return _failed_report(exc, loaded_a.manifest)
 
-    pair = ParsedRunPair(
-        left=parse_loaded_run(loaded_a, config),
-        right=parse_loaded_run(loaded_b, config),
-    )
+    try:
+        pair = ParsedRunPair(
+            left=parse_loaded_run(loaded_a, config),
+            right=parse_loaded_run(loaded_b, config),
+        )
+    except (OSError, ValueError, PyPdfError) as exc:
+        return _failed_report(exc, loaded_a.manifest)
     result = compare_parser_runs(pair, config)
     warning_count = max(
         loaded_a.manifest.warning_count,

@@ -7,6 +7,7 @@ from ansim_review.parser_reproducibility.opendataloader import (
 )
 from ansim_review.parser_reproducibility.warnings import (
     WarningContext,
+    _normalized_message,
     extract_opendataloader_warnings,
 )
 
@@ -92,3 +93,12 @@ def test_same_warning_is_deduplicated_by_stable_identity(tmp_path: Path) -> None
     )
     assert len(warnings) == 1
     assert warnings[0].warning_id.startswith("PWRN-")
+
+
+def test_warning_normalization_does_not_match_sibling_prefix(tmp_path: Path) -> None:
+    run_root = tmp_path / "run-a"
+    sibling = str(tmp_path / "run-a-cache" / "parser.log")
+    local = str(run_root / "parser.log")
+
+    assert _normalized_message(sibling, run_root) == sibling
+    assert _normalized_message(local, run_root) == "<RUN_ROOT>/parser.log"

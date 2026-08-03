@@ -144,6 +144,23 @@ def test_rejects_duplicate_json_keys() -> None:
         decode_reproducibility_config(duplicate)
 
 
+def test_rejects_nonfinite_json_constants() -> None:
+    payload = (
+        b'{"format":"evidence-review/opendataloader-parser-run",'
+        b'"version":1,"source_relative_path":"inputs/original/reference.pdf",'
+        b'"source_sha256":"' + _SOURCE_SHA.encode("ascii") + b'",'
+        b'"source_size":12345,"source_page_count":10,'
+        b'"document_id":"' + _DOCUMENT_ID.encode("ascii") + b'",'
+        b'"revision_id":"' + _REVISION_ID.encode("ascii") + b'",'
+        b'"parser_kind":"opendataloader","parser_version":"1.2.3",'
+        b'"adapter_version":1,"parser_configuration":{"value":NaN},'
+        b'"platform_family":"windows"}'
+    )
+
+    with pytest.raises(ValueError, match="non-finite"):
+        decode_parser_run_metadata(payload)
+
+
 def test_rejects_unknown_and_missing_fields() -> None:
     config = config_payload()
     config["extra"] = True

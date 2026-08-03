@@ -10,6 +10,9 @@ from dataclasses import asdict, dataclass, replace
 from typing import Literal, cast
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.parser_reproducibility.contract import (
+    reject_nonfinite_json_constant,
+)
 from ansim_review.parser_reproducibility.warnings import (
     ParserWarning,
     warning_sort_key,
@@ -282,7 +285,11 @@ def decode_review_queue(data: bytes) -> ParserReviewQueue:
 
     try:
         decoded = data.decode("utf-8-sig")
-        value = json.loads(decoded, object_pairs_hook=_reject_duplicate_keys)
+        value = json.loads(
+            decoded,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=reject_nonfinite_json_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("previous queue must be UTF-8 JSON") from exc
     if not isinstance(value, dict) or set(value) != {

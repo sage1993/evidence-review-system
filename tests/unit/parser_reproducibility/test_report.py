@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from pypdf import PdfWriter
 
+import ansim_review.parser_reproducibility.report as report_module
 from ansim_review.parser_reproducibility.report import (
     report_bytes,
     validate_opendataloader_reproducibility,
@@ -127,3 +128,28 @@ def test_source_and_parser_page_count_must_match(tmp_path: Path) -> None:
 
     assert report.status == "PARSER_FAILED"
     assert report.findings[0].code == "PARSER_PAGE_COUNT_MISMATCH"
+
+
+def test_parse_failure_is_reported_without_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = write_pdf(tmp_path / "source.pdf")
+    run_a = write_run(tmp_path / "run-a", source)
+    run_b = write_run(tmp_path / "run-b", source)
+
+    def fail_parse(*object: object, **keyword: object) -> object:
+        raise ValueError("canonical normalization failed")
+
+    monkeypatch.setattr(report_module, "parse_loaded_run", fail_parse)
+
+    report = validate_opendataloader_reproducibility(
+        source,
+        run_a,
+        run_b,
+        config(),
+    )
+
+    assert report.status == "PARSER_FAILED"
+    assert report.error_count == 1
+    assert report.run_a is not None

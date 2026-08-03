@@ -33,6 +33,13 @@ def test_decoder_rejects_duplicate_keys() -> None:
         decode_opendataloader_json(b'{"kids":[],"kids":[]}')
 
 
+def test_decoder_rejects_nonfinite_json_constants() -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        decode_opendataloader_json(
+            b'{"number of pages":1,"kids":[{"value":NaN}]}'
+        )
+
+
 def test_decoder_rejects_page_beyond_declared_count() -> None:
     payload = {
         "number of pages": 1,
