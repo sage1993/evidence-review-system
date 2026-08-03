@@ -6,7 +6,10 @@ import json
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from ansim_review.parser_reproducibility.contract import JsonValue
+from ansim_review.parser_reproducibility.contract import (
+    JsonValue,
+    reject_nonfinite_json_constant,
+)
 
 JsonObject: TypeAlias = dict[str, JsonValue]
 _CHILD_KEYS = ("kids", "list items", "list_items", "children")
@@ -126,7 +129,11 @@ def decode_opendataloader_json(data: bytes) -> OpenDataLoaderArtifact:
     except UnicodeDecodeError as exc:
         raise ValueError("OpenDataLoader JSON must be UTF-8") from exc
     try:
-        decoded = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+        decoded = json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=reject_nonfinite_json_constant,
+        )
     except json.JSONDecodeError as exc:
         raise ValueError("OpenDataLoader artifact must be valid JSON") from exc
     value = _json_value(decoded, "root")

@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Literal, TypeAlias, cast
+from typing import Literal, NoReturn, TypeAlias, cast
 
 from ansim_review.contracts.identifiers import validate_identifier, validate_version
 
@@ -96,13 +96,23 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
     return result
 
 
+def reject_nonfinite_json_constant(value: str) -> NoReturn:
+    """Reject Python's non-standard JSON constants in strict decoders."""
+
+    raise ValueError(f"non-finite JSON constant is prohibited: {value}")
+
+
 def _load_object(data: bytes, label: str) -> dict[str, object]:
     try:
         decoded = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise ValueError(f"{label} must be UTF-8 JSON") from exc
     try:
-        value = json.loads(decoded, object_pairs_hook=_reject_duplicate_keys)
+        value = json.loads(
+            decoded,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=reject_nonfinite_json_constant,
+        )
     except json.JSONDecodeError as exc:
         raise ValueError(f"{label} must be valid JSON") from exc
     if not isinstance(value, dict):

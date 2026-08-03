@@ -103,3 +103,39 @@ def test_document_identity_mismatch_fails_with_stable_code(tmp_path: Path) -> No
     with pytest.raises(SourceIdentityAuthorityError) as captured:
         resolve_source_identity(manifest, metadata)
     assert captured.value.code == "SOURCE_IDENTITY_MISMATCH"
+
+
+def test_source_manifest_rejects_nonfinite_json_constants(tmp_path: Path) -> None:
+    source = write_pdf(tmp_path / "source.pdf")
+    run = write_run(tmp_path / "run", source)
+    metadata = json.loads(
+        (run / "parser-run.json").read_text(encoding="utf-8")
+    )
+    manifest = tmp_path / "source-batch.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "format": "evidence-review/source-batch",
+                "version": 2,
+                "sources": [
+                    {
+                        "source_path": metadata["source_relative_path"],
+                        "role": "REFERENCE_DOCUMENT",
+                        "document_id": None,
+                        "display_title": "Reference",
+                        "parser": {
+                            "kind": "OPENDATALOADER_JSON",
+                            "artifact_path": "inputs/parser/document.json",
+                            "options": {"value": float("nan")},
+                        },
+                    }
+                ],
+            },
+            allow_nan=True,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SourceIdentityAuthorityError) as captured:
+        resolve_source_identity(manifest, read_parser_run_metadata(run))
+    assert captured.value.code == "SOURCE_MANIFEST_INVALID"

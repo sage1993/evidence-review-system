@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ansim_review.contracts.source_batch import SourceItem, decode_source_batch
-from ansim_review.parser_reproducibility.contract import ParserRunMetadata
+from ansim_review.parser_reproducibility.contract import (
+    ParserRunMetadata,
+    reject_nonfinite_json_constant,
+)
 from ansim_review.parsing.source_batch_importer import derive_document_id
 
 
@@ -43,6 +46,7 @@ def _decode_source_manifest(path: Path) -> tuple[SourceItem, ...]:
         payload = json.loads(
             path.read_text(encoding="utf-8-sig"),
             object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=reject_nonfinite_json_constant,
         )
         return decode_source_batch(payload).sources
     except SourceIdentityAuthorityError:

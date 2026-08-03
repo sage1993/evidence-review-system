@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from ansim_review.parser_reproducibility.queue import (
     build_review_queue,
     decode_review_queue,
@@ -85,3 +87,8 @@ def test_queue_decoder_rejects_tampered_identity() -> None:
         assert "queue_id" in str(error)
     else:
         raise AssertionError("tampered queue identity was accepted")
+
+
+def test_queue_decoder_rejects_nonfinite_json_constants() -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        decode_review_queue(b'{"format":NaN,"version":1,"entries":[]}')

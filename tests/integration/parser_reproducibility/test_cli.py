@@ -76,6 +76,41 @@ def test_reproducibility_cli_mismatch_and_create_only(tmp_path: Path) -> None:
     assert sha256(output) == before
 
 
+def test_reproducibility_cli_rejects_nonfinite_artifact(tmp_path: Path) -> None:
+    source = write_pdf(tmp_path / "source.pdf")
+    run_a = write_run(tmp_path / "run-a", source)
+    run_b = write_run(tmp_path / "run-b", source)
+    (run_a / "document.json").write_text(
+        '{"number of pages":1,"kids":[{"value":NaN}]}',
+        encoding="utf-8",
+    )
+    config = write_config(tmp_path / "config.json")
+    output = tmp_path / "report.json"
+
+    exit_code = main(
+        [
+            "parser",
+            "reproducibility",
+            "validate",
+            "--source",
+            str(source),
+            "--run-a",
+            str(run_a),
+            "--run-b",
+            str(run_b),
+            "--config",
+            str(config),
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert exit_code == 3
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == "PARSER_FAILED"
+    assert report["findings"][0]["code"] == "PARSER_ARTIFACT_INVALID"
+
+
 def test_warning_cli_uses_manifest_without_source_pdf(tmp_path: Path) -> None:
     source = write_pdf(tmp_path / "source.pdf")
     run = write_run(

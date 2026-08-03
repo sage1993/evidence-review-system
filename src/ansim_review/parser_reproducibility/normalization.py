@@ -93,11 +93,24 @@ def _replace_object_path(
 
 def _normalize_run_local_value(value: str, run_root: Path) -> str:
     for root_form in _root_forms(run_root):
-        if not value.startswith(root_form):
+        if value == root_form:
+            suffix = ""
+        elif value.startswith(root_form) and value[len(root_form)] in "/\\":
+            suffix = value[len(root_form) :]
+        else:
             continue
-        suffix = value[len(root_form) :]
         return "<RUN_ROOT>" + suffix.replace("\\", "/")
     return value
+
+
+def normalize_run_root_references(text: str, run_root: Path) -> str:
+    """Replace only exact run roots and roots followed by a path separator."""
+
+    normalized = text
+    for root_form in _root_forms(run_root):
+        pattern = re.compile(re.escape(root_form) + r"(?=$|[\\/])")
+        normalized = pattern.sub("<RUN_ROOT>", normalized)
+    return normalized
 
 
 def _field_name(path: str) -> str:
@@ -183,11 +196,10 @@ def normalize_markdown_artifact(
         applied.append(AppliedNormalization("$", "UTF8_BOM"))
     if "\r" in decoded:
         applied.append(AppliedNormalization("$", "LINE_ENDINGS"))
-    for root_form in _root_forms(run_root):
-        replaced = text.replace(root_form, "<RUN_ROOT>")
-        if replaced != text:
-            applied.append(AppliedNormalization("$", "RUN_ROOT"))
-        text = replaced
+    replaced = normalize_run_root_references(text, run_root)
+    if replaced != text:
+        applied.append(AppliedNormalization("$", "RUN_ROOT"))
+    text = replaced
     replaced = _normalize_markdown_path_separators(text)
     if replaced != text:
         applied.append(AppliedNormalization("$", "PATH_SEPARATOR"))

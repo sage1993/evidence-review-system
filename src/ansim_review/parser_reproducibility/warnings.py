@@ -10,6 +10,9 @@ from typing import Literal, TypeAlias
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parser_reproducibility.contract import JsonValue
+from ansim_review.parser_reproducibility.normalization import (
+    normalize_run_root_references,
+)
 from ansim_review.parser_reproducibility.opendataloader import (
     JsonObject,
     OpenDataLoaderArtifact,
@@ -96,15 +99,7 @@ def _page_from_message(message: str, page_count: int) -> int | None:
 
 def _normalized_message(message: str, run_root: Path) -> str:
     normalized = message.replace("\r\n", "\n").replace("\r", "\n")
-    resolved = run_root.resolve()
-    root_forms = {
-        str(resolved),
-        resolved.as_posix(),
-        str(resolved).replace("/", "\\"),
-    }
-    for root_form in sorted(root_forms, key=len, reverse=True):
-        if root_form:
-            normalized = normalized.replace(root_form, "<RUN_ROOT>")
+    normalized = normalize_run_root_references(normalized, run_root)
     return _RUN_TOKEN_PATH.sub(
         lambda match: "<RUN_ROOT>" + match.group("suffix").replace("\\", "/"),
         normalized,
