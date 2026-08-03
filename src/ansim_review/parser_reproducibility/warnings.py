@@ -258,11 +258,10 @@ def _warnings_from_log(
             if match is None
             else (match.group("bracket") or match.group("plain"))
         )
-        message = raw_line if match is None else match.group("message")
         warnings.append(
             _new_warning(
                 code=_warning_code(raw_code),
-                message=message,
+                message=raw_line,
                 page_number=_page_from_message(
                     raw_line,
                     context.parser_page_count,
