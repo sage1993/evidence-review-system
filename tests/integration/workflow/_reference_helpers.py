@@ -20,7 +20,8 @@ class FakeReferenceBackend:
         self.calls.append(tuple(item.attachment_id for item in attachments))
         output = run_dir / "machine" / "evidence.sqlite"
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(b"fake-evidence-db")
+        output_payload = b"fake-evidence-db"
+        output.write_bytes(output_payload)
         sources = tuple(
             ReferenceSourceResult(
                 attachment_ids=(attachment.attachment_id,),
@@ -37,6 +38,8 @@ class FakeReferenceBackend:
         return ReferenceIngestionBatchResult(
             snapshot_sha256=self.snapshot_sha256,
             output_db_relative_path="machine/evidence.sqlite",
+            output_db_sha256=hashlib.sha256(output_payload).hexdigest(),
+            output_db_byte_size=len(output_payload),
             sources=sources,
         )
 
