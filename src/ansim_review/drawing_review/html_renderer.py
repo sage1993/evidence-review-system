@@ -59,7 +59,7 @@ def _coordinate_system(value: object, field: str) -> CoordinateSystem:
     candidate = _string(value, field)
     if candidate not in _COORDINATE_SYSTEMS:
         raise ValueError(f"unsupported {field}: {candidate}")
-    return cast(CoordinateSystem, candidate)
+    return candidate
 
 
 def _position(value: object, field: str) -> tuple[float, float]:
