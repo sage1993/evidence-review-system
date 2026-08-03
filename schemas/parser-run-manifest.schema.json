@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sage1993/evidence-review-system/schemas/parser-run-manifest.schema.json",
+  "title": "Parser Run Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "run_id",
+    "source_relative_path",
+    "source_sha256",
+    "source_size",
+    "source_page_count",
+    "parser_page_count",
+    "document_id",
+    "revision_id",
+    "parser_kind",
+    "parser_version",
+    "adapter_version",
+    "configuration_sha256",
+    "platform_family",
+    "json_relative_path",
+    "json_sha256",
+    "json_size",
+    "markdown_relative_path",
+    "markdown_sha256",
+    "markdown_size",
+    "warning_source_relative_paths",
+    "warning_count",
+    "warning_codes"
+  ],
+  "properties": {
+    "format": {"const": "evidence-review/parser-run-manifest"},
+    "version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^PRUN-[0-9A-F]{24}$"},
+    "source_relative_path": {"$ref": "#/$defs/path"},
+    "source_sha256": {"$ref": "#/$defs/sha256"},
+    "source_size": {"type": "integer", "minimum": 1},
+    "source_page_count": {"type": "integer", "minimum": 1},
+    "parser_page_count": {"type": "integer", "minimum": 1},
+    "document_id": {"type": "string", "minLength": 1},
+    "revision_id": {"type": "string", "minLength": 1},
+    "parser_kind": {"const": "opendataloader"},
+    "parser_version": {"type": "string", "minLength": 1},
+    "adapter_version": {"const": 1},
+    "configuration_sha256": {"$ref": "#/$defs/sha256"},
+    "platform_family": {"enum": ["windows", "linux", "macos", "other"]},
+    "json_relative_path": {"$ref": "#/$defs/path"},
+    "json_sha256": {"$ref": "#/$defs/sha256"},
+    "json_size": {"type": "integer", "minimum": 0},
+    "markdown_relative_path": {"$ref": "#/$defs/path"},
+    "markdown_sha256": {"$ref": "#/$defs/sha256"},
+    "markdown_size": {"type": "integer", "minimum": 0},
+    "warning_source_relative_paths": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/path"}
+    },
+    "warning_count": {"type": "integer", "minimum": 0},
+    "warning_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9A-F]{64}$"},
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*:)(?!.*//).+$"
+    }
+  }
+}
