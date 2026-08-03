@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, TypedDict
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parser_reproducibility.contract import (
@@ -83,6 +83,14 @@ class ComparisonResult:
     differences: tuple[StructuralDifference, ...]
 
 
+class _ComparisonBase(TypedDict):
+    left_json_sha256: str
+    right_json_sha256: str
+    left_markdown_sha256: str
+    right_markdown_sha256: str
+    applied_normalizations: tuple[AppliedNormalization, ...]
+
+
 def parse_loaded_run(
     loaded: LoadedParserRun,
     config: ReproducibilityConfig,
@@ -105,7 +113,11 @@ def _value_hash(value: JsonValue) -> str:
     return hashlib.sha256(dump_bytes(value)).hexdigest().upper()
 
 
-def _difference_kind(path: str, left: JsonValue, right: JsonValue) -> DifferenceKind:
+def _difference_kind(
+    path: str,
+    left: JsonValue,
+    right: JsonValue,
+) -> DifferenceKind:
     lowered = path.casefold()
     final = path.rsplit(".", 1)[-1].casefold()
     if "bounding box" in lowered or "bbox" in lowered:
@@ -123,7 +135,9 @@ def _difference_kind(path: str, left: JsonValue, right: JsonValue) -> Difference
     if final in {"content", "text", "raw_text"}:
         return "TEXT_CONTENT_CHANGED"
     if isinstance(left, list) and isinstance(right, list):
-        return "TABLE_STRUCTURE_CHANGED" if "table" in lowered else "UNAPPROVED_NONDETERMINISM"
+        if "table" in lowered:
+            return "TABLE_STRUCTURE_CHANGED"
+        return "UNAPPROVED_NONDETERMINISM"
     return "UNAPPROVED_NONDETERMINISM"
 
 
@@ -235,22 +249,20 @@ def _recursive_differences(
     ]
 
 
-def _warning_key(warning: ParserWarning) -> tuple[object, ...]:
-    return (
-        warning.code,
-        warning.normalized_message_sha256,
-        warning.page_number,
-    )
-
-
 def _warning_differences(
     left: tuple[ParserWarning, ...],
     right: tuple[ParserWarning, ...],
 ) -> list[StructuralDifference]:
     left_by_id = {warning.warning_id: warning for warning in left}
     right_by_id = {warning.warning_id: warning for warning in right}
-    removed = [left_by_id[key] for key in sorted(set(left_by_id) - set(right_by_id))]
-    added = [right_by_id[key] for key in sorted(set(right_by_id) - set(left_by_id))]
+    removed = [
+        left_by_id[key]
+        for key in sorted(set(left_by_id) - set(right_by_id))
+    ]
+    added = [
+        right_by_id[key]
+        for key in sorted(set(right_by_id) - set(left_by_id))
+    ]
     differences: list[StructuralDifference] = []
 
     consumed_added: set[str] = set()
@@ -316,7 +328,10 @@ def difference_sort_key(difference: StructuralDifference) -> tuple[object, ...]:
     )
 
 
-def _environment_matches(pair: ParsedRunPair, config: ReproducibilityConfig) -> bool:
+def _environment_matches(
+    pair: ParsedRunPair,
+    config: ReproducibilityConfig,
+) -> bool:
     left = pair.left.loaded.manifest
     right = pair.right.loaded.manifest
     return (
@@ -347,7 +362,7 @@ def compare_parser_runs(
             key=lambda item: (item.path, item.kind),
         )
     )
-    base = {
+    base: _ComparisonBase = {
         "left_json_sha256": left.normalized_json.sha256,
         "right_json_sha256": right.normalized_json.sha256,
         "left_markdown_sha256": left.normalized_markdown.sha256,
