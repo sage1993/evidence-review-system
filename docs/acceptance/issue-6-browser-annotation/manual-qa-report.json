@@ -1,0 +1,118 @@
+{
+  "format": "evidence-review/manual-browser-qa",
+  "version": 1,
+  "issue": 6,
+  "pull_request": 54,
+  "starting_head": "ea14453e47554fa0e2d4a886845b292657c3a649",
+  "head": "e30f0b0e2d9728f8a9bf4e9dd9e25752bc762213",
+  "final_local_head": "e30f0b0e2d9728f8a9bf4e9dd9e25752bc762213",
+  "repository_state": "clean_after_acceptance_commit",
+  "branch": "agent/issue-6-browser-manual-annotation",
+  "base_head": "e3834717cef0cbcc5345a116bced7350208e3c50",
+  "os": "Microsoft Windows NT 10.0.26200.0 (64-bit)",
+  "browser": "Codex In-app Browser (engine version not exposed by browser automation surface)",
+  "viewport": {
+    "width": 1395,
+    "height": 912,
+    "display_scale": "not exposed"
+  },
+  "fixture": {
+    "source": "build/manual-qa/site-plan.png",
+    "source_sha256": "2fd36280d5a6c32e6e61b7c24490acf7da4a93c6eedf904be5c3f2288ef8976d",
+    "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
+    "page_width": 1400,
+    "page_height": 1000
+  },
+  "tests": {
+    "documentation_integrity": {
+      "status": "PASS",
+      "errors": 0,
+      "warnings": 65
+    },
+    "pytest": {
+      "status": "PASS",
+      "passed": 950,
+      "skipped": 5
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "command": ".venv\\Scripts\\python.exe -m mypy --python-version 3.13 src",
+      "files_checked": 156,
+      "note": "The shared workspace venv plain mypy command is affected by an unrelated NumPy 2.5 Python 3.11 stub incompatibility."
+    },
+    "compileall": "PASS",
+    "wheel_python_313": {
+      "status": "PASS",
+      "wheel": "dist/evidence_review_system-0.1.0-py3-none-any.whl",
+      "asset_and_namespace_smoke": "WHEEL_ALIAS_ASSET_PASS",
+      "install_note": "Wheel installed with --no-deps because the sandbox could not reach PyPI for pypdf."
+    },
+    "wheel_python_311": "PYTHON_311_UNAVAILABLE",
+    "github_actions": {
+      "status": "ACTIONS_UNAVAILABLE",
+      "run_id": 30817017738,
+      "jobs": [
+        "Workspace validator (windows-latest)",
+        "validate",
+        "Workspace validator (ubuntu-latest)",
+        "wheel-python313"
+      ],
+      "observation": "All jobs completed with failure, steps=null, so no workflow steps executed."
+    }
+  },
+  "manual_checks": [
+    {
+      "id": "DRAWING-UI-001",
+      "result": "PASS",
+      "observation": "Candidate list and SVG overlay remained synchronized."
+    },
+    {
+      "id": "DRAWING-UI-002",
+      "result": "PASS",
+      "observation": "100%, 200%, and fit-to-page screenshots were captured."
+    },
+    {
+      "id": "DRAWING-UI-003",
+      "result": "PASS",
+      "observation": "POINT, BBOX, LINESTRING, and POLYGON reached ready states."
+    },
+    {
+      "id": "DRAWING-UI-004",
+      "result": "PASS",
+      "observation": "ACCEPTED, REJECTED, EDITED, and CREATED actions saved append-only confirmations."
+    },
+    {
+      "id": "DRAWING-UI-005",
+      "result": "PASS",
+      "observation": "Unicode reviewer identity was preserved while the filename used a REV- token."
+    },
+    {
+      "id": "DRAWING-UI-006",
+      "result": "PASS",
+      "observation": "Wrong Origin and oversized/malformed JSON requests were rejected without path disclosure."
+    }
+  ],
+  "overall": "MANUAL_PASS",
+  "ready_for_human_review": false,
+  "blocking_items": [
+    "Python 3.11 is not installed in this Windows environment.",
+    "The observed GitHub Actions run completed with failure and no executed steps; Ubuntu validation is therefore unavailable from Actions.",
+    "The final acceptance-evidence commit is separate from the implementation commit; no PR readiness transition was performed."
+  ],
+  "confirmation_artifact_ids": [
+    "CONF-381E755475C37B8768D07FC8",
+    "CONF-68E99BF09D7096B16D59C0E4",
+    "CONF-5355CF11C672BA77A91082F0",
+    "CONF-EF46DF283D983602C33AA54E",
+    "CONF-327C9334687B60C3942AED4B"
+  ],
+  "evidence_paths": [
+    "docs/acceptance/issue-6-browser-annotation/README.md",
+    "docs/acceptance/issue-6-browser-annotation/manual-qa-report.json",
+    "docs/acceptance/issue-6-browser-annotation/100-percent.png",
+    "docs/acceptance/issue-6-browser-annotation/200-percent.png",
+    "docs/acceptance/issue-6-browser-annotation/fit-to-page.png",
+    "docs/acceptance/issue-6-browser-annotation/polygon-created.png"
+  ]
+}
