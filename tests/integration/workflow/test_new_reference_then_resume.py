@@ -83,6 +83,80 @@ def test_new_reference_pauses_then_resumes_same_request(tmp_path: Path) -> None:
     )
 
 
+def test_reference_resume_preserves_pending_drawing_lane(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    run_dir = runs_root / "RUN-001"
+    reference_hash, reference_size = write_source(
+        run_dir / "inputs" / "original" / "reference.pdf",
+        b"reference-v1",
+    )
+    drawing_hash, drawing_size = write_source(
+        run_dir / "inputs" / "original" / "drawing.pdf",
+        b"drawing-v1",
+    )
+    request = decode_review_request(
+        {
+            "format": "evidence-review/review-request",
+            "version": 1,
+            "case_id": "CASE-001",
+            "question": "기준문서와 도면을 함께 검토할 수 있는가?",
+            "attachments": [
+                {
+                    "attachment_id": "ATT-REF-001",
+                    "original_name": "reference.pdf",
+                    "stored_path": "inputs/original/reference.pdf",
+                    "sha256": reference_hash,
+                    "byte_size": reference_size,
+                    "mime": "application/pdf",
+                    "role": "REFERENCE_DOCUMENT",
+                    "role_confirmation": "USER_CONFIRMED",
+                    "proposed_role": None,
+                },
+                {
+                    "attachment_id": "ATT-DRAWING-001",
+                    "original_name": "drawing.pdf",
+                    "stored_path": "inputs/original/drawing.pdf",
+                    "sha256": drawing_hash,
+                    "byte_size": drawing_size,
+                    "mime": "application/pdf",
+                    "role": "CASE_DRAWING",
+                    "role_confirmation": "USER_CONFIRMED",
+                    "proposed_role": None,
+                },
+            ],
+        }
+    )
+    layout = prepare_review_run(
+        runs_root,
+        "RUN-001",
+        request,
+        recorded_at="2026-08-04T00:00:00+09:00",
+    )
+    assert layout.load_state().workflow_state == "PENDING_REFERENCE_INGESTION"
+
+    ingest_pending_references(layout, FakeReferenceBackend())
+    resumed = resume_review_run(
+        layout,
+        recorded_at="2026-08-04T00:01:00+09:00",
+    )
+    assert resumed.workflow_state == "PENDING_DRAWING_INGESTION"
+    assert tuple(event.next_state for event in load_workflow_events(layout.events_dir)) == (
+        "RECEIVED",
+        "CLASSIFYING_INPUTS",
+        "PENDING_REFERENCE_INGESTION",
+        "CLASSIFYING_INPUTS",
+        "PENDING_DRAWING_INGESTION",
+    )
+
+    event_count = len(load_workflow_events(layout.events_dir))
+    repeated = resume_review_run(
+        layout,
+        recorded_at="2026-08-04T00:02:00+09:00",
+    )
+    assert repeated.workflow_state == "PENDING_DRAWING_INGESTION"
+    assert len(load_workflow_events(layout.events_dir)) == event_count
+
+
 def test_reference_source_tamper_blocks_ingestion(tmp_path: Path) -> None:
     runs_root = tmp_path / "runs"
     run_dir = runs_root / "RUN-001"
