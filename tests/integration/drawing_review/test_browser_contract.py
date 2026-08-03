@@ -91,6 +91,7 @@ def test_javascript_generates_exact_existing_and_manual_actions() -> None:
     for server_owned_field in (
         "source_sha256",
         "confirmation_id",
+        "reviewer_token",
         "output_path",
         "relative_path",
     ):
