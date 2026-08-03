@@ -119,6 +119,26 @@ def build_parser() -> argparse.ArgumentParser:
     select_rules.add_argument("--manifest", required=True, type=Path)
     select_rules.add_argument("--context", required=True, type=Path)
 
+    documentation = subparsers.add_parser(
+        "documentation",
+        help="validate repository documentation integrity",
+    )
+    documentation_stages = documentation.add_subparsers(
+        dest="documentation_stage",
+        required=True,
+    )
+    documentation_validate = documentation_stages.add_parser(
+        "validate",
+        help="write a canonical documentation integrity report",
+    )
+    documentation_validate.add_argument(
+        "--repository-root",
+        required=True,
+        type=Path,
+    )
+    documentation_validate.add_argument("--config", required=True, type=Path)
+    documentation_validate.add_argument("--output", required=True, type=Path)
+
     math_run = subparsers.add_parser(
         "math-run",
         help="run a deterministic calculation request",
