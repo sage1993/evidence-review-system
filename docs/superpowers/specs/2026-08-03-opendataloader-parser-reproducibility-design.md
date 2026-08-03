@@ -472,8 +472,10 @@ evidence-review parser warnings collect `
 The commands are also exposed through:
 
 ```text
-python -m evidence_review ...
-python -m ansim_review ...
+python -m evidence_review parser reproducibility validate --help
+python -m evidence_review parser warnings collect --help
+python -m ansim_review parser reproducibility validate --help
+python -m ansim_review parser warnings collect --help
 ```
 
 ### 14.1 Create-only outputs

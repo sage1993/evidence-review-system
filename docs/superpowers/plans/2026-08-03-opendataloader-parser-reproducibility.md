@@ -971,8 +971,8 @@ git commit -m "test: add OpenDataLoader reproducibility matrix"
 Require exact commands:
 
 ```text
-evidence-review parser reproducibility validate
-evidence-review parser warnings collect
+evidence-review parser reproducibility validate --help
+evidence-review parser warnings collect --help
 ```
 
 Require statements that raw artifacts are immutable, warnings require review, mismatch blocks reproducibility acceptance, environment mismatch makes no equivalence claim, outputs are create-only, and validation does not invoke OpenDataLoader.

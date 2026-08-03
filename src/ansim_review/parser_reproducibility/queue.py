@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, replace
-from typing import Literal, Sequence, cast
+from typing import Literal, cast
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parser_reproducibility.warnings import (
