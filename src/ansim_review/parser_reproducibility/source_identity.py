@@ -47,7 +47,13 @@ def _decode_source_manifest(path: Path) -> tuple[SourceItem, ...]:
         return decode_source_batch(payload).sources
     except SourceIdentityAuthorityError:
         raise
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except ValueError as exc:
+        if "duplicate source_path" in str(exc):
+            raise SourceIdentityAuthorityError(
+                "SOURCE_MANIFEST_ENTRY_DUPLICATE"
+            ) from exc
+        raise SourceIdentityAuthorityError("SOURCE_MANIFEST_INVALID") from exc
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SourceIdentityAuthorityError("SOURCE_MANIFEST_INVALID") from exc
 
 
@@ -68,7 +74,9 @@ def resolve_source_identity(
         raise SourceIdentityAuthorityError("SOURCE_MANIFEST_ENTRY_DUPLICATE")
     source = matches[0]
     if source.parser is None or source.parser.kind != "OPENDATALOADER_JSON":
-        raise SourceIdentityAuthorityError("SOURCE_MANIFEST_PARSER_KIND_MISMATCH")
+        raise SourceIdentityAuthorityError(
+            "SOURCE_MANIFEST_PARSER_KIND_MISMATCH"
+        )
 
     document_id = derive_document_id(
         run_metadata.source_sha256,
