@@ -37,8 +37,9 @@ def _validate_text_command(
     language: str = "text",
     classification: str = "CURRENT",
 ) -> tuple[object, ...]:
-    block = CommandBlock(language=language, text=command, start_line=1)
-    lines = normalize_command_block(block)
+    lines = normalize_command_block(
+        CommandBlock(language=language, text=command, start_line=1)
+    )
     return validate_command_lines(lines, tmp_path, _document(tmp_path, classification))
 
 
@@ -134,6 +135,17 @@ def test_text_blocks_ignore_unrecognized_executables() -> None:
         ),
         ("python", "-m", "evidence_review", "--help"),
         ("evidence-review", "rules", "--help"),
+        (
+            "evidence-review",
+            "documentation",
+            "validate",
+            "--repository-root",
+            ".",
+            "--config",
+            "documentation-integrity.json",
+            "--output",
+            "build/report.json",
+        ),
     ],
 )
 def test_valid_project_commands_are_accepted(tokens: tuple[str, ...]) -> None:
@@ -145,29 +157,6 @@ def test_unknown_subcommand_is_error() -> None:
         ("evidence-review", "source-batch", "explode", "--root", ".")
     )
     assert error is not None
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="Task 8 registers the documentation command in the shared parser",
-)
-def test_future_documentation_command_is_registered() -> None:
-    assert (
-        validate_cli_tokens(
-            (
-                "evidence-review",
-                "documentation",
-                "validate",
-                "--repository-root",
-                ".",
-                "--config",
-                "documentation-integrity.json",
-                "--output",
-                "build/report.json",
-            )
-        )
-        is None
-    )
 
 
 @pytest.mark.parametrize(
