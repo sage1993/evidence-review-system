@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 from ansim_review import canonical_json
 from ansim_review.contracts.attachments import (
@@ -24,8 +24,12 @@ from ansim_review.contracts.validation import (
     require_fields,
 )
 
-REVIEW_REQUEST_FORMAT = "evidence-review/review-request"
-_ROLE_CONFIRMATIONS = ("USER_CONFIRMED",)
+REVIEW_REQUEST_FORMAT: Final[Literal["evidence-review/review-request"]] = (
+    "evidence-review/review-request"
+)
+_ROLE_CONFIRMATIONS: tuple[Literal["USER_CONFIRMED"], ...] = (
+    "USER_CONFIRMED",
+)
 _ATTACHMENT_ROLES: tuple[AttachmentRole, ...] = (
     "REFERENCE_DOCUMENT",
     "CASE_DRAWING",
@@ -222,7 +226,9 @@ def confirmed_attachments(request: ReviewRequest) -> tuple[ImmutableAttachment, 
     return tuple(confirmed)
 
 
-def confirmed_attachment_documents(request: ReviewRequest) -> tuple[dict[str, object], ...]:
+def confirmed_attachment_documents(
+    request: ReviewRequest,
+) -> tuple[dict[str, object], ...]:
     """Return canonical M0 documents for confirmed attachments."""
     return tuple(
         immutable_attachment_document(attachment)
