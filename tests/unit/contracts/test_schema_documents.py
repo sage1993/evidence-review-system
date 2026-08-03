@@ -12,6 +12,8 @@ EXPECTED = {
     "human-attestation.schema.json",
     "immutable-attachment.schema.json",
     "next-action.schema.json",
+    "parser-reproducibility-config.schema.json",
+    "parser-run-metadata.schema.json",
     "reason-code.schema.json",
     "review-packet-v2.schema.json",
     "source-batch.schema.json",
