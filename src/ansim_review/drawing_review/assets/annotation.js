@@ -1,7 +1,6 @@
 (() => {
   "use strict";
 
-  const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
   const buttons = Array.from(document.querySelectorAll("[data-candidate-button]"));
   const geometries = Array.from(document.querySelectorAll(".candidate-geometry"));
   const overlay = document.querySelector("[data-annotation-overlay]");
@@ -84,7 +83,7 @@
   function createPreview(tagName) {
     removePreview();
     if (!overlay) return null;
-    previewElement = document.createElementNS(SVG_NAMESPACE, tagName);
+    previewElement = document.createElementNS(overlay.namespaceURI, tagName);
     previewElement.classList.add("draft-geometry");
     overlay.append(previewElement);
     return previewElement;
@@ -120,12 +119,12 @@
     element.setAttribute("height", String(Math.max(first.y, second.y) - top));
   }
 
-  function clearDraft() {
+  function clearDraft(message = "Draft geometry cleared.") {
     draftDisplayPoints = [];
     draftGeometry = null;
     dragStart = null;
     removePreview();
-    setStatus("Draft geometry cleared.");
+    setStatus(message);
   }
 
   function finishPathDraft() {
@@ -185,7 +184,7 @@
   }
 
   function handlePointerDown(event) {
-    if (!geometryTool || geometryTool.value !== "BBOX") return;
+    if (!overlay || !geometryTool || geometryTool.value !== "BBOX") return;
     dragStart = pointerPosition(event);
     draftDisplayPoints = [dragStart];
     overlay.setPointerCapture(event.pointerId);
@@ -223,14 +222,18 @@
     return value === "" ? null : value;
   }
 
-  function commonPayload(action) {
+  function commonPayload(action, includeConfirmedValue) {
     if (!reviewer || reviewer.value.trim() === "") {
       throw new Error("Reviewer ID is required.");
     }
-    const value = nullableValue(confirmedValue);
-    const selectedUnit = nullableValue(unit);
-    if ((value === null) !== (selectedUnit === null)) {
-      throw new Error("Confirmed value and unit must be entered together.");
+    let value = null;
+    let selectedUnit = null;
+    if (includeConfirmedValue) {
+      value = nullableValue(confirmedValue);
+      selectedUnit = nullableValue(unit);
+      if ((value === null) !== (selectedUnit === null)) {
+        throw new Error("Confirmed value and unit must be entered together.");
+      }
     }
     return {
       action,
@@ -245,13 +248,8 @@
     if (selectedCandidateId === "") {
       throw new Error("Select a candidate first.");
     }
-    const payload = commonPayload(action);
-    if (action === "ACCEPTED" || action === "REJECTED") {
-      payload.confirmed_value = null;
-      payload.unit = null;
-    }
     return {
-      ...payload,
+      ...commonPayload(action, action === "EDITED"),
       candidate_id: selectedCandidateId,
       geometry: action === "EDITED" ? draftGeometry : null,
     };
@@ -268,7 +266,7 @@
       throw new Error("Create geometry before submitting.");
     }
     return {
-      ...commonPayload("CREATED"),
+      ...commonPayload("CREATED", true),
       action: "CREATED",
       annotation_id: annotationId.value.trim(),
       candidate_type: candidateTypeInput.value.trim(),
@@ -296,11 +294,11 @@
       if (!response.ok) {
         throw new Error(result.error || "Action failed.");
       }
-      setStatus(`Saved confirmation ${result.confirmation.artifact_id}.`);
       for (const radio of document.querySelectorAll("input[name=review-action]")) {
         radio.checked = false;
       }
-      clearDraft();
+      clearDraft("");
+      setStatus(`Saved confirmation ${result.confirmation.artifact_id}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Action failed.");
     }
@@ -312,7 +310,8 @@
     });
   }
   for (const geometry of geometries) {
-    geometry.addEventListener("click", () => {
+    geometry.addEventListener("click", (event) => {
+      event.stopPropagation();
       selectCandidate(geometry.dataset.candidateId || "");
     });
   }
@@ -323,7 +322,7 @@
     overlay.addEventListener("pointerup", handlePointerUp);
   }
   if (finishGeometry) finishGeometry.addEventListener("click", finishPathDraft);
-  if (clearGeometry) clearGeometry.addEventListener("click", clearDraft);
-  if (geometryTool) geometryTool.addEventListener("change", clearDraft);
+  if (clearGeometry) clearGeometry.addEventListener("click", () => clearDraft());
+  if (geometryTool) geometryTool.addEventListener("change", () => clearDraft());
   if (submitAction) submitAction.addEventListener("click", submitSelectedAction);
 })();
