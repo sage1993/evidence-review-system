@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from ansim_review.contracts.drawing import DrawingCandidate, Geometry
 from ansim_review.drawing_review.actions import decode_annotation_action
@@ -62,6 +62,7 @@ def test_unicode_reviewer_identity_uses_server_derived_path_token(
     )
 
     confirmation = load_and_verify_confirmation(case_dir, result.confirmation_entry)
+    filename = PurePosixPath(result.confirmation_entry.relative_path).name
     assert confirmation.reviewer == "김성현"
-    assert "김성현" not in result.confirmation_entry.relative_path
-    assert "-REV-" in result.confirmation_entry.relative_path
+    assert "김성현" not in filename
+    assert "-REV-" in filename
