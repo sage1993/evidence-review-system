@@ -18,6 +18,7 @@ from ansim_review.parsing.drawing_confirmation import parse_confirmation_time
 ExistingActionType = Literal["ACCEPTED", "REJECTED", "EDITED"]
 ManualActionType = Literal["CREATED"]
 
+_MAX_REVIEWER_LENGTH = 128
 _MAX_TIMESTAMP_LENGTH = 64
 _MAX_VALUE_LENGTH = 256
 _MAX_UNIT_LENGTH = 32
@@ -71,7 +72,14 @@ def _optional_bounded_string(
 
 
 def _reviewer(value: object) -> str:
-    return validate_identifier(value, "reviewer")
+    reviewer = _bounded_string(value, "reviewer", _MAX_REVIEWER_LENGTH)
+    if reviewer != reviewer.strip():
+        raise ValueError("reviewer cannot contain leading or trailing whitespace")
+    if "/" in reviewer or "\\" in reviewer:
+        raise ValueError("reviewer cannot contain path separators")
+    if any(ord(character) < 32 or ord(character) == 127 for character in reviewer):
+        raise ValueError("reviewer cannot contain control characters")
+    return reviewer
 
 
 def _confirmed_at(value: object) -> str:
