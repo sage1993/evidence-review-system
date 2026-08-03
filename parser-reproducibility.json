@@ -1,0 +1,21 @@
+{
+  "format": "evidence-review/parser-reproducibility-config",
+  "version": 1,
+  "parser_kind": "opendataloader",
+  "adapter_version": 1,
+  "json_artifact_names": [
+    "document.json"
+  ],
+  "markdown_artifact_names": [
+    "document.md"
+  ],
+  "warning_sources": [
+    "document.json",
+    "parser.log"
+  ],
+  "normalization_profile": "opendataloader-v1",
+  "allowed_nondeterministic_fields": [
+    "$.metadata.parsed_at",
+    "$.metadata.output_directory"
+  ]
+}

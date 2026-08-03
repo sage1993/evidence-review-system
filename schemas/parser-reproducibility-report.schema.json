@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sage1993/evidence-review-system/schemas/parser-reproducibility-report.schema.json",
+  "title": "Parser Reproducibility Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "status",
+    "source_sha256",
+    "run_a",
+    "run_b",
+    "canonical_equivalent",
+    "applied_normalizations",
+    "differences",
+    "findings",
+    "error_count",
+    "warning_count",
+    "summary"
+  ],
+  "properties": {
+    "format": {"const": "evidence-review/parser-reproducibility-report"},
+    "version": {"const": 1},
+    "status": {
+      "enum": [
+        "BYTE_IDENTICAL",
+        "SEMANTICALLY_IDENTICAL",
+        "MISMATCH",
+        "ENVIRONMENT_MISMATCH",
+        "PARSER_FAILED"
+      ]
+    },
+    "source_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9A-Fa-f]{64}$"
+    },
+    "run_a": {"type": ["object", "null"]},
+    "run_b": {"type": ["object", "null"]},
+    "canonical_equivalent": {"type": ["boolean", "null"]},
+    "applied_normalizations": {"type": "array", "items": {"type": "object"}},
+    "differences": {"type": "array", "items": {"type": "object"}},
+    "findings": {"type": "array", "items": {"type": "object"}},
+    "error_count": {"type": "integer", "minimum": 0},
+    "warning_count": {"type": "integer", "minimum": 0},
+    "summary": {"type": "string", "minLength": 1}
+  }
+}

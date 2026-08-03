@@ -1,4 +1,5 @@
 """Dependency-safe construction of the evidence-review CLI parser."""
+
 from __future__ import annotations
 
 import argparse
@@ -7,6 +8,7 @@ from pathlib import Path
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level command-line parser."""
+
     parser = argparse.ArgumentParser(
         prog="evidence-review",
         description="Evidence-first regulatory review for arbitrary documents",
@@ -39,7 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
         "source-batch",
         help="validate and ingest arbitrary user-provided PDF sources",
     )
-    source_stages = source_batch.add_subparsers(dest="source_stage", required=True)
+    source_stages = source_batch.add_subparsers(
+        dest="source_stage",
+        required=True,
+    )
     source_prepare = source_stages.add_parser(
         "prepare",
         help="validate a source batch and report parser and routing states",
@@ -53,6 +58,59 @@ def build_parser() -> argparse.ArgumentParser:
     source_ingest.add_argument("--root", required=True, type=Path)
     source_ingest.add_argument("--manifest", required=True, type=Path)
     source_ingest.add_argument("--output", required=True, type=Path)
+
+    parser_command = subparsers.add_parser(
+        "parser",
+        help="validate parser warnings and reproducibility without rerunning parsing",
+    )
+    parser_stages = parser_command.add_subparsers(
+        dest="parser_stage",
+        required=True,
+    )
+    reproducibility = parser_stages.add_parser(
+        "reproducibility",
+        help="compare two immutable OpenDataLoader parser runs",
+    )
+    reproducibility_actions = reproducibility.add_subparsers(
+        dest="parser_action",
+        required=True,
+    )
+    reproducibility_validate = reproducibility_actions.add_parser(
+        "validate",
+        help="write a canonical two-run reproducibility report",
+    )
+    reproducibility_validate.add_argument("--source", required=True, type=Path)
+    reproducibility_validate.add_argument("--run-a", required=True, type=Path)
+    reproducibility_validate.add_argument("--run-b", required=True, type=Path)
+    reproducibility_validate.add_argument("--config", required=True, type=Path)
+    reproducibility_validate.add_argument("--output", required=True, type=Path)
+
+    parser_warnings = parser_stages.add_parser(
+        "warnings",
+        help="collect parser warnings into review evidence",
+    )
+    warning_actions = parser_warnings.add_subparsers(
+        dest="parser_action",
+        required=True,
+    )
+    warning_collect = warning_actions.add_parser(
+        "collect",
+        help="write a warning report and stable review queue",
+    )
+    warning_collect.add_argument(
+        "--source-manifest",
+        required=True,
+        type=Path,
+    )
+    warning_collect.add_argument(
+        "--parser-artifacts",
+        required=True,
+        type=Path,
+    )
+    warning_collect.add_argument("--config", required=True, type=Path)
+    warning_collect.add_argument("--warning-output", required=True, type=Path)
+    warning_collect.add_argument("--queue-output", required=True, type=Path)
+    warning_collect.add_argument("--previous-queue", type=Path)
 
     legacy = subparsers.add_parser(
         "legacy",
@@ -77,7 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
         "release",
         help="validate release authorization artifacts",
     )
-    release_stages = release.add_subparsers(dest="release_stage", required=True)
+    release_stages = release.add_subparsers(
+        dest="release_stage",
+        required=True,
+    )
     release_attestation = release_stages.add_parser(
         "validate-attestation",
         help="validate a named process attestation against exact artifact hashes",
@@ -157,7 +218,10 @@ def build_parser() -> argparse.ArgumentParser:
         "review-run",
         help="prepare or finalize an immutable staged review run",
     )
-    review_stages = review_run.add_subparsers(dest="review_stage", required=True)
+    review_stages = review_run.add_subparsers(
+        dest="review_stage",
+        required=True,
+    )
     review_prepare = review_stages.add_parser(
         "prepare",
         help="validate deterministic inputs and prepare Track A artifacts",

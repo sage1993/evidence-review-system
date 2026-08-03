@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sage1993/evidence-review-system/schemas/parser-review-queue.schema.json",
+  "title": "Parser Warning Review Queue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "entries"],
+  "properties": {
+    "format": {"const": "evidence-review/parser-review-queue"},
+    "version": {"const": 1},
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queue_id",
+        "status",
+        "warning_id",
+        "document_id",
+        "revision_id",
+        "source_sha256",
+        "parser_version",
+        "configuration_sha256",
+        "page_number",
+        "warning_code",
+        "normalized_message_sha256",
+        "first_seen_run_id",
+        "last_seen_run_id",
+        "occurrence_count"
+      ],
+      "properties": {
+        "queue_id": {"type": "string", "pattern": "^PQUE-[0-9A-F]{24}$"},
+        "status": {"const": "REVIEW_REQUIRED"},
+        "warning_id": {"type": "string", "pattern": "^PWRN-[0-9A-F]{24}$"},
+        "document_id": {"type": "string", "minLength": 1},
+        "revision_id": {"type": "string", "minLength": 1},
+        "source_sha256": {"type": "string", "pattern": "^[0-9A-Fa-f]{64}$"},
+        "parser_version": {"type": "string", "minLength": 1},
+        "configuration_sha256": {"type": "string", "pattern": "^[0-9A-F]{64}$"},
+        "page_number": {"type": ["integer", "null"], "minimum": 1},
+        "warning_code": {"type": "string", "minLength": 1},
+        "normalized_message_sha256": {"type": "string", "pattern": "^[0-9A-F]{64}$"},
+        "first_seen_run_id": {"type": "string", "pattern": "^PRUN-[0-9A-F]{24}$"},
+        "last_seen_run_id": {"type": "string", "pattern": "^PRUN-[0-9A-F]{24}$"},
+        "occurrence_count": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}
