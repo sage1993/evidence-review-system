@@ -16,8 +16,11 @@ class FakeReferenceBackend:
     snapshot_sha256: str = "b" * 64
 
     def ingest(self, *, request, attachments, run_dir: Path):
-        del request, run_dir
+        del request
         self.calls.append(tuple(item.attachment_id for item in attachments))
+        output = run_dir / "machine" / "evidence.sqlite"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"fake-evidence-db")
         sources = tuple(
             ReferenceSourceResult(
                 attachment_ids=(attachment.attachment_id,),
