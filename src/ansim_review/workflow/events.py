@@ -8,7 +8,7 @@ import stat
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from ansim_review import canonical_json
 from ansim_review.contracts.identifiers import validate_identifier
@@ -37,7 +37,9 @@ from ansim_review.workflow.state_machine import (
     validate_transition,
 )
 
-WORKFLOW_EVENT_FORMAT = "evidence-review/workflow-event"
+WORKFLOW_EVENT_FORMAT: Final[Literal["evidence-review/workflow-event"]] = (
+    "evidence-review/workflow-event"
+)
 _REASON_CODES: tuple[ReasonCode, ...] = (
     "SOURCE_CONFLICT",
     "SOURCE_HASH_MISMATCH",
@@ -268,7 +270,9 @@ def _reject_link_ancestors(path: Path) -> None:
         if not candidate.exists():
             continue
         if candidate.is_symlink() or _is_reparse_point(candidate):
-            raise ValueError("workflow journal path must not contain links or reparse points")
+            raise ValueError(
+                "workflow journal path must not contain links or reparse points"
+            )
 
 
 def _load_json_document(raw: bytes) -> object:
