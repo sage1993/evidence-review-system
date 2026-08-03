@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ansim_review.contracts.identifiers import validate_identifier
+from ansim_review.contracts.workflow import WorkflowStateRecord
 from ansim_review.workflow.events import project_workflow_state
 from ansim_review.workflow.request import (
     ReviewRequest,
@@ -32,14 +33,18 @@ def reject_link_ancestors(path: Path) -> None:
         if not candidate.exists():
             continue
         if candidate.is_symlink() or _is_reparse_point(candidate):
-            raise ValueError("review run path must not contain links or reparse points")
+            raise ValueError(
+                "review run path must not contain links or reparse points"
+            )
 
 
 def _strict_json(raw: bytes, field: str) -> object:
     def reject_constant(value: str) -> object:
         raise ValueError(f"invalid JSON constant: {value}")
 
-    def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
         result: dict[str, object] = {}
         for key, value in pairs:
             if key in result:
@@ -61,11 +66,17 @@ def _write_create_only_or_identical(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     reject_link_ancestors(path.parent)
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
     except FileExistsError:
         if path.read_bytes() == payload:
             return
-        raise FileExistsError(f"existing run artifact differs: {path.name}") from None
+        raise FileExistsError(
+            f"existing run artifact differs: {path.name}"
+        ) from None
     with os.fdopen(descriptor, "wb") as stream:
         stream.write(payload)
         stream.flush()
@@ -104,7 +115,9 @@ class ReviewRunLayout:
         try:
             text = raw.decode("ascii")
         except UnicodeDecodeError as exc:
-            raise ValueError("request SHA-256 sidecar must be ASCII") from exc
+            raise ValueError(
+                "request SHA-256 sidecar must be ASCII"
+            ) from exc
         if not text.endswith("\n") or len(text) != 65:
             raise ValueError("request SHA-256 sidecar is malformed")
         digest = text[:-1]
@@ -112,12 +125,12 @@ class ReviewRunLayout:
             raise ValueError("request SHA-256 sidecar is malformed")
         return digest
 
-    def load_state(self):
+    def load_state(self) -> WorkflowStateRecord:
         """Rebuild current state from the append-only event journal."""
         return project_workflow_state(self.events_dir)
 
     def attachment_path(self, stored_path: str) -> Path:
-        """Resolve one already-validated immutable stored path inside this run."""
+        """Resolve one validated immutable stored path inside this run."""
         target = self.run_dir.joinpath(*stored_path.split("/"))
         resolved_run = self.run_dir.resolve()
         if not target.resolve(strict=False).is_relative_to(resolved_run):
@@ -126,7 +139,7 @@ class ReviewRunLayout:
         return target
 
     def verify_request_attachments(self, request: ReviewRequest) -> None:
-        """Rehash immutable attachment bytes before any downstream action."""
+        """Rehash immutable attachment bytes before downstream action."""
         for attachment in request.attachments:
             path = self.attachment_path(attachment.stored_path)
             if not path.is_file():
@@ -134,12 +147,14 @@ class ReviewRunLayout:
             payload = path.read_bytes()
             if len(payload) != attachment.byte_size:
                 raise ValueError(
-                    f"SOURCE_HASH_MISMATCH: byte size differs for {attachment.attachment_id}"
+                    "SOURCE_HASH_MISMATCH: byte size differs for "
+                    f"{attachment.attachment_id}"
                 )
             digest = hashlib.sha256(payload).hexdigest()
             if digest != attachment.sha256:
                 raise ValueError(
-                    f"SOURCE_HASH_MISMATCH: source differs for {attachment.attachment_id}"
+                    "SOURCE_HASH_MISMATCH: source differs for "
+                    f"{attachment.attachment_id}"
                 )
 
 
@@ -156,7 +171,9 @@ def review_run_layout(runs_root: Path, run_id: str) -> ReviewRunLayout:
         request_hash_path=run_dir / "request.sha256",
         events_dir=run_dir / "events",
         machine_dir=run_dir / "machine",
-        reference_receipt_path=run_dir / "machine" / "reference-ingestion.json",
+        reference_receipt_path=(
+            run_dir / "machine" / "reference-ingestion.json"
+        ),
     )
 
 
@@ -165,7 +182,7 @@ def initialize_review_run(
     run_id: str,
     request: ReviewRequest,
 ) -> ReviewRunLayout:
-    """Persist one immutable request while preserving pre-copied input bytes."""
+    """Persist one immutable request while preserving pre-copied inputs."""
     layout = review_run_layout(runs_root, run_id)
     reject_link_ancestors(layout.runs_root)
     layout.run_dir.mkdir(parents=True, exist_ok=True)
@@ -183,7 +200,7 @@ def initialize_review_run(
 
 
 def open_review_run(runs_root: Path, run_id: str) -> ReviewRunLayout:
-    """Open an existing run without trusting mutable state projections."""
+    """Open an existing run without trusting mutable projections."""
     layout = review_run_layout(runs_root, run_id)
     reject_link_ancestors(layout.run_dir)
     if not layout.run_dir.is_dir():
