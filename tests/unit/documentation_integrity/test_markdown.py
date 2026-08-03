@@ -24,7 +24,10 @@ def test_extracts_atx_setext_and_duplicate_heading_anchors() -> None:
     parsed = parse_markdown(
         "# First title\n\nSecond title\n------------\n\n# FIRST TITLE #\n"
     )
-    assert [(heading.text, heading.anchor, heading.line, heading.column) for heading in parsed.headings] == [
+    assert [
+        (heading.text, heading.anchor, heading.line, heading.column)
+        for heading in parsed.headings
+    ] == [
         ("First title", "first-title", 1, 3),
         ("Second title", "second-title", 3, 1),
         ("FIRST TITLE", "first-title-1", 6, 3),

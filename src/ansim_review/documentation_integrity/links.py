@@ -9,8 +9,8 @@ from typing import Protocol
 from urllib.parse import unquote, urlsplit
 
 from ansim_review.documentation_integrity.contract import (
-    DocumentClassification,
     DocumentationFinding,
+    DocumentClassification,
 )
 from ansim_review.documentation_integrity.markdown import (
     MarkdownLink,
@@ -24,8 +24,11 @@ _EXTERNAL_PREFIXES = ("https://", "http://", "ftp://", "//")
 
 
 class LinkDocument(Protocol):
-    path: str
-    classification: DocumentClassification
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def classification(self) -> DocumentClassification: ...
 
 
 @dataclass(frozen=True, slots=True)

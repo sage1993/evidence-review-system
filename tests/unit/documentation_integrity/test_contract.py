@@ -57,7 +57,11 @@ def test_config_rejects_unknown_top_level_field() -> None:
             b'evidence-review/other',
             "unsupported configuration format",
         ),
-        (b'"current_roots":["README.md","docs"]', b'"current_roots":["docs","docs"]', "duplicate path"),
+        (
+            b'"current_roots":["README.md","docs"]',
+            b'"current_roots":["docs","docs"]',
+            "duplicate path",
+        ),
     ],
 )
 def test_config_rejects_invalid_top_level_values(

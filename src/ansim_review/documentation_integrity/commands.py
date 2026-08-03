@@ -12,8 +12,8 @@ from typing import Protocol
 
 from ansim_review.cli_parser import build_parser
 from ansim_review.documentation_integrity.contract import (
-    DocumentClassification,
     DocumentationFinding,
+    DocumentClassification,
 )
 from ansim_review.documentation_integrity.markdown import CommandBlock
 
@@ -92,8 +92,11 @@ _RECOGNIZED_EXECUTABLES = frozenset(
 
 
 class CommandDocument(Protocol):
-    path: str
-    classification: DocumentClassification
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def classification(self) -> DocumentClassification: ...
 
 
 @dataclass(frozen=True, slots=True)

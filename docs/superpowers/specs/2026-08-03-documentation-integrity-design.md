@@ -2,8 +2,8 @@
 
 > Document status: CURRENT
 
-Issue: #50  
-Parent epic: #27  
+Issue: #50
+Parent epic: #27
 Approved: 2026-08-03
 
 ## 1. Purpose
@@ -293,9 +293,9 @@ A `text` block is analyzed only when a line begins with a recognized executable.
 The initial registry supports:
 
 ```text
-evidence-review ...
-python -m ansim_review ...
-python -m evidence_review ...
+evidence-review documentation validate --help
+python -m ansim_review documentation validate --help
+python -m evidence_review documentation validate --help
 pytest ...
 python -m pytest ...
 ruff check ...

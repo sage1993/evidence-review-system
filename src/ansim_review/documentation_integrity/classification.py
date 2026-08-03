@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from ansim_review.documentation_integrity.contract import (
-    DocumentClassification,
     DocumentationIntegrityConfig,
+    DocumentClassification,
 )
 
 
