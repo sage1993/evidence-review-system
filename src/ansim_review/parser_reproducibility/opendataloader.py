@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TypeAlias, cast
+from typing import TypeAlias
 
 from ansim_review.parser_reproducibility.contract import JsonValue
 
@@ -32,7 +32,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 
 def _json_value(value: object, field: str) -> JsonValue:
     if value is None or isinstance(value, (bool, int, float, str)):
-        return cast(JsonValue, value)
+        return value
     if isinstance(value, list):
         return [_json_value(item, f"{field}[]") for item in value]
     if isinstance(value, dict):
@@ -80,7 +80,9 @@ def _declared_page_order(payload: JsonObject) -> tuple[int, ...]:
                 raise ValueError(f"pages[{index}] must be an object")
             number = _element_page_number(page)
             if number is None:
-                raise ValueError(f"pages[{index}] must declare a positive page number")
+                raise ValueError(
+                    f"pages[{index}] must declare a positive page number"
+                )
             order.append(number)
         if order:
             if len(set(order)) != len(order):
@@ -97,7 +99,10 @@ def _declared_page_order(payload: JsonObject) -> tuple[int, ...]:
     return tuple(order)
 
 
-def parser_page_count(payload: JsonObject, page_numbers: tuple[int, ...]) -> int:
+def parser_page_count(
+    payload: JsonObject,
+    page_numbers: tuple[int, ...],
+) -> int:
     """Return the declared parser page count with strict fallback behavior."""
 
     declared = payload.get("number of pages", payload.get("page_count"))
@@ -127,12 +132,11 @@ def decode_opendataloader_json(data: bytes) -> OpenDataLoaderArtifact:
     value = _json_value(decoded, "root")
     if not isinstance(value, dict):
         raise ValueError("OpenDataLoader artifact root must be an object")
-    payload = cast(JsonObject, value)
-    page_numbers = _declared_page_order(payload)
+    page_numbers = _declared_page_order(value)
     return OpenDataLoaderArtifact(
-        raw_payload=payload,
+        raw_payload=value,
         page_numbers=page_numbers,
-        page_count=parser_page_count(payload, page_numbers),
+        page_count=parser_page_count(value, page_numbers),
     )
 
 
