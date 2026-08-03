@@ -18,11 +18,6 @@ from ansim_review.parsing.drawing_confirmation import parse_confirmation_time
 ExistingActionType = Literal["ACCEPTED", "REJECTED", "EDITED"]
 ManualActionType = Literal["CREATED"]
 
-_EXISTING_ACTIONS: tuple[ExistingActionType, ...] = (
-    "ACCEPTED",
-    "REJECTED",
-    "EDITED",
-)
 _MAX_TIMESTAMP_LENGTH = 64
 _MAX_VALUE_LENGTH = 256
 _MAX_UNIT_LENGTH = 32
@@ -104,7 +99,10 @@ def _value_and_unit(payload: object) -> tuple[str | None, str | None]:
     return value, unit
 
 
-def _decode_existing(payload: object, action: ExistingActionType) -> ExistingCandidateAction:
+def _decode_existing(
+    payload: object,
+    action: ExistingActionType,
+) -> ExistingCandidateAction:
     mapping = expect_mapping(payload, "annotation_action")
     fields = {
         "action",
@@ -161,7 +159,8 @@ def _decode_manual(payload: object) -> ManualCreateAction:
         action="CREATED",
         annotation_id=validate_identifier(mapping.get("annotation_id"), "annotation_id"),
         candidate_type=validate_identifier(
-            mapping.get("candidate_type"), "candidate_type"
+            mapping.get("candidate_type"),
+            "candidate_type",
         ),
         reviewer=_reviewer(mapping.get("reviewer")),
         confirmed_at=_confirmed_at(mapping.get("confirmed_at")),
@@ -177,6 +176,10 @@ def decode_annotation_action(value: object) -> AnnotationAction:
     action = expect_string(payload.get("action"), "action")
     if action == "CREATED":
         return _decode_manual(payload)
-    if action in _EXISTING_ACTIONS:
-        return _decode_existing(payload, action)
+    if action == "ACCEPTED":
+        return _decode_existing(payload, "ACCEPTED")
+    if action == "REJECTED":
+        return _decode_existing(payload, "REJECTED")
+    if action == "EDITED":
+        return _decode_existing(payload, "EDITED")
     raise ValueError(f"unsupported action: {action}")
