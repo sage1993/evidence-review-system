@@ -13,8 +13,11 @@
     "docs/superpowers/specs"
   ],
   "current_overrides": [
+    "docs/superpowers/plans/2026-08-03-documentation-integrity.md",
+    "docs/superpowers/plans/2026-08-03-opendataloader-parser-reproducibility-bindings.md",
+    "docs/superpowers/plans/2026-08-03-opendataloader-parser-reproducibility.md",
     "docs/superpowers/specs/2026-08-03-documentation-integrity-design.md",
-    "docs/superpowers/plans/2026-08-03-documentation-integrity.md"
+    "docs/superpowers/specs/2026-08-03-opendataloader-parser-reproducibility-design.md"
   ],
   "historical_overrides": [],
   "generated_documents": [
