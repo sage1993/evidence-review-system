@@ -83,7 +83,10 @@ def _parser_dispatch(args: argparse.Namespace) -> int:
         validate_command,
     )
 
-    if args.parser_stage == "reproducibility" and args.parser_action == "validate":
+    if (
+        args.parser_stage == "reproducibility"
+        and args.parser_action == "validate"
+    ):
         return validate_command(
             cast(Path, args.source),
             cast(Path, args.run_a),
@@ -93,8 +96,8 @@ def _parser_dispatch(args: argparse.Namespace) -> int:
         )
     if args.parser_stage == "warnings" and args.parser_action == "collect":
         return collect_warnings_command(
-            cast(Path, args.source),
-            cast(Path, args.run),
+            cast(Path, args.source_manifest),
+            cast(Path, args.parser_artifacts),
             cast(Path, args.config),
             cast(Path, args.warning_output),
             cast(Path, args.queue_output),
