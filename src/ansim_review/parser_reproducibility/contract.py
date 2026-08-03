@@ -10,8 +10,9 @@ from typing import Literal, TypeAlias, cast
 
 from ansim_review.contracts.identifiers import validate_identifier, validate_version
 
-JsonScalar: TypeAlias = None | bool | int | float | str
-JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+JsonValue: TypeAlias = (
+    None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
+)
 ParserKind: TypeAlias = Literal["opendataloader"]
 NormalizationProfileName: TypeAlias = Literal["opendataloader-v1"]
 PlatformFamily: TypeAlias = Literal["windows", "linux", "macos", "other"]
@@ -167,7 +168,7 @@ def _path_tuple(value: object, field: str) -> tuple[str, ...]:
 
 def _decode_json_value(value: object, field: str) -> JsonValue:
     if value is None or isinstance(value, (bool, int, float, str)):
-        return cast(JsonScalar, value)
+        return value
     if isinstance(value, list):
         return [_decode_json_value(item, f"{field}[]") for item in value]
     if isinstance(value, dict):
@@ -232,21 +233,30 @@ def decode_reproducibility_config(data: bytes) -> ReproducibilityConfig:
     )
     if adapter_version != 1:
         raise ValueError("unsupported adapter version")
+    json_artifact_names = _path_tuple(
+        payload["json_artifact_names"],
+        "json_artifact_names",
+    )
+    markdown_artifact_names = _path_tuple(
+        payload["markdown_artifact_names"],
+        "markdown_artifact_names",
+    )
+    warning_sources = _path_tuple(
+        payload["warning_sources"],
+        "warning_sources",
+    )
+    if json_artifact_names != ("document.json",):
+        raise ValueError("unsupported JSON artifact names")
+    if markdown_artifact_names != ("document.md",):
+        raise ValueError("unsupported Markdown artifact names")
+    if warning_sources != ("document.json", "parser.log"):
+        raise ValueError("unsupported warning sources")
     return ReproducibilityConfig(
         parser_kind=_decode_parser_kind(payload["parser_kind"]),
         adapter_version=adapter_version,
-        json_artifact_names=_path_tuple(
-            payload["json_artifact_names"],
-            "json_artifact_names",
-        ),
-        markdown_artifact_names=_path_tuple(
-            payload["markdown_artifact_names"],
-            "markdown_artifact_names",
-        ),
-        warning_sources=_path_tuple(
-            payload["warning_sources"],
-            "warning_sources",
-        ),
+        json_artifact_names=json_artifact_names,
+        markdown_artifact_names=markdown_artifact_names,
+        warning_sources=warning_sources,
         normalization_profile=_decode_profile(payload["normalization_profile"]),
         allowed_nondeterministic_fields=_decode_allowlist(
             payload["allowed_nondeterministic_fields"]
