@@ -6,7 +6,6 @@ import pytest
 
 from ansim_review.contracts.drawing import DrawingCandidate, Geometry
 
-
 _SOURCE_HASH = "a" * 64
 
 

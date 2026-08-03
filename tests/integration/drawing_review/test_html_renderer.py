@@ -10,7 +10,6 @@ from ansim_review.drawing_review.view_model import (
     build_drawing_review_view_model,
 )
 
-
 _SOURCE_HASH = "a" * 64
 
 

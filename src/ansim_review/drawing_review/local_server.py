@@ -25,6 +25,7 @@ from ansim_review.parsing.drawing_case import CaseManifestEntry
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _DEFAULT_MAX_BODY_BYTES = 64 * 1024
+_MAX_REJECT_DRAIN_BYTES = 4 * 1024 * 1024
 _CSP = (
     "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
@@ -132,7 +133,29 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         ).encode("utf-8")
         self._send_bytes(status, body, "application/json; charset=utf-8")
 
-    def _reject(self, status: int, code: str) -> None:
+    def _discard_request_body(self) -> None:
+        """Drain a bounded rejected body so Windows clients receive the response."""
+        raw_length = self.headers.get("Content-Length")
+        if raw_length is None:
+            return
+        try:
+            length = int(raw_length)
+        except ValueError:
+            return
+        if length <= 0:
+            return
+        remaining = min(length, _MAX_REJECT_DRAIN_BYTES)
+        while remaining:
+            chunk = self.rfile.read(min(8192, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+        if length > _MAX_REJECT_DRAIN_BYTES:
+            self.close_connection = True
+
+    def _reject(self, status: int, code: str, *, drain_body: bool = True) -> None:
+        if drain_body:
+            self._discard_request_body()
         self._send_json(status, {"error": code})
 
     def _matches_route(self, suffix: str) -> bool:
@@ -216,16 +239,16 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
                     ] = result.candidate_entry
                 self.state.results.append(result)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
-            self._reject(400, "INVALID_ACTION")
+            self._reject(400, "INVALID_ACTION", drain_body=False)
             return
         except FileNotFoundError:
-            self._reject(404, "NOT_FOUND")
+            self._reject(404, "NOT_FOUND", drain_body=False)
             return
         except FileExistsError:
-            self._reject(409, "ALREADY_EXISTS")
+            self._reject(409, "ALREADY_EXISTS", drain_body=False)
             return
         except OSError:
-            self._reject(500, "INTERNAL_ERROR")
+            self._reject(500, "INTERNAL_ERROR", drain_body=False)
             return
         self._send_json(201, _result_document(result))
 
