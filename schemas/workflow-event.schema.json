@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/evidence-review/workflow-event.schema.json",
+  "$id": "https://evidence-review.local/schemas/workflow-event.schema.json",
   "title": "Evidence Review Workflow Event",
   "type": "object",
   "additionalProperties": false,
