@@ -21,6 +21,7 @@ from ansim_review.parser_reproducibility.run_manifest import (
     read_parser_run_metadata,
 )
 from ansim_review.parser_reproducibility.source_identity import (
+    SourceIdentity,
     SourceIdentityAuthorityError,
     resolve_source_identity,
 )
@@ -135,7 +136,7 @@ def validate_command(
 def _warning_authority(
     source_manifest: Path,
     parser_artifacts: Path,
-):
+) -> SourceIdentity:
     try:
         metadata = read_parser_run_metadata(parser_artifacts)
     except FileNotFoundError as exc:
