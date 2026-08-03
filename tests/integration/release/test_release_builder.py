@@ -38,7 +38,32 @@ def _workspace(root: Path) -> None:
         skill = root / f"skills/0{index}-skill"
         skill.mkdir()
         (skill / "SKILL.md").write_text(f"# skill {index}", encoding="utf-8")
-    (root / "AGENTS.md").write_text("# agents", encoding="utf-8")
+    (root / "README.md").write_text("# Release fixture\n", encoding="utf-8")
+    (root / "AGENTS.md").write_text("# agents\n", encoding="utf-8")
+    (root / "docs").mkdir()
+    (root / "docs/OFFLINE_EXECUTION.md").write_text(
+        "# Offline Execution\n",
+        encoding="utf-8",
+    )
+    (root / "documentation-integrity.json").write_text(
+        json.dumps(
+            {
+                "format": "evidence-review/documentation-integrity-config",
+                "version": 1,
+                "current_roots": [
+                    "README.md",
+                    "AGENTS.md",
+                    "docs/OFFLINE_EXECUTION.md",
+                    "skills",
+                ],
+                "historical_roots": [],
+                "current_overrides": [],
+                "historical_overrides": [],
+                "generated_documents": [],
+            }
+        ),
+        encoding="utf-8",
+    )
     (root / "runs").mkdir()
     (root / "runs/final-review-packet.json").write_text(
         '{"human_decision":null,"status":"READY_FOR_HUMAN_REVIEW"}',
