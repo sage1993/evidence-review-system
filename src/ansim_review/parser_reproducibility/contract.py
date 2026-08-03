@@ -197,7 +197,10 @@ def _decode_allowlist(value: object) -> tuple[str, ...]:
         raise ValueError("allowed_nondeterministic_fields must be an array")
     result: list[str] = []
     for index, item in enumerate(value):
-        field = _nonempty_string(item, f"allowed_nondeterministic_fields[{index}]")
+        field = _nonempty_string(
+            item,
+            f"allowed_nondeterministic_fields[{index}]",
+        )
         if ".." in field:
             raise ValueError("recursive JSON paths are prohibited")
         if "*" in field:
@@ -206,7 +209,9 @@ def _decode_allowlist(value: object) -> tuple[str, ...]:
             raise ValueError(f"unsupported normalization field: {field}")
         result.append(field)
     if len(set(result)) != len(result):
-        raise ValueError("allowed_nondeterministic_fields contains a duplicate entry")
+        raise ValueError(
+            "allowed_nondeterministic_fields contains a duplicate entry"
+        )
     return tuple(result)
 
 
@@ -215,19 +220,33 @@ def decode_reproducibility_config(data: bytes) -> ReproducibilityConfig:
 
     payload = _load_object(data, "parser reproducibility configuration")
     _require_exact_keys(payload, _CONFIG_KEYS)
-    _require_literal(payload["format"], "evidence-review/parser-reproducibility-config", "configuration format")
+    _require_literal(
+        payload["format"],
+        "evidence-review/parser-reproducibility-config",
+        "configuration format",
+    )
     _require_literal(payload["version"], 1, "configuration version")
-    adapter_version = _positive_int(payload["adapter_version"], "adapter_version")
+    adapter_version = _positive_int(
+        payload["adapter_version"],
+        "adapter_version",
+    )
     if adapter_version != 1:
         raise ValueError("unsupported adapter version")
     return ReproducibilityConfig(
         parser_kind=_decode_parser_kind(payload["parser_kind"]),
         adapter_version=adapter_version,
-        json_artifact_names=_path_tuple(payload["json_artifact_names"], "json_artifact_names"),
-        markdown_artifact_names=_path_tuple(
-            payload["markdown_artifact_names"], "markdown_artifact_names"
+        json_artifact_names=_path_tuple(
+            payload["json_artifact_names"],
+            "json_artifact_names",
         ),
-        warning_sources=_path_tuple(payload["warning_sources"], "warning_sources"),
+        markdown_artifact_names=_path_tuple(
+            payload["markdown_artifact_names"],
+            "markdown_artifact_names",
+        ),
+        warning_sources=_path_tuple(
+            payload["warning_sources"],
+            "warning_sources",
+        ),
         normalization_profile=_decode_profile(payload["normalization_profile"]),
         allowed_nondeterministic_fields=_decode_allowlist(
             payload["allowed_nondeterministic_fields"]
@@ -240,38 +259,65 @@ def decode_parser_run_metadata(data: bytes) -> ParserRunMetadata:
 
     payload = _load_object(data, "parser run metadata")
     _require_exact_keys(payload, _RUN_KEYS)
-    _require_literal(payload["format"], "evidence-review/opendataloader-parser-run", "parser run format")
+    _require_literal(
+        payload["format"],
+        "evidence-review/opendataloader-parser-run",
+        "parser run format",
+    )
     _require_literal(payload["version"], 1, "parser run version")
-    source_sha256 = _nonempty_string(payload["source_sha256"], "source_sha256")
+    source_sha256 = _nonempty_string(
+        payload["source_sha256"],
+        "source_sha256",
+    )
     if not _SHA256.fullmatch(source_sha256):
-        raise ValueError("source_sha256 must be 64 lowercase hexadecimal characters")
+        raise ValueError(
+            "source_sha256 must be 64 lowercase hexadecimal characters"
+        )
     document_id = validate_identifier(payload["document_id"], "document_id")
     revision_id = validate_identifier(payload["revision_id"], "revision_id")
     expected_revision_id = f"{document_id}-{source_sha256[:12]}"
     if revision_id != expected_revision_id:
-        raise ValueError("revision_id does not match document_id and source_sha256")
-    adapter_version = _positive_int(payload["adapter_version"], "adapter_version")
+        raise ValueError(
+            "revision_id does not match document_id and source_sha256"
+        )
+    adapter_version = _positive_int(
+        payload["adapter_version"],
+        "adapter_version",
+    )
     if adapter_version != 1:
         raise ValueError("unsupported adapter version")
-    configuration = _decode_json_value(payload["parser_configuration"], "parser_configuration")
+    configuration = _decode_json_value(
+        payload["parser_configuration"],
+        "parser_configuration",
+    )
     if not isinstance(configuration, dict):
         raise ValueError("parser_configuration must be an object")
     platform = payload["platform_family"]
-    if platform not in {"windows", "linux", "macos", "other"}:
+    if not isinstance(platform, str) or platform not in {
+        "windows",
+        "linux",
+        "macos",
+        "other",
+    }:
         raise ValueError("unsupported platform_family")
     return ParserRunMetadata(
         source_relative_path=_relative_posix_path(
-            payload["source_relative_path"], "source_relative_path"
+            payload["source_relative_path"],
+            "source_relative_path",
         ),
         source_sha256=source_sha256,
         source_size=_positive_int(payload["source_size"], "source_size"),
         source_page_count=_positive_int(
-            payload["source_page_count"], "source_page_count"
+            payload["source_page_count"],
+            "source_page_count",
         ),
         document_id=document_id,
         revision_id=revision_id,
         parser_kind=_decode_parser_kind(payload["parser_kind"]),
-        parser_version=validate_version(payload["parser_version"], "parser_version"),
+        parser_version=validate_version(
+            payload["parser_version"],
+            "parser_version",
+        ),
         adapter_version=adapter_version,
         parser_configuration=configuration,
         platform_family=cast(PlatformFamily, platform),
