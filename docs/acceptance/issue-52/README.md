@@ -4,9 +4,25 @@
 
 ## Current verdict
 
-`NOT VERIFIED — DO NOT READY / DO NOT MERGE / DO NOT CLOSE`
+`IMPLEMENTED / NOT VERIFIED — DO NOT READY / DO NOT MERGE / DO NOT CLOSE`
 
-Implementation is present on `agent/issue-52-opendataloader-reproducibility`, but this ledger does not claim that local tests, static checks, wheel installation, or real OpenDataLoader fixture acceptance passed. GitHub Actions is excluded from acceptance under the repository's adopted manual-validation policy.
+The approved implementation scope is present on `agent/issue-52-opendataloader-reproducibility`. This ledger does not claim that local tests, static checks, wheel installation, or real OpenDataLoader fixture acceptance passed. GitHub Actions is excluded from acceptance under the repository's adopted manual-validation policy.
+
+The implementation session could not obtain a runnable repository checkout because the execution container could not resolve or download the connected GitHub repository. No pytest, Ruff, mypy, compileall, documentation report, or wheel result is recorded from that environment.
+
+## Implemented scope awaiting verification
+
+- strict `parser-reproducibility.json` and immutable `parser-run.json` contracts;
+- independent PDF page counting with `pypdf>=5,<6` for two-run validation;
+- raw JSON/Markdown comparison and closed in-memory normalization;
+- text, table, image, bounding-box, page-order, relationship, Markdown, and warning mismatch classification;
+- exact OpenDataLoader warning taxonomy with raw-message preservation;
+- stable `PWRN-*`, `PQUE-*`, and `PRUN-*` identities;
+- immutable `REVIEW_REQUIRED` queue history with tamper checking;
+- create-only single-output and all-or-nothing multi-output CLI writes;
+- warning-only source-batch and `parser-run.json` identity binding without reopening the PDF;
+- generated text, table, and warning fixture matrix;
+- current user documentation and Stage 1 workflow guidance.
 
 ## Required implementation evidence
 
@@ -26,23 +42,23 @@ The final record must identify:
 
 | Gate | Current status |
 |---|---|
-| Strict configuration and parser-run authority | NOT VERIFIED |
-| Independent source PDF page count | NOT VERIFIED |
-| Raw and canonical JSON/Markdown comparison | NOT VERIFIED |
-| Warning taxonomy and raw-message preservation | NOT VERIFIED |
-| Stable `REVIEW_REQUIRED` queue | NOT VERIFIED |
-| Text fixture | NOT VERIFIED |
-| Table fixture | NOT VERIFIED |
-| Warning fixture | NOT VERIFIED |
-| Create-only and concurrent output protection | NOT VERIFIED |
-| Full pytest | NOT VERIFIED |
-| Ruff | NOT VERIFIED |
-| strict mypy | NOT VERIFIED |
-| compileall | NOT VERIFIED |
-| documentation integrity | NOT VERIFIED |
-| Python 3.11 wheel | NOT VERIFIED |
-| Python 3.13 wheel | NOT VERIFIED |
-| Human review | NOT VERIFIED |
+| Strict configuration and parser-run authority | IMPLEMENTED / NOT VERIFIED |
+| Independent source PDF page count | IMPLEMENTED / NOT VERIFIED |
+| Raw and canonical JSON/Markdown comparison | IMPLEMENTED / NOT VERIFIED |
+| Warning taxonomy and raw-message preservation | IMPLEMENTED / NOT VERIFIED |
+| Stable `REVIEW_REQUIRED` queue | IMPLEMENTED / NOT VERIFIED |
+| Text fixture | IMPLEMENTED / NOT VERIFIED |
+| Table fixture | IMPLEMENTED / NOT VERIFIED |
+| Warning fixture | IMPLEMENTED / NOT VERIFIED |
+| Create-only and concurrent output protection | PARTIALLY TESTED IN CODE / NOT EXECUTED |
+| Full pytest | NOT RUN |
+| Ruff | NOT RUN |
+| strict mypy | NOT RUN |
+| compileall | NOT RUN |
+| documentation integrity | NOT RUN |
+| Python 3.11 wheel | NOT RUN |
+| Python 3.13 wheel | NOT RUN |
+| Human review | NOT STARTED |
 
 ## Acceptance rules
 
@@ -56,6 +72,7 @@ The final record must identify:
 
 ## Actions not authorized by this ledger
 
+- Draft PR creation before local verification
 - Draft PR Ready conversion
 - merge
 - Issue #52 closure
