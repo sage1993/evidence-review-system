@@ -1,0 +1,65 @@
+@page { size: A4 landscape; margin: 10mm; }
+:root {
+  font-family: Arial, "Noto Sans KR", sans-serif;
+  color: #161616;
+  background: #f4f5f7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #c9cdd3;
+  background: #fff;
+}
+header h1 { margin: 0; font-size: 18px; }
+header code { overflow-wrap: anywhere; }
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 300px);
+  min-height: calc(100vh - 58px);
+}
+.panel { padding: 14px; overflow: auto; background: #fff; }
+.panel + .panel { border-left: 1px solid #c9cdd3; }
+.candidate-list { margin: 0; padding: 0; list-style: none; }
+.candidate-list button {
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 9px;
+  border: 1px solid #b6bbc3;
+  border-radius: 4px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.candidate-list button.is-selected { outline: 2px solid currentColor; }
+.canvas-panel { padding: 16px; overflow: auto; background: #dde1e6; }
+.page-canvas { position: relative; margin: 0 auto; max-width: 1200px; background: #fff; }
+.page-canvas img { display: block; width: 100%; height: auto; }
+.page-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.candidate-geometry {
+  fill: rgba(0, 0, 0, 0.08);
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+.candidate-geometry.is-selected { stroke-width: 4; }
+.candidate-point { fill: #fff; }
+fieldset { margin: 16px 0 0; padding: 10px; border: 1px solid #b6bbc3; }
+label { display: block; margin: 7px 0; }
+.detail-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+.warning { padding: 10px; border: 2px solid #161616; font-weight: 700; }
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: 220px minmax(0, 1fr); }
+  .detail-panel { grid-column: 1 / -1; border-left: 0; border-top: 1px solid #c9cdd3; }
+}
+@media print {
+  header { position: static; }
+  .workspace { display: block; }
+  .panel { overflow: visible; }
+  .candidate-list button { break-inside: avoid; }
+}
