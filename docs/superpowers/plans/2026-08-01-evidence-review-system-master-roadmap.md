@@ -73,6 +73,7 @@ M2 is complete only when all of the following are true:
 - all four M0 geometry types remain aligned at 100%, 200%, and fit-to-page zoom;
 - no reviewer action is selected by default;
 - browser payloads cannot set source hashes, output paths, confirmation IDs, or manual candidate IDs;
+- reviewer identity is preserved separately from the server-derived confirmation filename token;
 - existing candidate accept/reject/edit and reviewer-manual create actions produce create-only or append-only artifacts;
 - Host, Origin, access token, body-size, content-type, case-root, and path checks fail closed;
 - confirmed values reach Math or Rule Engine binding only after candidate, confirmation, and immutable source hashes are reverified;
