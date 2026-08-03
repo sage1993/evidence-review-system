@@ -6,9 +6,9 @@ import base64
 from collections.abc import Mapping, Sequence
 from html import escape
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
-CoordinateSystem = Literal["PDF_BOTTOM_LEFT_POINTS", "IMAGE_TOP_LEFT_PIXELS"]
+from ansim_review.contracts.drawing import CoordinateSystem
 
 _ALLOWED_IMAGE_MIMES = ("image/png", "image/jpeg")
 _COORDINATE_SYSTEMS: tuple[CoordinateSystem, ...] = (
