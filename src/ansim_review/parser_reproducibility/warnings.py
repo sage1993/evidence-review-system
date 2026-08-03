@@ -39,6 +39,7 @@ _PAGE_PATTERNS = (
 _CODE_PREFIX = re.compile(
     r"^(?:\[(?P<bracket>[A-Z_]+)\]|(?P<plain>[A-Z_]+):)\s*(?P<message>.*)$"
 )
+_RUN_TOKEN_PATH = re.compile(r"<RUN_ROOT>(?P<suffix>(?:[\\/][^\s)\]}>;,]+)*)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +105,10 @@ def _normalized_message(message: str, run_root: Path) -> str:
     for root_form in sorted(root_forms, key=len, reverse=True):
         if root_form:
             normalized = normalized.replace(root_form, "<RUN_ROOT>")
-    return normalized.replace("<RUN_ROOT>\\", "<RUN_ROOT>/")
+    return _RUN_TOKEN_PATH.sub(
+        lambda match: "<RUN_ROOT>" + match.group("suffix").replace("\\", "/"),
+        normalized,
+    )
 
 
 def _warning_code(value: object) -> WarningCode:
@@ -113,7 +117,11 @@ def _warning_code(value: object) -> WarningCode:
     return "PARSER_WARNING_UNKNOWN"
 
 
-def _page_from_record(record: JsonObject, message: str, context: WarningContext) -> int | None:
+def _page_from_record(
+    record: JsonObject,
+    message: str,
+    context: WarningContext,
+) -> int | None:
     value = record.get("page_number", record.get("page number"))
     if isinstance(value, int) and not isinstance(value, bool):
         if 1 <= value <= context.parser_page_count:
@@ -169,7 +177,10 @@ def warning_id_for(warning: ParserWarning) -> str:
     return f"PWRN-{digest}"
 
 
-def _warning_lists(value: JsonValue, path: str = "$") -> tuple[tuple[str, list[JsonValue]], ...]:
+def _warning_lists(
+    value: JsonValue,
+    path: str = "$",
+) -> tuple[tuple[str, list[JsonValue]], ...]:
     found: list[tuple[str, list[JsonValue]]] = []
     if isinstance(value, dict):
         for key, child in value.items():
@@ -213,12 +224,18 @@ def _warnings_from_json(
                 raise ValueError(f"{location} must be a string or object")
             message_value = value.get("message")
             if not isinstance(message_value, str) or not message_value:
-                raise ValueError(f"{location}.message must be a non-empty string")
+                raise ValueError(
+                    f"{location}.message must be a non-empty string"
+                )
             warnings.append(
                 _new_warning(
                     code=_warning_code(value.get("code")),
                     message=message_value,
-                    page_number=_page_from_record(value, message_value, context),
+                    page_number=_page_from_record(
+                        value,
+                        message_value,
+                        context,
+                    ),
                     raw_source_relative_path="document.json",
                     raw_location=location,
                     context=context,
@@ -227,19 +244,29 @@ def _warnings_from_json(
     return warnings
 
 
-def _warnings_from_log(log_text: str, context: WarningContext) -> list[ParserWarning]:
+def _warnings_from_log(
+    log_text: str,
+    context: WarningContext,
+) -> list[ParserWarning]:
     warnings: list[ParserWarning] = []
     for line_number, raw_line in enumerate(log_text.splitlines(), start=1):
         if not raw_line.strip():
             continue
         match = _CODE_PREFIX.match(raw_line)
-        raw_code = None if match is None else (match.group("bracket") or match.group("plain"))
+        raw_code = (
+            None
+            if match is None
+            else (match.group("bracket") or match.group("plain"))
+        )
         message = raw_line if match is None else match.group("message")
         warnings.append(
             _new_warning(
                 code=_warning_code(raw_code),
                 message=message,
-                page_number=_page_from_message(raw_line, context.parser_page_count),
+                page_number=_page_from_message(
+                    raw_line,
+                    context.parser_page_count,
+                ),
                 raw_source_relative_path="parser.log",
                 raw_location=f"line:{line_number}",
                 context=context,
