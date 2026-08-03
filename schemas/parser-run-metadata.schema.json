@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sage1993/evidence-review-system/schemas/parser-run-metadata.schema.json",
+  "title": "OpenDataLoader Parser Run Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "source_relative_path",
+    "source_sha256",
+    "source_size",
+    "source_page_count",
+    "document_id",
+    "revision_id",
+    "parser_kind",
+    "parser_version",
+    "adapter_version",
+    "parser_configuration",
+    "platform_family"
+  ],
+  "properties": {
+    "format": {
+      "const": "evidence-review/opendataloader-parser-run"
+    },
+    "version": {
+      "const": 1
+    },
+    "source_relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*:)(?!.*//).+$"
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_page_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "document_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "revision_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "parser_kind": {
+      "const": "opendataloader"
+    },
+    "parser_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "adapter_version": {
+      "const": 1
+    },
+    "parser_configuration": {
+      "type": "object"
+    },
+    "platform_family": {
+      "enum": [
+        "windows",
+        "linux",
+        "macos",
+        "other"
+      ]
+    }
+  }
+}

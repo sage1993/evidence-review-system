@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sage1993/evidence-review-system/schemas/parser-reproducibility-config.schema.json",
+  "title": "Parser Reproducibility Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "parser_kind",
+    "adapter_version",
+    "json_artifact_names",
+    "markdown_artifact_names",
+    "warning_sources",
+    "normalization_profile",
+    "allowed_nondeterministic_fields"
+  ],
+  "properties": {
+    "format": {
+      "const": "evidence-review/parser-reproducibility-config"
+    },
+    "version": {
+      "const": 1
+    },
+    "parser_kind": {
+      "const": "opendataloader"
+    },
+    "adapter_version": {
+      "const": 1
+    },
+    "json_artifact_names": {
+      "const": ["document.json"]
+    },
+    "markdown_artifact_names": {
+      "const": ["document.md"]
+    },
+    "warning_sources": {
+      "const": ["document.json", "parser.log"]
+    },
+    "normalization_profile": {
+      "const": "opendataloader-v1"
+    },
+    "allowed_nondeterministic_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "$.metadata.parsed_at",
+          "$.metadata.output_directory"
+        ]
+      }
+    }
+  }
+}

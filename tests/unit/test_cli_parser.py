@@ -26,3 +26,54 @@ def test_parser_builder_is_shared_and_existing_commands_remain() -> None:
     )
     assert prepared.command == "source-batch"
     assert selected.rules_stage == "select"
+
+
+def test_parser_reproducibility_command_shape() -> None:
+    args = build_parser().parse_args(
+        [
+            "parser",
+            "reproducibility",
+            "validate",
+            "--source",
+            "source.pdf",
+            "--run-a",
+            "run-a",
+            "--run-b",
+            "run-b",
+            "--config",
+            "parser-reproducibility.json",
+            "--output",
+            "report.json",
+        ]
+    )
+
+    assert args.command == "parser"
+    assert args.parser_stage == "reproducibility"
+    assert args.parser_action == "validate"
+    assert args.source.name == "source.pdf"
+
+
+def test_parser_warning_command_uses_source_manifest_authority() -> None:
+    args = build_parser().parse_args(
+        [
+            "parser",
+            "warnings",
+            "collect",
+            "--source-manifest",
+            "source-batch.json",
+            "--parser-artifacts",
+            "parser-output",
+            "--config",
+            "parser-reproducibility.json",
+            "--warning-output",
+            "warnings.json",
+            "--queue-output",
+            "queue.json",
+        ]
+    )
+
+    assert args.parser_stage == "warnings"
+    assert args.source_manifest.name == "source-batch.json"
+    assert args.parser_artifacts.name == "parser-output"
+    assert not hasattr(args, "source")
+    assert not hasattr(args, "run")
