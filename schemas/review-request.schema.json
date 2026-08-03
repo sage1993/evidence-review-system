@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/evidence-review/review-request.schema.json",
+  "title": "Evidence Review Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "case_id",
+    "question",
+    "attachments"
+  ],
+  "properties": {
+    "format": {
+      "const": "evidence-review/review-request"
+    },
+    "version": {
+      "const": 1
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/attachment"
+      }
+    }
+  },
+  "$defs": {
+    "role": {
+      "enum": [
+        "REFERENCE_DOCUMENT",
+        "CASE_DRAWING",
+        "CASE_TABLE",
+        "SUPPORTING_IMAGE"
+      ]
+    },
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_id",
+        "original_name",
+        "stored_path",
+        "sha256",
+        "byte_size",
+        "mime",
+        "role",
+        "role_confirmation",
+        "proposed_role"
+      ],
+      "properties": {
+        "attachment_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "original_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stored_path": {
+          "type": "string",
+          "pattern": "^inputs/original/[^/\\\\]+(?:/[^/\\\\]+)*$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/role"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role_confirmation": {
+          "enum": [
+            "USER_CONFIRMED",
+            null
+          ]
+        },
+        "proposed_role": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/role"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "role_confirmation": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "role_confirmation": {
+                "const": "USER_CONFIRMED"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
