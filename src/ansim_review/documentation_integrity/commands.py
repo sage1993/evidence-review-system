@@ -70,8 +70,7 @@ _RECOGNIZED_PLACEHOLDERS = frozenset(
     }
 )
 _PLACEHOLDER_RE = re.compile(
-    r"^(?:<[^>]+>|\$\{[^}]+\}|\$env:[A-Za-z_][A-Za-z0-9_]*|"
-    r"\$[A-Za-z_][A-Za-z0-9_]*|%[^%]+%)$"
+    r"^(?:<[^>]+>|\$\{[^}]+\}|\$env:[A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z_][A-Za-z0-9_]*|%[^%]+%)$"
 )
 _PROMPT_RE = re.compile(r"^(?:PS\s+[^>]*>|>>|\$|>)\s*")
 _WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[/\\]")
@@ -154,8 +153,7 @@ def _token_segments(raw: str) -> tuple[tuple[tuple[str, ...], str], ...]:
             continue
         current.append(token)
     if current:
-        raw_segment = raw if not segments else " ".join(current)
-        segments.append((tuple(current), raw_segment))
+        segments.append((tuple(current), raw if len(segments) == 0 else " ".join(current)))
     return tuple(segments)
 
 
@@ -173,14 +171,10 @@ def normalize_command_block(block: CommandBlock) -> tuple[CommandLine, ...]:
                 continue
             if not _is_recognized(tokens):
                 continue
-            normalized_raw = raw if len(segments) == 1 else segment_raw
-            result.append(
-                CommandLine(
-                    tokens=tokens,
-                    line=line_number,
-                    raw=normalized_raw,
-                )
-            )
+            normalized_raw = segment_raw
+            if len(segments) == 1:
+                normalized_raw = raw
+            result.append(CommandLine(tokens=tokens, line=line_number, raw=normalized_raw))
     return tuple(result)
 
 
@@ -202,9 +196,7 @@ def validate_cli_tokens(tokens: Sequence[str]) -> str | None:
     if arguments is None:
         return "not a project CLI command"
     replaced = tuple(
-        "__DOCUMENTATION_PLACEHOLDER__"
-        if token in _RECOGNIZED_PLACEHOLDERS
-        else token
+        "__DOCUMENTATION_PLACEHOLDER__" if token in _RECOGNIZED_PLACEHOLDERS else token
         for token in arguments
     )
     parser = build_parser()
@@ -226,11 +218,7 @@ def _tool_family(tokens: Sequence[str]) -> tuple[str, tuple[str, ...]] | None:
     executable = tokens[0].casefold()
     offset = 1
     family: str | None = None
-    if (
-        executable in {"python", "python3", "py"}
-        and len(tokens) >= 3
-        and tokens[1] == "-m"
-    ):
+    if executable in {"python", "python3", "py"} and len(tokens) >= 3 and tokens[1] == "-m":
         module = tokens[2].casefold()
         offset = 3
         if module in {"pytest", "mypy", "compileall"}:
@@ -290,11 +278,7 @@ def _script_target(tokens: Sequence[str]) -> str | None:
         candidate = tokens[1]
         if candidate.casefold().endswith(".ps1"):
             return candidate
-    if (
-        executable == "powershell"
-        and len(tokens) >= 3
-        and tokens[1].casefold() == "-file"
-    ):
+    if executable == "powershell" and len(tokens) >= 3 and tokens[1].casefold() == "-file":
         candidate = tokens[2]
         if candidate.casefold().endswith(".ps1"):
             return candidate
@@ -353,6 +337,8 @@ def validate_command_lines(
     document: CommandDocument,
 ) -> tuple[DocumentationFinding, ...]:
     """Validate normalized command lines without executing any command."""
+    if document.classification == "HISTORICAL":
+        return ()
     findings: list[DocumentationFinding] = []
     root = repository_root.resolve()
     for command in lines:
@@ -364,9 +350,7 @@ def validate_command_lines(
                     severity="WARNING",
                     code="COMMAND_PLACEHOLDER_AMBIGUOUS",
                     target=placeholder,
-                    message=(
-                        "Documented placeholder is not in the approved placeholder set."
-                    ),
+                    message="Documented placeholder is not in the approved placeholder set.",
                 )
             )
         cli_arguments = _cli_arguments(command.tokens)
@@ -395,15 +379,12 @@ def validate_command_lines(
                         severity="ERROR",
                         code="COMMAND_TOOL_OPTION_INVALID",
                         target=command.raw,
-                        message=(
-                            "Documented tool command uses an unsupported or incomplete "
-                            "option."
-                        ),
+                        message="Documented tool command uses an unsupported or incomplete option.",
                     )
                 )
             continue
         script = _script_target(command.tokens)
-        if script is None or document.classification == "HISTORICAL":
+        if script is None:
             continue
         safe = _safe_script_path(script)
         if safe is None:
@@ -414,9 +395,7 @@ def validate_command_lines(
                     severity="ERROR",
                     code="COMMAND_SCRIPT_PATH_INVALID",
                     target=script,
-                    message=(
-                        "Documented script path must be repository-relative and safe."
-                    ),
+                    message="Documented script path must be repository-relative and safe.",
                 )
             )
             continue
