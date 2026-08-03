@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, TypeAlias, cast
 
+from pypdf.errors import PyPdfError
+
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parser_reproducibility.comparison import (
     ParsedRunPair,
@@ -73,6 +75,8 @@ def _failure_code(exc: Exception) -> str:
         return "PARSER_ARTIFACT_MISSING"
     if isinstance(exc, PermissionError):
         return "PARSER_ARTIFACT_UNREADABLE"
+    if isinstance(exc, PyPdfError):
+        return "PARSER_SOURCE_PDF_INVALID"
     message = str(exc).casefold()
     if "page count" in message:
         return "PARSER_PAGE_COUNT_MISMATCH"
@@ -87,6 +91,7 @@ def _failure_message(code: str) -> str:
     messages = {
         "PARSER_ARTIFACT_MISSING": "A required parser artifact is missing.",
         "PARSER_ARTIFACT_UNREADABLE": "A required parser artifact is unreadable.",
+        "PARSER_SOURCE_PDF_INVALID": "The source PDF is malformed or unreadable.",
         "PARSER_PAGE_COUNT_MISMATCH": (
             "Source and parser page authority do not match."
         ),
@@ -138,11 +143,11 @@ def validate_opendataloader_reproducibility(
 
     try:
         loaded_a = load_parser_run(source_pdf, run_a_root, config)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, PyPdfError) as exc:
         return _failed_report(exc)
     try:
         loaded_b = load_parser_run(source_pdf, run_b_root, config)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, PyPdfError) as exc:
         return _failed_report(exc, loaded_a.manifest)
 
     pair = ParsedRunPair(
