@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from ansim_review.contracts.attachments import ImmutableAttachment
-from ansim_review.contracts.workflow import WorkflowStateRecord
+from ansim_review.contracts.workflow import WorkflowState, WorkflowStateRecord
 from ansim_review.workflow.events import (
     append_workflow_event,
     load_workflow_events,
@@ -29,7 +30,9 @@ from ansim_review.workflow.run_layout import (
     ReviewRunLayout,
     initialize_review_run,
     open_review_run,
+    reject_link_ancestors,
 )
+from ansim_review.workflow.state_machine import EventKind
 
 
 def _reference_attachments(
@@ -52,10 +55,10 @@ def _has_drawing(request: ReviewRequest) -> bool:
 def _append_state(
     layout: ReviewRunLayout,
     *,
-    next_state: str,
+    next_state: WorkflowState,
     payload_sha256: str,
     recorded_at: str,
-    kind: str = "TRANSITION",
+    kind: EventKind = "TRANSITION",
 ) -> WorkflowStateRecord:
     existing = load_workflow_events(layout.events_dir)
     previous = existing[-1].next_state if existing else None
@@ -106,6 +109,7 @@ def prepare_review_run(
         payload_sha256=request_hash,
         recorded_at=recorded_at,
     )
+    next_state: WorkflowState
     if requires_role_confirmation(request):
         next_state = "ROLE_CONFIRMATION_REQUIRED"
     elif _reference_attachments(request):
@@ -127,7 +131,7 @@ def ingest_pending_references(
     layout: ReviewRunLayout,
     backend: ReferenceIngestionBackend,
 ) -> ReferenceIngestionReceipt:
-    """Ingest once and persist a create-only receipt before any state advance."""
+    """Ingest once and persist a create-only receipt before state advance."""
     request = layout.load_request()
     layout.verify_request_attachments(request)
     state = layout.load_state()
@@ -151,8 +155,20 @@ def ingest_pending_references(
     output_path = layout.run_dir.joinpath(
         *receipt.output_db_relative_path.split("/")
     )
+    if not output_path.resolve(strict=False).is_relative_to(
+        layout.run_dir.resolve()
+    ):
+        raise ValueError("reference ingestion output escapes run directory")
     if not output_path.is_file():
-        raise ValueError("reference ingestion backend did not publish its output database")
+        raise ValueError(
+            "reference ingestion backend did not publish its output database"
+        )
+    reject_link_ancestors(output_path)
+    output_payload = output_path.read_bytes()
+    if len(output_payload) != receipt.output_db_byte_size:
+        raise ValueError("reference ingestion backend reported a wrong DB size")
+    if hashlib.sha256(output_payload).hexdigest() != receipt.output_db_sha256:
+        raise ValueError("reference ingestion backend reported a wrong DB hash")
     persist_reference_ingestion_receipt(layout, receipt)
     return load_reference_ingestion_receipt(layout)
 
@@ -162,11 +178,14 @@ def resume_review_run(
     *,
     recorded_at: str,
 ) -> WorkflowStateRecord:
-    """Resume from the journal only after the exact reference receipt validates."""
+    """Resume only after the exact reference receipt validates."""
     request = layout.load_request()
     layout.verify_request_attachments(request)
     state = layout.load_state()
+    references = _reference_attachments(request)
     if state.workflow_state == "READY_TO_EVALUATE":
+        if references:
+            load_reference_ingestion_receipt(layout)
         return state
     if state.workflow_state != "PENDING_REFERENCE_INGESTION":
         raise ValueError("run cannot resume from its current workflow state")
