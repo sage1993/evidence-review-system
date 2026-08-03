@@ -121,7 +121,20 @@ PARSER_RUN_AUTHORITY_MISSING
 PARSER_RUN_AUTHORITY_INVALID
 ```
 
-These are exit code 2 authority/configuration errors. The command does not need a source-batch root because source bytes are not re-read during warning-only collection; source identity is cross-checked between the source-batch manifest and immutable parser run authority.
+These are exit code 2 authority/configuration errors. The command does not need a source-batch root because source bytes are not re-read during warning-only collection.
+
+### 3.1 Source hash authority limit
+
+The current source-batch v2 contract records source path, role, document identity, and parser binding, but it does not contain source SHA-256, source byte size, or page count fields. Therefore warning-only collection cannot independently compare the sidecar source hash to a second hash value without reopening the PDF, which this command explicitly does not do.
+
+For warning-only collection:
+
+- `parser-run.json` is the source hash, byte-size, and page-count authority;
+- source-batch cross-checks source path, role, parser kind, derived document ID, and derived revision ID;
+- no claim is made that source PDF bytes were independently reverified;
+- actual source bytes, size, and page count are independently verified only by `parser reproducibility validate`.
+
+This is not equivalent to full parser-run acceptance. Warning collection produces review evidence only.
 
 ## 4. Reproducibility CLI
 
@@ -193,3 +206,14 @@ def collect_opendataloader_warnings(
 ) -> WarningCollectionResult:
     ...
 ```
+
+## 7. Raw warning message exception
+
+`raw_message` is evidence payload, not a persistent identifier. It is preserved exactly, including any parser-emitted absolute path or warning-code prefix. Canonical warning and queue identity uses `normalized_message_sha256`, where line endings, the exact run-root prefix, and separators inside that run-local path are normalized.
+
+Consequences:
+
+- raw warning evidence may contain a machine-specific path because removing it would alter the parser evidence;
+- `raw_message` is excluded from stable warning and queue IDs;
+- normalized identity and reproducibility reports must not expose the absolute run root outside the raw evidence field;
+- consumers must not use `raw_message` as a persistent path or equality key.
