@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/evidence-review/review-request.schema.json",
+  "$id": "https://evidence-review.local/schemas/review-request.schema.json",
   "title": "Evidence Review Request",
   "type": "object",
   "additionalProperties": false,
