@@ -260,7 +260,8 @@ def render_annotation_html(
             "<header><h1>Drawing annotation workspace</h1>",
             f"<span>page {page} · <code>{escape(source_sha256)}</code></span></header>",
             '<div class="workspace">',
-            '<aside class="panel"><p class="warning">Reviewer confirmation is required '</n            'before engine binding.</p><h2>Candidates</h2><ul class="candidate-list">',
+            '<aside class="panel"><p class="warning">Reviewer confirmation is required '
+            'before engine binding.</p><h2>Candidates</h2><ul class="candidate-list">',
             "".join(buttons),
             "</ul></aside>",
             '<main class="canvas-panel"><div class="page-canvas">',
