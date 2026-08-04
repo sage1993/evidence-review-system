@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evidence-review.local/schemas/reference-ingestion-receipt.schema.json",
+  "title": "Evidence Review Reference Ingestion Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "request_sha256",
+    "snapshot_sha256",
+    "output_db_relative_path",
+    "output_db_sha256",
+    "output_db_byte_size",
+    "sources",
+    "changed_original_names",
+    "review_required"
+  ],
+  "properties": {
+    "format": {
+      "const": "evidence-review/reference-ingestion-receipt"
+    },
+    "version": {
+      "const": 1
+    },
+    "request_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "snapshot_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "output_db_relative_path": {
+      "type": "string",
+      "pattern": "^machine/[^/\\\\]+(?:/[^/\\\\]+)*$"
+    },
+    "output_db_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "output_db_byte_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "changed_original_names": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "review_required": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_ids",
+        "original_names",
+        "source_sha256",
+        "document_id",
+        "revision_id"
+      ],
+      "properties": {
+        "attachment_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "original_names": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "source_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "document_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "revision_id": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    }
+  }
+}
