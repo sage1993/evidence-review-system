@@ -43,8 +43,13 @@ class CalibrationReference:
             raise ValueError("pixel_points must contain two points")
         if self.axis not in ("x", "y"):
             raise ValueError("axis must be x or y")
-        if not self.real_length or not self.unit:
-            raise ValueError("real_length and unit are required")
+        if (
+            not isinstance(self.real_length, str)
+            or not isinstance(self.unit, str)
+            or not self.real_length
+            or not self.unit
+        ):
+            raise ValueError("real_length and unit must be non-empty strings")
         try:
             value = Decimal(self.real_length)
         except InvalidOperation as error:
@@ -54,7 +59,15 @@ class CalibrationReference:
         for point in self.pixel_points:
             if len(point) != 2:
                 raise ValueError("pixel points must contain x and y")
-            if not all(Decimal(str(coordinate)).is_finite() for coordinate in point):
+            if any(isinstance(coordinate, bool) for coordinate in point):
+                raise ValueError("pixel points must contain numeric values")
+            try:
+                finite = all(
+                    Decimal(str(coordinate)).is_finite() for coordinate in point
+                )
+            except (InvalidOperation, ValueError):
+                raise ValueError("pixel points must be finite") from None
+            if not finite:
                 raise ValueError("pixel points must be finite")
         first, second = self.pixel_points
         dx = abs(Decimal(str(second[0])) - Decimal(str(first[0])))
@@ -234,6 +247,8 @@ def calculate_real_length(
     axis: Axis,
 ) -> str:
     """Convert a pixel distance only with a previously confirmed axis scale."""
+    if not isinstance(pixel_length, str):
+        raise ValueError("pixel_length must be a decimal string")
     scale = record.scale_x if axis == "x" else record.scale_y
     if scale is None:
         raise ValueError(f"no confirmed {axis}-axis calibration is available")
