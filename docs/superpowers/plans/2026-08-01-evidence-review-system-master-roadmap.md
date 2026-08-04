@@ -30,6 +30,7 @@
 |---:|---|---|
 | M0 | `2026-08-02-browser-drawing-shared-contracts.md` | Review Packet v2, workflow, drawing, attachment, next-action, and v1 adapter contracts |
 | M1 | `2026-08-02-drawing-evidence-backend.md` | immutable case drawing intake, quality gate, candidate repository, append-only confirmations, confirmed-input binding |
+| M2 | `2026-08-03-drawing-manual-annotation-ui.md` | deterministic browser projection, SVG annotation tools, strict actions, append-only service, loopback server |
 | 1 | `2026-08-01-foundation-and-contracts.md` | package, canonical models, immutable runs, no-network guard |
 | 2 | `2026-08-01-parse-engine-and-evidence-store.md` | coordinate-traceable evidence SQLite snapshot |
 | 3 | `2026-08-01-math-engine.md` | versioned Decimal calculation engine |
@@ -47,6 +48,7 @@ pyproject.toml
 src/ansim_review/
   contracts/ evidence/ parsing/ math_engine/ rule_engine/
   retrieval/ llm_layer/ confidence/ abstention/ review_packet/ packaging/
+  drawing_review/
 rules/candidates/ rules/approved/ rules/manifests/
 evidence/ source/ runs/ exports/ web_runtime/
 cases/<case_id>/sources/drawings/ candidates/ confirmations/
@@ -57,20 +59,37 @@ docs/superpowers/specs/ docs/superpowers/plans/
 ## Milestone Gates
 
 0. **M0 Shared contracts — complete:** Review Packet v1 is frozen; v2, workflow, drawing, immutable-attachment, next-action, and deterministic adapter contracts passed automated validation and human contract review in PR #16.
-1. **M1 Drawing evidence backend:** A supported drawing is copied into immutable case storage, quality assessed, represented by extractor or reviewer-manual candidates, confirmed through append-only records, and bound to engines only after source and confirmation hash revalidation. OCR, browser UI, calibration, and automatic semantic drawing recognition are later milestones.
-2. **Core v0.1:** Plans 1–4 pass; source, calculations, and rules are deterministic.
-3. **Evidence v0.2:** Plans 5–6 pass; uncited claims and weak evidence abstain.
-4. **Review v0.3:** Plan 7 passes; Codex and ChatGPT web packages execute offline.
-5. **Ansim v1.0:** Plan 8 passes automated and human acceptance; only this milestone may declare production-review readiness.
+1. **M1 Drawing evidence backend — complete:** Supported drawings are copied into immutable case storage, quality assessed, represented by extractor or reviewer-manual candidates, confirmed through append-only records, and bound to engines only after source and confirmation hash revalidation.
+2. **M2 Browser manual annotation — implementation in Draft PR #54:** The deterministic page/candidate view model, self-contained SVG renderer, strict browser action decoder, append-only action service, loopback-only server, four geometry capture tools, and browser-to-engine E2E contract are implemented. Repository-wide automated verification and actual browser manual QA remain required before completion.
+3. **Core v0.1:** Plans 1–4 pass; source, calculations, and rules are deterministic.
+4. **Evidence v0.2:** Plans 5–6 pass; uncited claims and weak evidence abstain.
+5. **Review v0.3:** Plan 7 passes; Codex and ChatGPT web packages execute offline.
+6. **Ansim v1.0:** Plan 8 passes automated and human acceptance; only this milestone may declare production-review readiness.
+
+## M2 Acceptance Boundary
+
+M2 is complete only when all of the following are true:
+
+- all four M0 geometry types remain aligned at 100%, 200%, and fit-to-page zoom;
+- no reviewer action is selected by default;
+- browser payloads cannot set source hashes, output paths, confirmation IDs, or manual candidate IDs;
+- reviewer identity is preserved separately from the server-derived confirmation filename token;
+- existing candidate accept/reject/edit and reviewer-manual create actions produce create-only or append-only artifacts;
+- Host, Origin, access token, body-size, content-type, case-root, and path checks fail closed;
+- confirmed values reach Math or Rule Engine binding only after candidate, confirmation, and immutable source hashes are reverified;
+- repository pytest, Ruff, strict mypy, compileall, Python 3.11/3.13 wheel, Windows, and Ubuntu verification pass;
+- human browser QA records browser, OS, exact HEAD, screen scale, and PASS/FAIL evidence.
+
+GitHub Actions runs that terminate without executing job steps are recorded as `ACTIONS_UNAVAILABLE` and do not satisfy this gate.
 
 ## Drawing Follow-Up Order
 
-After M1 backend integration:
+After M2 manual annotation acceptance:
 
-1. browser source viewer and reviewer-manual annotation controls;
-2. calibration records and Math Engine formulas for confirmed scale/reference dimensions;
-3. staged automatic candidate extractors for text/table metadata, then lines, then semantic boundaries and entrances;
-4. Review Packet v2 drawing-evidence rendering and reviewer workflow integration.
+1. calibration records and Math Engine formulas for confirmed scale/reference dimensions;
+2. staged automatic candidate extractors for text/table metadata, then lines, then semantic boundaries and entrances;
+3. Review Packet v2 drawing-evidence rendering and reviewer workflow integration;
+4. issue #7 state-machine and resumable Codex orchestration integration.
 
 Automatic detection success is never the sole acceptance criterion. The manual annotation to confirmed input to engine-binding path remains mandatory.
 
