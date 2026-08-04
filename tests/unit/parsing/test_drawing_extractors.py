@@ -55,8 +55,8 @@ def test_stage_one_extracts_only_explicit_metadata_as_unconfirmed_candidates() -
     )
 
     assert [item.candidate_type for item in candidates] == [
-        "DIMENSION_TEXT",
         "SCALE_TEXT",
+        "DIMENSION_TEXT",
         "AREA_TABLE",
     ]
     assert all(item.status == "UNCONFIRMED" for item in candidates)
