@@ -5,11 +5,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Literal
 
 from ansim_review.canonical_json import sha256_json
 from ansim_review.contracts.validation import expect_sha256
-from ansim_review.math_engine.formulas import DRAWING_SCALE_ID, DRAWING_SCALE_VERSION, run_calculation
+from ansim_review.math_engine.formulas import (
+    DRAWING_LENGTH_ID,
+    DRAWING_LENGTH_VERSION,
+    DRAWING_SCALE_ID,
+    DRAWING_SCALE_VERSION,
+    run_calculation,
+)
+from ansim_review.parsing.drawing_case import (
+    CaseManifestEntry,
+    case_artifact_path,
+    validate_artifact_id,
+    write_canonical_create_only,
+)
 
 Axis = Literal["x", "y"]
 Position = tuple[float, float]
@@ -167,4 +180,76 @@ def build_calibration(
     )
 
 
-__all__ = ["CalibrationRecord", "CalibrationReference", "build_calibration"]
+def calibration_document(record: CalibrationRecord) -> dict[str, object]:
+    """Return canonical, source-bound calibration data."""
+    return {
+        "calibration_id": record.calibration_id,
+        "source_sha256": record.source_sha256,
+        "page": record.page,
+        "references": [
+            {
+                "pixel_points": [list(point) for point in reference.pixel_points],
+                "real_length": reference.real_length,
+                "unit": reference.unit,
+                "axis": reference.axis,
+            }
+            for reference in record.references
+        ],
+        "scale_x": record.scale_x,
+        "scale_y": record.scale_y,
+        "unit": record.unit,
+        "formula_id": record.formula_id,
+        "formula_version": record.formula_version,
+        "calculation_result_hash": record.calculation_result_hash,
+        "reviewer": record.reviewer,
+        "confirmed_at": record.confirmed_at,
+        "reviewer_confirmed": record.reviewer_confirmed,
+    }
+
+
+def persist_calibration(
+    case_dir: Path,
+    record: CalibrationRecord,
+) -> CaseManifestEntry:
+    """Persist calibration create-only under the case artifact root."""
+    validate_artifact_id(record.calibration_id, "calibration_id")
+    relative_path = f"calibrations/{record.calibration_id}.json"
+    digest = write_canonical_create_only(
+        case_artifact_path(case_dir, relative_path),
+        calibration_document(record),
+    )
+    return CaseManifestEntry(
+        artifact_id=record.calibration_id,
+        relative_path=relative_path,
+        sha256=digest,
+    )
+
+
+def calculate_real_length(
+    record: CalibrationRecord,
+    *,
+    pixel_length: str,
+    axis: Axis,
+) -> str:
+    """Convert a pixel distance only with a previously confirmed axis scale."""
+    scale = record.scale_x if axis == "x" else record.scale_y
+    if scale is None:
+        raise ValueError(f"no confirmed {axis}-axis calibration is available")
+    result = run_calculation(
+        DRAWING_LENGTH_ID,
+        DRAWING_LENGTH_VERSION,
+        {"pixel_length": pixel_length, "scale": scale},
+    )
+    if result.status != "SUCCESS" or result.raw_result is None:
+        raise ValueError("Math Engine rejected drawing length conversion")
+    return result.raw_result
+
+
+__all__ = [
+    "CalibrationRecord",
+    "CalibrationReference",
+    "build_calibration",
+    "calculate_real_length",
+    "calibration_document",
+    "persist_calibration",
+]
