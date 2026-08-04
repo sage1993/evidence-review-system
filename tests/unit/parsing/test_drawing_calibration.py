@@ -38,6 +38,14 @@ def test_build_calibration_uses_confirmed_reference_and_math_formula() -> None:
 
 
 def test_calibration_rejects_missing_or_ambiguous_reference() -> None:
+    with pytest.raises(ValueError, match="decimal string"):
+        CalibrationReference(
+            pixel_points=((10, 20), (110, 20)),
+            real_length=35.0,  # type: ignore[arg-type]
+            unit="m",
+            axis="x",
+        )
+
     with pytest.raises(ValueError, match="at least one"):
         build_calibration(
             source_sha256=SOURCE_HASH,
