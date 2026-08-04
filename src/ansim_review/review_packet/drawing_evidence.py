@@ -146,7 +146,12 @@ def render_drawing_evidence(
             '<th>Origin</th><th>Source SHA-256</th><th>Page</th></tr></thead><tbody>'
             f'{"".join(rows)}</tbody></table></section>'
         )
-    human_decision = escape(str(document.get("human_decision")))
+    human_decision_value = document.get("human_decision")
+    human_decision = (
+        "null"
+        if human_decision_value is None
+        else escape(str(human_decision_value))
+    )
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<title>Review Packet v2 drawing evidence</title>'
