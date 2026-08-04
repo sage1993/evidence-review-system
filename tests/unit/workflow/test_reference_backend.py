@@ -22,13 +22,13 @@ def test_source_batch_backend_delegates_to_existing_importer(
     batch = SourceBatch(
         format="evidence-review/source-batch",
         version=2,
-        batch_id="BATCH-001",
         sources=(
             SourceItem(
                 source_path="inputs/original/reference.pdf",
                 role="REFERENCE_DOCUMENT",
                 parser=None,
                 document_id=None,
+                display_title=None,
             ),
         ),
     )

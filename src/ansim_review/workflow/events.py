@@ -5,10 +5,17 @@ from __future__ import annotations
 import json
 import os
 import stat
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, cast
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 from ansim_review import canonical_json
 from ansim_review.contracts.formats import (
@@ -275,6 +282,40 @@ def _reject_link_ancestors(path: Path) -> None:
             )
 
 
+@contextmanager
+def _journal_lock(events_dir: Path) -> Iterator[None]:
+    """Serialize journal readers and writers across threads and processes."""
+    lock_path = events_dir.parent / f".{events_dir.name}.lock"
+    _reject_link_ancestors(lock_path.parent)
+    _reject_link_ancestors(lock_path)
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT,
+        0o600,
+    )
+    with os.fdopen(descriptor, "r+b") as stream:
+        acquired = False
+        try:
+            if os.name == "nt":
+                stream.seek(0, os.SEEK_END)
+                if stream.tell() == 0:
+                    stream.write(b"\0")
+                    stream.flush()
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+            acquired = True
+            yield
+        finally:
+            if acquired:
+                if os.name == "nt":
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+
+
 def _load_json_document(raw: bytes) -> object:
     def reject_constant(value: str) -> object:
         raise ValueError(f"invalid JSON constant: {value}")
@@ -302,7 +343,7 @@ def _load_json_document(raw: bytes) -> object:
         raise ValueError("workflow event must be valid UTF-8 JSON") from exc
 
 
-def load_workflow_events(events_dir: Path) -> tuple[WorkflowEvent, ...]:
+def _load_workflow_events_unlocked(events_dir: Path) -> tuple[WorkflowEvent, ...]:
     """Load and revalidate the complete canonical event journal."""
     if not events_dir.exists():
         return ()
@@ -346,50 +387,60 @@ def load_workflow_events(events_dir: Path) -> tuple[WorkflowEvent, ...]:
     return tuple(loaded)
 
 
+def load_workflow_events(events_dir: Path) -> tuple[WorkflowEvent, ...]:
+    """Load and revalidate the complete canonical event journal."""
+    if not events_dir.exists():
+        return ()
+    _reject_link_ancestors(events_dir)
+    with _journal_lock(events_dir):
+        return _load_workflow_events_unlocked(events_dir)
+
+
 def append_workflow_event(events_dir: Path, event: WorkflowEvent) -> Path:
     """Atomically append an event, allowing only byte-identical retries."""
     _reject_link_ancestors(events_dir)
     events_dir.mkdir(parents=True, exist_ok=True)
     _reject_link_ancestors(events_dir)
-    existing = load_workflow_events(events_dir)
-    target = events_dir / workflow_event_filename(event)
-    encoded = workflow_event_bytes(event)
+    with _journal_lock(events_dir):
+        existing = _load_workflow_events_unlocked(events_dir)
+        target = events_dir / workflow_event_filename(event)
+        encoded = workflow_event_bytes(event)
 
-    if event.sequence <= len(existing):
-        recorded = existing[event.sequence - 1]
-        recorded_path = events_dir / workflow_event_filename(recorded)
-        if recorded_path == target and workflow_event_bytes(recorded) == encoded:
-            return target
-        raise FileExistsError(
-            "workflow sequence already contains different bytes"
-        )
+        if event.sequence <= len(existing):
+            recorded = existing[event.sequence - 1]
+            recorded_path = events_dir / workflow_event_filename(recorded)
+            if recorded_path == target and workflow_event_bytes(recorded) == encoded:
+                return target
+            raise FileExistsError(
+                "workflow sequence already contains different bytes"
+            )
 
-    expected_sequence = len(existing) + 1
-    if event.sequence != expected_sequence:
-        raise ValueError(f"next sequence must be {expected_sequence}")
-    expected_previous = existing[-1].next_state if existing else None
-    if event.previous_state != expected_previous:
-        raise ValueError("event previous_state does not match journal state")
-    validate_transition(event.previous_state, event.next_state, event.kind)
+        expected_sequence = len(existing) + 1
+        if event.sequence != expected_sequence:
+            raise ValueError(f"next sequence must be {expected_sequence}")
+        expected_previous = existing[-1].next_state if existing else None
+        if event.previous_state != expected_previous:
+            raise ValueError("event previous_state does not match journal state")
+        validate_transition(event.previous_state, event.next_state, event.kind)
 
-    try:
-        descriptor = os.open(
-            target,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            0o600,
-        )
-    except FileExistsError:
-        _reject_link_ancestors(target)
-        if target.read_bytes() == encoded:
-            return target
-        raise FileExistsError(
-            "workflow event path contains different bytes"
-        ) from None
-    with os.fdopen(descriptor, "wb") as stream:
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    return target
+        try:
+            descriptor = os.open(
+                target,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+        except FileExistsError:
+            _reject_link_ancestors(target)
+            if target.read_bytes() == encoded:
+                return target
+            raise FileExistsError(
+                "workflow event path contains different bytes"
+            ) from None
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return target
 
 
 def project_workflow_state(events_dir: Path) -> WorkflowStateRecord:

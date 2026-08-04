@@ -26,7 +26,11 @@ from ansim_review.contracts.validation import (
 )
 from ansim_review.parsing.parser_registry import ParserRegistry
 from ansim_review.parsing.source_batch_importer import import_source_batch
-from ansim_review.workflow.request import ReviewRequest, review_request_sha256
+from ansim_review.workflow.request import (
+    ReviewRequest,
+    confirmed_attachments,
+    review_request_sha256,
+)
 from ansim_review.workflow.run_layout import ReviewRunLayout, reject_link_ancestors
 
 
@@ -381,6 +385,30 @@ def reference_ingestion_receipt_sha256(
     return hashlib.sha256(reference_ingestion_receipt_bytes(receipt)).hexdigest()
 
 
+def _persist_create_only_bytes(path: Path, payload: bytes) -> Path:
+    """Persist one immutable sidecar, permitting only byte-identical retries."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    reject_link_ancestors(path.parent)
+    try:
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+    except FileExistsError:
+        reject_link_ancestors(path)
+        if path.read_bytes() == payload:
+            return path
+        raise FileExistsError(
+            "reference receipt sidecar already contains different bytes"
+        ) from None
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return path
+
+
 def _strict_json(raw: bytes) -> object:
     def reject_constant(value: str) -> object:
         raise ValueError(f"invalid JSON constant: {value}")
@@ -431,8 +459,35 @@ def load_reference_ingestion_receipt(
     receipt = decode_reference_ingestion_receipt(_strict_json(raw))
     if raw != reference_ingestion_receipt_bytes(receipt):
         raise ValueError("reference receipt bytes are not canonical")
+    reject_link_ancestors(layout.reference_receipt_sha256_path)
+    digest_raw = layout.reference_receipt_sha256_path.read_bytes()
+    expected_digest = f"{reference_ingestion_receipt_sha256(receipt)}\n".encode(
+        "ascii"
+    )
+    if digest_raw != expected_digest:
+        raise ValueError("reference receipt SHA-256 sidecar mismatch")
     if receipt.request_sha256 != layout.load_request_sha256():
         raise ValueError("reference receipt request SHA-256 is stale")
+    request = layout.load_request()
+    attachments = tuple(
+        attachment
+        for attachment in confirmed_attachments(request)
+        if attachment.role in {"REFERENCE_DOCUMENT", "CASE_TABLE"}
+    )
+    _validate_result_coverage(
+        attachments,
+        ReferenceIngestionBatchResult(
+            snapshot_sha256=receipt.snapshot_sha256,
+            output_db_relative_path=receipt.output_db_relative_path,
+            output_db_sha256=receipt.output_db_sha256,
+            output_db_byte_size=receipt.output_db_byte_size,
+            sources=receipt.sources,
+        ),
+    )
+    if receipt.changed_original_names != _changed_names(attachments):
+        raise ValueError("reference receipt changed names do not match request")
+    if receipt.review_required != bool(receipt.changed_original_names):
+        raise ValueError("reference receipt review flag is inconsistent")
     output_path = _output_path(layout, receipt)
     if not output_path.is_file():
         raise ValueError("reference receipt output database is missing")
@@ -462,15 +517,19 @@ def persist_reference_ingestion_receipt(
         )
     except FileExistsError:
         reject_link_ancestors(target)
-        if target.read_bytes() == encoded:
-            return target
-        raise FileExistsError(
-            "reference receipt already contains different bytes"
-        ) from None
-    with os.fdopen(descriptor, "wb") as stream:
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
+        if target.read_bytes() != encoded:
+            raise FileExistsError(
+                "reference receipt already contains different bytes"
+            ) from None
+    else:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+    _persist_create_only_bytes(
+        layout.reference_receipt_sha256_path,
+        f"{reference_ingestion_receipt_sha256(receipt)}\n".encode("ascii"),
+    )
     return target
 
 
