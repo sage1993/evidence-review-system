@@ -5,6 +5,7 @@ import pytest
 from ansim_review.parsing.drawing_calibration import (
     CalibrationReference,
     build_calibration,
+    calculate_real_length,
 )
 
 SOURCE_HASH = "a" * 64
@@ -33,6 +34,7 @@ def test_build_calibration_uses_confirmed_reference_and_math_formula() -> None:
     assert result.formula_version == "1.0.0"
     assert result.calculation_result_hash
     assert result.source_sha256 == SOURCE_HASH
+    assert calculate_real_length(result, pixel_length="20", axis="x") == "7"
 
 
 def test_calibration_rejects_missing_or_ambiguous_reference() -> None:
