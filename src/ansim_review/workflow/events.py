@@ -10,12 +10,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import BinaryIO, Literal, Protocol, cast
 
 if os.name == "nt":
     import msvcrt
 else:
     import fcntl
+
 
 from ansim_review import canonical_json
 from ansim_review.contracts.formats import (
@@ -47,6 +48,36 @@ from ansim_review.workflow.state_machine import (
     decode_workflow_state,
     validate_transition,
 )
+
+
+class _MsvcrtApi(Protocol):
+    LK_LOCK: int
+    LK_UNLCK: int
+
+    def locking(self, file_descriptor: int, mode: int, byte_count: int) -> None:
+        ...
+
+
+class _FcntlApi(Protocol):
+    LOCK_EX: int
+    LOCK_UN: int
+
+    def flock(self, file_descriptor: int, operation: int) -> None:
+        ...
+
+
+def _lock_with_msvcrt(stream: BinaryIO, *, unlock: bool) -> None:
+    api = cast(_MsvcrtApi, msvcrt)
+    file_descriptor = stream.fileno()
+    mode = api.LK_UNLCK if unlock else api.LK_LOCK
+    api.locking(file_descriptor, mode, 1)
+
+
+def _lock_with_fcntl(stream: BinaryIO, *, unlock: bool) -> None:
+    api = cast(_FcntlApi, fcntl)
+    operation = api.LOCK_UN if unlock else api.LOCK_EX
+    api.flock(stream.fileno(), operation)
+
 
 _REASON_CODES: tuple[ReasonCode, ...] = (
     "SOURCE_CONFLICT",
@@ -302,18 +333,18 @@ def _journal_lock(events_dir: Path) -> Iterator[None]:
                     stream.write(b"\0")
                     stream.flush()
                 stream.seek(0)
-                msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
+                _lock_with_msvcrt(stream, unlock=False)
             else:
-                fcntl.flock(stream.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+                _lock_with_fcntl(stream, unlock=False)
             acquired = True
             yield
         finally:
             if acquired:
                 if os.name == "nt":
                     stream.seek(0)
-                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                    _lock_with_msvcrt(stream, unlock=True)
                 else:
-                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+                    _lock_with_fcntl(stream, unlock=True)
 
 
 def _load_json_document(raw: bytes) -> object:

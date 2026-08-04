@@ -83,6 +83,19 @@ evidence-review review-run finalize `
 
 Track A explains only provided evidence and engine results. Track B audits Track A independently. Neither track may create a human decision.
 
+### 4.5 Resume and browser boundary
+
+The review foundation stores a `request.json` plus `request.sha256` and an append-only event journal under `runs/<RUN-ID>`. A drawing lane must stop at `INPUT_CONFIRMATION_REQUIRED`; only a hash-verified confirmed-input artifact may advance it to `READY_TO_EVALUATE`. Deterministic stages are persisted in this order only: retrieval, Math, then approved Rule evaluation. Track A and Track B are external file handoffs; a rejected or incomplete Track B cannot enter finalization.
+
+The local browser server exposes confirmation and final review as separate routes:
+
+```text
+http://127.0.0.1:<port>/runs/<RUN-ID>/confirmation
+http://127.0.0.1:<port>/runs/<RUN-ID>/review
+```
+
+The final review route is unavailable until both `final-review-packet.json` and `review.html` exist. `--open` may open the generated review HTML in the default browser, but stdout remains limited to status, run ID, and URL for that mode.
+
 ## 5. Documentation Integrity
 
 All current repository guidance is executable authority and must remain aligned with the actual parser, scripts, paths, and generated Markdown.

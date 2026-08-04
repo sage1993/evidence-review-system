@@ -77,6 +77,8 @@ A Track A action declares its workflow state, action, input bundle, instructions
 
 Do not manually advance workflow state or construct a Track B action before that gate passes.
 
+After the readiness gate, the coordinator writes deterministic engine artifacts in a fixed order: `machine/retrieval.json`, `machine/math.json`, and `machine/rules.json`. Each artifact records the preceding artifact hash as its input binding. A process interruption resumes from the last valid artifact and refuses to continue when any completed artifact differs. The event journal therefore remains the authority for whether a stage has completed.
+
 The frozen next-action v1 namespace remains readable for compatibility with existing runtime packages. It is not a document classification scheme and must not be used to derive a PDF title, role, or document ID.
 
 ## 4. Handle drawing evidence without granting machine authority
@@ -95,6 +97,8 @@ source-batch CASE_DRAWING registration
   -> source and confirmation hash revalidation
   -> Math or Rule Engine binding
 ```
+
+The confirmation browser view is available at `/runs/<RUN-ID>/confirmation` while the run is `INPUT_CONFIRMATION_REQUIRED`. It is not the final review view. The final review route `/runs/<RUN-ID>/review` is served only after `final-review-packet.json` and `review.html` have both been created.
 
 Codex may help present candidate evidence or serialize an annotation that the user explicitly created or approved. Codex must not independently:
 
@@ -117,6 +121,38 @@ Drawing workflow states follow the M0 contract:
 
 Nonterminal states do not carry reason codes. Detailed drawing-quality and conflict data remain in companion artifacts.
 
+### 4.1 Browser manual annotation workspace
+
+The browser workspace is a local projection and reviewer input surface. It is not a calculation engine, rule engine, or identity authority.
+
+The workspace:
+
+- binds only to `127.0.0.1`;
+- uses a run-scoped URL-safe access token;
+- requires exact `Host` and same-origin `Origin` values;
+- does not enable CORS;
+- limits JSON body size and accepts only `application/json` actions;
+- rejects symlink or Windows reparse-point case roots;
+- embeds the verified page image, CSS, and JavaScript without external resources;
+- renders `POINT`, `BBOX`, `LINESTRING`, and `POLYGON` geometry in the declared page coordinate system;
+- leaves all reviewer actions unselected until explicit input.
+
+The browser may submit only:
+
+- an existing candidate ID for `ACCEPTED`, `REJECTED`, or `EDITED`;
+- a reviewer-selected annotation ID and candidate type for `CREATED`;
+- reviewer identity, offset-aware timestamp, optional confirmed value and unit, and optional replacement geometry.
+
+Reviewer identity is preserved in the confirmation document and may contain Unicode. It cannot contain path separators or control characters. The confirmation filename uses a server-derived hash token, so the browser identity string never becomes a path component.
+
+The browser cannot set source hashes, confirmation IDs, output paths, artifact hashes, or a manual candidate ID. The server derives those values and routes persistence through the existing create-only candidate repository and append-only confirmation repository.
+
+Browser pointer handling performs viewport-to-page coordinate transformation only. It does not derive scale, real-world length, area, ratio, threshold results, rule status, or confidence. Calibration remains a separate Math Engine milestone.
+
+A successful browser action does not itself authorize engine execution. The candidate, confirmation, immutable source, and their recorded hashes must be revalidated while building and binding `ConfirmedInput`. Any unconfirmed or conflicting candidate remains unavailable to Math and Rule Engine input binding.
+
+The manual annotation workspace is tracked in Draft PR #54. It is not complete until repository-wide automated verification and actual browser QA at 100%, 200%, and fit-to-page zoom are recorded against an exact commit.
+
 ## 5. Finalize and explicitly publish
 
 ```powershell
@@ -127,6 +163,8 @@ evidence-review review-run finalize `
   --track-b-output F:\review-case\track-b-output.json `
   --publish
 ```
+
+Use `--open` when the default browser should open the generated review HTML. In that mode stdout is a compact status document containing only `status`, `run_id`, and `url`; it does not contain evidence or model output.
 
 Finalization verifies artifact hashes, Track A integrity, the independent Track B audit, confidence factors, and abstention gates. It then writes the run-specific `final-review-packet.json` and `review.html`. `--publish` copies the exact packet to `runs/final-review-packet.json` for the release builder; it does not approve the result or set `human_decision`.
 

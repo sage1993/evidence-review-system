@@ -1,0 +1,47 @@
+{
+  "format": "evidence-review/cross-platform-validation",
+  "version": 1,
+  "issue": 6,
+  "pull_request": 54,
+  "validated_head": "8bd3e85222137bee631bc765eaf8ef28f534480b",
+  "validated_implementation_head": "e30f0b0e2d9728f8a9bf4e9dd9e25752bc762213",
+  "branch": "agent/issue-6-browser-manual-annotation",
+  "windows_python_311": {
+    "status": "PASS",
+    "python": "3.11.15",
+    "documentation_integrity": "PASS",
+    "pytest": {
+      "status": "PASS",
+      "passed": 950,
+      "skipped": 5
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "compileall": "PASS",
+    "focused_drawing_tests": {
+      "status": "PASS",
+      "passed": 59,
+      "skipped": 1
+    },
+    "wheel": "PASS",
+    "wheel_smoke": "WINDOWS_PY311_WHEEL_PASS",
+    "entrypoint_smoke": "PASS"
+  },
+  "ubuntu_python_311": {
+    "status": "UBUNTU_ENV_UNAVAILABLE",
+    "execution_method": "WSL_then_Docker_fallback",
+    "distribution": null,
+    "python": null,
+    "reason": "WSL distro enumeration returned Wsl/EnumerateDistros/Service/E_ACCESSDENIED; Docker Desktop Linux daemon was not running or reachable. No Ubuntu validation command was treated as PASS."
+  },
+  "github_actions": {
+    "status": "ACTIONS_UNAVAILABLE",
+    "run_id": 30822953376,
+    "observation": "All jobs completed with steps=null; executed-step evidence was unavailable."
+  },
+  "overall": "INCOMPLETE",
+  "ready_for_human_review_candidate": false,
+  "pr_draft_maintained": true,
+  "merge": false,
+  "issue_closed": false
+}

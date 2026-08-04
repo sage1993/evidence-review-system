@@ -31,6 +31,20 @@ Reason codes explain why a workflow is blocked or failed. They are not workflow 
 
 Open the run-specific `review.html` created by `review-run finalize`. Confirm that each factual claim is connected to the displayed source identity, revision, page, evidence ID, source hash, and bounding box or drawing geometry. Check all calculation substitutions and registered result hashes rather than reproducing arithmetic in prose.
 
+When using the localhost browser server, open the confirmation route first:
+
+```text
+http://127.0.0.1:<port>/runs/<RUN-ID>/confirmation
+```
+
+The separate final review route is:
+
+```text
+http://127.0.0.1:<port>/runs/<RUN-ID>/review
+```
+
+The final route must remain unavailable until final packet and HTML artifacts exist. Verify that the browser never presents a final review screen while the run is waiting for drawing confirmation or Track A/Track B output.
+
 Review the matching run-specific `final-review-packet.json` and confirm:
 
 - `human_decision` is `null`;
