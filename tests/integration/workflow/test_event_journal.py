@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import threading
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
@@ -140,3 +141,56 @@ def test_event_bytes_are_deterministic(tmp_path: Path) -> None:
     event = _event(events, sequence=1, previous_state=None, next_state="RECEIVED")
     assert events.workflow_event_bytes(event) == events.workflow_event_bytes(event)
     assert events.workflow_event_bytes(event).endswith(b"\n")
+
+
+def test_concurrent_events_cannot_publish_two_events_for_one_sequence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events = _events()
+    root = tmp_path / "events"
+    first = _event(
+        events,
+        sequence=1,
+        previous_state=None,
+        next_state="RECEIVED",
+    )
+    second = replace(first, event_id="EVT-OTHER")
+    barrier = threading.Barrier(2)
+    original_open = events.os.open
+    open_calls = 0
+    open_calls_lock = threading.Lock()
+
+    def synchronized_open(*args, **kwargs):
+        nonlocal open_calls
+        with open_calls_lock:
+            open_calls += 1
+            should_wait = open_calls <= 2
+        if should_wait:
+            barrier.wait(timeout=5)
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(events.os, "open", synchronized_open)
+    outcomes: list[BaseException | None] = []
+
+    def append(event) -> None:
+        try:
+            events.append_workflow_event(root, event)
+        except BaseException as exc:
+            outcomes.append(exc)
+        else:
+            outcomes.append(None)
+
+    threads = [
+        threading.Thread(target=append, args=(first,)),
+        threading.Thread(target=append, args=(second,)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert len(outcomes) == 2
+    assert outcomes.count(None) == 1
+    assert sum(isinstance(outcome, FileExistsError) for outcome in outcomes) == 1
+    assert len(events.load_workflow_events(root)) == 1

@@ -100,6 +100,7 @@ class ReviewRunLayout:
     events_dir: Path
     machine_dir: Path
     reference_receipt_path: Path
+    reference_receipt_sha256_path: Path
 
     def load_request(self) -> ReviewRequest:
         """Load and byte-revalidate the immutable request."""
@@ -179,6 +180,9 @@ def review_run_layout(runs_root: Path, run_id: str) -> ReviewRunLayout:
         machine_dir=run_dir / "machine",
         reference_receipt_path=(
             run_dir / "machine" / "reference-ingestion.json"
+        ),
+        reference_receipt_sha256_path=(
+            run_dir / "machine" / "reference-ingestion.sha256"
         ),
     )
 

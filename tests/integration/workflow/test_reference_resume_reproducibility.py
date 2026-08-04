@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import pytest
+
+from ansim_review import canonical_json
 from ansim_review.workflow.events import load_workflow_events
 from ansim_review.workflow.orchestrator import (
     ingest_pending_references,
@@ -120,3 +124,20 @@ def test_output_database_tamper_prevents_resume(tmp_path: Path) -> None:
         assert "output database" in str(exc).lower()
     else:
         raise AssertionError("tampered evidence database must prevent resume")
+
+
+def test_receipt_tamper_prevents_resume(tmp_path: Path) -> None:
+    runs_root, layout = _prepare(tmp_path)
+    ingest_pending_references(layout, FakeReferenceBackend())
+    receipt = json.loads(layout.reference_receipt_path.read_text(encoding="utf-8"))
+    receipt["sources"][0]["document_id"] = "DOC-FORGED"
+    layout.reference_receipt_path.write_bytes(
+        canonical_json.dump_bytes(receipt) + b"\n"
+    )
+
+    reopened = open_review_run(runs_root, "RUN-001")
+    with pytest.raises(ValueError, match="receipt"):
+        resume_review_run(
+            reopened,
+            recorded_at="2026-08-04T00:01:00+09:00",
+        )
