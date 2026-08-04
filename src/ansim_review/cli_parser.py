@@ -237,4 +237,9 @@ def build_parser() -> argparse.ArgumentParser:
     review_finalize.add_argument("--track-a-output", required=True, type=Path)
     review_finalize.add_argument("--track-b-output", required=True, type=Path)
     review_finalize.add_argument("--publish", action="store_true")
+    review_finalize.add_argument(
+        "--open",
+        action="store_true",
+        help="open the finalized review HTML in the default browser",
+    )
     return parser
