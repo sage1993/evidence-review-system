@@ -22,6 +22,10 @@ from ansim_review.workflow.request import (
     review_request_sha256,
 )
 from ansim_review.workflow.state_machine import validate_transition
+from ansim_review.workflow.versioning import (
+    compute_versioned_run_id,
+    prepare_versioned_review_run,
+)
 
 __all__ = [
     "RequestAttachment",
@@ -39,6 +43,8 @@ __all__ = [
     "review_request_bytes",
     "review_request_document",
     "review_request_sha256",
+    "compute_versioned_run_id",
+    "prepare_versioned_review_run",
     "validate_transition",
     "workflow_event_bytes",
     "workflow_event_document",
