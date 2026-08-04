@@ -19,10 +19,13 @@ EXPECTED = {
     "parser-run-metadata.schema.json",
     "parser-warning-report.schema.json",
     "reason-code.schema.json",
+    "reference-ingestion-receipt.schema.json",
     "review-packet-v2.schema.json",
+    "review-request.schema.json",
     "source-batch.schema.json",
     "source-batch-v2.schema.json",
     "visual-manifest.schema.json",
+    "workflow-event.schema.json",
     "workflow-state.schema.json",
 }
 
@@ -36,7 +39,8 @@ def test_shared_contract_schemas_are_valid_versioned_json_documents() -> None:
 
 
 def test_object_contract_schemas_reject_additional_properties() -> None:
-    for name in sorted(EXPECTED - {"reason-code.schema.json", "drawing-geometry.schema.json"}):
+    excluded = {"reason-code.schema.json", "drawing-geometry.schema.json"}
+    for name in sorted(EXPECTED - excluded):
         document = json.loads((SCHEMAS / name).read_text(encoding="utf-8"))
         assert document["type"] == "object"
         assert document["additionalProperties"] is False
