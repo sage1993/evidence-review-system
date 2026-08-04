@@ -13,6 +13,7 @@ from ansim_review.contracts.validation import expect_sha256
 from ansim_review.math_engine.formulas import (
     DRAWING_LENGTH_ID,
     DRAWING_LENGTH_VERSION,
+    DRAWING_REGISTRY,
     DRAWING_SCALE_ID,
     DRAWING_SCALE_VERSION,
     run_calculation,
@@ -136,6 +137,7 @@ def build_calibration(
                 "real_length": reference.real_length,
                 "pixel_length": _pixel_length(reference),
             },
+            registry=DRAWING_REGISTRY,
         )
         if result.status != "SUCCESS" or result.raw_result is None:
             raise ValueError("Math Engine rejected calibration reference")
@@ -239,6 +241,7 @@ def calculate_real_length(
         DRAWING_LENGTH_ID,
         DRAWING_LENGTH_VERSION,
         {"pixel_length": pixel_length, "scale": scale},
+        registry=DRAWING_REGISTRY,
     )
     if result.status != "SUCCESS" or result.raw_result is None:
         raise ValueError("Math Engine rejected drawing length conversion")
