@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -487,6 +488,7 @@ def _review_run_finalize(
     track_b_output: Path,
     *,
     publish: bool,
+    open_browser: bool,
 ) -> int:
     try:
         result = finalize_review_run(
@@ -508,21 +510,32 @@ def _review_run_finalize(
     ) as error:
         print(str(error), file=sys.stderr)
         return 2
-    _write_stdout(
-        {
-            "format": "evidence-review/review-run-cli-status",
-            "version": 1,
-            "stage": "finalize",
-            "status": result.packet.status,
-            "run_id": result.run_id,
-            "run_directory": str(result.run_directory),
-            "packet": str(result.packet_path),
-            "review_html": str(result.review_html),
-            "published_packet": (
-                None if result.published_packet is None else str(result.published_packet)
-            ),
-        }
-    )
+    url = result.review_html.resolve().as_uri()
+    if open_browser:
+        webbrowser.open(url)
+        _write_stdout(
+            {
+                "status": result.packet.status,
+                "run_id": result.run_id,
+                "url": url,
+            }
+        )
+    else:
+        _write_stdout(
+            {
+                "format": "evidence-review/review-run-cli-status",
+                "version": 1,
+                "stage": "finalize",
+                "status": result.packet.status,
+                "run_id": result.run_id,
+                "run_directory": str(result.run_directory),
+                "packet": str(result.packet_path),
+                "review_html": str(result.review_html),
+                "published_packet": (
+                    None if result.published_packet is None else str(result.published_packet)
+                ),
+            }
+        )
     return 0
 
 
@@ -580,5 +593,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.track_a_output,
             args.track_b_output,
             publish=args.publish,
+            open_browser=args.open,
         )
     raise RuntimeError("unreachable command state")
