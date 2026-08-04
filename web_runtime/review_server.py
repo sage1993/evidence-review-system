@@ -9,7 +9,8 @@ from urllib.parse import unquote, urlsplit
 
 from ansim_review.contracts.identifiers import validate_identifier
 
-def _route_path(path: str) -> tuple[str, str, str, str | None] | None:
+
+def _route_path(path: str) -> tuple[str, str, str | None] | None:
     parts = [unquote(part) for part in urlsplit(path).path.split("/") if part]
     if len(parts) not in {3, 4} or parts[0] != "runs":
         return None
