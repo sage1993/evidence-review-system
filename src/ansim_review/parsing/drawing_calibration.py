@@ -43,13 +43,10 @@ class CalibrationReference:
             raise ValueError("pixel_points must contain two points")
         if self.axis not in ("x", "y"):
             raise ValueError("axis must be x or y")
-        if (
-            not isinstance(self.real_length, str)
-            or not isinstance(self.unit, str)
-            or not self.real_length
-            or not self.unit
-        ):
-            raise ValueError("real_length and unit must be non-empty strings")
+        if not isinstance(self.real_length, str) or not self.real_length:
+            raise ValueError("real_length must be a decimal string")
+        if not isinstance(self.unit, str) or not self.unit:
+            raise ValueError("unit must be a non-empty string")
         try:
             value = Decimal(self.real_length)
         except InvalidOperation as error:

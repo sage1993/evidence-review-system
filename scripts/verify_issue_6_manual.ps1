@@ -164,8 +164,8 @@ $focusedTests = @(
 )
 
 $pythonTargets = @(
-    [pscustomobject]@{ label = "Python 3.11"; executable = $Python311 },
-    [pscustomobject]@{ label = "Python 3.13"; executable = $Python313 }
+    [pscustomobject]@{ label = "Python 3.11"; executable = $Python311; mypy_version = "3.11" },
+    [pscustomobject]@{ label = "Python 3.13"; executable = $Python313; mypy_version = "3.13" }
 )
 
 foreach ($target in $pythonTargets) {
@@ -180,7 +180,9 @@ foreach ($target in $pythonTargets) {
     Invoke-Checked -Name "$label focused pytest" -Executable $python -Arguments (@("-m", "pytest", "-q") + $focusedTests)
     Invoke-Checked -Name "$label full pytest" -Executable $python -Arguments @("-m", "pytest", "-q")
     Invoke-Checked -Name "$label Ruff" -Executable $python -Arguments @("-m", "ruff", "check", "src", "tests")
-    Invoke-Checked -Name "$label strict mypy" -Executable $python -Arguments @("-m", "mypy", "src")
+    Invoke-Checked -Name "$label strict mypy" -Executable $python -Arguments @(
+        "-m", "mypy", "--python-version", $target.mypy_version, "src"
+    )
 
     $compilePaths = @("src", "scripts", "web_runtime") |
         Where-Object { Test-Path -LiteralPath (Join-Path $RepoRoot $_) }
@@ -241,7 +243,7 @@ $report = [ordered]@{
     actual_commit = $actualCommit
     overall = $overall
     github_actions_used = $false
-    results = @($Results)
+    results = @($Results.ToArray())
 }
 
 $reportPath = Join-Path $ReportRoot "report.json"

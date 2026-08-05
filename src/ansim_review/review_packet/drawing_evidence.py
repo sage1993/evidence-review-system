@@ -13,6 +13,7 @@ from ansim_review.contracts.review_v2 import (
     decode_review_packet_v2,
     review_packet_v2_document,
 )
+from ansim_review.contracts.validation import expect_int
 
 _ALLOWED_MIME = {"image/png", "image/jpeg", "image/tiff"}
 
@@ -104,7 +105,7 @@ def render_drawing_evidence(
     if not isinstance(raw_candidates, list):
         raise ValueError("drawing_evidence must be an array")
     candidates = tuple(_mapping(item, "drawing_evidence item") for item in raw_candidates)
-    pages = sorted({int(candidate["page"]) for candidate in candidates})
+    pages = sorted({expect_int(candidate["page"], "drawing.page") for candidate in candidates})
     for page in pages:
         if page not in page_images or page not in page_dimensions:
             raise ValueError(f"missing page asset or dimensions: {page}")

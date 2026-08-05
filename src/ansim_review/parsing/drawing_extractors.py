@@ -28,7 +28,10 @@ _DIMENSION_RE = re.compile(
     r"(?:\d+(?:\.\d+)?\s*(?:m|mm|cm)\b|(?:폭|길이|거리)\s*[:：]?\s*\d+)",
     re.IGNORECASE,
 )
-_DRAWING_NUMBER_RE = re.compile(r"(?:도면번호|drawing\s*(?:no|number))\s*[:：#-]?\s*\S+", re.IGNORECASE)
+_DRAWING_NUMBER_RE = re.compile(
+    r"(?:도면번호|drawing\s*(?:no|number))\s*[:：#-]?\s*\S+",
+    re.IGNORECASE,
+)
 _REVISION_RE = re.compile(r"(?:revision|rev\.?|개정)\s*[:：#-]?\s*\S+", re.IGNORECASE)
 _ALLOWED_SEMANTIC_TYPES = {
     "SITE_BOUNDARY",
