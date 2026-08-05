@@ -1,10 +1,10 @@
 from ansim_review.math_engine.formulas import (
+    DEFAULT_REGISTRY,
     DRAWING_LENGTH_ID,
     DRAWING_LENGTH_VERSION,
     DRAWING_REGISTRY,
     DRAWING_SCALE_ID,
     DRAWING_SCALE_VERSION,
-    DEFAULT_REGISTRY,
     run_calculation,
 )
 
