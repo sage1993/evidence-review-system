@@ -6,6 +6,8 @@ from ansim_review.parsing.drawing_calibration import (
     CalibrationReference,
     build_calibration,
     calculate_real_length,
+    calibration_document,
+    decode_calibration,
 )
 
 SOURCE_HASH = "a" * 64
@@ -45,6 +47,31 @@ def test_calibration_rejects_missing_or_ambiguous_reference() -> None:
             unit="m",
             axis="x",
         )
+
+
+def test_browser_calibration_persists_candidate_and_confirmation_bindings() -> None:
+    result = build_calibration(
+        source_sha256=SOURCE_HASH,
+        page=1,
+        references=(
+            CalibrationReference(
+                pixel_points=((10, 20), (110, 20)),
+                real_length="35.0",
+                unit="m",
+                axis="x",
+            ),
+        ),
+        reviewer="kim-sh",
+        confirmed_at="2026-08-05T10:00:00+09:00",
+        candidate_id="CAND-EXISTING",
+        confirmation_id="CONF-EXISTING",
+    )
+
+    document = calibration_document(result)
+    assert document["candidate_id"] == "CAND-EXISTING"
+    assert document["confirmation_id"] == "CONF-EXISTING"
+
+    assert decode_calibration(document) == result
 
     with pytest.raises(ValueError, match="at least one"):
         build_calibration(

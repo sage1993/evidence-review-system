@@ -90,17 +90,56 @@ def _packet_document(packet: ReviewPacketV2 | Mapping[str, object]) -> Mapping[s
     )
 
 
+def _display_metadata_document(value: Mapping[str, object]) -> Mapping[str, object]:
+    required = {
+        "source_document", "candidate_id", "confirmation_id", "calibration_id",
+        "reviewer", "confirmed_at", "calibration", "artifact_paths",
+    }
+    if set(value) != required:
+        raise ValueError("display_metadata keys are invalid")
+    source = _mapping(value["source_document"], "display_metadata.source_document")
+    if set(source) != {"document_id", "revision_id", "page", "source_sha256"}:
+        raise ValueError("display_metadata.source_document keys are invalid")
+    calibration = _mapping(value["calibration"], "display_metadata.calibration")
+    if set(calibration) != {
+        "axis", "pixel_points", "real_length", "unit", "scale_x", "scale_y",
+        "formula_id", "formula_version", "calculation_result_hash",
+    }:
+        raise ValueError("display_metadata.calibration keys are invalid")
+    paths = _mapping(value["artifact_paths"], "display_metadata.artifact_paths")
+    if set(paths) != {"candidate", "confirmation", "calibration"}:
+        raise ValueError("display_metadata.artifact_paths keys are invalid")
+    def contains_external(item: object) -> bool:
+        if isinstance(item, str):
+            return "http://" in item or "https://" in item
+        if isinstance(item, Mapping):
+            return any(contains_external(child) for child in item.values())
+        if isinstance(item, list):
+            return any(contains_external(child) for child in item)
+        return False
+
+    if contains_external(value):
+        raise ValueError("display_metadata cannot contain external URLs")
+    return value
+
+
 def render_drawing_evidence(
     packet: ReviewPacketV2 | Mapping[str, object],
     *,
     page_images: Mapping[int, bytes],
     page_dimensions: Mapping[int, tuple[float, float]],
     mime: str = "image/png",
+    display_metadata: Mapping[str, object] | None = None,
 ) -> str:
     """Render validated drawing evidence without external resources."""
     if mime not in _ALLOWED_MIME:
         raise ValueError("unsupported page image MIME")
     document = _packet_document(packet)
+    metadata = (
+        None
+        if display_metadata is None
+        else _display_metadata_document(display_metadata)
+    )
     raw_candidates = document.get("drawing_evidence")
     if not isinstance(raw_candidates, list):
         raise ValueError("drawing_evidence must be an array")
@@ -153,6 +192,29 @@ def render_drawing_evidence(
         if human_decision_value is None
         else escape(str(human_decision_value))
     )
+    metadata_html = ""
+    if metadata is not None:
+        source = _mapping(metadata["source_document"], "display_metadata.source_document")
+        calibration = _mapping(metadata["calibration"], "display_metadata.calibration")
+        paths = _mapping(metadata["artifact_paths"], "display_metadata.artifact_paths")
+        metadata_html = (
+            "<section><h2>Verified handoff metadata</h2>"
+            f"<p>Document: {escape(str(source['document_id']))} / "
+            f"{escape(str(source['revision_id']))}</p>"
+            f"<p>Candidate: <code>{escape(str(metadata['candidate_id']))}</code></p>"
+            f"<p>Confirmation: <code>{escape(str(metadata['confirmation_id']))}</code></p>"
+            f"<p>Calibration: <code>{escape(str(metadata['calibration_id']))}</code></p>"
+            f"<p>Reviewer: {escape(str(metadata['reviewer']))}; "
+            f"confirmed_at: {escape(str(metadata['confirmed_at']))}</p>"
+            f"<p>Calibration: {escape(str(calibration['axis']))} / "
+            f"{escape(str(calibration['real_length']))} {escape(str(calibration['unit']))}; "
+            f"formula: {escape(str(calibration['formula_id']))} "
+            f"{escape(str(calibration['formula_version']))}</p>"
+            f"<p>Artifacts: {escape(str(paths['candidate']))}; "
+            f"{escape(str(paths['confirmation']))}; "
+            f"{escape(str(paths['calibration']))}</p>"
+            "</section>"
+        )
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<title>Review Packet v2 drawing evidence</title>'
@@ -165,6 +227,7 @@ def render_drawing_evidence(
         f'<p>Run: {escape(str(document.get("run_id")))}</p>'
         f'<p>Case: {escape(str(document.get("case_id")))}</p>'
         f'<p>human_decision: {human_decision}</p>'
+        f"{metadata_html}"
         f'{"".join(sections)}</body></html>'
     )
 
