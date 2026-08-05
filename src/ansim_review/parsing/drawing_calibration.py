@@ -9,7 +9,18 @@ from pathlib import Path
 from typing import Literal
 
 from ansim_review.canonical_json import sha256_json
-from ansim_review.contracts.validation import expect_sha256
+from ansim_review.contracts.validation import (
+    expect_bool,
+    expect_int,
+    expect_literal,
+    expect_mapping,
+    expect_number,
+    expect_sequence,
+    expect_sha256,
+    expect_string,
+    reject_unknown,
+    require_fields,
+)
 from ansim_review.math_engine.formulas import (
     DRAWING_LENGTH_ID,
     DRAWING_LENGTH_VERSION,
@@ -94,6 +105,111 @@ class CalibrationRecord:
     reviewer: str
     confirmed_at: str
     reviewer_confirmed: bool = True
+    candidate_id: str | None = None
+    confirmation_id: str | None = None
+
+
+def _optional_calibration_string(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    return expect_string(value, field)
+
+
+def _decode_reference(value: object, index: int) -> CalibrationReference:
+    field = f"references[{index}]"
+    payload = expect_mapping(value, field)
+    required = {"pixel_points", "real_length", "unit", "axis"}
+    require_fields(payload, required, field)
+    reject_unknown(payload, required, field)
+    points = expect_sequence(payload["pixel_points"], f"{field}.pixel_points")
+    if len(points) != 2:
+        raise ValueError(f"{field}.pixel_points must contain two points")
+    decoded_points: list[Position] = []
+    for point_index, point in enumerate(points):
+        coordinates = expect_sequence(point, f"{field}.pixel_points[{point_index}]")
+        if len(coordinates) != 2:
+            raise ValueError(
+                f"{field}.pixel_points[{point_index}] must contain two numbers"
+            )
+        decoded_points.append(
+            (
+                expect_number(
+                    coordinates[0],
+                    f"{field}.pixel_points[{point_index}][0]",
+                ),
+                expect_number(
+                    coordinates[1],
+                    f"{field}.pixel_points[{point_index}][1]",
+                ),
+            )
+        )
+    return CalibrationReference(
+        pixel_points=(decoded_points[0], decoded_points[1]),
+        real_length=expect_string(payload["real_length"], f"{field}.real_length"),
+        unit=expect_string(payload["unit"], f"{field}.unit"),
+        axis=expect_literal(payload["axis"], f"{field}.axis", ("x", "y")),
+    )
+
+
+def decode_calibration(value: object) -> CalibrationRecord:
+    """Decode one canonical calibration document, including browser bindings."""
+    payload = expect_mapping(value, "calibration")
+    required = {
+        "calibration_id", "source_sha256", "page", "references", "scale_x",
+        "scale_y", "unit", "formula_id", "formula_version",
+        "calculation_result_hash", "reviewer", "confirmed_at", "reviewer_confirmed",
+    }
+    allowed = required | {"candidate_id", "confirmation_id"}
+    require_fields(payload, required, "calibration")
+    reject_unknown(payload, allowed, "calibration")
+    calibration_id = validate_artifact_id(
+        expect_string(payload["calibration_id"], "calibration.calibration_id"),
+        "calibration.calibration_id",
+    )
+    references = tuple(
+        _decode_reference(item, index)
+        for index, item in enumerate(
+            expect_sequence(payload["references"], "calibration.references")
+        )
+    )
+    if not references:
+        raise ValueError("calibration.references must not be empty")
+    candidate_id = payload.get("candidate_id")
+    confirmation_id = payload.get("confirmation_id")
+    if candidate_id is not None:
+        candidate_id = validate_artifact_id(
+            expect_string(candidate_id, "calibration.candidate_id"),
+            "calibration.candidate_id",
+        )
+    if confirmation_id is not None:
+        confirmation_id = validate_artifact_id(
+            expect_string(confirmation_id, "calibration.confirmation_id"),
+            "calibration.confirmation_id",
+        )
+    return CalibrationRecord(
+        calibration_id=calibration_id,
+        source_sha256=expect_sha256(payload["source_sha256"], "calibration.source_sha256"),
+        page=expect_int(payload["page"], "calibration.page"),
+        references=references,
+        scale_x=_optional_calibration_string(payload["scale_x"], "calibration.scale_x"),
+        scale_y=_optional_calibration_string(payload["scale_y"], "calibration.scale_y"),
+        unit=expect_string(payload["unit"], "calibration.unit"),
+        formula_id=expect_string(payload["formula_id"], "calibration.formula_id"),
+        formula_version=expect_string(
+            payload["formula_version"], "calibration.formula_version"
+        ),
+        calculation_result_hash=expect_sha256(
+            payload["calculation_result_hash"],
+            "calibration.calculation_result_hash",
+        ),
+        reviewer=expect_string(payload["reviewer"], "calibration.reviewer"),
+        confirmed_at=expect_string(payload["confirmed_at"], "calibration.confirmed_at"),
+        reviewer_confirmed=expect_bool(
+            payload["reviewer_confirmed"], "calibration.reviewer_confirmed"
+        ),
+        candidate_id=candidate_id,
+        confirmation_id=confirmation_id,
+    )
 
 
 def _confirmed_timestamp(value: str) -> str:
@@ -122,6 +238,8 @@ def build_calibration(
     references: tuple[CalibrationReference, ...],
     reviewer: str,
     confirmed_at: str,
+    candidate_id: str | None = None,
+    confirmation_id: str | None = None,
 ) -> CalibrationRecord:
     """Calculate scale only from explicit reviewer-confirmed references."""
     source = expect_sha256(source_sha256, "source_sha256")
@@ -136,6 +254,10 @@ def build_calibration(
     ):
         raise ValueError("reviewer must be path-safe and non-empty")
     timestamp = _confirmed_timestamp(confirmed_at)
+    if candidate_id is not None:
+        validate_artifact_id(candidate_id, "candidate_id")
+    if confirmation_id is not None:
+        validate_artifact_id(confirmation_id, "confirmation_id")
 
     scales: dict[Axis, str] = {}
     result_hashes: list[str] = []
@@ -189,12 +311,14 @@ def build_calibration(
         calculation_result_hash=sha256_json({"results": result_hashes}),
         reviewer=reviewer,
         confirmed_at=timestamp,
+        candidate_id=candidate_id,
+        confirmation_id=confirmation_id,
     )
 
 
 def calibration_document(record: CalibrationRecord) -> dict[str, object]:
     """Return canonical, source-bound calibration data."""
-    return {
+    document: dict[str, object] = {
         "calibration_id": record.calibration_id,
         "source_sha256": record.source_sha256,
         "page": record.page,
@@ -217,6 +341,11 @@ def calibration_document(record: CalibrationRecord) -> dict[str, object]:
         "confirmed_at": record.confirmed_at,
         "reviewer_confirmed": record.reviewer_confirmed,
     }
+    if record.candidate_id is not None:
+        document["candidate_id"] = record.candidate_id
+    if record.confirmation_id is not None:
+        document["confirmation_id"] = record.confirmation_id
+    return document
 
 
 def persist_calibration(
@@ -266,5 +395,6 @@ __all__ = [
     "build_calibration",
     "calculate_real_length",
     "calibration_document",
+    "decode_calibration",
     "persist_calibration",
 ]
