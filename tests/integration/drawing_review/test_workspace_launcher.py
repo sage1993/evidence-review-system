@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.run_drawing_annotation_workspace import main, prepare_workspace
+from scripts.run_drawing_annotation_workspace import main, prepare_workspace, startup_url_lines
 
 
 def test_prepare_workspace_loads_candidate_fixture_and_embeds_page(tmp_path: Path) -> None:
@@ -103,4 +103,17 @@ def test_launcher_reports_invalid_page_dimensions_without_starting_server(
     )
 
     assert result == 2
-    assert "positive finite number" in capsys.readouterr().err
+    assert capsys.readouterr().err.strip() == "error: STARTUP_FAILED"
+
+
+def test_launcher_startup_url_lines_are_exactly_the_three_browser_routes() -> None:
+    class FakeServer:
+        url = "http://127.0.0.1:1234/annotation/TOKEN"
+        calibration_url = "http://127.0.0.1:1234/calibration/TOKEN"
+        review_packet_url = "http://127.0.0.1:1234/review-packet/TOKEN"
+
+    assert startup_url_lines(FakeServer()) == (
+        "Annotation workspace URL: http://127.0.0.1:1234/annotation/TOKEN",
+        "Calibration workspace URL: http://127.0.0.1:1234/calibration/TOKEN",
+        "Review Packet URL: http://127.0.0.1:1234/review-packet/TOKEN",
+    )

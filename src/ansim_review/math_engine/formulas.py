@@ -132,6 +132,166 @@ def _frontage_ratio(inputs: Mapping[str, str]) -> CalculationResult:
     )
 
 
+DRAWING_SCALE_ID = "DRAWING_SCALE"
+DRAWING_SCALE_VERSION = "1.0.0"
+
+
+def _drawing_scale(inputs: Mapping[str, str]) -> CalculationResult:
+    required = ("real_length", "pixel_length")
+    if any(name not in inputs for name in required):
+        return _error_result(
+            DRAWING_SCALE_ID,
+            DRAWING_SCALE_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="MISSING_INPUT",
+        )
+    try:
+        real_length = Decimal(inputs["real_length"])
+        pixel_length = Decimal(inputs["pixel_length"])
+    except (InvalidOperation, ValueError):
+        return _error_result(
+            DRAWING_SCALE_ID,
+            DRAWING_SCALE_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="INVALID_DECIMAL",
+        )
+    if not all(value.is_finite() for value in (real_length, pixel_length)):
+        return _error_result(
+            DRAWING_SCALE_ID,
+            DRAWING_SCALE_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="NON_FINITE_DECIMAL",
+        )
+    if real_length <= 0 or pixel_length <= 0:
+        return _error_result(
+            DRAWING_SCALE_ID,
+            DRAWING_SCALE_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="NON_POSITIVE_VALUE",
+        )
+    with decimal_context(precision=28, rounding="ROUND_HALF_UP"):
+        scale = real_length / pixel_length
+    raw_text = _decimal_text(scale)
+    return CalculationResult(
+        calculation_result_id=_calculation_id(
+            DRAWING_SCALE_ID,
+            DRAWING_SCALE_VERSION,
+            inputs,
+        ),
+        status="SUCCESS",
+        formula_id=DRAWING_SCALE_ID,
+        formula_version=DRAWING_SCALE_VERSION,
+        inputs=dict(sorted(inputs.items())),
+        substitution=(
+            f"{inputs['real_length']} / {inputs['pixel_length']} = {raw_text}"
+        ),
+        raw_result=raw_text,
+        display_result=raw_text,
+        comparison="NOT_APPLICABLE",
+    )
+
+
+DRAWING_SCALE_SPEC = FormulaSpec(
+    formula_id=DRAWING_SCALE_ID,
+    version=DRAWING_SCALE_VERSION,
+    precision=28,
+    rounding="ROUND_HALF_UP",
+    input_schema={
+        "real_length": "decimal-string",
+        "pixel_length": "decimal-string",
+    },
+    output_policy={
+        "comparison_basis": "raw_result",
+        "display": "decimal-scale",
+    },
+    execute=_drawing_scale,
+)
+
+
+DRAWING_LENGTH_ID = "DRAWING_LENGTH"
+DRAWING_LENGTH_VERSION = "1.0.0"
+
+
+def _drawing_length(inputs: Mapping[str, str]) -> CalculationResult:
+    required = ("pixel_length", "scale")
+    if any(name not in inputs for name in required):
+        return _error_result(
+            DRAWING_LENGTH_ID,
+            DRAWING_LENGTH_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="MISSING_INPUT",
+        )
+    try:
+        pixel_length = Decimal(inputs["pixel_length"])
+        scale = Decimal(inputs["scale"])
+    except (InvalidOperation, ValueError):
+        return _error_result(
+            DRAWING_LENGTH_ID,
+            DRAWING_LENGTH_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="INVALID_DECIMAL",
+        )
+    if not all(value.is_finite() for value in (pixel_length, scale)):
+        return _error_result(
+            DRAWING_LENGTH_ID,
+            DRAWING_LENGTH_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="NON_FINITE_DECIMAL",
+        )
+    if pixel_length < 0 or scale <= 0:
+        return _error_result(
+            DRAWING_LENGTH_ID,
+            DRAWING_LENGTH_VERSION,
+            inputs,
+            status="INVALID_INPUT",
+            error_code="INVALID_RANGE",
+        )
+    with decimal_context(precision=28, rounding="ROUND_HALF_UP"):
+        result_value = pixel_length * scale
+    raw_text = _decimal_text(result_value)
+    return CalculationResult(
+        calculation_result_id=_calculation_id(
+            DRAWING_LENGTH_ID,
+            DRAWING_LENGTH_VERSION,
+            inputs,
+        ),
+        status="SUCCESS",
+        formula_id=DRAWING_LENGTH_ID,
+        formula_version=DRAWING_LENGTH_VERSION,
+        inputs=dict(sorted(inputs.items())),
+        substitution=(
+            f"{inputs['pixel_length']} * {inputs['scale']} = {raw_text}"
+        ),
+        raw_result=raw_text,
+        display_result=raw_text,
+        comparison="NOT_APPLICABLE",
+    )
+
+
+DRAWING_LENGTH_SPEC = FormulaSpec(
+    formula_id=DRAWING_LENGTH_ID,
+    version=DRAWING_LENGTH_VERSION,
+    precision=28,
+    rounding="ROUND_HALF_UP",
+    input_schema={
+        "pixel_length": "decimal-string",
+        "scale": "decimal-string",
+    },
+    output_policy={
+        "comparison_basis": "raw_result",
+        "display": "decimal-length",
+    },
+    execute=_drawing_length,
+)
+
+
 FRONTAGE_RATIO_SPEC = FormulaSpec(
     formula_id=FRONTAGE_RATIO_ID,
     version=FRONTAGE_RATIO_VERSION,
@@ -151,6 +311,10 @@ FRONTAGE_RATIO_SPEC = FormulaSpec(
 
 DEFAULT_REGISTRY = FormulaRegistry()
 DEFAULT_REGISTRY.register(FRONTAGE_RATIO_SPEC)
+
+DRAWING_REGISTRY = FormulaRegistry()
+DRAWING_REGISTRY.register(DRAWING_SCALE_SPEC)
+DRAWING_REGISTRY.register(DRAWING_LENGTH_SPEC)
 
 
 def run_calculation(

@@ -132,3 +132,10 @@ def test_javascript_keeps_actions_unselected_until_reviewer_input() -> None:
     assert "if (!selectedAction)" in javascript
     assert "selectCandidate(button.dataset.candidateId" in javascript
     assert ".checked = true" not in javascript
+
+
+def test_javascript_resolves_late_injected_calibration_link() -> None:
+    javascript = _javascript()
+
+    assert "function getCalibrationLink" in javascript
+    assert "const calibrationLink = document.querySelector" not in javascript
