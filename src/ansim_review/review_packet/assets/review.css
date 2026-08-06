@@ -56,8 +56,8 @@ code, pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 .viewer-heading h2 { margin: 0; }
 .evidence-page { display: none; margin: 1rem 0 0; outline: none; overflow: auto; }
 .evidence-page.is-active { display: block; }
-.page-canvas { position: relative; }
-.evidence-page img { display: block; height: auto; transform-origin: top left; transition: transform .15s ease; width: 100%; }
+.page-canvas { position: relative; transform-origin: top left; transition: transform .15s ease; }
+.evidence-page img { display: block; height: auto; width: 100%; }
 .overlay-layer { inset: 0; pointer-events: none; position: absolute; }
 .citation-overlay { height: 100%; inset: 0; pointer-events: none; position: absolute; width: 100%; }
 .citation-overlay rect { fill: rgba(250, 204, 21, .2); stroke: #b45309; stroke-width: 2; }
