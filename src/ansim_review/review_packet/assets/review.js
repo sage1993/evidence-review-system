@@ -12,7 +12,6 @@
   function decisionEnvelope(form) {
     const values = new FormData(form);
     return {
-      run_id: reviewModel.run_id,
       reviewer_id: values.get("reviewer_id") || "",
       reviewed_at: values.get("reviewed_at") || "",
       packet_hash: values.get("packet_sha256") || "",

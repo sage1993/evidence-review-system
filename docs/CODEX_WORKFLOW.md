@@ -189,6 +189,8 @@ The generated `review.html` is also an archival offline artifact. When opened th
 
 The workspace embeds its verified page assets and no external resources. Its bounded local readiness test generates 20 page assets shared by 100 citations and allows at most 5 seconds for HTML rendering on a Windows CI worker. This is a local rendering budget, not an evidence-validation shortcut: all cited pages, sections, and provenance remain required.
 
+The static CSS contract test covers the 1366x768, 1920x1080, and 3840x2160 desktop viewport matrix. It verifies the declared desktop grid, 1100px stacking threshold, 1440px content cap, and print hooks that govern those ranges. Static checks do not render a browser viewport or establish visual usability; browser QA remains required for actual layout and zoom behavior.
+
 `READY_FOR_HUMAN_REVIEW` means the machine packet is ready for a human to inspect. It is not approval, does not set `human_decision`, and does not replace the separate reviewer decision. `ABSTAIN` preserves its reasons for the reviewer and likewise is not a human decision.
 
 Review Packet v1 remains frozen. A v2 consumer must use the deterministic v1-to-v2 adapter and must not invent resolved evidence, drawing evidence, confirmed inputs, exceptions, or conflicts absent from v1.

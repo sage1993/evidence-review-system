@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from ansim_review.review_packet.html_renderer import render_review_html
@@ -57,3 +58,25 @@ def test_review_workspace_zoom_transforms_the_shared_page_canvas(
     assert 'document.querySelectorAll(".page-canvas")' in html
     assert 'canvas.style.transform = "scale(" + scale + ")"' in html
     assert 'document.querySelectorAll(".evidence-page img")' not in html
+
+
+def test_review_workspace_decision_envelope_matches_the_protected_route_contract(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_model(), tmp_path / "pages")
+    match = re.search(
+        r"function decisionEnvelope\(form\) \{.*?return \{(?P<fields>.*?)\n    \};",
+        html,
+        re.DOTALL,
+    )
+
+    assert match is not None
+    assert re.findall(r"^      ([a-z_]+):", match.group("fields"), re.MULTILINE) == [
+        "reviewer_id",
+        "reviewed_at",
+        "packet_hash",
+        "decision",
+        "notes",
+    ]
