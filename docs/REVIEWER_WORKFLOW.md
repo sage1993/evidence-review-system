@@ -47,6 +47,8 @@ The matching packet and packet-hash endpoints retain that same protected prefix:
 
 `review.html` can also be retained as an offline archival artifact and opened with `file:`. That mode cannot submit to the local decision endpoint. Use its separate **Download decision envelope** control if a handoff is needed; the envelope does not approve the packet and must be recorded through the protected workflow or the approved append-only process.
 
+Static CSS checks cover the declared desktop and print contracts for 1366x768, 1920x1080, and 3840x2160. They do not replace browser QA: validate the rendered workspace, citation overlays, and zoom behavior in the browser used for review.
+
 Review the matching run-specific `final-review-packet.json` and confirm:
 
 - `human_decision` is `null`;

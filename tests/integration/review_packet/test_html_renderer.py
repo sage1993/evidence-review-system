@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -186,6 +187,27 @@ def test_review_workspace_inlines_responsive_print_and_offline_hooks(tmp_path: P
     assert "@page { size: A4;" in html
     assert "https://" not in html
     assert "http://" not in html
+
+
+@pytest.mark.parametrize(
+    ("viewport", "width", "height"),
+    (("1366x768", 1366, 768), ("1920x1080", 1920, 1080), ("3840x2160", 3840, 2160)),
+)
+def test_static_css_contract_keeps_desktop_and_print_hooks_for_target_viewports(
+    tmp_path: Path, viewport: str, width: int, height: int
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    body = re.search(r"body \{(?P<rule>[^}]+)\}", html)
+    stacked = re.search(r"@media \(max-width: (?P<width>\d+)px\)", html)
+    assert body is not None and stacked is not None
+    assert viewport == f"{width}x{height}"
+    assert width > int(stacked.group("width"))
+    assert "max-width: 1440px" in body.group("rule")
+    assert "grid-template-columns: minmax(13rem, .8fr) minmax(22rem, 1.5fr)" in html
+    assert "@media print" in html
+    assert "@page { size: A4;" in html
 
 
 def test_review_html_refuses_missing_page_assets(tmp_path: Path) -> None:

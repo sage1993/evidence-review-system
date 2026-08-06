@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -12,18 +13,21 @@ from ansim_review.review_packet.html_renderer import render_review_html
 PAGE_COUNT = 20
 CITATION_COUNT = 100
 LOCAL_RENDER_BUDGET_SECONDS = 5.0
+VALID_MINIMAL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLk0QAAAABJRU5ErkJggg=="
+)
 
 
 def _write_shared_page_assets(root: Path) -> list[str]:
     """Create twenty verified pages reused by the hundred citations below."""
     revision_id = "REV-PERFORMANCE"
+    source_hash = hashlib.sha256(b"source-revision-performance").hexdigest()
     directory = root / revision_id
     directory.mkdir(parents=True)
     source_hashes: list[str] = []
     for page_number in range(1, PAGE_COUNT + 1):
-        source_hash = hashlib.sha256(f"source-page-{page_number}".encode()).hexdigest()
         source_hashes.append(source_hash)
-        image_bytes = b"\x89PNG\r\n\x1a\nperformance-page-" + str(page_number).encode()
+        image_bytes = VALID_MINIMAL_PNG
         (directory / f"page-{page_number:04d}.png").write_bytes(image_bytes)
         (directory / f"page-{page_number:04d}.json").write_text(
             json.dumps(
@@ -109,6 +113,14 @@ def test_review_workspace_renders_twenty_shared_pages_and_one_hundred_items_with
     html = render_review_html(model, tmp_path / "pages")
     elapsed = perf_counter() - started
 
+    assert source_hashes == [source_hashes[0]] * PAGE_COUNT
+    for page_number in range(1, PAGE_COUNT + 1):
+        directory = tmp_path / "pages" / "REV-PERFORMANCE"
+        image_bytes = (directory / f"page-{page_number:04d}.png").read_bytes()
+        metadata = json.loads((directory / f"page-{page_number:04d}.json").read_text())
+        assert image_bytes == VALID_MINIMAL_PNG
+        assert metadata["image_sha256"] == hashlib.sha256(image_bytes).hexdigest()
+        assert metadata["source_hash"] == source_hashes[0]
     assert html.count("data:image/png;base64,") == PAGE_COUNT
     for number in range(1, CITATION_COUNT + 1):
         assert f'data-item-id="ITEM-{number:03d}"' in html
