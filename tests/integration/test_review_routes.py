@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import socket
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 import pytest
@@ -54,6 +56,18 @@ def _request(
     request = Request(url, data=body, headers=headers or {}, method=method)
     with urlopen(request, timeout=5) as response:
         return response.read()
+
+
+def _raw_request(base: str, request: bytes) -> bytes:
+    parsed = urlsplit(base)
+    assert parsed.hostname is not None
+    assert parsed.port is not None
+    with socket.create_connection((parsed.hostname, parsed.port), timeout=5) as connection:
+        connection.sendall(request)
+        response = bytearray()
+        while chunk := connection.recv(8192):
+            response.extend(chunk)
+    return bytes(response)
 
 
 def _decision(packet: bytes, **changes: object) -> bytes:
@@ -142,6 +156,48 @@ def test_protected_routes_require_exact_host_and_reject_foreign_origin(tmp_path:
         with pytest.raises(HTTPError) as error:
             _request(url, headers={"Origin": "http://attacker.invalid"})
         assert error.value.code == 403
+
+
+def test_protected_routes_reject_duplicate_host_even_when_the_first_value_is_valid(
+    tmp_path: Path,
+) -> None:
+    _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        host = base.removeprefix("http://")
+        response = _raw_request(
+            base,
+            (
+                f"GET /runs/RUN-001/{TOKEN}/review HTTP/1.1\r\n"
+                f"Host: {host}\r\n"
+                "Host: attacker.invalid\r\n"
+                "Connection: close\r\n\r\n"
+            ).encode("ascii"),
+        )
+    assert response.startswith(b"HTTP/1.0 403")
+
+
+def test_decision_rejects_duplicate_origin_even_when_the_first_value_is_valid(
+    tmp_path: Path,
+) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        host = base.removeprefix("http://")
+        body = _decision(packet)
+        response = _raw_request(
+            base,
+            (
+                f"POST /runs/RUN-001/{TOKEN}/decision HTTP/1.1\r\n"
+                f"Host: {host}\r\n"
+                f"Origin: {base}\r\n"
+                "Origin: http://attacker.invalid\r\n"
+                "Content-Type: application/json\r\n"
+                f"Content-Length: {len(body)}\r\n"
+                "Connection: close\r\n\r\n"
+            ).encode("ascii")
+            + body,
+        )
+    assert response.startswith(b"HTTP/1.0 403")
+    assert not (run_dir / "human-decisions").exists()
 
 
 def test_review_route_requires_both_final_packet_and_html(tmp_path: Path) -> None:
@@ -275,8 +331,9 @@ def test_decision_appends_record_without_mutating_packet_or_html(tmp_path: Path)
     decision_path = run_dir / "human-decisions" / created["filename"]
     assert created["status"] == "RECORDED"
     assert decision_path.is_file()
-    assert json.loads(decision_path.read_text(encoding="utf-8"))["packet_hash"] == hashlib.sha256(
-        packet
-    ).hexdigest()
+    assert (
+        json.loads(decision_path.read_text(encoding="utf-8"))["packet_hash"]
+        == hashlib.sha256(packet).hexdigest()
+    )
     assert (run_dir / "final-review-packet.json").read_bytes() == packet
     assert (run_dir / "review.html").read_bytes() == html_before

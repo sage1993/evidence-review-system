@@ -187,13 +187,20 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         return route
 
     def _authorized(self, route: _Route, *, require_origin: bool) -> bool:
-        if self.headers.get("Host") != self.state.expected_host:
+        host_values = self.headers.get_all("Host") or []
+        if len(host_values) != 1 or host_values[0] != self.state.expected_host:
             self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
             return False
-        origin = self.headers.get("Origin")
-        if (require_origin and origin != self.state.origin) or (
-            origin is not None and origin != self.state.origin
+        origin_values = self.headers.get_all("Origin") or []
+        if len(origin_values) > 1:
+            self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
+            return False
+        if require_origin and (
+            len(origin_values) != 1 or origin_values[0] != self.state.origin
         ):
+            self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
+            return False
+        if origin_values and origin_values[0] != self.state.origin:
             self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
             return False
         if route.token is None:
