@@ -142,6 +142,14 @@ If Grist Desktop cannot be launched, overall Grist acceptance remains pending.
 
 Follow [`docs/OFFLINE_EXECUTION.md`](docs/OFFLINE_EXECUTION.md) for the application network guard, optional OS isolation, final ZIP verification, and process attestation boundary.
 
+The repository-wide manual acceptance and main-merge policy is recorded in
+[`docs/MANUAL_ACCEPTANCE_POLICY.md`](docs/MANUAL_ACCEPTANCE_POLICY.md). GitHub
+Actions is not used as the default issue acceptance dependency. Before a change
+is merged into `main`, perform the applicable local gates from a clean checkout
+at the exact HEAD and record `ACTIONS_NOT_RUN` or `ACTIONS_BILLING_BLOCKED` when
+Actions is excluded or unavailable. Neither status may be described as an
+Actions PASS.
+
 A valid process attestation cannot override:
 
 - automated workspace validation failure;
