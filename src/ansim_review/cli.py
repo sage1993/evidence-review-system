@@ -521,6 +521,22 @@ def _review_run_finalize(
         except (OSError, RuntimeError, ValueError) as error:
             print(str(error), file=sys.stderr)
             return 2
+        lifecycle_error: OSError | RuntimeError | ValueError | None = None
+        try:
+            wait_for_review_run(workspace, result.run_id)
+        except KeyboardInterrupt:
+            pass
+        except (OSError, RuntimeError, ValueError) as error:
+            lifecycle_error = error
+        finally:
+            try:
+                close_review_run(workspace, result.run_id)
+            except (OSError, RuntimeError, ValueError) as error:
+                if lifecycle_error is None:
+                    lifecycle_error = error
+        if lifecycle_error is not None:
+            print(str(lifecycle_error), file=sys.stderr)
+            return 2
         _write_stdout(
             {
                 "status": result.packet.status,
@@ -528,12 +544,6 @@ def _review_run_finalize(
                 "url": url,
             }
         )
-        try:
-            wait_for_review_run(workspace, result.run_id)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            close_review_run(workspace, result.run_id)
     else:
         _write_stdout(
             {
