@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -141,6 +142,12 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert model["exceptions"] == []
     assert model["conflicts"] == ["UNRESOLVED_CONFLICT"]
     assert model["abstention_reasons"] == ["UNRESOLVED_CONFLICT"]
+    assert model["metadata"]["packet_sha256"] == hashlib.sha256(
+        json.dumps(_packet(), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert model["summary"]["citation_count"] == 1
+    assert model["review_items"][0]["claim_id"] == "C1"
+    assert model["decision"]["human_decision"] is None
 
 
 def test_view_model_requires_explicit_v1_migration(tmp_path: Path) -> None:
