@@ -98,7 +98,7 @@ source-batch CASE_DRAWING registration
   -> Math or Rule Engine binding
 ```
 
-The confirmation browser view is available at `/runs/<RUN-ID>/confirmation` while the run is `INPUT_CONFIRMATION_REQUIRED`. It is not the final review view. The final review route `/runs/<RUN-ID>/review` is served only after `final-review-packet.json` and `review.html` have both been created.
+The confirmation browser view is available at `/runs/<RUN-ID>/confirmation` while the run is `INPUT_CONFIRMATION_REQUIRED`. It is not the final review view. The final review route is token-protected and is served only after `final-review-packet.json` and `review.html` have both been created.
 
 Codex may help present candidate evidence or serialize an annotation that the user explicitly created or approved. Codex must not independently:
 
@@ -167,6 +167,29 @@ evidence-review review-run finalize `
 Use `--open` when the default browser should open the generated review HTML. In that mode stdout is a compact status document containing only `status`, `run_id`, and `url`; it does not contain evidence or model output.
 
 Finalization verifies artifact hashes, Track A integrity, the independent Track B audit, confidence factors, and abstention gates. It then writes the run-specific `final-review-packet.json` and `review.html`. `--publish` copies the exact packet to `runs/final-review-packet.json` for the release builder; it does not approve the result or set `human_decision`.
+
+### 5.1 Use the protected browser route or archival HTML deliberately
+
+With `--open`, finalization opens a local, tokenized route in the form:
+
+```text
+http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
+```
+
+The token is run-scoped and URL-safe. The companion packet and packet-hash endpoints use the same protected prefix:
+
+```text
+/runs/<RUN-ID>/<TOKEN>/packet
+/runs/<RUN-ID>/<TOKEN>/packet/hash
+```
+
+The local server accepts a reviewer decision only at `POST /runs/<RUN-ID>/<TOKEN>/decision`. Its JSON object has exactly these string fields: `reviewer_id`, `reviewed_at`, `packet_hash`, `decision`, and `notes`. The server validates the packet hash, allowed decision value, reviewer ID, and timezone-aware ISO-8601 timestamp, then creates a separate append-only record under `human-decisions/`. It never changes the packet or `review.html`.
+
+The generated `review.html` is also an archival offline artifact. When opened through `file:`, there is no local decision endpoint; submission cannot record a decision. The reviewer can use the separate **Download decision envelope** control, then validate and record that envelope through the protected local workflow or the approved append-only process. It does not authorize an approval by itself.
+
+The workspace embeds its verified page assets and no external resources. Its bounded local readiness test generates 20 page assets shared by 100 citations and allows at most 5 seconds for HTML rendering on a Windows CI worker. This is a local rendering budget, not an evidence-validation shortcut: all cited pages, sections, and provenance remain required.
+
+`READY_FOR_HUMAN_REVIEW` means the machine packet is ready for a human to inspect. It is not approval, does not set `human_decision`, and does not replace the separate reviewer decision. `ABSTAIN` preserves its reasons for the reviewer and likewise is not a human decision.
 
 Review Packet v1 remains frozen. A v2 consumer must use the deterministic v1-to-v2 adapter and must not invent resolved evidence, drawing evidence, confirmed inputs, exceptions, or conflicts absent from v1.
 
