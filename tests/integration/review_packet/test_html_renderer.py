@@ -189,6 +189,20 @@ def test_review_workspace_inlines_responsive_print_and_offline_hooks(tmp_path: P
     assert "http://" not in html
 
 
+def test_detail_tabs_contain_wide_evidence_tables_without_widening_workspace(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    detail_tabs = re.search(r"#detail-tabs \{(?P<rule>[^}]+)\}", html)
+    assert detail_tabs is not None
+    assert "min-width: 0" in detail_tabs.group("rule")
+    assert "overflow-x: auto" in detail_tabs.group("rule")
+    assert "#detail-tabs { overflow: visible; }" in html
+
+
 @pytest.mark.parametrize(
     ("viewport", "width", "height"),
     (("1366x768", 1366, 768), ("1920x1080", 1920, 1080), ("3840x2160", 3840, 2160)),
