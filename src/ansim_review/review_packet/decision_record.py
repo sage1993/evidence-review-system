@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import stat
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ _ALLOWED = {
 }
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+_REPARSE_POINT_ATTRIBUTE = 0x400
 
 
 def _timestamp(value: str) -> tuple[str, str]:
@@ -27,6 +29,20 @@ def _timestamp(value: str) -> tuple[str, str]:
     return parsed.isoformat(), parsed.strftime("%Y%m%dT%H%M%S%z")
 
 
+def _regular_directory(path: Path, field: str) -> Path:
+    try:
+        status = path.lstat()
+    except OSError as error:
+        raise ValueError(f"{field} must be an existing regular directory") from error
+    if (
+        stat.S_ISLNK(status.st_mode)
+        or not stat.S_ISDIR(status.st_mode)
+        or getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE
+    ):
+        raise ValueError(f"{field} must be an existing regular directory")
+    return path.resolve(strict=True)
+
+
 def write_human_decision(
     run_directory: Path,
     *,
@@ -37,6 +53,7 @@ def write_human_decision(
     notes: str = "",
 ) -> Path:
     """Exclusively create one immutable human decision JSON record."""
+    run_directory = _regular_directory(run_directory, "run_directory")
     if not reviewer_id.strip():
         raise ValueError("reviewer_id is required")
     if not _SHA256.fullmatch(packet_hash):
@@ -49,6 +66,7 @@ def write_human_decision(
         raise ValueError("reviewer_id has no safe filename characters")
     directory = run_directory / "human-decisions"
     directory.mkdir(parents=True, exist_ok=True)
+    directory = _regular_directory(directory, "human-decisions")
     output = directory / f"{file_time}-{safe_reviewer}.json"
     payload = {
         "run_id": run_directory.name,

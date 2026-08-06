@@ -1,14 +1,71 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 
 from web_runtime.review_server import create_review_server
+
+TOKEN = "a" * 32
+
+
+def _review_artifacts(root: Path, *, html: bytes = b"<html>final</html>") -> tuple[Path, bytes]:
+    run_dir = root / "runs" / "RUN-001"
+    run_dir.mkdir(parents=True)
+    packet = b'{"human_decision":null,"run_id":"RUN-001"}'
+    (run_dir / "final-review-packet.json").write_bytes(packet)
+    (run_dir / "review.html").write_bytes(html)
+    return run_dir, packet
+
+
+@contextmanager
+def _server(root: Path, *, max_body_bytes: int = 65536) -> Iterator[tuple[object, str]]:
+    server = create_review_server(
+        root,
+        run_tokens={"RUN-001": TOKEN},
+        max_body_bytes=max_body_bytes,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        yield server, base
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _request(
+    url: str,
+    *,
+    method: str = "GET",
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+) -> bytes:
+    request = Request(url, data=body, headers=headers or {}, method=method)
+    with urlopen(request, timeout=5) as response:
+        return response.read()
+
+
+def _decision(packet: bytes, **changes: object) -> bytes:
+    payload: dict[str, object] = {
+        "reviewer_id": "kim.sh",
+        "reviewed_at": "2026-08-01T15:30:00+09:00",
+        "packet_hash": hashlib.sha256(packet).hexdigest(),
+        "decision": "SATISFIED",
+        "notes": "reviewed locally",
+    }
+    payload.update(changes)
+    return json.dumps(payload).encode("utf-8")
 
 
 def test_confirmation_route_is_not_final_review_route(tmp_path: Path) -> None:
@@ -18,7 +75,7 @@ def test_confirmation_route_is_not_final_review_route(tmp_path: Path) -> None:
         json.dumps({"run_id": "RUN-001", "workflow_state": "INPUT_CONFIRMATION_REQUIRED"}),
         encoding="utf-8",
     )
-    server = create_review_server(tmp_path)
+    server = create_review_server(tmp_path, run_tokens={})
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_port}"
@@ -32,23 +89,194 @@ def test_confirmation_route_is_not_final_review_route(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+        thread.join(timeout=5)
 
 
-def test_review_route_requires_final_packet(tmp_path: Path) -> None:
+def test_review_server_binds_loopback_and_serves_protected_read_only_artifacts(
+    tmp_path: Path,
+) -> None:
+    _, packet = _review_artifacts(tmp_path)
+    with _server(tmp_path) as (server, base):
+        assert server.server_address[0] == "127.0.0.1"
+        review = _request(f"{base}/runs/RUN-001/{TOKEN}/review")
+        assert review == b"<html>final</html>"
+        assert _request(f"{base}/runs/RUN-001/{TOKEN}/packet") == packet
+        assert json.loads(_request(f"{base}/runs/RUN-001/{TOKEN}/packet/hash")) == {
+            "packet_hash": hashlib.sha256(packet).hexdigest()
+        }
+        with urlopen(f"{base}/runs/RUN-001/{TOKEN}/review", timeout=5) as response:
+            assert response.headers["Cache-Control"] == "no-store"
+            assert response.headers["X-Content-Type-Options"] == "nosniff"
+            assert response.headers["Referrer-Policy"] == "no-referrer"
+            assert "Content-Security-Policy" in response.headers
+            assert "Access-Control-Allow-Origin" not in response.headers
+
+
+@pytest.mark.parametrize(
+    ("path", "status"),
+    [
+        ("/runs/RUN-001/review", 404),
+        ("/runs/RUN-001/" + "b" * 32 + "/review", 403),
+        ("/runs/RUN-001/%2e%2e/review", 404),
+        ("/runs/RUN-001/" + TOKEN + "/review?ignored=1", 404),
+        ("/runs/RUN-001/" + TOKEN + "/review%2fpacket", 404),
+    ],
+)
+def test_protected_routes_reject_missing_wrong_or_unsafe_paths(
+    tmp_path: Path, path: str, status: int
+) -> None:
+    _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(f"{base}{path}")
+        assert error.value.code == status
+
+
+def test_protected_routes_require_exact_host_and_reject_foreign_origin(tmp_path: Path) -> None:
+    _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        url = f"{base}/runs/RUN-001/{TOKEN}/review"
+        with pytest.raises(HTTPError) as error:
+            _request(url, headers={"Host": "localhost:1"})
+        assert error.value.code == 403
+        with pytest.raises(HTTPError) as error:
+            _request(url, headers={"Origin": "http://attacker.invalid"})
+        assert error.value.code == 403
+
+
+def test_review_route_requires_both_final_packet_and_html(tmp_path: Path) -> None:
     run_dir = tmp_path / "runs" / "RUN-001"
     run_dir.mkdir(parents=True)
     (run_dir / "final-review-packet.json").write_text("{}", encoding="utf-8")
-    (run_dir / "review.html").write_text("<html>final</html>", encoding="utf-8")
-    server = create_review_server(tmp_path)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    with _server(tmp_path) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(f"{base}/runs/RUN-001/{TOKEN}/review")
+        assert error.value.code == 404
+
+
+def test_review_server_rejects_symlinked_workspace_root(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "workspace-link"
     try:
-        with urlopen(
-            f"http://127.0.0.1:{server.server_port}/runs/RUN-001/review",
-            timeout=5,
-        ) as response:
-            assert response.status == 200
-            assert response.read() == b"<html>final</html>"
-    finally:
-        server.shutdown()
-        server.server_close()
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symbolic links are unavailable")
+    with pytest.raises(ValueError, match="workspace_root"):
+        create_review_server(link, run_tokens={})
+
+
+def test_review_server_rejects_reparse_workspace_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_lstat = Path.lstat
+
+    def reparse_lstat(path: Path) -> SimpleNamespace:
+        status = original_lstat(path)
+        if path == tmp_path:
+            return SimpleNamespace(
+                st_mode=status.st_mode,
+                st_file_attributes=0x400,
+            )
+        return SimpleNamespace(
+            st_mode=status.st_mode,
+            st_file_attributes=getattr(status, "st_file_attributes", 0),
+        )
+
+    monkeypatch.setattr(Path, "lstat", reparse_lstat)
+    with pytest.raises(ValueError, match="workspace_root"):
+        create_review_server(tmp_path, run_tokens={})
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"[",
+        b'{"reviewer_id":"kim","reviewer_id":"lee"}',
+        b'{"reviewer_id":"kim","unexpected":true}',
+    ],
+)
+def test_decision_rejects_duplicate_or_unknown_json_without_writing(
+    tmp_path: Path, body: bytes
+) -> None:
+    run_dir, _ = _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(
+                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                method="POST",
+                body=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": base,
+                },
+            )
+        assert error.value.code == 400
+    assert not (run_dir / "human-decisions").exists()
+
+
+def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_path: Path) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    with _server(tmp_path, max_body_bytes=8) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(
+                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                method="POST",
+                body=_decision(packet),
+                headers={"Content-Type": "application/json", "Origin": base},
+            )
+        assert error.value.code == 413
+    with _server(tmp_path) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(
+                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                method="POST",
+                body=_decision(packet),
+                headers={"Content-Type": "application/json", "Origin": "http://attacker.invalid"},
+            )
+        assert error.value.code == 403
+    assert not (run_dir / "human-decisions").exists()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"decision": "PASS"},
+        {"packet_hash": "a" * 64},
+    ],
+)
+def test_decision_rejects_unsupported_values_and_hash_mismatch_without_writing(
+    tmp_path: Path, changes: dict[str, object]
+) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(
+                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                method="POST",
+                body=_decision(packet, **changes),
+                headers={"Content-Type": "application/json", "Origin": base},
+            )
+        assert error.value.code == 400
+    assert not (run_dir / "human-decisions").exists()
+
+
+def test_decision_appends_record_without_mutating_packet_or_html(tmp_path: Path) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    html_before = (run_dir / "review.html").read_bytes()
+    with _server(tmp_path) as (_, base):
+        response = _request(
+            f"{base}/runs/RUN-001/{TOKEN}/decision",
+            method="POST",
+            body=_decision(packet),
+            headers={"Content-Type": "application/json", "Origin": base},
+        )
+    created = json.loads(response)
+    decision_path = run_dir / "human-decisions" / created["filename"]
+    assert created["status"] == "RECORDED"
+    assert decision_path.is_file()
+    assert json.loads(decision_path.read_text(encoding="utf-8"))["packet_hash"] == hashlib.sha256(
+        packet
+    ).hexdigest()
+    assert (run_dir / "final-review-packet.json").read_bytes() == packet
+    assert (run_dir / "review.html").read_bytes() == html_before
