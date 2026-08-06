@@ -38,14 +38,22 @@ def _string(value: object, field: str, *, allow_empty: bool = False) -> str:
     return value
 
 
-def _packet_document(packet: object) -> Mapping[str, object]:
+def _packet_document(packet: object) -> tuple[Mapping[str, object], bytes]:
+    if isinstance(packet, bytes):
+        try:
+            document = json.loads(packet.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("packet bytes must contain UTF-8 JSON") from error
+        return _mapping(document, "packet"), packet
     if isinstance(packet, Mapping):
-        return _mapping(packet, "packet")
+        document = _mapping(packet, "packet")
+        return document, dump_bytes(document)
     if isinstance(packet, ReviewPacket):
         from ansim_review.abstention.finalizer import review_packet_document
 
-        return _mapping(review_packet_document(packet), "packet")
-    raise ValueError("packet must be a mapping or ReviewPacket")
+        document = _mapping(review_packet_document(packet), "packet")
+        return document, dump_bytes(document)
+    raise ValueError("packet must be bytes, a mapping, or ReviewPacket")
 
 
 def _evidence_id(citation_id: str) -> str:
@@ -119,9 +127,9 @@ def _strings(value: object, field: str) -> list[str]:
     ]
 
 
-def _packet_sha256(document: Mapping[str, object]) -> str:
-    """Hash the canonical bytes used by the repository packet writer."""
-    return hashlib.sha256(dump_bytes(document)).hexdigest()
+def _packet_sha256(packet_bytes: bytes) -> str:
+    """Hash the exact packet bytes supplied to the projection."""
+    return hashlib.sha256(packet_bytes).hexdigest()
 
 
 def _status(document: Mapping[str, object]) -> str:
@@ -280,12 +288,12 @@ def _summary(
 
 
 def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, object]:
-    """Resolve display evidence from schema-checked SQLite data."""
-    document = _packet_document(packet)
+    """Resolve display evidence from packet bytes or compatible packet objects."""
+    document, packet_bytes = _packet_document(packet)
     if document.get("human_decision") is not None:
         raise ValueError("machine packet human_decision must be null")
     status = _status(document)
-    packet_sha256 = _packet_sha256(document)
+    packet_sha256 = _packet_sha256(packet_bytes)
     rule_documents = _rules(document)
     provided_citations = _v2_citations(document)
     claims: list[dict[str, object]] = []
