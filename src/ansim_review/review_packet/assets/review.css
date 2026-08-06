@@ -38,7 +38,7 @@ code, pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 #review-summary { grid-area: summary; }
 #review-items { grid-area: items; align-self: start; }
 #evidence-viewer { grid-area: viewer; min-width: 0; }
-#detail-tabs { grid-area: detail; min-width: 0; }
+#detail-tabs { grid-area: detail; min-width: 0; overflow-x: auto; }
 #decision-form { grid-area: decision; }
 
 .summary-grid, .item-summary, .provenance { display: grid; gap: .5rem; margin: 0; }
@@ -92,6 +92,7 @@ form label { display: grid; gap: .25rem; }
   body { background: #fff; max-width: none; padding: 0; }
   .review-workspace { display: block; }
   .review-workspace > section, #review-items, .status-band { border: 0; break-inside: avoid; margin-bottom: 8mm; padding: 0; }
+  #detail-tabs { overflow: visible; }
   #review-items, .decision-actions, #decision-form button, .viewer-heading label, .evidence-link, [role="tablist"] { display: none; }
   .evidence-page, .detail-panel, [data-tab-panel] { display: block !important; }
 }
