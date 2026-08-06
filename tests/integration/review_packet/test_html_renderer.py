@@ -173,6 +173,21 @@ def test_review_workspace_embeds_shared_page_once_and_keeps_provenance(
     assert "source SHA-256" in html
 
 
+def test_review_workspace_inlines_responsive_print_and_offline_hooks(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in html
+    assert "body { margin: 0 auto; max-width: 1440px;" in html
+    assert "grid-template-columns: minmax(13rem, .8fr) minmax(22rem, 1.5fr)" in html
+    assert "@media (max-width: 1100px)" in html
+    assert "@media print" in html
+    assert "@page { size: A4;" in html
+    assert "https://" not in html
+    assert "http://" not in html
+
+
 def test_review_html_refuses_missing_page_assets(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="verified page image"):
         render_review_html(_model(), tmp_path / "pages")
