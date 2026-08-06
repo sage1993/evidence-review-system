@@ -125,3 +125,17 @@ def test_view_model_rejects_unresolved_cited_evidence(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unresolved citation"):
         build_review_view_model(packet, evidence_db)
+
+
+def test_view_model_hashes_exact_supplied_noncanonical_packet_bytes(
+    tmp_path: Path,
+) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    _evidence_db(evidence_db)
+    _, packet = _packet("review-packet-v1-ready.json")
+    packet_bytes = json.dumps(packet, ensure_ascii=False, indent=2).encode("utf-8")
+    assert b"\n  \"run_id\"" in packet_bytes
+
+    model = build_review_view_model(packet_bytes, evidence_db)
+
+    assert model["metadata"]["packet_sha256"] == hashlib.sha256(packet_bytes).hexdigest()

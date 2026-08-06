@@ -453,7 +453,7 @@ def finalize_review_run(
         )
         packet = finalize_run(run_directory)
         evidence_db = _evidence_database(workspace_root)
-        view_model = build_review_view_model(packet, evidence_db)
+        view_model = build_review_view_model(packet_path.read_bytes(), evidence_db)
         write_review_html(
             view_model,
             workspace_root / "page-images",
