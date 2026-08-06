@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
-import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -35,7 +34,11 @@ from ansim_review.parsing.source_batch_importer import (
 )
 from ansim_review.release.attestation import PROCESS_ATTESTATION, validate_attestation
 from ansim_review.retrieval.bundle import build_evidence_bundle
-from ansim_review.review_run import finalize_review_run, prepare_review_run
+from ansim_review.review_run import (
+    finalize_review_run,
+    open_review_run,
+    prepare_review_run,
+)
 from ansim_review.rule_engine.activation import (
     activation_report_bytes,
     build_active_manifest,
@@ -510,9 +513,12 @@ def _review_run_finalize(
     ) as error:
         print(str(error), file=sys.stderr)
         return 2
-    url = result.review_html.resolve().as_uri()
     if open_browser:
-        webbrowser.open(url)
+        try:
+            url = open_review_run(workspace, result.run_id)
+        except (OSError, RuntimeError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return 2
         _write_stdout(
             {
                 "status": result.packet.status,

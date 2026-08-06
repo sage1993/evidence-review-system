@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from ansim_review import cli
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
 from ansim_review.evidence.store import EvidenceStore
@@ -270,6 +272,75 @@ def test_finalize_writes_packet_html_manifest_and_published_packet(
     assert "Machine evaluation is not the final decision" in html
     assert "9.375%" in html
     assert "data:image/png;base64," in html
+
+
+def test_finalize_open_cli_prints_only_the_protected_review_url(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_id = "RUN-0123456789ABCDEF0123"
+    run_directory = workspace / "runs" / run_id
+    packet_path = run_directory / "final-review-packet.json"
+    html_path = run_directory / "review.html"
+
+    def fake_finalize(
+        workspace_root: Path,
+        supplied_run_id: str,
+        track_a_output: Path,
+        track_b_output: Path,
+        *,
+        publish: bool,
+    ) -> SimpleNamespace:
+        assert workspace_root == workspace
+        assert supplied_run_id == run_id
+        assert track_a_output == tmp_path / "track-a.json"
+        assert track_b_output == tmp_path / "track-b.json"
+        assert publish is False
+        return SimpleNamespace(
+            run_id=run_id,
+            run_directory=run_directory,
+            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
+            packet_path=packet_path,
+            review_html=html_path,
+            published_packet=None,
+        )
+
+    def fake_open(workspace_root: Path, supplied_run_id: str) -> str:
+        assert workspace_root == workspace
+        assert supplied_run_id == run_id
+        return f"http://127.0.0.1:8123/runs/{run_id}/token/review"
+
+    monkeypatch.setattr(cli, "finalize_review_run", fake_finalize)
+    monkeypatch.setattr(cli, "open_review_run", fake_open, raising=False)
+
+    assert (
+        cli.main(
+            [
+                "review-run",
+                "finalize",
+                "--workspace",
+                str(workspace),
+                "--run-id",
+                run_id,
+                "--track-a-output",
+                str(tmp_path / "track-a.json"),
+                "--track-b-output",
+                str(tmp_path / "track-b.json"),
+                "--open",
+            ]
+        )
+        == 0
+    )
+
+    document = json.loads(capsys.readouterr().out)
+    assert document == {
+        "status": "READY_FOR_HUMAN_REVIEW",
+        "run_id": run_id,
+        "url": f"http://127.0.0.1:8123/runs/{run_id}/token/review",
+    }
+    assert not document["url"].startswith("file:")
 
 
 def test_finalize_refuses_existing_publication(tmp_path: Path) -> None:
