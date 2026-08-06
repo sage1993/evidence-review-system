@@ -5,7 +5,8 @@ import hashlib
 import json
 import re
 import shutil
-from collections.abc import Mapping, Sequence
+import webbrowser
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -30,6 +31,7 @@ from ansim_review.llm_layer.track_a import (
     build_track_a_bundle,
     track_a_bundle_document,
 )
+from ansim_review.review_packet.browser_launcher import open_protected_review_workspace
 from ansim_review.review_packet.builder import build_review_view_model
 from ansim_review.review_packet.html_renderer import write_review_html
 
@@ -475,4 +477,18 @@ def finalize_review_run(
         packet_path=packet_path,
         review_html=html_path,
         published_packet=published_path,
+    )
+
+
+def open_review_run(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    browser: Callable[[str], bool] = webbrowser.open,
+) -> str:
+    """Open a finalized review run through its protected loopback route."""
+    return open_protected_review_workspace(
+        workspace_root,
+        run_id,
+        browser=browser,
     )
