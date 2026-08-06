@@ -31,7 +31,11 @@ from ansim_review.llm_layer.track_a import (
     build_track_a_bundle,
     track_a_bundle_document,
 )
-from ansim_review.review_packet.browser_launcher import open_protected_review_workspace
+from ansim_review.review_packet.browser_launcher import (
+    close_open_review_server,
+    open_protected_review_workspace,
+    wait_for_open_review_server,
+)
 from ansim_review.review_packet.builder import build_review_view_model
 from ansim_review.review_packet.html_renderer import write_review_html
 
@@ -492,3 +496,13 @@ def open_review_run(
         run_id,
         browser=browser,
     )
+
+
+def wait_for_review_run(workspace_root: Path, run_id: str) -> None:
+    """Wait for the protected browser session opened for one review run."""
+    wait_for_open_review_server(workspace_root, run_id)
+
+
+def close_review_run(workspace_root: Path, run_id: str) -> None:
+    """Close the protected browser session opened for one review run."""
+    close_open_review_server(workspace_root, run_id)
