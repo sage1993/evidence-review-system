@@ -45,3 +45,15 @@ def test_review_workspace_escapes_user_content_and_has_blank_offline_controls(
         "downloadDecisionEnvelope",
     ):
         assert function_name in html
+
+
+def test_review_workspace_zoom_transforms_the_shared_page_canvas(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    assert 'document.querySelectorAll(".page-canvas")' in html
+    assert 'canvas.style.transform = "scale(" + scale + ")"' in html
+    assert 'document.querySelectorAll(".evidence-page img")' not in html

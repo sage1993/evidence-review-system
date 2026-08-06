@@ -52,8 +52,8 @@
   }
 
   function setEvidenceZoom(scale) {
-    document.querySelectorAll(".evidence-page img").forEach((image) => {
-      image.style.transform = "scale(" + scale + ")";
+    document.querySelectorAll(".page-canvas").forEach((canvas) => {
+      canvas.style.transform = "scale(" + scale + ")";
     });
   }
 
