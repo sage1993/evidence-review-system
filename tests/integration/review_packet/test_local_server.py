@@ -7,6 +7,7 @@ from urllib.request import urlopen
 
 import pytest
 
+from ansim_review.review_packet import browser_launcher
 from ansim_review.review_packet.browser_launcher import close_open_review_servers
 from ansim_review.review_run import open_review_run
 
@@ -81,3 +82,44 @@ def test_open_review_run_closes_its_server_when_the_browser_rejects_the_url(
     assert parsed.port is not None
     with pytest.raises(OSError):
         socket.create_connection((parsed.hostname, parsed.port), timeout=1)
+
+
+def test_web_runtime_server_reexports_the_packaged_server_implementation() -> None:
+    from ansim_review.review_packet.local_server import (
+        create_review_server as packaged_create_review_server,
+    )
+    from web_runtime.review_server import create_review_server as compatibility_create_review_server
+
+    assert compatibility_create_review_server is packaged_create_review_server
+
+
+def test_launcher_closes_the_server_when_starting_its_thread_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _artifacts(tmp_path)
+
+    class FakeServer:
+        closed = False
+
+        def serve_forever(self) -> None:
+            return None
+
+        def server_close(self) -> None:
+            self.closed = True
+
+    class FailingThread:
+        def __init__(self, *, target: object, name: str) -> None:
+            del target, name
+
+        def start(self) -> None:
+            raise RuntimeError("thread start failed")
+
+    server = FakeServer()
+    monkeypatch.setattr(browser_launcher, "create_review_server", lambda *_args, **_kwargs: server)
+    monkeypatch.setattr(browser_launcher, "Thread", FailingThread)
+
+    with pytest.raises(RuntimeError, match="thread start failed"):
+        open_review_run(tmp_path, RUN_ID, browser=lambda _url: True)
+
+    assert server.closed is True

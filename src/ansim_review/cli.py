@@ -35,9 +35,11 @@ from ansim_review.parsing.source_batch_importer import (
 from ansim_review.release.attestation import PROCESS_ATTESTATION, validate_attestation
 from ansim_review.retrieval.bundle import build_evidence_bundle
 from ansim_review.review_run import (
+    close_review_run,
     finalize_review_run,
     open_review_run,
     prepare_review_run,
+    wait_for_review_run,
 )
 from ansim_review.rule_engine.activation import (
     activation_report_bytes,
@@ -526,6 +528,12 @@ def _review_run_finalize(
                 "url": url,
             }
         )
+        try:
+            wait_for_review_run(workspace, result.run_id)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            close_review_run(workspace, result.run_id)
     else:
         _write_stdout(
             {
