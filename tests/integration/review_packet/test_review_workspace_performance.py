@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
+import struct
+import zlib
 from pathlib import Path
 from time import perf_counter
 
@@ -13,9 +14,55 @@ from ansim_review.review_packet.html_renderer import render_review_html
 PAGE_COUNT = 20
 CITATION_COUNT = 100
 LOCAL_RENDER_BUDGET_SECONDS = 5.0
-VALID_MINIMAL_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLk0QAAAABJRU5ErkJggg=="
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_chunk(chunk_type: bytes, payload: bytes) -> bytes:
+    return (
+        struct.pack(">I", len(payload))
+        + chunk_type
+        + payload
+        + struct.pack(">I", zlib.crc32(chunk_type + payload) & 0xFFFFFFFF)
+    )
+
+
+VALID_MINIMAL_PNG = (
+    _PNG_SIGNATURE
+    + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+    + _png_chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00\xff"))
+    + _png_chunk(b"IEND", b"")
 )
+
+
+def _assert_valid_minimal_png(image_bytes: bytes) -> None:
+    assert image_bytes.startswith(_PNG_SIGNATURE)
+    offset = len(_PNG_SIGNATURE)
+    chunk_types: list[bytes] = []
+    idat = bytearray()
+    ihdr = b""
+    while offset < len(image_bytes):
+        length = struct.unpack(">I", image_bytes[offset : offset + 4])[0]
+        chunk_type = image_bytes[offset + 4 : offset + 8]
+        payload_start = offset + 8
+        payload_end = payload_start + length
+        payload = image_bytes[payload_start:payload_end]
+        stored_crc = struct.unpack(">I", image_bytes[payload_end : payload_end + 4])[0]
+        assert len(payload) == length
+        assert stored_crc == zlib.crc32(chunk_type + payload) & 0xFFFFFFFF
+        chunk_types.append(chunk_type)
+        if chunk_type == b"IHDR":
+            ihdr = payload
+        if chunk_type == b"IDAT":
+            idat.extend(payload)
+        offset = payload_end + 4
+    assert offset == len(image_bytes)
+    assert chunk_types == [b"IHDR", b"IDAT", b"IEND"]
+    assert struct.unpack(">IIBBBBB", ihdr) == (1, 1, 8, 6, 0, 0, 0)
+    assert zlib.decompress(idat) == b"\x00\x00\x00\x00\xff"
+
+
+def test_valid_minimal_png_has_verified_chunks_and_decompressible_idat() -> None:
+    _assert_valid_minimal_png(VALID_MINIMAL_PNG)
 
 
 def _write_shared_page_assets(root: Path) -> list[str]:
