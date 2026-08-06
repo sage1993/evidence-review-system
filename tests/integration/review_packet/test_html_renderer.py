@@ -110,12 +110,67 @@ def test_self_contained_html_has_traceability_overlay_and_blank_decision(
     assert "9.375%" in html
     assert "traceability" in html
     assert "Machine evaluation is not the final decision" in html
-    assert "<script>" not in html
+    assert "<script>alert(1)</script>" not in html
     assert "checked" not in html
     assert "data:image/png;base64," + encoded_page in html
     assert '<svg viewBox="0 0 120.0 200.0"' in html
     assert '<rect x="10.0" y="160.0" width="100.0" height="20.0">' in html
     assert "@page" in html and "size: A4" in html
+
+
+def test_review_workspace_embeds_shared_page_once_and_keeps_provenance(
+    tmp_path: Path,
+) -> None:
+    page_bytes = _write_page_assets(tmp_path / "pages")
+    model = _model()
+    claims = model["claims"]
+    assert isinstance(claims, list)
+    first_claim = claims[0]
+    assert isinstance(first_claim, dict)
+    second_claim = dict(first_claim)
+    second_claim["claim_id"] = "C2"
+    second_claim["text"] = "Second claim"
+    second_claim["citations"] = [
+        {
+            **first_claim["citations"][0],
+            "citation_id": "CIT-E2",
+            "evidence_id": "E2",
+            "quote": "Second quote",
+        }
+    ]
+    model["claims"] = [first_claim, second_claim]
+    model["review_items"] = [
+        {
+            "item_id": "ITEM-C1",
+            "claim_id": "C1",
+            "status": "NOT_SATISFIED",
+            "completeness": "COMPLETE",
+        },
+        {
+            "item_id": "ITEM-C2",
+            "claim_id": "C2",
+            "status": "INDETERMINATE",
+            "completeness": "INCOMPLETE",
+        },
+    ]
+
+    html = render_review_html(model, tmp_path / "pages")
+
+    assert 'id="review-summary"' in html
+    assert 'id="review-items"' in html
+    assert 'id="evidence-viewer"' in html
+    assert 'id="detail-tabs"' in html
+    assert 'id="decision-form"' in html
+    assert html.count("data:image/png;base64,") == 1
+    assert "Math." not in html
+    assert base64.b64encode(page_bytes).decode() in html
+    assert 'data-item-id="ITEM-C1"' in html
+    assert 'data-item-id="ITEM-C2"' in html
+    assert 'data-asset-key="page-1"' in html
+    assert '<div class="page-canvas">' in html
+    assert "CIT-E1" in html and "CIT-E2" in html
+    assert "REV1" in html
+    assert "source SHA-256" in html
 
 
 def test_review_html_refuses_missing_page_assets(tmp_path: Path) -> None:
