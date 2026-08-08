@@ -1,60 +1,149 @@
 # Drawing Review UI Design QA
 
-- source visual truth: `F:/evidence-review-system/tmp/drawing_evidence_review_ui.html`
+## Comparison target
+
+- source visual truth:
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-89327a0d-a6b7-42d5-bef6-ae7c6df1816f.png` (full screen)
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-66b2d1f7-3deb-4443-90ed-592f5aa1ae83.png` (viewer/detection)
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-79610131-3f17-4eb7-9dfc-c6473740be90.png` (viewer/compare)
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-a31259b0-b938-4989-a81e-57b438414fe8.png` (viewer/original)
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-2ece765a-2071-4196-a019-ac4ab2988361.png` (evidence tab)
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-b8f61a07-338f-4407-be50-bfaf04746a91.png` (rules tab)
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-87eac0ac-ad2c-4074-929b-f78cdabfb907.png` (input-confirmation tab)
+  - `C:/Users/KSH/AppData/Local/Temp/codex-clipboard-a54b13dc-93b0-49b8-b982-7b041dbfc9f0.png` (final-decision panel)
+- source prototype HTML: `F:/evidence-review-system/tmp/drawing_evidence_review_ui.html`
 - implementation: local drawing annotation workspace at `/annotation/{token}`
-- implementation screenshot: `build/drawing-review-korean-selected-1440x1000.png`
-- requested comparison viewport: 1440 x 1000 CSS px, device scale factor 1
-- implementation pixels: 1265 x 712 (in-app browser content viewport)
-- state: `입력 확인 필요`, five unconfirmed drawing candidates, detection mode,
-  evidence tab, road-width candidate selected
+- implementation screenshot: `build/design-qa-implementation-1863x1494.png`
+- comparison boards:
+  - `build/design-qa-full-comparison.png`
+  - `build/design-qa-viewer-comparison.png`
+  - `build/design-qa-right-panels-comparison.png`
+  - `build/design-qa-bottom-comparison.png`
+- requested CSS viewport: 1863 x 1494, device scale factor 1
+- source pixels: 1863 x 1494
+- implementation pixels: 1848 x 1482 (in-app browser content screenshot, scrollbar excluded)
+- normalization: native-density captures were aligned at the same requested viewport. The full board keeps each capture at native pixels; focused boards use native source crops and coordinate-aligned implementation crops without content resynthesis.
+- compared state: dark desktop layout, detection mode, evidence tab, road-width candidate selected, no reviewer action submitted
 
 ## Full-view comparison evidence
 
-The implementation was captured in the in-app browser after localization. The source HTML was
-claimed successfully in the same browser, but screenshot capture of its `file:` URL was rejected
-by browser URL policy even after the Browser plugin was explicitly selected. The policy cannot be
-disabled or bypassed, so a valid combined side-by-side comparison input could not be created.
+The source and implementation are placed together in `build/design-qa-full-comparison.png`.
+Both use a dark three-column evidence-review layout, but the visible hierarchy, density, task controls,
+and lower review section differ materially. The 1863 x 1494 source fits the complete workflow in one
+screen. The implementation document is 1648 CSS px tall, so its primary reviewer controls extend below
+the requested viewport.
 
 ## Focused region evidence
 
-The implementation header, metrics, candidate list, viewer, selected-candidate metadata, right
-tabs, reviewer form, and status strip were inspected in the rendered page. Candidate selection
-showed `도로 폭 표기`, `사각형 (420.0, 2780.0)`, and `미확인`. The rules pane showed only Korean
-labels. There were no browser console warnings or errors.
+- `build/design-qa-viewer-comparison.png` shows that the viewer shell and three mode buttons are broadly
+  aligned, while the implementation's toolbar hierarchy and bottom metadata are denser and the drawing
+  stage consumes more vertical space.
+- `build/design-qa-right-panels-comparison.png` puts all three source tabs next to the implementation
+  detail pane. The source exposes an evidence summary and ABSTAIN reason, Rule-as-Code cards, and a
+  structured input-confirmation form. The implementation exposes selected-candidate metadata, an engine
+  boundary note, and a pointer to the separate reviewer form instead.
+- `build/design-qa-bottom-comparison.png` shows that the source uses a compact final-decision panel,
+  whereas the implementation uses a taller append-only annotation form. The implementation primary
+  action stretches to the form height and the lower fields are outside the target viewport.
 
-## Interaction checks
+## Interaction and runtime checks
 
-- Candidate selection updates the SVG highlight and Korean object, geometry, and status labels.
-- Original mode hides the evidence overlay; detection mode restores it.
-- Evidence, rules, and confirmation tabs switch their visible pane.
+- Candidate selection updates the drawing highlight and selected-candidate metadata.
+- Original, detection, and compare modes switch their visible overlay state.
+- Evidence, rules, and confirmation tabs switch their pane.
 - Reviewer actions remain unselected by default; no confirmation was written during QA.
-
-## Required fidelity surfaces
-
-- Fonts and typography: the compact sans-serif hierarchy and technical label weight remain
-  consistent after Korean text replacement.
-- Spacing and layout rhythm: Korean labels fit the existing 260 / fluid / 330 three-column layout
-  without clipping in the captured desktop state.
-- Colors and visual tokens: the dark navy, slate, green, amber, and blue tokens are unchanged.
-- Image quality and asset fidelity: the verified raster drawing remains direct and unmodified; SVG
-  content remains limited to trusted evidence geometry.
-- Copy and content: all visible workspace labels, candidate types, statuses, geometry tools, engine
-  states, and browser feedback are Korean. Machine contract values remain unchanged in data
-  attributes and submitted payloads.
+- No browser console warning or error was observed during the interaction pass.
 
 ## Findings
 
-- No implementation-only P0, P1, or P2 issue was found in the localized rendered screen.
-- Automatic source-to-implementation visual comparison remains blocked because browser policy
-  prevents source capture from the local `file:` URL.
+- [P1] Right-side task architecture does not match the approved reference.
+  - Location: `.detail-panel`, generated by `src/ansim_review/drawing_review/html_renderer.py`.
+  - Evidence: the source tabs contain candidate-wide evidence summaries, a visible ABSTAIN explanation,
+    three rule cards with readiness states, and editable confirmation controls. The implementation tabs
+    contain only selected-candidate metadata, a generic engine-boundary summary, and confirmation guidance.
+  - Impact: reviewers cannot perform the same evidence -> rule -> input-confirmation flow shown in the
+    issue-5 design, and the reason automated evaluation is paused is not visible in context.
+  - Fix: render server-provided evidence summary rows and abstention reason, approved-rule readiness cards,
+    and explicit confirmation fields in the corresponding panes. Keep all rule/math execution server-side;
+    the browser may submit confirmed inputs but must not calculate or decide outcomes.
+
+- [P1] Bottom workflow is a different product action, not a faithful implementation of the reference.
+  - Location: `#reviewer-action` / `.review-grid`.
+  - Evidence: the source presents four final-decision choices, a decision memo, compact confirm/export
+    actions, and a process strip. The implementation presents reviewer ID/value/unit, geometry tools,
+    annotation metadata, and approve/reject/revise/new actions.
+  - Impact: the most important decision area has different meaning and control structure.
+  - Fix: resolve the route boundary before changing code. If this route is the issue-5 combined review
+    workspace, add a separate human-decision record backed by server authority. If `/annotation/{token}`
+    is intentionally confirmation-only under the repository's confirmation/review separation, keep the
+    append-only form and move the source final-decision panel to `/runs/{run-id}/{token}/review`; update
+    acceptance evidence so the two routes are not judged as the same screen.
+
+- [P2] The implementation does not fit the primary workflow in the reference viewport.
+  - Location: `.main-grid`, `.viewer-panel`, `#reviewer-action`, `.primary-action` in
+    `src/ansim_review/drawing_review/assets/annotation.css`.
+  - Evidence: the source completes at 1494 px. The implementation document reaches 1648 CSS px; the
+    reviewer form is 364 px tall and its save button stretches vertically, leaving lower controls below fold.
+  - Impact: persistent review controls are hidden and the page feels much less compact than the reference.
+  - Fix: cap the drawing workspace height at the target desktop breakpoint, reduce toolbar/metadata padding,
+    align `.review-grid` rows without stretching the primary action, and keep the full reviewer action area
+    visible at 1863 x 1494.
+
+- [P2] Major shell and list rhythm drift from the reference.
+  - Location: `.app-shell`, `.topbar`, `.metrics`, `.candidate-list`, `.feature`.
+  - Evidence: the source uses a centered framed shell, four separated rounded metric cards, compact plain
+    candidate rows, and three small header actions. The implementation is nearly edge-to-edge, uses a
+    flush metric strip, card-like candidate tiles, and one header action.
+  - Impact: the page reads as a different dashboard despite using similar colors.
+  - Fix: restore the centered max-width frame and outer radius, use 10-12 px metric-card gaps/radii, reduce
+    candidate row chrome and vertical padding, and either implement the safe subset of header actions or
+    explicitly remove those actions from the approved source design.
+
+- [P3] Small-label typography is less legible than the source.
+  - Location: metric labels, candidate metadata, toolbar subtitles, right-panel labels.
+  - Evidence: the implementation relies heavily on 9-10 px muted text and weaker hierarchy, while the source
+    uses larger/bolder section labels and more consistent line spacing.
+  - Fix: raise critical metadata to 11-12 px, keep Korean UI text at weight 600-700, and reserve 9-10 px text
+    for nonessential identifiers.
+
+## Required fidelity surfaces
+
+- Fonts and typography: same compact sans-serif direction, but implementation labels are smaller and lower
+  contrast; P3 refinement remains.
+- Spacing and layout rhythm: P2 blocking mismatch in frame margins, metric-card treatment, list density,
+  viewer height, and below-fold reviewer controls.
+- Colors and visual tokens: navy/slate/green/amber palette is directionally consistent. The oversized solid
+  green save action overemphasizes the implementation bottom panel.
+- Image quality and asset fidelity: the implementation correctly shows verified real drawing evidence rather
+  than substituting the prototype's sample SVG. This subject difference is expected and is not a fidelity bug.
+  The current raster remains readable and overlay geometry is aligned to it.
+- Copy and content: visible interface language is Korean as requested. Stable machine IDs and engine terms are
+  retained where appropriate. The P1 issue is semantic content/flow mismatch, not untranslated copy.
+
+## Open questions
+
+- Is the issue-5 visual target meant to be one combined screen, or should its lower final-decision panel live
+  only on the separate final-review route required by the repository authority model?
+- Which source header actions are approved for production? File loading and reset must not bypass preserved
+  source evidence, immutable hashes, or append-only confirmation records.
+
+## Implementation checklist
+
+1. Decide and document the confirmation-route versus final-review-route boundary.
+2. Restore the source right-tab information architecture using server-provided evidence and approved-rule data.
+3. Compact the desktop shell and reviewer controls so the primary workflow fits 1863 x 1494.
+4. Align metrics, candidate rows, toolbar hierarchy, radii, and spacing to the source.
+5. Capture the revised implementation in the same state and rerun all four comparison boards.
 
 ## Comparison history
 
-- Pass 1: English interface labels were identified as a P1 localization mismatch.
-- Fix: translated visible renderer copy, candidate metadata, geometry tools, engine states, and
-  runtime feedback while preserving contract values.
-- Pass 2: localized implementation capture and interactions passed; source side-by-side evidence
-  remains unavailable due the non-configurable browser policy.
+- Pass 1: English interface labels were a P1 localization mismatch.
+- Fix: translated renderer copy, candidate metadata, geometry tools, engine states, and runtime feedback while
+  preserving machine contract values.
+- Pass 2: the localized implementation was captured, but source capture was unavailable due local-file policy.
+- Evidence unblocked: the user supplied the source full screen and focused states as PNG files.
+- Pass 3: native-density full and focused side-by-side boards were generated and reviewed. Localization passes,
+  but P1 task-architecture mismatches and P2 viewport/layout mismatches remain. No post-fix visual pass exists yet.
 
 ## Final result
 
