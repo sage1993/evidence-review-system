@@ -385,6 +385,29 @@ def _render_detail_tabs(
     panels: list[str] = []
     for index, item in enumerate(items):
         claim = _claim_for_item(item, claims)
+        calculation_ids = {
+            _text(value)
+            for value in _sequence(
+                item.get("calculation_ids", []), "review_item.calculation_ids"
+            )
+        }
+        item_calculations = [
+            calculation
+            for calculation in calculations
+            if _text(
+                _mapping(calculation, "calculation").get("calculation_result_id")
+            )
+            in calculation_ids
+        ]
+        rule_ids = {
+            _text(value)
+            for value in _sequence(item.get("rule_ids", []), "review_item.rule_ids")
+        }
+        item_rules = [
+            rule
+            for rule in rules
+            if _text(_mapping(rule, "rule").get("rule_id")) in rule_ids
+        ]
         claim_html = "<p>No claim record is available.</p>"
         citation_html = "<p>No citation is available.</p>"
         if claim is not None:
@@ -413,7 +436,7 @@ def _render_detail_tabs(
                     "<th>Formula</th><th>Version</th><th>Substitution</th><th>Result</th>",
                     "<th>Comparison</th></tr></thead><tbody>",
                     _table_rows(
-                        calculations,
+                        item_calculations,
                         (
                             "calculation_result_id",
                             "formula_id",
@@ -427,7 +450,7 @@ def _render_detail_tabs(
                     '<section data-tab-panel="rules" hidden>',
                     "<h4>Recorded rule evaluations</h4><table><thead><tr><th>Rule</th>",
                     "<th>Version</th><th>Status</th></tr></thead><tbody>",
-                    _table_rows(rules, ("rule_id", "rule_version", "status")),
+                    _table_rows(item_rules, ("rule_id", "rule_version", "status")),
                     "</tbody></table></section>",
                     "</article>",
                 )
