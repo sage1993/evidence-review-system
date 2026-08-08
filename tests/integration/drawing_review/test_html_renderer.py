@@ -117,6 +117,34 @@ def test_renderer_is_self_contained_and_leaves_actions_unselected() -> None:
     assert 'name="review-action"' in html
 
 
+def test_renderer_matches_approved_drawing_review_workspace_structure() -> None:
+    render_annotation_html = _renderer()
+
+    html = render_annotation_html(_model(), b"\x89PNG\r\n\x1a\nfixture", "image/png")
+
+    assert "도면 근거 검토 화면" in html
+    assert 'id="topStatus"' in html
+    assert "INPUT CONFIRMATION REQUIRED" in html
+    assert 'class="metrics"' in html
+    assert html.count('class="metric"') == 4
+    assert 'class="main-grid"' in html
+    assert 'id="featureList"' in html
+    assert 'id="drawingStage"' in html
+    assert 'id="selectedObject"' in html
+    assert 'id="selectedCoords"' in html
+    assert 'id="selectedStatus"' in html
+    for mode in ("original", "detection", "compare"):
+        assert f'data-display-mode="{mode}"' in html
+    for tab in ("evidence", "rules", "confirmation"):
+        assert f'data-workspace-tab="{tab}"' in html
+        assert f'data-workspace-pane="{tab}"' in html
+    assert 'id="reviewer-action"' in html
+    assert "검토자 확인 기록" in html
+    assert "Parse Engine" in html
+    assert "Rule / Math Engine" in html
+    assert 'data-status-strip' in html
+
+
 def test_renderer_escapes_candidate_text() -> None:
     render_annotation_html = _renderer()
     page = DrawingPage(

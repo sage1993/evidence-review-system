@@ -88,9 +88,7 @@ def _points_text(
 ) -> str:
     positions = tuple(
         _display_position(
-            _position(item, f"{field}[{index}]"),
-            page_height,
-            coordinate_system,
+            _position(item, f"{field}[{index}]"), page_height, coordinate_system
         )
         for index, item in enumerate(_sequence(value, field))
     )
@@ -108,8 +106,7 @@ def _geometry_html(
     geometry = _mapping(value, "candidate.geometry")
     geometry_type = _string(geometry.get("type"), "candidate.geometry.type")
     geometry_coordinate_system = _coordinate_system(
-        geometry.get("coordinate_system"),
-        "candidate.geometry.coordinate_system",
+        geometry.get("coordinate_system"), "candidate.geometry.coordinate_system"
     )
     if geometry_coordinate_system != coordinate_system:
         raise ValueError("candidate geometry coordinate system mismatch")
@@ -142,36 +139,24 @@ def _geometry_html(
         if coordinate_system == "PDF_BOTTOM_LEFT_POINTS":
             display_y = page_height - second_y
         return (
-            f'<rect data-candidate-id="{candidate_attr}" '
-            'class="candidate-geometry" '
+            f'<rect data-candidate-id="{candidate_attr}" class="candidate-geometry" '
             f'x="{left}" y="{display_y}" width="{right - left}" '
             f'height="{second_y - first_y}"></rect>'
         )
 
-    if geometry_type == "LINESTRING":
+    if geometry_type in ("LINESTRING", "POLYGON"):
         points = _points_text(
             coordinates,
             "candidate.geometry.coordinates",
             page_height,
             coordinate_system,
         )
+        tag = "polyline" if geometry_type == "LINESTRING" else "polygon"
+        fill = ' fill="none"' if geometry_type == "LINESTRING" else ""
         return (
-            f'<polyline data-candidate-id="{candidate_attr}" '
-            'class="candidate-geometry" fill="none" '
-            f'points="{escape(points, quote=True)}"></polyline>'
-        )
-
-    if geometry_type == "POLYGON":
-        points = _points_text(
-            coordinates,
-            "candidate.geometry.coordinates",
-            page_height,
-            coordinate_system,
-        )
-        return (
-            f'<polygon data-candidate-id="{candidate_attr}" '
-            'class="candidate-geometry" '
-            f'points="{escape(points, quote=True)}"></polygon>'
+            f'<{tag} data-candidate-id="{candidate_attr}" '
+            f'class="candidate-geometry"{fill} '
+            f'points="{escape(points, quote=True)}"></{tag}>'
         )
 
     raise ValueError(f"unsupported candidate geometry type: {geometry_type}")
@@ -186,18 +171,23 @@ def _candidate_button(value: object) -> str:
     raw_value = _optional_text(candidate.get("raw_value"))
     normalized = _optional_text(candidate.get("normalized_candidate"))
     display_value = normalized or raw_value
+    state_class = " pending" if status == "UNCONFIRMED" else ""
+    state_label = "확인 대기" if status == "UNCONFIRMED" else status
     return (
         "<li>"
-        '<button type="button" data-candidate-button '
+        f'<button class="feature{state_class}" type="button" data-candidate-button '
         f'data-candidate-id="{escape(candidate_id, quote=True)}" '
         f'data-candidate-type="{escape(candidate_type, quote=True)}" '
         f'data-candidate-origin="{escape(origin, quote=True)}" '
         f'data-candidate-status="{escape(status, quote=True)}" '
         f'data-candidate-value="{escape(display_value, quote=True)}" '
         'aria-pressed="false">'
-        f"<strong>{escape(candidate_type)}</strong><br>"
-        f"<code>{escape(candidate_id)}</code><br>"
-        f"<span>{escape(display_value)}</span>"
+        '<span class="feature-copy">'
+        f'<strong>{escape(candidate_type.replace("_", " "))}</strong>'
+        f'<small>{escape(candidate_id)}</small></span>'
+        '<span class="feature-side">'
+        f'<span class="feature-value">{escape(display_value or "—")}</span>'
+        f'<span class="feature-state">{escape(state_label)}</span></span>'
         "</button></li>"
     )
 
@@ -205,55 +195,48 @@ def _candidate_button(value: object) -> str:
 def _review_controls() -> str:
     return "".join(
         (
-            '<section class="detail-section"><h2>Selected candidate</h2>',
+            '<section class="detail-section selected-detail"><h3>선택 객체</h3>',
             '<p>ID: <code data-detail-id></code></p>',
             '<p>Type: <span data-detail-type></span></p>',
             '<p>Origin: <span data-detail-origin></span></p>',
             '<p>Status: <span data-detail-status></span></p>',
             '<p class="detail-value" data-detail-value></p></section>',
-            '<section class="detail-section"><h2>Reviewer input</h2>',
-            '<label>Reviewer ID<input type="text" maxlength="128" '
+            '<section class="detail-section"><h3>검토자 입력</h3>',
+            '<label>검토자 ID<input type="text" maxlength="128" '
             'autocomplete="off" data-reviewer></label>',
-            '<label>Confirmed value<input type="text" maxlength="256" '
-            'inputmode="decimal" autocomplete="off" data-confirmed-value></label>',
-            '<label>Unit<input type="text" maxlength="32" '
-            'autocomplete="off" data-unit></label></section>',
-            '<section class="detail-section"><h2>Manual geometry</h2>',
-            '<label>Geometry tool<select data-geometry-tool>',
-            '<option value="">Select tool</option>',
+            '<label>확인 값<input type="text" maxlength="256" inputmode="decimal" '
+            'autocomplete="off" data-confirmed-value></label>',
+            '<label>단위<input type="text" maxlength="32" autocomplete="off" '
+            'data-unit></label></section>',
+            '<section class="detail-section"><h3>수동 형상 보정</h3>',
+            '<label>형상 도구<select data-geometry-tool>',
+            '<option value="">도구 선택</option>',
             '<option value="POINT">POINT</option>',
             '<option value="BBOX">BBOX</option>',
             '<option value="LINESTRING">LINESTRING</option>',
             '<option value="POLYGON">POLYGON</option>',
-            "</select></label>",
-            '<div class="button-row"><button type="button" '
-            'data-finish-geometry>Finish line/area</button>',
-            '<button type="button" data-clear-geometry>Clear geometry</button></div>',
-            '<label>Annotation ID<input type="text" maxlength="128" '
-            'autocomplete="off" data-annotation-id></label>',
-            '<label>Candidate type<input type="text" maxlength="128" '
-            'autocomplete="off" data-candidate-type-input></label></section>',
-            '<fieldset><legend>Reviewer action</legend>',
-            '<label><input type="radio" name="review-action" '
-            'value="ACCEPTED"> Accept</label>',
-            '<label><input type="radio" name="review-action" '
-            'value="REJECTED"> Reject</label>',
-            '<label><input type="radio" name="review-action" '
-            'value="EDITED"> Edit</label>',
-            '<label><input type="radio" name="review-action" '
-            'value="CREATED"> Create</label></fieldset>',
-            '<button class="primary-action" type="button" '
-            'data-submit-action>Save append-only action</button>',
-            '<output class="action-status" role="status" '
-            'aria-live="polite" data-action-status></output>',
+            '</select></label><div class="button-row">',
+            '<button type="button" data-finish-geometry>선/영역 완료</button>',
+            '<button type="button" data-clear-geometry>형상 지우기</button></div>',
+            '<label>주석 ID<input type="text" maxlength="128" autocomplete="off" '
+            'data-annotation-id></label>',
+            '<label>후보 유형<input type="text" maxlength="128" autocomplete="off" '
+            'data-candidate-type-input></label></section>',
+            '<fieldset><legend>검토자 조치</legend>',
+            '<label><input type="radio" name="review-action" value="ACCEPTED"> 승인</label>',
+            '<label><input type="radio" name="review-action" value="REJECTED"> 반려</label>',
+            '<label><input type="radio" name="review-action" value="EDITED"> 수정</label>',
+            '<label><input type="radio" name="review-action" value="CREATED"> 신규</label>',
+            '</fieldset><button class="primary-action" type="button" '
+            'data-submit-action>검토 기록 저장</button>',
+            '<output class="action-status" role="status" aria-live="polite" '
+            'data-action-status></output>',
         )
     )
 
 
 def render_annotation_html(
-    view_model: Mapping[str, object],
-    page_image: bytes,
-    mime: str,
+    view_model: Mapping[str, object], page_image: bytes, mime: str
 ) -> str:
     """Render one self-contained reviewer annotation workspace."""
     model = _mapping(view_model, "view_model")
@@ -268,10 +251,7 @@ def render_annotation_html(
 
     page_width = _positive_number(model.get("page_width"), "page_width")
     page_height = _positive_number(model.get("page_height"), "page_height")
-    coordinate_system = _coordinate_system(
-        model.get("coordinate_system"),
-        "coordinate_system",
-    )
+    coordinate_system = _coordinate_system(model.get("coordinate_system"), "coordinate_system")
     source_sha256 = _string(model.get("source_sha256"), "source_sha256")
     page = model.get("page")
     if isinstance(page, bool) or not isinstance(page, int) or page < 1:
@@ -280,17 +260,15 @@ def render_annotation_html(
     candidates = _sequence(model.get("candidates"), "candidates")
     buttons: list[str] = []
     geometries: list[str] = []
+    confirmed_count = 0
     for value in candidates:
         candidate = _mapping(value, "candidate")
         candidate_id = _string(candidate.get("candidate_id"), "candidate.candidate_id")
+        status = _string(candidate.get("status"), "candidate.status")
+        confirmed_count += status != "UNCONFIRMED"
         buttons.append(_candidate_button(candidate))
         geometries.append(
-            _geometry_html(
-                candidate_id,
-                candidate.get("geometry"),
-                page_height,
-                coordinate_system,
-            )
+            _geometry_html(candidate_id, candidate.get("geometry"), page_height, coordinate_system)
         )
 
     asset_root = Path(__file__).with_name("assets")
@@ -299,32 +277,97 @@ def render_annotation_html(
     encoded = base64.b64encode(page_image).decode("ascii")
     image_uri = f"data:{mime};base64,{encoded}"
     coordinate_attr = escape(coordinate_system, quote=True)
+    short_hash = escape(source_sha256[:16])
 
     return "".join(
         (
             '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width,initial-scale=1">',
-            "<title>Drawing annotation workspace</title>",
-            f"<style>{css}</style></head><body>",
-            "<header><h1>Drawing annotation workspace</h1>",
-            f"<span>page {page} · <code>{escape(source_sha256)}</code></span></header>",
-            '<div class="workspace">',
-            '<aside class="panel"><p class="warning">Reviewer confirmation is required '
-            'before engine binding.</p><h2>Candidates</h2><ul class="candidate-list">',
-            "".join(buttons),
-            "</ul></aside>",
-            '<main class="canvas-panel"><div class="page-canvas">',
+            '<title>도면 근거 검토 화면</title>',
+            f'<style>{css}</style></head><body><div class="app-shell">',
+            '<header class="topbar"><div class="topbar-copy"><div class="eyebrow-row">',
+            '<span class="status-badge" id="topStatus"><span class="status-dot"></span>'
+            'INPUT CONFIRMATION REQUIRED</span>',
+            f'<span class="run-ref">PAGE {page} · {short_hash}</span></div>',
+            '<h1>도면 근거 검토 화면</h1>',
+            '<p>검출된 도면 근거를 원본과 대조하고, 검토자 확인 기록을 남겨 주세요.</p>',
+            '</div><div class="topbar-actions"><span class="offline-mark">LOCAL · OFFLINE</span>',
+            '<button type="button" class="secondary-action" '
+            'data-workspace-tab="confirmation">확인 기록 열기</button></div></header>',
+            '<section class="metrics" aria-label="검토 현황">',
+            f'<article class="metric"><span>소스 무결성</span><strong>검증됨</strong>'
+            f'<small>{short_hash}…</small></article>',
+            f'<article class="metric"><span>검출 객체</span><strong>{len(candidates)}</strong>'
+            '<small>현재 페이지 후보</small></article>',
+            f'<article class="metric"><span>확인 기록</span><strong>{confirmed_count}</strong>'
+            '<small>append-only 상태</small></article>',
+            '<article class="metric" data-tone="alert"><span>현재 상태</span>'
+            '<strong>확인 필요</strong><small>엔진 바인딩 전</small></article>',
+            '</section><main class="main-grid">',
+            '<aside class="panel candidate-panel"><div class="panel-heading"><div>',
+            '<span class="section-kicker">DETECTED EVIDENCE</span><h2>도면 객체</h2></div>',
+            f'<span class="count-badge">{len(candidates)}</span></div>',
+            '<p class="panel-note">객체를 선택하면 도면 위치와 추출값을 함께 '
+            '확인할 수 있습니다.</p>',
+            '<ul class="candidate-list" id="featureList">',
+            ''.join(buttons),
+            '</ul><div class="candidate-legend"><span><i class="legend-box"></i>검출 영역</span>',
+            '<span><i class="legend-dot"></i>선택 객체</span></div></aside>',
+            '<section class="panel viewer-panel"><div class="viewer-toolbar"><div>',
+            '<span class="section-kicker">VERIFIED SOURCE</span><h2>원본 도면 대조</h2></div>',
+            '<div class="mode-switch" role="group" aria-label="도면 표시 모드">',
+            '<button type="button" data-display-mode="original">원본</button>',
+            '<button type="button" class="is-active" data-display-mode="detection">검출</button>',
+            '<button type="button" data-display-mode="compare">비교</button></div></div>',
+            '<div class="drawing-stage mode-detection" id="drawingStage"><div class="page-canvas">',
             f'<img alt="verified drawing page" src="{image_uri}">',
             '<svg data-annotation-overlay '
-            f'data-coordinate-system="{coordinate_attr}" '
-            f'data-page-width="{page_width}" data-page-height="{page_height}" '
-            f'viewBox="0 0 {page_width} {page_height}" '
+            f'data-coordinate-system="{coordinate_attr}" data-page-width="{page_width}" '
+            f'data-page-height="{page_height}" viewBox="0 0 {page_width} {page_height}" '
             'preserveAspectRatio="none" aria-label="drawing candidate overlay">',
-            "".join(geometries),
-            "</svg></div></main>",
-            '<aside class="panel detail-panel">',
+            ''.join(geometries),
+            '</svg></div><div class="stage-label">HASH VERIFIED · READ ONLY</div></div>',
+            '<div class="viewer-meta"><div><span>선택 객체</span>',
+            '<strong id="selectedObject" data-selected-object>선택 안 됨</strong></div>',
+            '<div><span>좌표 / 형상</span><strong id="selectedCoords" '
+            'data-selected-coordinates>—</strong></div>',
+            '<div><span>확인 상태</span><strong id="selectedStatus" '
+            'data-selected-status>대기</strong></div></div></section>',
+            '<aside class="panel detail-panel"><div class="workspace-tabs" role="tablist">',
+            '<button type="button" class="is-active" data-workspace-tab="evidence">근거</button>',
+            '<button type="button" data-workspace-tab="rules">규칙</button>',
+            '<button type="button" data-workspace-tab="confirmation">입력 확인</button></div>',
+            '<div class="tab-pane" data-workspace-pane="evidence"><div class="evidence-summary">',
+            '<span class="section-kicker">SELECTED EVIDENCE</span><h2>선택 근거 상세</h2>',
+            '<p>왼쪽 후보 또는 도면 오버레이를 선택하세요. 원본 추출값과 '
+            '출처 상태만 표시됩니다.</p>',
+            '<dl><div><dt>객체 ID</dt><dd data-detail-id>—</dd></div>',
+            '<div><dt>유형</dt><dd data-detail-type>—</dd></div>',
+            '<div><dt>출처</dt><dd data-detail-origin>—</dd></div>',
+            '<div><dt>상태</dt><dd data-detail-status>—</dd></div></dl>',
+            '<div class="evidence-value"><span>추출값</span>'
+            '<strong data-detail-value>—</strong></div>',
+            '</div></div><div class="tab-pane" data-workspace-pane="rules" hidden>',
+            '<span class="section-kicker">DETERMINISTIC BOUNDARY</span><h2>엔진 실행 경계</h2>',
+            '<div class="engine-row"><span>Parse Engine</span><strong>완료</strong></div>',
+            '<div class="engine-row"><span>Rule / Math Engine</span>'
+            '<strong>확인 후 실행</strong></div>',
+            '<p class="boundary-note">브라우저는 계산하거나 규칙을 판정하지 않습니다. '
+            '확인된 입력만 서버 측 결정론 엔진에 전달됩니다.</p>',
+            '</div><div class="tab-pane" data-workspace-pane="confirmation" hidden>',
+            '<span class="section-kicker">HUMAN CONFIRMATION</span><h2>입력 확인 안내</h2>',
+            '<p class="boundary-note">아래 검토자 영역에서 명시적인 조치를 선택하고 '
+            '저장해야 다음 단계로 진행할 수 있습니다.</p>',
+            '</div></aside></main>',
+            '<section class="review-panel" id="reviewer-action"><div class="review-heading"><div>',
+            '<span class="section-kicker">APPEND-ONLY HUMAN ACTION</span>'
+            '<h2>검토자 확인 기록</h2></div>',
+            '<p>자동 판정과 분리된 별도 기록으로 저장됩니다.</p></div><div class="review-grid">',
             _review_controls(),
-            "</aside></div>",
-            f"<script>{javascript}</script></body></html>",
+            '</div></section><footer class="status-strip" data-status-strip>',
+            '<span><i></i>소스 해시 검증 완료</span><span>Parse Engine · READY</span>',
+            '<span>Rule / Math Engine · WAITING FOR CONFIRMATION</span>',
+            '<strong>human_decision: null</strong></footer></div>',
+            f'<script>{javascript}</script></body></html>',
         )
     )
