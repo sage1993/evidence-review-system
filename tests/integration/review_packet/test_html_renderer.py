@@ -174,6 +174,76 @@ def test_review_workspace_embeds_shared_page_once_and_keeps_provenance(
     assert "source SHA-256" in html
 
 
+def test_detail_tabs_filter_calculations_and_rules_by_item_provenance(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    model = _model()
+    calculations = model["calculations"]
+    rules = model["rules"]
+    assert isinstance(calculations, list)
+    assert isinstance(rules, list)
+    calculations.append(
+        {
+            "calculation_result_id": "CAL2",
+            "status": "SUCCESS",
+            "formula_id": "AREA",
+            "formula_version": "2",
+            "substitution": "10*20",
+            "display_result": "200",
+            "raw_result": "200",
+            "comparison": "ABOVE_THRESHOLD",
+        }
+    )
+    rules.append(
+        {
+            "rule_id": "RULE2",
+            "rule_version": "2",
+            "status": "SATISFIED",
+            "reason_codes": [],
+        }
+    )
+    model["review_items"] = [
+        {
+            "item_id": "ITEM-C1",
+            "claim_id": "C1",
+            "calculation_ids": ["CAL1"],
+            "rule_ids": ["RULE1"],
+            "status": "NOT_SATISFIED",
+            "completeness": "COMPLETE",
+        },
+        {
+            "item_id": "ITEM-C2",
+            "claim_id": "C1",
+            "calculation_ids": ["CAL2"],
+            "rule_ids": ["RULE2"],
+            "status": "SATISFIED",
+            "completeness": "COMPLETE",
+        },
+    ]
+
+    html = render_review_html(model, tmp_path / "pages")
+    panels = {
+        item_id: panel
+        for item_id, panel in re.findall(
+            r'<article class="detail-panel(?: is-selected)?" data-item-id="([^\"]+)">'
+            r"(?P<panel>.*?)(?=<article class=\"detail-panel|</section><section id=\"decision-form\")",
+            html,
+            re.DOTALL,
+        )
+    }
+
+    assert set(panels) == {"ITEM-C1", "ITEM-C2"}
+    assert "CAL1" in panels["ITEM-C1"]
+    assert "CAL2" not in panels["ITEM-C1"]
+    assert "RULE1" in panels["ITEM-C1"]
+    assert "RULE2" not in panels["ITEM-C1"]
+    assert "CAL2" in panels["ITEM-C2"]
+    assert "CAL1" not in panels["ITEM-C2"]
+    assert "RULE2" in panels["ITEM-C2"]
+    assert "RULE1" not in panels["ITEM-C2"]
+
+
 def test_review_workspace_inlines_responsive_print_and_offline_hooks(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
 
@@ -216,6 +286,16 @@ def test_detail_tabs_contain_wide_table_at_desktop_width_and_restore_print_flow(
     model = _model()
     calculations = model["calculations"]
     assert isinstance(calculations, list)
+    model["review_items"] = [
+        {
+            "item_id": "ITEM-C1",
+            "claim_id": "C1",
+            "calculation_ids": ["CAL1"],
+            "rule_ids": ["RULE1"],
+            "status": "NOT_SATISFIED",
+            "completeness": "COMPLETE",
+        }
+    ]
     wide_substitution = "W" * 104
     calculations[0]["substitution"] = wide_substitution
 
