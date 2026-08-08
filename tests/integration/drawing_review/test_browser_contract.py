@@ -145,3 +145,28 @@ def test_javascript_drives_reference_modes_tabs_and_candidate_metadata() -> None
     assert 'querySelector("[data-selected-object]")' in javascript
     assert 'querySelector("[data-selected-coordinates]")' in javascript
     assert 'querySelector("[data-selected-status]")' in javascript
+
+
+def test_javascript_localizes_runtime_feedback_and_candidate_metadata() -> None:
+    javascript = _javascript()
+
+    for localized_copy in (
+        "검토자 ID가 필요합니다.",
+        "후보를 먼저 선택하세요.",
+        "검토자 조치를 선택하세요.",
+        "확인 기록을 저장했습니다.",
+        "점",
+        "사각형",
+        "선",
+        "다각형",
+    ):
+        assert localized_copy in javascript
+
+    for english_copy in (
+        "Reviewer ID is required.",
+        "Select a candidate first.",
+        "Select a reviewer action.",
+        "Saved confirmation",
+        "Action failed.",
+    ):
+        assert english_copy not in javascript
