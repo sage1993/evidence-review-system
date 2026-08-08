@@ -132,3 +132,16 @@ def test_javascript_keeps_actions_unselected_until_reviewer_input() -> None:
     assert "if (!selectedAction)" in javascript
     assert "selectCandidate(button.dataset.candidateId" in javascript
     assert ".checked = true" not in javascript
+
+
+def test_javascript_drives_reference_modes_tabs_and_candidate_metadata() -> None:
+    javascript = _javascript()
+
+    assert "function setDisplayMode" in javascript
+    assert "function activateWorkspaceTab" in javascript
+    assert "function updateCandidateMetrics" in javascript
+    assert 'querySelectorAll("[data-display-mode]")' in javascript
+    assert 'querySelectorAll("[data-workspace-tab]")' in javascript
+    assert 'querySelector("[data-selected-object]")' in javascript
+    assert 'querySelector("[data-selected-coordinates]")' in javascript
+    assert 'querySelector("[data-selected-status]")' in javascript

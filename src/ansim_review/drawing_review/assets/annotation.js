@@ -3,7 +3,20 @@
 
   const buttons = Array.from(document.querySelectorAll("[data-candidate-button]"));
   const geometries = Array.from(document.querySelectorAll(".candidate-geometry"));
+  const displayModeButtons = Array.from(
+    document.querySelectorAll("[data-display-mode]"),
+  );
+  const workspaceTabs = Array.from(
+    document.querySelectorAll("[data-workspace-tab]"),
+  );
+  const workspacePanes = Array.from(
+    document.querySelectorAll("[data-workspace-pane]"),
+  );
   const overlay = document.querySelector("[data-annotation-overlay]");
+  const drawingStage = document.querySelector("#drawingStage");
+  const selectedObject = document.querySelector("[data-selected-object]");
+  const selectedCoordinates = document.querySelector("[data-selected-coordinates]");
+  const selectedStatus = document.querySelector("[data-selected-status]");
   const detailId = document.querySelector("[data-detail-id]");
   const detailType = document.querySelector("[data-detail-type]");
   const detailOrigin = document.querySelector("[data-detail-origin]");
@@ -33,6 +46,56 @@
     if (actionStatus) actionStatus.textContent = message;
   }
 
+  function setDisplayMode(mode) {
+    if (!drawingStage) return;
+    drawingStage.classList.remove("mode-original", "mode-detection", "mode-compare");
+    drawingStage.classList.add(`mode-${mode}`);
+    for (const button of displayModeButtons) {
+      const active = button.dataset.displayMode === mode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+  }
+
+  function activateWorkspaceTab(name) {
+    for (const tab of workspaceTabs) {
+      const active = tab.dataset.workspaceTab === name;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    }
+    for (const pane of workspacePanes) {
+      pane.hidden = pane.dataset.workspacePane !== name;
+    }
+  }
+
+  function geometryDescription(candidateId) {
+    const geometry = geometries.find(
+      (item) => item.dataset.candidateId === candidateId,
+    );
+    if (!geometry) return "—";
+    const tag = geometry.tagName.toUpperCase();
+    if (tag === "CIRCLE") {
+      return `POINT (${geometry.getAttribute("cx")}, ${geometry.getAttribute("cy")})`;
+    }
+    if (tag === "RECT") {
+      return `BBOX (${geometry.getAttribute("x")}, ${geometry.getAttribute("y")})`;
+    }
+    return `${tag} ${geometry.getAttribute("points") || ""}`;
+  }
+
+  function updateCandidateMetrics(button) {
+    if (!button) return;
+    if (selectedObject) {
+      selectedObject.textContent = button.dataset.candidateType || "—";
+    }
+    if (selectedCoordinates) {
+      selectedCoordinates.textContent = geometryDescription(button.dataset.candidateId || "");
+    }
+    if (selectedStatus) {
+      selectedStatus.textContent = button.dataset.candidateStatus || "—";
+    }
+  }
+
   function selectCandidate(candidateId) {
     selectedCandidateId = candidateId;
     for (const button of buttons) {
@@ -56,6 +119,7 @@
     if (detailOrigin) detailOrigin.textContent = selectedButton.dataset.candidateOrigin || "";
     if (detailStatus) detailStatus.textContent = selectedButton.dataset.candidateStatus || "";
     if (detailValue) detailValue.textContent = selectedButton.dataset.candidateValue || "";
+    updateCandidateMetrics(selectedButton);
   }
 
   function pointerPosition(event) {
@@ -313,6 +377,20 @@
     geometry.addEventListener("click", (event) => {
       event.stopPropagation();
       selectCandidate(geometry.dataset.candidateId || "");
+    });
+  }
+  for (const button of displayModeButtons) {
+    button.addEventListener("click", () => {
+      setDisplayMode(button.dataset.displayMode || "detection");
+    });
+  }
+  for (const tab of workspaceTabs) {
+    tab.addEventListener("click", () => {
+      activateWorkspaceTab(tab.dataset.workspaceTab || "evidence");
+      if (tab.classList.contains("secondary-action")) {
+        const reviewPanel = document.querySelector("#reviewer-action");
+        if (reviewPanel) reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     });
   }
   if (overlay) {
