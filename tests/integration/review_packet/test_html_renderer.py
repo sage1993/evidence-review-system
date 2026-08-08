@@ -189,18 +189,81 @@ def test_review_workspace_inlines_responsive_print_and_offline_hooks(tmp_path: P
     assert "http://" not in html
 
 
-def test_detail_tabs_contain_wide_evidence_tables_without_widening_workspace(
+def _inline_css(html: str) -> str:
+    match = re.search(r"<style>(?P<css>.*?)</style>", html, re.DOTALL)
+    assert match is not None
+    return match.group("css")
+
+
+def _css_declarations(css: str, selector: str) -> dict[str, str]:
+    match = re.search(
+        rf"(?m)^\s*{re.escape(selector)} \{{(?P<declarations>[^}}]+)\}}",
+        css,
+    )
+    assert match is not None
+    return {
+        name.strip(): value.strip()
+        for declaration in match.group("declarations").split(";")
+        if ":" in declaration
+        for name, value in [declaration.split(":", 1)]
+    }
+
+
+def test_detail_tabs_contain_wide_table_at_desktop_width_and_restore_print_flow(
     tmp_path: Path,
 ) -> None:
     _write_page_assets(tmp_path / "pages")
+    model = _model()
+    calculations = model["calculations"]
+    assert isinstance(calculations, list)
+    wide_substitution = "W" * 104
+    calculations[0]["substitution"] = wide_substitution
 
-    html = render_review_html(_model(), tmp_path / "pages")
+    html = render_review_html(model, tmp_path / "pages")
+    css = _inline_css(html)
+    body = _css_declarations(css, "body")
+    workspace = _css_declarations(css, ".review-workspace")
+    detail_tabs = _css_declarations(css, "#detail-tabs")
+    table = _css_declarations(css, "table")
+    surface = _css_declarations(
+        css,
+        ".status-band, .review-workspace > section, #review-items",
+    )
+    print_css = re.search(r"@media print \{(?P<rules>.*?)^\}", css, re.DOTALL | re.MULTILINE)
+    assert print_css is not None
+    print_detail_tabs = _css_declarations(print_css.group("rules"), "#detail-tabs")
 
-    detail_tabs = re.search(r"#detail-tabs \{(?P<rule>[^}]+)\}", html)
-    assert detail_tabs is not None
-    assert "min-width: 0" in detail_tabs.group("rule")
-    assert "overflow-x: auto" in detail_tabs.group("rule")
-    assert "#detail-tabs { overflow: visible; }" in html
+    assert f"<td>{wide_substitution}</td>" in html
+    assert table["width"] == "100%"
+    assert detail_tabs["grid-area"] == "detail"
+    assert detail_tabs["min-width"] == "0"
+    assert detail_tabs.get("overflow-x") == "auto"
+    assert print_detail_tabs["overflow"] == "visible"
+
+    # Static layout contract: 16px default root size and a conservative 6px
+    # lower bound per unbroken "W" are enough to exceed the detail content box.
+    viewport_width = 1366
+    rem = 16
+    body_padding = float(body["padding"].removesuffix("rem")) * rem
+    grid_gap = float(workspace["gap"].removesuffix("rem")) * rem
+    columns = re.findall(
+        r"minmax\((?P<minimum>[\d.]+)rem, (?P<fraction>[\d.]+)fr\)",
+        workspace["grid-template-columns"],
+    )
+    assert len(columns) == 3
+    track_minimums = tuple(float(minimum) * rem for minimum, _ in columns)
+    fractions = tuple(float(fraction) for _, fraction in columns)
+    section_padding = float(surface["padding"].removesuffix("rem")) * rem
+    assert surface["border"] == "1px solid #cbd5e1"
+
+    body_content_width = viewport_width - 2 * body_padding
+    grid_gap_width = 2 * grid_gap
+    remaining_width = body_content_width - grid_gap_width - sum(track_minimums)
+    detail_track_width = track_minimums[2] + remaining_width * (fractions[2] / sum(fractions))
+    detail_content_width = detail_track_width - 2 * section_padding - 2
+    wide_table_minimum_width = len(wide_substitution) * 6 + 2 * 0.4 * rem
+
+    assert detail_content_width < wide_table_minimum_width
 
 
 @pytest.mark.parametrize(
