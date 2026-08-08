@@ -227,7 +227,8 @@ def test_detail_tabs_filter_calculations_and_rules_by_item_provenance(
         item_id: panel
         for item_id, panel in re.findall(
             r'<article class="detail-panel(?: is-selected)?" data-item-id="([^\"]+)">'
-            r"(?P<panel>.*?)(?=<article class=\"detail-panel|</section><section id=\"decision-form\")",
+            r"(?P<panel>.*?)"
+            r'(?=<article class="detail-panel|</section><section id="decision-form")',
             html,
             re.DOTALL,
         )
