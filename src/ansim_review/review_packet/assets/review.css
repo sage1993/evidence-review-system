@@ -214,29 +214,29 @@ th { color: var(--muted); white-space: nowrap; }
 .global-card ul { margin: 4px 0; padding-left: 18px; }
 .global-card li { font-size: 10px; margin: 2px 0; }
 
-.decision-heading { border-bottom: 1px solid var(--border); padding: 12px 14px; }
+.decision-heading { border-bottom: 1px solid var(--border); padding: 8px 12px; }
 #decision-form form {
   align-items: start;
   display: grid;
-  gap: 10px;
+  gap: 6px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 12px 14px;
+  padding: 8px 12px;
 }
-.decision-choices { border: 0; display: grid; gap: 6px; grid-column: span 1; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; min-width: 0; padding: 0; }
-.decision-choices legend { font-size: 11px; font-weight: 700; margin-bottom: 5px; }
-.decision-option { align-items: center; background: var(--surface-strong); border: 1px solid var(--border); border-radius: 8px; display: flex; gap: 7px; min-width: 0; padding: 7px; }
+.decision-choices { border: 0; display: grid; gap: 4px; grid-column: span 1; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; min-width: 0; padding: 0; }
+.decision-choices legend { font-size: 11px; font-weight: 700; margin-bottom: 3px; }
+.decision-option { align-items: center; background: var(--surface-strong); border: 1px solid var(--border); border-radius: 8px; display: flex; gap: 6px; min-height: 28px; min-width: 0; padding: 5px 6px; }
 .decision-option input { accent-color: var(--accent); flex: 0 0 auto; }
 .decision-option span { display: grid; min-width: 0; }
 .decision-option strong { font-size: 10px; }
 .decision-option code { color: var(--muted); font-size: 8px; overflow-wrap: anywhere; }
-.decision-fields { display: grid; gap: 7px; grid-column: span 1; }
+.decision-fields { display: grid; gap: 4px; grid-column: span 1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #decision-form label:not(.decision-option) { color: var(--muted); display: grid; font-size: 10px; gap: 3px; }
-#decision-form input:not([type="radio"]), #decision-form textarea { background: #101925; color: var(--text); min-width: 0; padding: 8px 9px; width: 100%; }
+#decision-form input:not([type="radio"]), #decision-form textarea { background: #101925; color: var(--text); min-height: 32px; min-width: 0; padding: 5px 7px; width: 100%; }
 .packet-hash input { font-family: monospace; font-size: 9px; }
 .decision-notes { grid-column: span 1; }
-.decision-notes textarea { min-height: 112px; resize: vertical; }
-#decision-form .decision-actions { display: flex; gap: 7px; grid-column: 1 / -1; justify-content: flex-end; }
-.primary-action { align-self: auto; background: var(--accent); border-color: var(--accent); color: #06261d; font-weight: 800; }
+.decision-notes textarea { min-height: 64px; resize: vertical; }
+#decision-form .decision-actions { align-items: end; display: flex; gap: 6px; grid-column: 1 / -1; justify-content: flex-end; }
+.primary-action { align-self: end; background: var(--accent); border-color: var(--accent); color: #06261d; font-weight: 800; }
 .form-status { color: var(--muted); font-size: 10px; grid-column: 1 / -1; margin: 0; }
 
 .process-strip { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; flex-wrap: wrap; font-size: 9px; gap: 6px; padding: 9px 18px 11px; }
