@@ -16,9 +16,9 @@
 - Modify: `tests/integration/drawing_review/test_browser_contract.py`
 - Modify: merge result across the PR #60 branch and `origin/main`
 
-- [ ] Resolve the merge conflict by retaining both the PR #60 display-mode/UI contract tests and the `test_javascript_resolves_late_injected_calibration_link` regression test.
-- [ ] Verify `annotation.js` still contains the late calibration-link lookup and candidate/confirmation query binding.
-- [ ] Run the focused drawing browser-contract tests and commit the merge result.
+- [x] Resolve the merge conflict by retaining both the PR #60 display-mode/UI contract tests and the `test_javascript_resolves_late_injected_calibration_link` regression test.
+- [x] Verify `annotation.js` still contains the late calibration-link lookup and candidate/confirmation query binding.
+- [x] Run the focused drawing browser-contract tests and commit the merge result.
 
 ### Task 2: Require non-blank human-decision notes
 
@@ -29,10 +29,10 @@
 - Test: `tests/integration/review_packet/test_html_renderer.py`
 - Test: `tests/integration/test_review_routes.py`
 
-- [ ] Add failing unit coverage for empty and whitespace-only notes.
-- [ ] Add failing route coverage for a blank-notes POST.
-- [ ] Add the minimal server-side `notes.strip()` validation and require the HTML textarea field.
-- [ ] Run unit and route tests, then update any callers to pass explicit notes.
+- [x] Add failing unit coverage for empty and whitespace-only notes.
+- [x] Add failing route coverage for a blank-notes POST.
+- [x] Add the minimal server-side `notes.strip()` validation and require the HTML textarea field.
+- [x] Run unit and route tests, then update any callers to pass explicit notes.
 
 ### Task 3: Add `REVIEW_COMPLETED` display projection
 
@@ -46,11 +46,11 @@
 - Test: `tests/integration/review_packet/test_html_renderer.py`
 - Test: `tests/integration/test_review_routes.py`
 
-- [ ] Add failing tests proving the view model starts with `display_status` equal to the machine finalizer status and that a valid decision changes only the served display projection.
-- [ ] Implement validation-backed detection of a decision record whose packet hash matches the immutable packet.
-- [ ] Add a token-protected decision-status endpoint and include `display_status` in the decision response.
-- [ ] Update the browser projection without changing `final-review-packet.json` or the archival `review.html` bytes.
-- [ ] Verify invalid or foreign-packet decision records do not produce `REVIEW_COMPLETED`.
+- [x] Add failing tests proving the view model starts with `display_status` equal to the machine finalizer status and that a valid decision changes only the served display projection.
+- [x] Implement validation-backed detection of a decision record whose packet hash matches the immutable packet.
+- [x] Add a token-protected decision-status endpoint and include `display_status` in the decision response.
+- [x] Update the browser projection without changing `final-review-packet.json` or the archival `review.html` bytes.
+- [x] Verify invalid or foreign-packet decision records do not produce `REVIEW_COMPLETED`.
 
 ### Task 4: Protect the confirmation route and align documentation
 
@@ -60,14 +60,13 @@
 - Modify: `docs/CODEX_WORKFLOW.md`
 - Modify: `docs/REVIEWER_WORKFLOW.md`
 
-- [ ] Add failing tests for tokenized confirmation access and rejection of the unprotected legacy path.
-- [ ] Implement `/runs/<RUN-ID>/<TOKEN>/confirmation` using the same token authorization as review, packet, and decision routes.
-- [ ] Update current documentation to show the tokenized route and its fail-closed behavior.
+- [x] Add failing tests for tokenized confirmation access and rejection of the unprotected legacy path.
+- [x] Implement `/runs/<RUN-ID>/<TOKEN>/confirmation` using the same token authorization as review, packet, and decision routes.
+- [x] Update current documentation to show the tokenized route and its fail-closed behavior.
 
 ### Task 5: Run repository acceptance gates
 
-- [ ] Run focused tests after each implementation task.
-- [ ] Run documentation validation to a fresh output path.
-- [ ] Run full `pytest`, `ruff check src tests`, `mypy src`, and `python -m compileall -q src scripts web_runtime tests`.
+- [x] Run focused tests after each implementation task.
+- [x] Run documentation validation to a fresh output path.
+- [x] Run full `pytest`, `ruff check src tests`, `mypy src`, and `python -m compileall -q src scripts web_runtime tests`.
 - [ ] Run available wheel smoke checks and browser QA; report unavailable Python versions or GitHub Actions separately.
-

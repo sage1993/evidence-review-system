@@ -20,6 +20,25 @@
     };
   }
 
+  function applyDisplayStatus(status) {
+    if (!["READY_FOR_HUMAN_REVIEW", "REVIEW_COMPLETED"].includes(status)) return;
+    reviewModel.display_status = status;
+    document.querySelectorAll("[data-display-status]").forEach((node) => {
+      node.textContent = status;
+    });
+  }
+
+  async function refreshDisplayStatus() {
+    try {
+      const response = await fetch("./decision/status");
+      if (!response.ok) return;
+      const payload = await response.json();
+      applyDisplayStatus(payload.display_status);
+    } catch (_) {
+      // The archival page remains usable when the local server is unavailable.
+    }
+  }
+
   function selectedDetailPanel() {
     return document.querySelector(".detail-panel.is-selected");
   }
@@ -138,6 +157,11 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(decisionEnvelope(form))
       });
+      let payload = null;
+      if (response.ok) {
+        payload = await response.json();
+        applyDisplayStatus(payload.display_status);
+      }
       formStatus(response.ok ? "결정이 별도 기록으로 저장되었습니다." : "결정 엔드포인트가 제출을 거부했습니다.");
     } catch (_) {
       formStatus("보관 HTML에서는 로컬 결정 엔드포인트를 사용할 수 없습니다.");
@@ -163,6 +187,7 @@
   window.focusEvidence = focusEvidence;
   window.setEvidenceZoom = setEvidenceZoom;
   window.submitDecision = submitDecision;
+  window.refreshDisplayStatus = refreshDisplayStatus;
   window.downloadDecisionEnvelope = downloadDecisionEnvelope;
 
   document.querySelectorAll(".review-item").forEach((item) => {
@@ -201,6 +226,7 @@
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
   updateTabControls(selectedDetailPanel());
+  void refreshDisplayStatus();
 
   void reviewModel;
 }());
