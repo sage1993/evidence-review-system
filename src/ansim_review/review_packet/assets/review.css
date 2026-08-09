@@ -275,7 +275,22 @@ th { color: var(--muted); white-space: nowrap; }
 }
 
 @media print {
-  :root { background: #fff; color: #111827; color-scheme: light; }
+  :root {
+    --bg: #fff;
+    --shell: #fff;
+    --surface: #fff;
+    --surface-strong: #fff;
+    --border: #94a3b8;
+    --border-soft: #cbd5e1;
+    --text: #111827;
+    --muted: #475569;
+    --accent: #0f766e;
+    --warning: #92400e;
+    --danger: #b91c1c;
+    background: var(--bg);
+    color: var(--text);
+    color-scheme: light;
+  }
   body { background: #fff; color: #111827; overflow: visible; }
   .app-shell { border: 0; margin: 0; max-width: none; overflow: visible; width: 100%; }
   .status-band { border: 0; padding: 0 0 6mm; }
@@ -286,6 +301,8 @@ th { color: var(--muted); white-space: nowrap; }
   [data-tab-panel] { display: block !important; }
   .table-scroll { overflow: visible; }
   table { table-layout: auto; }
+  th, td { border-color: var(--border); color: var(--text); }
+  #decision-form input:not([type="radio"]), #decision-form textarea { background: #fff; border-color: var(--border); color: var(--text); }
   #review-items, .decision-actions, #decision-form button, .viewer-controls, .evidence-link, [role="tablist"], .process-strip { display: none !important; }
   .evidence-page { display: block !important; overflow: visible; }
   .page-stage { overflow: visible; }

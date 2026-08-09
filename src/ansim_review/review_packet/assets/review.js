@@ -62,6 +62,25 @@
     updateTabControls(selectedDetailPanel());
   }
 
+  let printPanelStates = null;
+
+  function revealPrintPanels() {
+    if (printPanelStates !== null) return;
+    const panels = Array.from(document.querySelectorAll(".detail-panel [data-tab-panel]"));
+    printPanelStates = panels.map((panel) => ({ panel, hidden: panel.hidden }));
+    panels.forEach((panel) => {
+      panel.hidden = false;
+    });
+  }
+
+  function restorePrintPanels() {
+    if (printPanelStates === null) return;
+    printPanelStates.forEach((state) => {
+      state.panel.hidden = state.hidden;
+    });
+    printPanelStates = null;
+  }
+
   function focusEvidence(itemId, evidenceId) {
     let assetKey = "";
     if (typeof evidenceId === "undefined") {
@@ -97,7 +116,7 @@
     if (!["original", "evidence", "compare"].includes(mode)) return;
     const shell = document.querySelector(".app-shell");
     if (shell) shell.dataset.viewerMode = mode;
-    document.querySelectorAll("[data-viewer-mode]").forEach((button) => {
+    document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
       button.setAttribute("aria-pressed", button.dataset.viewerMode === mode ? "true" : "false");
     });
   }
@@ -168,7 +187,7 @@
       if (panel) focusEvidence(panel.dataset.itemId, link.dataset.evidenceId);
     });
   });
-  document.querySelectorAll("[data-viewer-mode]").forEach((button) => {
+  document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
     button.addEventListener("click", () => setEvidenceMode(button.dataset.viewerMode));
   });
   const zoom = document.getElementById("evidence-zoom");
@@ -179,6 +198,8 @@
   if (download) download.addEventListener("click", downloadDecisionEnvelope);
   const printButton = document.querySelector("[data-print]");
   if (printButton) printButton.addEventListener("click", () => window.print());
+  window.addEventListener("beforeprint", revealPrintPanels);
+  window.addEventListener("afterprint", restorePrintPanels);
   updateTabControls(selectedDetailPanel());
 
   void reviewModel;

@@ -72,3 +72,34 @@ def test_final_review_css_freezes_responsive_print_and_overflow_safeguards(
     print_css = _media_rule(css, "@media print")
     assert "#detail-tabs { overflow: visible; }" in print_css
     assert "[data-tab-panel] { display: block !important; }" in print_css
+
+
+def test_final_review_print_overrides_dark_tokens_and_form_table_surfaces(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+    print_css = _media_rule(css, "@media print")
+
+    for token, value in (
+        ("--bg", "#fff"),
+        ("--shell", "#fff"),
+        ("--surface", "#fff"),
+        ("--surface-strong", "#fff"),
+        ("--border", "#94a3b8"),
+        ("--border-soft", "#cbd5e1"),
+        ("--text", "#111827"),
+        ("--muted", "#475569"),
+    ):
+        assert re.search(rf"{re.escape(token)}:\s*{re.escape(value)}", print_css)
+
+    print_inputs = _css_rule(
+        print_css,
+        '#decision-form input:not([type="radio"]), #decision-form textarea',
+    )
+    assert "background: #fff" in print_inputs
+    assert "border-color: var(--border)" in print_inputs
+    assert "color: var(--text)" in print_inputs
+    print_cells = _css_rule(print_css, "th, td")
+    assert "border-color: var(--border)" in print_cells
+    assert "color: var(--text)" in print_cells
