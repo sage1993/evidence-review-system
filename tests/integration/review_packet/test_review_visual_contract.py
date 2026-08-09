@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 from ansim_review.review_packet.html_renderer import render_review_html
 
 from .test_html_renderer import _model, _write_page_assets
@@ -12,16 +14,26 @@ def _inline_css(html: str) -> str:
     return match.group("css")
 
 
-def _css_rule(css: str, selector: str) -> str:
-    match = re.search(
+def _css_rule(css: str, selector: str, *, require_once: bool = False) -> str:
+    matches = list(
+        re.finditer(
         rf"(?m)^\s*{re.escape(selector)}\s*\{{(?P<body>[^}}]*)\}}",
         css,
+        )
     )
-    assert match is not None
-    return match.group("body")
+    assert matches
+    if require_once:
+        top_level = [
+            match
+            for match in matches
+            if css[: match.start()].count("{") == css[: match.start()].count("}")
+        ]
+        assert len(top_level) == 1, f"expected one top-level CSS rule: {selector}"
+    return matches[0].group("body")
 
 
 def _media_rule(css: str, media: str) -> str:
+    assert css.count(media) == 1, f"expected one media block: {media}"
     start = css.index(media)
     opening = css.index("{", start)
     depth = 0
@@ -44,15 +56,16 @@ def _assert_review_viewport_budget(css: str) -> None:
     metrics = _css_rule(css, ".metrics")
     assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in metrics
     assert "gap: 10px" in metrics
+    assert "border-radius: 14px" in _css_rule(css, ".metric", require_once=True)
 
     workspace = _css_rule(css, ".review-workspace")
     assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in workspace
 
     viewer = _css_rule(css, "#evidence-viewer")
     assert "overflow: hidden" in viewer
-    evidence_page = _css_rule(css, ".evidence-page")
+    evidence_page = _css_rule(css, ".evidence-page", require_once=True)
     assert "overflow: auto" in evidence_page
-    page_stage = _css_rule(css, ".page-stage")
+    page_stage = _css_rule(css, ".page-stage", require_once=True)
     assert "overflow: auto" in page_stage
     detail_tabs = _css_rule(css, "#detail-tabs")
     assert "min-width: 0" in detail_tabs
@@ -65,7 +78,7 @@ def _assert_review_viewport_budget(css: str) -> None:
     assert "max-width: 100%" in table_scroll
     assert "overflow-x: auto" in table_scroll
 
-    decision_form = _css_rule(css, "#decision-form form")
+    decision_form = _css_rule(css, "#decision-form form", require_once=True)
     assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in decision_form
     assert "align-items: start" in decision_form
 
@@ -90,11 +103,17 @@ def _assert_review_viewport_budget(css: str) -> None:
     print_css = _media_rule(css, "@media print")
     assert "overflow: visible" in _css_rule(print_css, "#detail-tabs")
     assert "display: block" in _css_rule(print_css, ".review-workspace")
-    print_evidence_page = _css_rule(print_css, ".evidence-page")
+    print_evidence_page = _css_rule(
+        print_css, ".evidence-page", require_once=True
+    )
     assert "display: block !important" in print_evidence_page
     assert "overflow: visible" in print_evidence_page
-    assert "overflow: visible" in _css_rule(print_css, ".page-stage")
-    assert "transform: none !important" in _css_rule(print_css, ".page-canvas")
+    assert "overflow: visible" in _css_rule(
+        print_css, ".page-stage", require_once=True
+    )
+    assert "transform: none !important" in _css_rule(
+        print_css, ".page-canvas", require_once=True
+    )
     assert "overflow: visible" in _css_rule(print_css, ".table-scroll")
     assert "display: block !important" in _css_rule(print_css, "[data-tab-panel]")
 
@@ -105,7 +124,7 @@ def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     _write_page_assets(tmp_path / "pages")
     css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
 
-    assert ".metric" in css and "border-radius: 14px" in css
+    assert "border-radius: 14px" in _css_rule(css, ".metric", require_once=True)
     assert ".review-item" in css and "min-height: 68px" not in css
     decision_form = _css_rule(css, "#decision-form form")
     assert "display: grid" in decision_form
@@ -114,28 +133,27 @@ def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     assert "grid-column: 1 / -1" in decision_actions
 
 
-def test_final_review_css_freezes_responsive_print_and_overflow_safeguards(
-    tmp_path: Path,
-) -> None:
-    _write_page_assets(tmp_path / "pages")
-    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
-
-    assert re.search(r"body\s*\{[^}]*overflow-x:\s*hidden", css, re.DOTALL)
-    assert re.search(r"[^}]min-width:\s*0", css)
-    assert "@media (max-width: 1180px)" in css
-    assert "@media (max-width: 820px)" in css
-    assert "@media (max-width: 1100px)" not in css
-    print_css = _media_rule(css, "@media print")
-    assert "#detail-tabs { overflow: visible; }" in print_css
-    assert "[data-tab-panel] { display: block !important; }" in print_css
-
-
 def test_final_review_css_freezes_concrete_viewport_budgets_and_print_flow(
     tmp_path: Path,
 ) -> None:
     _write_page_assets(tmp_path / "pages")
     css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
     _assert_review_viewport_budget(css)
+
+
+def test_final_review_css_rejects_later_equal_specificity_viewport_overrides(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+
+    for override in (
+        ".evidence-page { overflow: hidden; }",
+        "#decision-form form { align-items: stretch; }",
+        "@media print { .page-canvas { transform: scale(2) !important; } }",
+    ):
+        with pytest.raises(AssertionError):
+            _assert_review_viewport_budget(css + "\n" + override)
 
 
 def test_final_review_print_overrides_dark_tokens_and_form_table_surfaces(

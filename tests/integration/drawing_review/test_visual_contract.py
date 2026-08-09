@@ -4,16 +4,26 @@ import re
 from importlib.resources import files
 
 
-def _css_rule(css: str, selector: str) -> str:
-    match = re.search(
+def _css_rule(css: str, selector: str, *, require_once: bool = False) -> str:
+    matches = list(
+        re.finditer(
         rf"(?m)^\s*{re.escape(selector)}\s*\{{(?P<body>[^}}]*)\}}",
         css,
+        )
     )
-    assert match is not None, f"missing CSS rule: {selector}"
-    return match.group("body")
+    assert matches, f"missing CSS rule: {selector}"
+    if require_once:
+        top_level = [
+            match
+            for match in matches
+            if css[: match.start()].count("{") == css[: match.start()].count("}")
+        ]
+        assert len(top_level) == 1, f"expected one top-level CSS rule: {selector}"
+    return matches[0].group("body")
 
 
 def _media_rule(css: str, media: str) -> str:
+    assert css.count(media) == 1, f"expected one media block: {media}"
     start = css.index(media)
     opening = css.index("{", start)
     depth = 0
@@ -36,6 +46,7 @@ def _assert_annotation_viewport_budget(css: str) -> None:
     metrics = _css_rule(css, ".metrics")
     assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in metrics
     assert "gap: 10px" in metrics
+    assert "border-radius: 14px" in _css_rule(css, ".metric", require_once=True)
 
     main_grid = _css_rule(css, ".main-grid")
     assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in main_grid
@@ -89,7 +100,7 @@ def test_annotation_css_matches_issue_5_visual_contract() -> None:
         .read_text(encoding="utf-8")
     )
 
-    assert ".metric" in css and "border-radius: 14px" in css
+    assert "border-radius: 14px" in _css_rule(css, ".metric", require_once=True)
     assert ".feature" in css and "min-height: 68px" not in css
     assert ".tab-pane" in css and "overflow-y: auto" in css
 
