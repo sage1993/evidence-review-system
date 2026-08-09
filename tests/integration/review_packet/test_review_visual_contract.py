@@ -5,7 +5,11 @@ import pytest
 
 from ansim_review.review_packet.html_renderer import render_review_html
 
-from .test_html_renderer import _model, _write_page_assets
+from .test_html_renderer import (
+    _model,
+    _populated_global_audit_model,
+    _write_page_assets,
+)
 
 
 def _inline_css(html: str) -> str:
@@ -116,6 +120,28 @@ def _assert_review_viewport_budget(css: str) -> None:
     )
     assert "overflow: visible" in _css_rule(print_css, ".table-scroll")
     assert "display: block !important" in _css_rule(print_css, "[data-tab-panel]")
+
+
+def _assert_populated_global_card_budget(css: str) -> None:
+    base_card = _css_rule(css, ".global-card", require_once=True)
+    assert "max-height: none" in base_card
+    assert "overflow: visible" in base_card
+    assert "overflow-wrap: anywhere" in base_card
+
+    desktop = _media_rule(css, "@media screen and (min-width: 1181px)")
+    desktop_card = _css_rule(desktop, ".global-card", require_once=True)
+    assert "max-height: 96px" in desktop_card
+    assert "overflow: auto" in desktop_card
+
+    medium = _media_rule(css, "@media (max-width: 1180px)")
+    medium_card = _css_rule(medium, ".global-card", require_once=True)
+    assert "max-height: none" in medium_card
+    assert "overflow: visible" in medium_card
+
+    print_css = _media_rule(css, "@media print")
+    print_card = _css_rule(print_css, ".global-card", require_once=True)
+    assert "max-height: none" in print_card
+    assert "overflow: visible" in print_card
 
 
 def test_final_review_css_matches_issue_5_shell_and_grid_contract(
@@ -250,6 +276,49 @@ def test_desktop_primary_workflow_uses_the_third_round_vertical_budget(
 
     mobile = _media_rule(css, "@media (max-width: 820px)")
     assert "gap: 8px" in _css_rule(mobile, ".review-workspace")
+
+
+def test_populated_global_audit_cards_use_bounded_desktop_internal_scrolling(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_populated_global_audit_model(), tmp_path / "pages")
+    css = _inline_css(html)
+
+    assert html.count('class="global-card"') == 4
+    for value in (
+        "AUDIT3",
+        "CITATION_COORDINATE_CONFLICT",
+        "LOW_CONFIDENCE",
+        "rule_coverage",
+        "test-fixture-rule-results",
+    ):
+        assert value in html
+    _assert_populated_global_card_budget(css)
+
+
+def test_populated_global_audit_card_budget_rejects_cascade_mutations(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    css = _inline_css(
+        render_review_html(_populated_global_audit_model(), tmp_path / "pages")
+    )
+
+    for override in (
+        ".global-card { max-height: none; overflow: visible; }",
+        (
+            "@media screen and (min-width: 1181px) { "
+            ".global-card { max-height: none; overflow: visible; } }"
+        ),
+        (
+            "@media (max-width: 1180px) { "
+            ".global-card { max-height: 96px; overflow: auto; } }"
+        ),
+        "@media print { .global-card { max-height: 96px; overflow: auto; } }",
+    ):
+        with pytest.raises(AssertionError):
+            _assert_populated_global_card_budget(css + "\n" + override)
 
 
 def test_final_review_css_freezes_concrete_viewport_budgets_and_print_flow(

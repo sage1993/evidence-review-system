@@ -5,7 +5,7 @@
 - Repository: `F:\evidence-review-system\.worktrees\issue-5-review-workspace-v3`
 - Branch: `codex/issue-5-review-workspace-v3`
 - HEAD before commit: `cc591a724f3698371c54083f2498daa2c5b56bf5`
-- Scope: presentation-only correction to the final reviewer decision form and its selector-scoped visual contract. No renderer, controller, decision-envelope, or authority/security behavior changed.
+- Scope: presentation corrections to the final review and annotation workspaces, selector-scoped visual contracts, and one review-packet renderer layout wrapper (`global-audit-layout`). The renderer change only recomposed existing audit content; no data projection, controller, decision-envelope, or authority/security behavior changed.
 
 ## Before-state evidence and finding
 
@@ -143,6 +143,85 @@ LF/CRLF notices.
 No browser QA or screenshot recapture was performed in this round, as directed. The
 controller must regenerate and recapture at 1863x1494 before the P1 finding can be
 closed. The supplied before-state image was not modified.
+
+## Populated audit-data fit pass
+
+### Basis and verified gap
+
+- HEAD before this pass: `00827171668f3b78eec97615ea3ad52e4d91688c`
+- The desktop audit grid already used the compact four-card composition, but
+  `.global-card` had no maximum-height or overflow contract. Multiple audit records,
+  conflicts, abstention reasons, or confidence factors therefore expanded the shared
+  grid row and could move the decision and process sections below the 1863x1494
+  acceptance viewport.
+- Earlier Task 6 wording that claimed no renderer changed was inaccurate. The third
+  fit round changed `html_renderer.py` by adding the semantic `global-audit-layout`
+  wrapper. This populated-data pass does not change the renderer; it adds test-only
+  fixture coverage for the existing projection and constrains presentation in CSS.
+
+### RED/GREEN correction
+
+The representative test fixture now contains three audit records, three conflicts,
+three abstention reasons, and three confidence factors. Every value is synthetic and
+exists only in integration tests. The renderer contract asserts that every populated
+value remains in the packet-global section and that no decision is preselected.
+
+The visual contract renders that populated fixture and requires:
+
+- normal, visible overflow in the base card rule;
+- a screen-only desktop card maximum of 96px with internal scrolling above 1180px;
+- wrapping for long values rather than truncation; and
+- explicit unbounded, visible overflow at and below 1180px and in print.
+
+Mutation assertions reject later equal-specificity changes to the base, desktop,
+1180px, or print card behavior. The production change is limited to `review.css`; all
+audit, conflict, abstention, and confidence content remains rendered and reachable.
+
+RED command:
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_html_renderer.py::test_packet_global_review_preserves_populated_audit_content tests/integration/review_packet/test_review_visual_contract.py::test_populated_global_audit_cards_use_bounded_desktop_internal_scrolling tests/integration/review_packet/test_review_visual_contract.py::test_populated_global_audit_card_budget_rejects_cascade_mutations -q -p no:cacheprovider --basetemp build/pytest-task6-populated-red
+```
+
+Result: `1 failed, 2 passed in 0.23s`. The expected failure showed that the base
+`.global-card` rule had no concrete max-height/overflow policy.
+
+GREEN used the same selectors with `--basetemp build/pytest-task6-populated-green`.
+Result: `3 passed in 0.08s`.
+
+### Validation
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_html_renderer.py tests/integration/review_packet/test_review_workspace_ui.py tests/integration/review_packet/test_review_visual_contract.py tests/integration/test_review_routes.py -q -p no:cacheprovider --basetemp build/pytest-task6-populated-focused-rerun
+```
+
+Result: `48 passed, 1 skipped in 10.18s`. The first combined attempt had `47 passed,
+1 skipped` plus one Windows `WinError 10053` connection abort in the unchanged
+foreign-origin route test. That exact test passed alone (`1 passed in 1.16s`), and the
+complete focused suite then passed on the recorded rerun above.
+
+```powershell
+& 'F:\evidence-review-system\.venv\Scripts\ruff.exe' check tests/integration/review_packet/test_html_renderer.py tests/integration/review_packet/test_review_visual_contract.py
+git diff --check -- . ':(exclude)design-qa.md'
+```
+
+Result: Ruff `All checks passed!`; the scoped diff check passed. The parent-owned
+`design-qa.md` modification was preserved and excluded from this pass.
+
+### Scope and preserved behavior
+
+- Production: desktop-only audit-card height/scroll behavior in `review.css`.
+- Tests: populated renderer fixture/content assertions and selector-scoped
+  desktop/mobile/print cascade and mutation contracts.
+- Documentation: this Task 6 report correction and pass record.
+- Unchanged: renderer/controller code in this pass, fail-closed authority, decision
+  envelope, null/default human decision behavior, offline boundary, responsive layout,
+  and print full-flow content.
+
+No browser QA or screenshots were created or modified in this pass. The parent retains
+responsibility for final acceptance evidence.
 
 ## Final browser-fit pass
 
