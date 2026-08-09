@@ -69,6 +69,14 @@ def _assert_annotation_viewport_budget(css: str) -> None:
     assert "align-self: end" in primary_action
     assert "min-width: 150px" in primary_action
 
+    status_strip = _css_rule(css, ".status-strip", require_once=True)
+    assert "min-height: 34px" in status_strip
+    assert "padding: 8px 18px" in status_strip
+    desktop = _media_rule(css, "@media screen and (min-width: 1181px)")
+    desktop_status_strip = _css_rule(desktop, ".status-strip", require_once=True)
+    assert "min-height: 28px" in desktop_status_strip
+    assert "padding: 4px 18px" in desktop_status_strip
+
     body = _css_rule(css, "body")
     assert "overflow-x: hidden" in body
 
@@ -84,6 +92,7 @@ def _assert_annotation_viewport_budget(css: str) -> None:
     mobile = _media_rule(css, "@media (max-width: 820px)")
     assert "display: block" in _css_rule(mobile, ".main-grid")
     assert "grid-template-columns: 1fr 1fr" in _css_rule(mobile, ".metrics")
+    assert "flex-direction: column" in _css_rule(mobile, ".status-strip")
 
     print_css = _media_rule(css, "@media print")
     assert "min-height: 0" in _css_rule(print_css, ".drawing-stage")
