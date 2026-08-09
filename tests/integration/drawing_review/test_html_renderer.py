@@ -162,6 +162,23 @@ def test_annotation_workspace_matches_issue_5_semantic_layout() -> None:
     assert "검토자 최종 판정" not in html
 
 
+def test_annotation_workspace_uses_bounded_accessible_tabs() -> None:
+    html = _renderer()(_model(), b"\x89PNG\r\n\x1a\nfixture", "image/png")
+
+    assert 'data-open-confirmation>확인 기록 열기</button>' in html
+    assert 'data-workspace-tab="confirmation">확인 기록 열기</button>' not in html
+    assert 'role="tab" id="annotation-tab-evidence"' in html
+    assert 'aria-controls="annotation-pane-evidence" aria-selected="true"' in html
+    assert 'role="tab" id="annotation-tab-rules"' in html
+    assert 'aria-controls="annotation-pane-rules" aria-selected="false"' in html
+    assert 'role="tab" id="annotation-tab-confirmation"' in html
+    assert 'aria-controls="annotation-pane-confirmation" aria-selected="false"' in html
+    assert 'role="tabpanel" id="annotation-pane-evidence"' in html
+    assert 'aria-labelledby="annotation-tab-evidence"' in html
+    assert 'role="tabpanel" id="annotation-pane-rules"' in html
+    assert 'role="tabpanel" id="annotation-pane-confirmation"' in html
+
+
 def test_renderer_localizes_visible_workspace_copy_without_changing_contract_values() -> None:
     render_annotation_html = _renderer()
 

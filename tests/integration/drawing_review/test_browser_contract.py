@@ -149,7 +149,9 @@ def test_javascript_drives_reference_modes_tabs_and_candidate_metadata() -> None
     assert "function activateWorkspaceTab" in javascript
     assert "function updateCandidateMetrics" in javascript
     assert 'querySelectorAll("[data-display-mode]")' in javascript
-    assert 'querySelectorAll("[data-workspace-tab]")' in javascript
+    assert "querySelectorAll('[role=\"tab\"][data-workspace-tab]')" in javascript
+    assert 'querySelector("[data-open-confirmation]")' in javascript
+    assert 'activateWorkspaceTab("confirmation")' in javascript
     assert 'querySelector("[data-selected-object]")' in javascript
     assert 'querySelector("[data-selected-coordinates]")' in javascript
     assert 'querySelector("[data-selected-status]")' in javascript

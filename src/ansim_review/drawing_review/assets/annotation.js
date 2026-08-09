@@ -7,7 +7,7 @@
     document.querySelectorAll("[data-display-mode]"),
   );
   const workspaceTabs = Array.from(
-    document.querySelectorAll("[data-workspace-tab]"),
+    document.querySelectorAll('[role="tab"][data-workspace-tab]'),
   );
   const workspacePanes = Array.from(
     document.querySelectorAll("[data-workspace-pane]"),
@@ -32,6 +32,7 @@
   const clearGeometry = document.querySelector("[data-clear-geometry]");
   const submitAction = document.querySelector("[data-submit-action]");
   const actionStatus = document.querySelector("[data-action-status]");
+  const openConfirmation = document.querySelector("[data-open-confirmation]");
   const candidateCount = document.querySelector("[data-candidate-count]");
   const confirmedCount = document.querySelector("[data-confirmed-count]");
   const printWorkspace = document.querySelector("[data-print-workspace]");
@@ -65,6 +66,7 @@
       const active = tab.dataset.workspaceTab === name;
       tab.classList.toggle("is-active", active);
       tab.setAttribute("aria-selected", active ? "true" : "false");
+      tab.tabIndex = active ? 0 : -1;
     }
     for (const pane of workspacePanes) {
       pane.hidden = pane.dataset.workspacePane !== name;
@@ -405,10 +407,13 @@
   for (const tab of workspaceTabs) {
     tab.addEventListener("click", () => {
       activateWorkspaceTab(tab.dataset.workspaceTab || "evidence");
-      if (tab.classList.contains("secondary-action")) {
-        const reviewPanel = document.querySelector("#reviewer-action");
-        if (reviewPanel) reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
+    });
+  }
+  if (openConfirmation) {
+    openConfirmation.addEventListener("click", () => {
+      activateWorkspaceTab("confirmation");
+      const reviewPanel = document.querySelector("#reviewer-action");
+      if (reviewPanel) reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
   if (overlay) {

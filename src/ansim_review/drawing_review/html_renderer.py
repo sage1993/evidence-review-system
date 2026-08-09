@@ -394,7 +394,7 @@ def render_annotation_html(
             '<p>검출된 도면 근거를 원본과 대조하고, 검토자 확인 기록을 남겨 주세요.</p>',
             '</div><div class="topbar-actions"><span class="offline-mark">로컬 · 오프라인</span>',
             '<button type="button" class="secondary-action" '
-            'data-workspace-tab="confirmation">확인 기록 열기</button>',
+            'data-open-confirmation>확인 기록 열기</button>',
             '<button type="button" class="secondary-action" data-print-workspace>'
             'HTML 인쇄</button>',
             '</div></header>',
@@ -433,11 +433,20 @@ def render_annotation_html(
             'data-selected-coordinates>—</strong></div>',
             '<div><span>확인 상태</span><strong id="selectedStatus" '
             'data-selected-status>대기</strong></div></div></section>',
-            '<aside class="detail-panel panel"><div class="workspace-tabs" role="tablist">',
-            '<button type="button" class="is-active" data-workspace-tab="evidence">근거</button>',
-            '<button type="button" data-workspace-tab="rules">규칙</button>',
-            '<button type="button" data-workspace-tab="confirmation">입력 확인</button></div>',
-            '<div class="tab-pane" data-workspace-pane="evidence"><div class="evidence-summary">',
+            '<aside class="detail-panel panel"><div class="workspace-tabs" role="tablist" '
+            'aria-label="검토 정보">',
+            '<button type="button" class="is-active" role="tab" id="annotation-tab-evidence" '
+            'data-workspace-tab="evidence" aria-controls="annotation-pane-evidence" '
+            'aria-selected="true" tabindex="0">근거</button>',
+            '<button type="button" role="tab" id="annotation-tab-rules" '
+            'data-workspace-tab="rules" aria-controls="annotation-pane-rules" '
+            'aria-selected="false" tabindex="-1">규칙</button>',
+            '<button type="button" role="tab" id="annotation-tab-confirmation" '
+            'data-workspace-tab="confirmation" aria-controls="annotation-pane-confirmation" '
+            'aria-selected="false" tabindex="-1">입력 확인</button></div>',
+            '<div class="tab-pane" data-workspace-pane="evidence" role="tabpanel" '
+            'id="annotation-pane-evidence" aria-labelledby="annotation-tab-evidence"><div '
+            'class="evidence-summary">',
             '<span class="section-kicker">선택 근거</span><h2>선택 근거 상세</h2>',
             '<p>왼쪽 후보 또는 도면 오버레이를 선택하세요. 원본 추출값과 '
             '출처 상태만 표시됩니다.</p>',
@@ -448,7 +457,8 @@ def render_annotation_html(
             '<div><dt>상태</dt><dd data-detail-status>—</dd></div></dl>',
             '<div class="evidence-value"><span>추출값</span>'
             '<strong data-detail-value>—</strong></div>',
-            '</div></div><div class="tab-pane" data-workspace-pane="rules" hidden>',
+            '</div></div><div class="tab-pane" data-workspace-pane="rules" role="tabpanel" '
+            'id="annotation-pane-rules" aria-labelledby="annotation-tab-rules" hidden>',
             '<span class="section-kicker">결정론적 실행 경계</span><h2>엔진 실행 경계</h2>',
             _render_rule_readiness(),
             '<div class="engine-row"><span>파싱 엔진</span><strong>완료</strong></div>',
@@ -456,7 +466,9 @@ def render_annotation_html(
             '<strong>확인 후 실행</strong></div>',
             '<p class="boundary-note">브라우저는 계산하거나 규칙을 판정하지 않습니다. '
             '확인된 입력만 서버 측 결정론 엔진에 전달됩니다.</p>',
-            '</div><div class="tab-pane" data-workspace-pane="confirmation" hidden>',
+            '</div><div class="tab-pane" data-workspace-pane="confirmation" role="tabpanel" '
+            'id="annotation-pane-confirmation" '
+            'aria-labelledby="annotation-tab-confirmation" hidden>',
             _render_confirmation_guidance(),
             '</div></aside></main>',
             _render_reviewer_action_panel(),
