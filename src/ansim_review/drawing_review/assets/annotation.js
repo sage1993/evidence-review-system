@@ -32,6 +32,9 @@
   const clearGeometry = document.querySelector("[data-clear-geometry]");
   const submitAction = document.querySelector("[data-submit-action]");
   const actionStatus = document.querySelector("[data-action-status]");
+  const candidateCount = document.querySelector("[data-candidate-count]");
+  const confirmedCount = document.querySelector("[data-confirmed-count]");
+  const printWorkspace = document.querySelector("[data-print-workspace]");
 
   let selectedCandidateId = "";
   let draftDisplayPoints = [];
@@ -94,6 +97,16 @@
     }
     if (selectedStatus) {
       selectedStatus.textContent = button.dataset.candidateStatusLabel || "—";
+    }
+  }
+
+  function updateCandidateWideCounts() {
+    if (candidateCount) candidateCount.textContent = String(buttons.length);
+    if (confirmedCount) {
+      const confirmed = buttons.filter(
+        (button) => button.dataset.candidateStatus !== "UNCONFIRMED",
+      ).length;
+      confirmedCount.textContent = String(confirmed);
     }
   }
 
@@ -408,4 +421,6 @@
   if (clearGeometry) clearGeometry.addEventListener("click", () => clearDraft());
   if (geometryTool) geometryTool.addEventListener("change", () => clearDraft());
   if (submitAction) submitAction.addEventListener("click", submitSelectedAction);
+  if (printWorkspace) printWorkspace.addEventListener("click", () => window.print());
+  updateCandidateWideCounts();
 })();
