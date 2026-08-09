@@ -5,7 +5,6 @@ import hashlib
 import json
 import re
 import shutil
-import webbrowser
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +36,7 @@ from ansim_review.review_packet.browser_launcher import (
     wait_for_open_review_server,
 )
 from ansim_review.review_packet.builder import build_review_view_model
+from ansim_review.review_packet.external_launcher import open_external_url
 from ansim_review.review_packet.html_renderer import write_review_html
 
 _RUN_ID = re.compile(r"^RUN-[0-9A-F]{20}$")
@@ -488,7 +488,7 @@ def open_review_run(
     workspace_root: Path,
     run_id: str,
     *,
-    browser: Callable[[str], bool] = webbrowser.open,
+    browser: Callable[[str], bool] = open_external_url,
 ) -> str:
     """Open a finalized review run through its protected loopback route."""
     return open_protected_review_workspace(
