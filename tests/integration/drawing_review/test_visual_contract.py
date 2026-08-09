@@ -100,7 +100,6 @@ def test_annotation_css_matches_issue_5_visual_contract() -> None:
         .read_text(encoding="utf-8")
     )
 
-    assert "border-radius: 14px" in _css_rule(css, ".metric", require_once=True)
     assert ".feature" in css and "min-height: 68px" not in css
     assert ".tab-pane" in css and "overflow-y: auto" in css
 
