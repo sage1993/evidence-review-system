@@ -144,6 +144,71 @@ No browser QA or screenshot recapture was performed in this round, as directed. 
 controller must regenerate and recapture at 1863x1494 before the P1 finding can be
 closed. The supplied before-state image was not modified.
 
+## Final annotation print and metric-authority review fix
+
+### Basis and verified root causes
+
+- HEAD before this pass: `78fb238c913d90962ed9e72fbeb1d5b8704d5b61`.
+- Annotation print inherited `[hidden] { display: none !important; }`, so the inactive
+  Rules and Confirmation panes remained absent. The base `.detail-panel`, `.tab-pane`,
+  candidate-list, drawing-stage, panel, and shell overflow/height bounds could also
+  clip otherwise printable content.
+- The renderer already emitted candidate and confirmed counts from the validated view
+  model, but `annotation.js` queried those metric nodes and recomputed both counts from
+  browser candidate buttons during startup. That duplicate projection was unnecessary
+  and weakened the server-authoritative display boundary.
+
+### RED/GREEN corrections
+
+The selector-scoped print contract now requires all tab panels to render as blocks with
+`!important`, overriding the base hidden rule. It also freezes unbounded visible print
+flow for the detail pane, tab panes, candidate panel/list, drawing stage, and app shell.
+Mutation checks independently reverse the tab visibility, detail containment, candidate
+list containment, and drawing-stage containment and prove that the contract rejects
+each regression. CSS is sufficient; no `beforeprint` JavaScript was added.
+
+The browser contract asserts literal server-rendered metric values in the generated
+HTML and rejects browser bindings, button counting, status filtering, the
+`updateCandidateWideCounts()` function, and its invocation. Production JavaScript only
+removes those unused bindings and the redundant count derivation. Candidate selection,
+geometry capture, action payloads, reviewer semantics, and server behavior are
+unchanged.
+
+RED command:
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/drawing_review/test_visual_contract.py::test_annotation_css_freezes_concrete_viewport_budgets_and_print_flow tests/integration/drawing_review/test_visual_contract.py::test_annotation_print_full_flow_rejects_selector_mutations tests/integration/drawing_review/test_browser_contract.py::test_server_rendered_metrics_are_not_rederived_in_the_browser -q -p no:cacheprovider --basetemp build/pytest-task6-final-review-red
+```
+
+Result: `3 failed in 0.17s`. The failures respectively identified the missing print tab
+selector/full-flow rules and the still-present browser metric binding.
+
+GREEN used the same selectors with
+`--basetemp build/pytest-task6-final-review-green`. Result: `3 passed in 0.07s`.
+
+### Focused validation
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/drawing_review/test_html_renderer.py tests/integration/drawing_review/test_visual_contract.py tests/integration/drawing_review/test_browser_contract.py tests/integration/drawing_review/test_manual_annotation_browser_flow.py tests/integration/drawing_review/test_local_server.py -q -p no:cacheprovider --basetemp build/pytest-task6-final-review-focused
+```
+
+Result: `27 passed, 1 skipped in 4.47s`.
+
+```powershell
+& 'F:\evidence-review-system\.venv\Scripts\ruff.exe' check src tests
+git diff --check
+```
+
+Result: Ruff `All checks passed!`; `git diff --check` passed with only the existing
+Windows LF/CRLF notices.
+
+No browser QA or screenshots were created or modified. `design-qa.md`, authority and
+server behavior, candidate selection, evidence hashes, and reviewer-action semantics
+remain outside this pass. The known mypy NumPy environment failure remains an
+acceptance limitation and was not addressed here.
+
 ## Populated audit-data fit pass
 
 ### Basis and verified gap
