@@ -269,7 +269,7 @@ def test_finalize_writes_packet_html_manifest_and_published_packet(
     published = json.loads(result.published_packet.read_text(encoding="utf-8"))
     assert published["human_decision"] is None
     html = result.review_html.read_text(encoding="utf-8")
-    assert "Machine evaluation is not the final decision" in html
+    assert "기계 평가는 최종 판정이 아닙니다." in html
     assert "9.375%" in html
     assert "data:image/png;base64," in html
 

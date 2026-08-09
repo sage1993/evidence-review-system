@@ -93,7 +93,7 @@ def test_review_workspace_localizes_compact_final_decision_controls_without_sele
     assert "검토자의 최종 결정" in decision_form
     assert "결정 확정" in decision_form
     assert "결정 JSON 다운로드" in decision_form
-    assert "기계 평가는 최종 결정이 아닙니다" in html
+    assert "기계 평가는 최종 판정이 아닙니다" in html
     assert not re.search(
         r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|'
         r'ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected',
