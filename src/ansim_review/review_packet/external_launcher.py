@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import ctypes
+import ctypes.wintypes
 import os
 import sys
 import webbrowser
 from collections.abc import Iterator
+
+_SW_SHOWNORMAL = 1
 
 
 def _registered_background_browsers() -> Iterator[webbrowser.BackgroundBrowser]:
@@ -30,16 +34,42 @@ def _background_browser_command(
     return [browser.name, *arguments]
 
 
+def _shell_execute_url(url: str) -> bool:
+    """Ask Windows to open a URL through its registered shell association."""
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    shell_execute = shell32.ShellExecuteW
+    shell_execute.argtypes = [
+        ctypes.wintypes.HWND,
+        ctypes.wintypes.LPCWSTR,
+        ctypes.wintypes.LPCWSTR,
+        ctypes.wintypes.LPCWSTR,
+        ctypes.wintypes.LPCWSTR,
+        ctypes.c_int,
+    ]
+    shell_execute.restype = ctypes.wintypes.HINSTANCE
+    result = shell_execute(None, "open", url, None, None, _SW_SHOWNORMAL)
+    result_value = result if isinstance(result, int) else (result.value or 0)
+    if result_value <= 32:
+        raise OSError(f"Windows ShellExecuteW failed with code {result_value}")
+    return True
+
+
 def _open_windows_url(url: str) -> bool:
+    last_error: BaseException | None = None
     startfile = getattr(os, "startfile", None)
     if startfile is not None:
         try:
             startfile(url)
             return True
         except OSError as error:
-            last_error: OSError | None = error
+            last_error = error
     else:
         last_error = None
+
+    try:
+        return _shell_execute_url(url)
+    except (AttributeError, OSError, ValueError) as error:
+        last_error = error
 
     for browser in _registered_background_browsers():
         try:
