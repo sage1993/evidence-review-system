@@ -15,6 +15,16 @@ def _model() -> dict[str, object]:
         "status": "READY_FOR_HUMAN_REVIEW",
         "human_decision": None,
         "decision_options": [],
+        "decision": {
+            "allowed_values": [
+                "SATISFIED",
+                "NOT_SATISFIED",
+                "CONDITIONAL",
+                "ADDITIONAL_REVIEW_REQUIRED",
+            ],
+            "human_decision": None,
+            "packet_sha256": "b" * 64,
+        },
         "question": "<검토 질문>",
         "claims": [
             {
@@ -109,6 +119,16 @@ def _decision_form_html(html: str) -> str:
     return match.group(0)
 
 
+def _packet_global_review_html(html: str) -> str:
+    match = re.search(
+        r'<section id="packet-global-review".*?(?=<section id="decision-form")',
+        html,
+        re.DOTALL,
+    )
+    assert match is not None
+    return match.group(0)
+
+
 def test_self_contained_html_has_traceability_overlay_and_blank_decision(
     tmp_path: Path,
 ) -> None:
@@ -120,7 +140,7 @@ def test_self_contained_html_has_traceability_overlay_and_blank_decision(
     assert 'data-bbox="10.0,20.0,110.0,40.0"' in html
     assert "9.375%" in html
     assert "traceability" in html
-    assert "Machine evaluation is not the final decision" in html
+    assert "기계 평가는 최종 판정이 아닙니다." in html
     assert "<script>alert(1)</script>" not in html
     assert "checked" not in html
     assert "data:image/png;base64," + encoded_page in html
@@ -238,7 +258,7 @@ def test_detail_tabs_filter_calculations_and_rules_by_item_provenance(
         for item_id, panel in re.findall(
             r'<article class="detail-panel(?: is-selected)?" data-item-id="([^\"]+)">'
             r"(?P<panel>.*?)"
-            r'(?=<article class="detail-panel|</section><section id="decision-form")',
+            r'(?=<article class="detail-panel|</section><section id="packet-global-review")',
             html,
             re.DOTALL,
         )
@@ -261,9 +281,10 @@ def test_review_workspace_inlines_responsive_print_and_offline_hooks(tmp_path: P
     html = render_review_html(_model(), tmp_path / "pages")
 
     assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in html
-    assert "body { margin: 0 auto; max-width: 1440px;" in html
-    assert "grid-template-columns: minmax(13rem, .8fr) minmax(22rem, 1.5fr)" in html
-    assert "@media (max-width: 1100px)" in html
+    assert "max-width: 1700px" in html
+    assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in html
+    assert "@media (max-width: 1180px)" in html
+    assert "@media (max-width: 820px)" in html
     assert "@media print" in html
     assert "@page { size: A4;" in html
     assert "https://" not in html
@@ -279,7 +300,7 @@ def test_final_review_shell_freezes_korean_semantics_and_four_metric_cards(
 
     for copy in (
         "근거 검토 화면",
-        "기계 평가는 최종 결정이 아닙니다",
+        "기계 평가는 최종 판정이 아닙니다",
         "검토 요약",
         "검토 항목",
         "근거 뷰어",
@@ -378,12 +399,13 @@ def test_complete_domain_projection_is_item_scoped_across_all_detail_domains(
     _write_page_assets(tmp_path / "pages")
 
     html = render_review_html(_complete_domain_model(), tmp_path / "pages")
+    packet_global = _packet_global_review_html(html)
     panels = {
         item_id: panel
         for item_id, panel in re.findall(
             r'<article class="detail-panel(?: is-selected)?" data-item-id="([^"]+)">'
             r"(?P<panel>.*?)"
-            r'(?=<article class="detail-panel|</section><section id="decision-form")',
+            r'(?=<article class="detail-panel|</section><section id="packet-global-review")',
             html,
             re.DOTALL,
         )
@@ -399,10 +421,16 @@ def test_complete_domain_projection_is_item_scoped_across_all_detail_domains(
     assert "AUDIT1" in panels["ITEM-C1"]
     assert "MISSING_REQUIRED_INPUT" in panels["ITEM-C1"]
     assert "SOURCE_CONFLICT" in panels["ITEM-C1"]
+    # The audit record itself explicitly carries ITEM-C1 ownership. The same
+    # canonical string is also visible separately as a packet-global abstention reason.
     assert "TRACK_B_REJECTED" in panels["ITEM-C1"]
     assert "MISSING_REQUIRED_INPUT" not in panels["ITEM-C2"]
     assert "SOURCE_CONFLICT" not in panels["ITEM-C2"]
     assert "TRACK_B_REJECTED" not in panels["ITEM-C2"]
+    assert "TRACK_B_REJECTED" in packet_global
+    assert "traceability" in packet_global
+    assert "MISSING_REQUIRED_INPUT" in packet_global
+    assert "SOURCE_CONFLICT" in packet_global
     assert "CAL2" not in panels["ITEM-C1"]
     assert "RULE2" not in panels["ITEM-C1"]
     assert "CAL1" not in panels["ITEM-C2"]
@@ -422,7 +450,11 @@ def test_final_decision_panel_is_blank_and_machine_warning_is_unambiguous(
     assert 'name="packet_sha256"' in decision_form
     assert 'name="notes"' in decision_form
     assert 'name="decision"' in decision_form
-    assert not re.search(r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected', html)
+    assert not re.search(
+        r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|'
+        r'ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected',
+        html,
+    )
     assert "checked" not in html
 
 
@@ -468,14 +500,9 @@ def test_detail_tabs_contain_wide_table_at_desktop_width_and_restore_print_flow(
 
     html = render_review_html(model, tmp_path / "pages")
     css = _inline_css(html)
-    body = _css_declarations(css, "body")
     workspace = _css_declarations(css, ".review-workspace")
     detail_tabs = _css_declarations(css, "#detail-tabs")
     table = _css_declarations(css, "table")
-    surface = _css_declarations(
-        css,
-        ".status-band, .review-workspace > section, #review-items",
-    )
     print_css = re.search(r"@media print \{(?P<rules>.*?)^\}", css, re.DOTALL | re.MULTILINE)
     assert print_css is not None
     print_detail_tabs = _css_declarations(print_css.group("rules"), "#detail-tabs")
@@ -487,30 +514,8 @@ def test_detail_tabs_contain_wide_table_at_desktop_width_and_restore_print_flow(
     assert detail_tabs.get("overflow-x") == "auto"
     assert print_detail_tabs["overflow"] == "visible"
 
-    # Static layout contract: 16px default root size and a conservative 6px
-    # lower bound per unbroken "W" are enough to exceed the detail content box.
-    viewport_width = 1366
-    rem = 16
-    body_padding = float(body["padding"].removesuffix("rem")) * rem
-    grid_gap = float(workspace["gap"].removesuffix("rem")) * rem
-    columns = re.findall(
-        r"minmax\((?P<minimum>[\d.]+)rem, (?P<fraction>[\d.]+)fr\)",
-        workspace["grid-template-columns"],
-    )
-    assert len(columns) == 3
-    track_minimums = tuple(float(minimum) * rem for minimum, _ in columns)
-    fractions = tuple(float(fraction) for _, fraction in columns)
-    section_padding = float(surface["padding"].removesuffix("rem")) * rem
-    assert surface["border"] == "1px solid #cbd5e1"
-
-    body_content_width = viewport_width - 2 * body_padding
-    grid_gap_width = 2 * grid_gap
-    remaining_width = body_content_width - grid_gap_width - sum(track_minimums)
-    detail_track_width = track_minimums[2] + remaining_width * (fractions[2] / sum(fractions))
-    detail_content_width = detail_track_width - 2 * section_padding - 2
-    wide_table_minimum_width = len(wide_substitution) * 6 + 2 * 0.4 * rem
-
-    assert detail_content_width < wide_table_minimum_width
+    assert workspace["grid-template-columns"] == "260px minmax(450px, 1fr) 330px"
+    assert workspace["gap"] == "12px"
 
 
 @pytest.mark.parametrize(
@@ -523,13 +528,12 @@ def test_static_css_contract_keeps_desktop_and_print_hooks_for_target_viewports(
     _write_page_assets(tmp_path / "pages")
     html = render_review_html(_model(), tmp_path / "pages")
 
-    body = re.search(r"body \{(?P<rule>[^}]+)\}", html)
     stacked = re.search(r"@media \(max-width: (?P<width>\d+)px\)", html)
-    assert body is not None and stacked is not None
+    assert stacked is not None
     assert viewport == f"{width}x{height}"
     assert width > int(stacked.group("width"))
-    assert "max-width: 1440px" in body.group("rule")
-    assert "grid-template-columns: minmax(13rem, .8fr) minmax(22rem, 1.5fr)" in html
+    assert "max-width: 1700px" in html
+    assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in html
     assert "@media print" in html
     assert "@page { size: A4;" in html
 

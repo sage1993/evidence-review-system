@@ -183,10 +183,10 @@ def test_review_workspace_shows_ready_state_without_a_selected_decision(
     html = render_review_html(model, tmp_path / "pages")
 
     assert "READY_FOR_HUMAN_REVIEW" in html
-    assert "None recorded." in html
-    assert '<option value="" selected disabled>Select a decision</option>' in html
-    assert '<option value="SATISFIED" selected>' not in html
-    assert '<option value="NOT_SATISFIED" selected>' not in html
+    assert "전역 기권 사유 없음" in html
+    assert 'value="SATISFIED" required' in html
+    assert 'value="NOT_SATISFIED" required' in html
+    assert "checked" not in html
 
 
 def test_review_workspace_shows_abstain_reasons_without_a_selected_decision(
@@ -201,6 +201,6 @@ def test_review_workspace_shows_abstain_reasons_without_a_selected_decision(
 
     assert "ABSTAIN" in html
     assert "MISSING_REQUIRED_EVIDENCE" in html
-    assert '<option value="" selected disabled>Select a decision</option>' in html
-    assert '<option value="SATISFIED" selected>' not in html
-    assert '<option value="NOT_SATISFIED" selected>' not in html
+    assert 'value="SATISFIED" required' in html
+    assert 'value="NOT_SATISFIED" required' in html
+    assert "checked" not in html
