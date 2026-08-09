@@ -228,8 +228,15 @@ input[type="radio"] { accent-color: var(--green); }
 }
 @media print {
   :root { color-scheme: light; color: #111; background: #fff; }
+  body { overflow: visible; }
   body, .app-shell, .topbar, .metric, .panel, .review-panel { color: #111; background: #fff; }
+  .app-shell { overflow: visible; }
   .main-grid { grid-template-columns: 230px 1fr 280px; }
-  .drawing-stage { min-height: 0; background: #eee; }
+  .candidate-panel { overflow: visible; }
+  .candidate-list { max-height: none; overflow: visible; }
+  .drawing-stage { height: auto; min-height: 0; overflow: visible; background: #eee; }
+  .detail-panel { max-height: none; overflow: visible; }
+  [data-tab-panel], [data-workspace-pane] { display: block !important; }
+  .tab-pane { overflow: visible; }
   .topbar-actions, .mode-switch, .primary-action, .button-row { display: none; }
 }

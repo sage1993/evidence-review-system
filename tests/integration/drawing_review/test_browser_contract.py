@@ -84,6 +84,23 @@ def test_svg_exposes_only_coordinate_projection_metadata() -> None:
     assert "data-source-sha256" not in html
 
 
+def test_server_rendered_metrics_are_not_rederived_in_the_browser() -> None:
+    html = _html()
+    javascript = _javascript()
+
+    assert "<strong data-candidate-count>1</strong>" in html
+    assert "<strong data-confirmed-count>0</strong>" in html
+    for browser_count_derivation in (
+        'querySelector("[data-candidate-count]")',
+        'querySelector("[data-confirmed-count]")',
+        "function updateCandidateWideCounts",
+        "updateCandidateWideCounts();",
+        "buttons.length",
+        'button.dataset.candidateStatus !== "UNCONFIRMED"',
+    ):
+        assert browser_count_derivation not in javascript
+
+
 def test_javascript_generates_exact_existing_and_manual_actions() -> None:
     javascript = _javascript()
 

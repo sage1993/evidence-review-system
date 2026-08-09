@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from importlib.resources import files
 
+import pytest
+
 
 def _css_rule(css: str, selector: str, *, require_once: bool = False) -> str:
     matches = list(
@@ -35,6 +37,42 @@ def _media_rule(css: str, media: str) -> str:
             if depth == 0:
                 return css[opening + 1 : index]
     raise AssertionError(f"unclosed media rule: {media}")
+
+
+def _assert_annotation_print_full_flow(css: str) -> None:
+    hidden = _css_rule(css, "[hidden]", require_once=True)
+    assert "display: none !important" in hidden
+
+    print_css = _media_rule(css, "@media print")
+    tab_panels = _css_rule(
+        print_css,
+        "[data-tab-panel], [data-workspace-pane]",
+        require_once=True,
+    )
+    assert "display: block !important" in tab_panels
+
+    print_detail = _css_rule(print_css, ".detail-panel", require_once=True)
+    assert "max-height: none" in print_detail
+    assert "overflow: visible" in print_detail
+    assert "overflow: visible" in _css_rule(
+        print_css, ".tab-pane", require_once=True
+    )
+
+    print_shell = _css_rule(print_css, ".app-shell", require_once=True)
+    assert "overflow: visible" in print_shell
+    assert "overflow: visible" in _css_rule(
+        print_css, ".candidate-panel", require_once=True
+    )
+    print_candidates = _css_rule(
+        print_css, ".candidate-list", require_once=True
+    )
+    assert "max-height: none" in print_candidates
+    assert "overflow: visible" in print_candidates
+
+    print_stage = _css_rule(print_css, ".drawing-stage", require_once=True)
+    assert "height: auto" in print_stage
+    assert "min-height: 0" in print_stage
+    assert "overflow: visible" in print_stage
 
 
 def _assert_annotation_viewport_budget(css: str) -> None:
@@ -100,6 +138,7 @@ def _assert_annotation_viewport_budget(css: str) -> None:
         print_css, ".topbar-actions, .mode-switch, .primary-action, .button-row"
     )
     assert "display: none" in print_controls
+    _assert_annotation_print_full_flow(css)
 
 
 def test_annotation_css_matches_issue_5_visual_contract() -> None:
@@ -120,3 +159,36 @@ def test_annotation_css_freezes_concrete_viewport_budgets_and_print_flow() -> No
         .read_text(encoding="utf-8")
     )
     _assert_annotation_viewport_budget(css)
+
+
+def test_annotation_print_full_flow_rejects_selector_mutations() -> None:
+    css = (
+        files("ansim_review.drawing_review")
+        .joinpath("assets", "annotation.css")
+        .read_text(encoding="utf-8")
+    )
+    mutations = (
+        (
+            "[data-tab-panel], [data-workspace-pane] { "
+            "display: block !important; }",
+            "[data-tab-panel], [data-workspace-pane] { "
+            "display: none !important; }",
+        ),
+        (
+            ".detail-panel { max-height: none; overflow: visible; }",
+            ".detail-panel { max-height: 760px; overflow: hidden; }",
+        ),
+        (
+            ".candidate-list { max-height: none; overflow: visible; }",
+            ".candidate-list { max-height: 650px; overflow: auto; }",
+        ),
+        (
+            ".drawing-stage { height: auto; min-height: 0; overflow: visible;",
+            ".drawing-stage { height: min(52vw, 690px); min-height: 0; overflow: auto;",
+        ),
+    )
+
+    for expected, mutation in mutations:
+        assert expected in css
+        with pytest.raises(AssertionError):
+            _assert_annotation_print_full_flow(css.replace(expected, mutation, 1))
