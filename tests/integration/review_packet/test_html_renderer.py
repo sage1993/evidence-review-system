@@ -99,6 +99,16 @@ def _write_page_assets(root: Path) -> bytes:
     return page_bytes
 
 
+def _decision_form_html(html: str) -> str:
+    match = re.search(
+        r'<section id="decision-form".*?</section>',
+        html,
+        re.DOTALL,
+    )
+    assert match is not None
+    return match.group(0)
+
+
 def test_self_contained_html_has_traceability_overlay_and_blank_decision(
     tmp_path: Path,
 ) -> None:
@@ -276,11 +286,12 @@ def test_final_review_shell_freezes_korean_semantics_and_four_metric_cards(
         "근거",
         "규칙·계산",
         "감사·예외",
-        "검토자의 최종 결정",
-        "결정 확정",
-        "결정 JSON 다운로드",
     ):
         assert copy in html
+
+    decision_form = _decision_form_html(html)
+    for copy in ("검토자의 최종 결정", "결정 확정", "결정 JSON 다운로드"):
+        assert copy in decision_form
 
     assert html.count('class="metric"') == 4
     assert "Evidence Review Workspace" not in html
@@ -389,6 +400,9 @@ def test_complete_domain_projection_is_item_scoped_across_all_detail_domains(
     assert "MISSING_REQUIRED_INPUT" in panels["ITEM-C1"]
     assert "SOURCE_CONFLICT" in panels["ITEM-C1"]
     assert "TRACK_B_REJECTED" in panels["ITEM-C1"]
+    assert "MISSING_REQUIRED_INPUT" not in panels["ITEM-C2"]
+    assert "SOURCE_CONFLICT" not in panels["ITEM-C2"]
+    assert "TRACK_B_REJECTED" not in panels["ITEM-C2"]
     assert "CAL2" not in panels["ITEM-C1"]
     assert "RULE2" not in panels["ITEM-C1"]
     assert "CAL1" not in panels["ITEM-C2"]
@@ -402,12 +416,12 @@ def test_final_decision_panel_is_blank_and_machine_warning_is_unambiguous(
 
     html = render_review_html(_model(), tmp_path / "pages")
 
-    assert 'id="decision-form"' in html
-    assert 'name="reviewer_id"' in html
-    assert 'name="reviewed_at"' in html
-    assert 'name="packet_sha256"' in html
-    assert 'name="notes"' in html
-    assert 'name="decision"' in html
+    decision_form = _decision_form_html(html)
+    assert 'name="reviewer_id"' in decision_form
+    assert 'name="reviewed_at"' in decision_form
+    assert 'name="packet_sha256"' in decision_form
+    assert 'name="notes"' in decision_form
+    assert 'name="decision"' in decision_form
     assert not re.search(r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected', html)
     assert "checked" not in html
 

@@ -12,6 +12,29 @@ def _inline_css(html: str) -> str:
     return match.group("css")
 
 
+def _css_rule(css: str, selector: str) -> str:
+    match = re.search(
+        rf"(?m)^\s*{re.escape(selector)}\s*\{{(?P<body>[^}}]*)\}}",
+        css,
+    )
+    assert match is not None
+    return match.group("body")
+
+
+def _media_rule(css: str, media: str) -> str:
+    start = css.index(media)
+    opening = css.index("{", start)
+    depth = 0
+    for index in range(opening, len(css)):
+        if css[index] == "{":
+            depth += 1
+        elif css[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return css[opening + 1 : index]
+    raise AssertionError(f"unclosed media rule: {media}")
+
+
 def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     tmp_path: Path,
 ) -> None:
@@ -26,8 +49,13 @@ def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in css
     assert ".review-item" in css and "min-height: 68px" not in css
     assert ".primary-action" in css and "align-self: stretch" not in css
-    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in css
-    assert "#decision-form" in css
+    decision_form = _css_rule(css, "#decision-form form")
+    assert "display: grid" in decision_form
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in decision_form
+    assert "gap: 10px" in decision_form
+    assert "align-items: start" in decision_form
+    decision_actions = _css_rule(css, "#decision-form .decision-actions")
+    assert "grid-column: 1 / -1" in decision_actions
 
 
 def test_final_review_css_freezes_responsive_print_and_overflow_safeguards(
@@ -41,7 +69,6 @@ def test_final_review_css_freezes_responsive_print_and_overflow_safeguards(
     assert "@media (max-width: 1180px)" in css
     assert "@media (max-width: 820px)" in css
     assert "@media (max-width: 1100px)" not in css
-    assert "@media print" in css
-    assert "#detail-tabs { overflow: visible; }" in css
-    assert "[data-tab-panel] { display: block !important; }" in css
-
+    print_css = _media_rule(css, "@media print")
+    assert "#detail-tabs { overflow: visible; }" in print_css
+    assert "[data-tab-panel] { display: block !important; }" in print_css

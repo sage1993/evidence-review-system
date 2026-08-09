@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ansim_review.review_packet.html_renderer import render_review_html
 
-from .test_html_renderer import _model, _write_page_assets
+from .test_html_renderer import _decision_form_html, _model, _write_page_assets
 
 
 def test_review_workspace_escapes_user_content_and_has_blank_offline_controls(
@@ -88,14 +88,15 @@ def test_review_workspace_localizes_compact_final_decision_controls_without_sele
     _write_page_assets(tmp_path / "pages")
 
     html = render_review_html(_model(), tmp_path / "pages")
+    decision_form = _decision_form_html(html)
 
-    assert "검토자의 최종 결정" in html
-    assert "결정 확정" in html
-    assert "결정 JSON 다운로드" in html
+    assert "검토자의 최종 결정" in decision_form
+    assert "결정 확정" in decision_form
+    assert "결정 JSON 다운로드" in decision_form
     assert "기계 평가는 최종 결정이 아닙니다" in html
     assert not re.search(
         r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|'
         r'ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected',
-        html,
+        decision_form,
     )
     assert "checked" not in html
