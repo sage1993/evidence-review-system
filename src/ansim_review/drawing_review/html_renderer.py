@@ -217,6 +217,68 @@ def _candidate_button(value: object) -> str:
     )
 
 
+def _render_annotation_metrics(
+    *, candidate_count: int, confirmed_count: int, short_hash: str
+) -> str:
+    """Project server-validated workspace counts into the summary cards."""
+    return "".join(
+        (
+            '<section class="metrics" aria-label="검토 현황">',
+            '<article class="metric"><span>소스 무결성</span><strong>검증됨</strong>'
+            f'<small>{escape(short_hash)}…</small></article>',
+            f'<article class="metric"><span>검출 객체</span><strong data-candidate-count>'
+            f'{candidate_count}</strong><small>현재 페이지 후보</small></article>',
+            f'<article class="metric"><span>확인 기록</span><strong data-confirmed-count>'
+            f'{confirmed_count}</strong><small>추가 전용 기록</small></article>',
+            '<article class="metric" data-tone="alert"><span>현재 상태</span>'
+            '<strong>확인 필요</strong><small>엔진 바인딩 전</small></article>',
+            '</section>',
+        )
+    )
+
+
+def _render_candidate_summary(candidates: Sequence[object]) -> str:
+    """Render the already validated candidate records without new domain outcomes."""
+    rows: list[str] = []
+    for value in candidates:
+        candidate = _mapping(value, "candidate")
+        candidate_type = _string(candidate.get("candidate_type"), "candidate.candidate_type")
+        status = _string(candidate.get("status"), "candidate.status")
+        display_value = _optional_text(candidate.get("normalized_candidate")) or _optional_text(
+            candidate.get("raw_value")
+        )
+        rows.append(
+            '<div class="kv-row"><span>'
+            f'{escape(_CANDIDATE_TYPE_LABELS.get(candidate_type, "기타 근거"))}</span>'
+            f'<strong>{escape(display_value or "—")}</strong>'
+            f'<small>{escape(_STATUS_LABELS.get(status, "알 수 없음"))}</small></div>'
+        )
+    return '<div class="candidate-summary">' + "".join(rows) + '</div>'
+
+
+def _render_rule_readiness() -> str:
+    return (
+        '<div class="empty-state" data-rule-readiness>'
+        '<strong>연결된 승인 규칙 없음</strong>'
+        '<p>확인된 입력만 서버 측 규칙·계산 엔진으로 전달됩니다.</p>'
+        '</div>'
+    )
+
+
+def _render_confirmation_guidance() -> str:
+    return "".join(
+        (
+            '<div class="confirmation-guidance"><span class="section-kicker">인적 입력 확인</span>',
+            '<h2>입력 확인 안내</h2>',
+            '<p>아래 검토자 영역에서 명시적인 조치를 선택하고 저장해야 '
+            '다음 단계로 진행할 수 있습니다.</p>',
+            '<div class="hold-reason"><strong>보류 사유</strong>',
+            '<p>후보 선택과 검토자 조치가 기록되기 전에는 후속 판단을 진행하지 않습니다.</p>',
+            '</div></div>',
+        )
+    )
+
+
 def _review_controls() -> str:
     return "".join(
         (
@@ -256,6 +318,20 @@ def _review_controls() -> str:
             'data-submit-action>검토 기록 저장</button>',
             '<output class="action-status" role="status" aria-live="polite" '
             'data-action-status></output>',
+        )
+    )
+
+
+def _render_reviewer_action_panel() -> str:
+    return "".join(
+        (
+            '<section class="review-panel" id="reviewer-action"><div class="review-heading"><div>',
+            '<span class="section-kicker">추가 전용 인적 조치</span>',
+            '<h2>검토자 확인 기록</h2></div>',
+            '<p>자동 판정과 분리된 별도 기록으로 저장됩니다.</p></div>',
+            '<div class="review-grid">',
+            _review_controls(),
+            '</div></section>',
         )
     )
 
@@ -302,7 +378,7 @@ def render_annotation_html(
     encoded = base64.b64encode(page_image).decode("ascii")
     image_uri = f"data:{mime};base64,{encoded}"
     coordinate_attr = escape(coordinate_system, quote=True)
-    short_hash = escape(source_sha256[:16])
+    short_hash = source_sha256[:16]
 
     return "".join(
         (
@@ -313,24 +389,23 @@ def render_annotation_html(
             '<header class="topbar"><div class="topbar-copy"><div class="eyebrow-row">',
             '<span class="status-badge" id="topStatus"><span class="status-dot"></span>'
             '입력 확인 필요</span>',
-            f'<span class="run-ref">페이지 {page} · {short_hash}</span></div>',
+            f'<span class="run-ref">페이지 {page} · {escape(short_hash)}</span></div>',
             '<h1>도면 근거 검토 화면</h1>',
             '<p>검출된 도면 근거를 원본과 대조하고, 검토자 확인 기록을 남겨 주세요.</p>',
             '</div><div class="topbar-actions"><span class="offline-mark">로컬 · 오프라인</span>',
             '<button type="button" class="secondary-action" '
-            'data-workspace-tab="confirmation">확인 기록 열기</button></div></header>',
-            '<section class="metrics" aria-label="검토 현황">',
-            f'<article class="metric"><span>소스 무결성</span><strong>검증됨</strong>'
-            f'<small>{short_hash}…</small></article>',
-            f'<article class="metric"><span>검출 객체</span><strong>{len(candidates)}</strong>'
-            '<small>현재 페이지 후보</small></article>',
-            f'<article class="metric"><span>확인 기록</span><strong>{confirmed_count}</strong>'
-            '<small>추가 전용 기록</small></article>',
-            '<article class="metric" data-tone="alert"><span>현재 상태</span>'
-            '<strong>확인 필요</strong><small>엔진 바인딩 전</small></article>',
-            '</section><main class="main-grid">',
-            '<aside class="panel candidate-panel"><div class="panel-heading"><div>',
-            '<span class="section-kicker">검출 근거</span><h2>도면 객체</h2></div>',
+            'data-workspace-tab="confirmation">확인 기록 열기</button>',
+            '<button type="button" class="secondary-action" data-print-workspace>'
+            'HTML 인쇄</button>',
+            '</div></header>',
+            _render_annotation_metrics(
+                candidate_count=len(candidates),
+                confirmed_count=confirmed_count,
+                short_hash=short_hash,
+            ),
+            '<main class="main-grid">',
+            '<aside class="candidate-panel panel"><div class="panel-heading"><div>',
+            '<span class="section-kicker">검출 근거</span><h2>도면 입력 확인</h2></div>',
             f'<span class="count-badge">{len(candidates)}</span></div>',
             '<p class="panel-note">객체를 선택하면 도면 위치와 추출값을 함께 '
             '확인할 수 있습니다.</p>',
@@ -338,7 +413,7 @@ def render_annotation_html(
             ''.join(buttons),
             '</ul><div class="candidate-legend"><span><i class="legend-box"></i>검출 영역</span>',
             '<span><i class="legend-dot"></i>선택 객체</span></div></aside>',
-            '<section class="panel viewer-panel"><div class="viewer-toolbar"><div>',
+            '<section class="viewer-panel panel"><div class="viewer-toolbar"><div>',
             '<span class="section-kicker">검증된 원본</span><h2>원본 도면 대조</h2></div>',
             '<div class="mode-switch" role="group" aria-label="도면 표시 모드">',
             '<button type="button" data-display-mode="original">원본</button>',
@@ -358,7 +433,7 @@ def render_annotation_html(
             'data-selected-coordinates>—</strong></div>',
             '<div><span>확인 상태</span><strong id="selectedStatus" '
             'data-selected-status>대기</strong></div></div></section>',
-            '<aside class="panel detail-panel"><div class="workspace-tabs" role="tablist">',
+            '<aside class="detail-panel panel"><div class="workspace-tabs" role="tablist">',
             '<button type="button" class="is-active" data-workspace-tab="evidence">근거</button>',
             '<button type="button" data-workspace-tab="rules">규칙</button>',
             '<button type="button" data-workspace-tab="confirmation">입력 확인</button></div>',
@@ -366,6 +441,7 @@ def render_annotation_html(
             '<span class="section-kicker">선택 근거</span><h2>선택 근거 상세</h2>',
             '<p>왼쪽 후보 또는 도면 오버레이를 선택하세요. 원본 추출값과 '
             '출처 상태만 표시됩니다.</p>',
+            _render_candidate_summary(candidates),
             '<dl><div><dt>객체 ID</dt><dd data-detail-id>—</dd></div>',
             '<div><dt>유형</dt><dd data-detail-type>—</dd></div>',
             '<div><dt>출처</dt><dd data-detail-origin>—</dd></div>',
@@ -374,24 +450,19 @@ def render_annotation_html(
             '<strong data-detail-value>—</strong></div>',
             '</div></div><div class="tab-pane" data-workspace-pane="rules" hidden>',
             '<span class="section-kicker">결정론적 실행 경계</span><h2>엔진 실행 경계</h2>',
+            _render_rule_readiness(),
             '<div class="engine-row"><span>파싱 엔진</span><strong>완료</strong></div>',
             '<div class="engine-row"><span>규칙·계산 엔진</span>'
             '<strong>확인 후 실행</strong></div>',
             '<p class="boundary-note">브라우저는 계산하거나 규칙을 판정하지 않습니다. '
             '확인된 입력만 서버 측 결정론 엔진에 전달됩니다.</p>',
             '</div><div class="tab-pane" data-workspace-pane="confirmation" hidden>',
-            '<span class="section-kicker">인적 입력 확인</span><h2>입력 확인 안내</h2>',
-            '<p class="boundary-note">아래 검토자 영역에서 명시적인 조치를 선택하고 '
-            '저장해야 다음 단계로 진행할 수 있습니다.</p>',
+            _render_confirmation_guidance(),
             '</div></aside></main>',
-            '<section class="review-panel" id="reviewer-action"><div class="review-heading"><div>',
-            '<span class="section-kicker">추가 전용 인적 조치</span>'
-            '<h2>검토자 확인 기록</h2></div>',
-            '<p>자동 판정과 분리된 별도 기록으로 저장됩니다.</p></div><div class="review-grid">',
-            _review_controls(),
-            '</div></section><footer class="status-strip" data-status-strip>',
-            '<span><i></i>소스 해시 검증 완료</span><span>파싱 엔진 · 준비 완료</span>',
-            '<span>규칙·계산 엔진 · 입력 확인 대기</span>',
+            _render_reviewer_action_panel(),
+            '<footer class="status-strip" data-status-strip>',
+            '<span><i></i>소스 해시 검증 완료</span><span>파싱 → 사용자 입력 확인</span>',
+            '<span>규칙·계산 엔진 → 최종 검토</span>',
             '<strong>인적 최종 결정 · 없음</strong></footer></div>',
             f'<script>{javascript}</script></body></html>',
         )
