@@ -260,6 +260,158 @@ def test_review_workspace_inlines_responsive_print_and_offline_hooks(tmp_path: P
     assert "http://" not in html
 
 
+def test_final_review_shell_freezes_korean_semantics_and_four_metric_cards(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    for copy in (
+        "근거 검토 화면",
+        "기계 평가는 최종 결정이 아닙니다",
+        "검토 요약",
+        "검토 항목",
+        "근거 뷰어",
+        "근거",
+        "규칙·계산",
+        "감사·예외",
+        "검토자의 최종 결정",
+        "결정 확정",
+        "결정 JSON 다운로드",
+    ):
+        assert copy in html
+
+    assert html.count('class="metric"') == 4
+    assert "Evidence Review Workspace" not in html
+    assert "Human decision" not in html
+    assert "Machine evaluation is not the final decision." not in html
+
+
+def _complete_domain_model() -> dict[str, object]:
+    model = _model()
+    calculations = model["calculations"]
+    rules = model["rules"]
+    assert isinstance(calculations, list)
+    assert isinstance(rules, list)
+    calculations.extend(
+        [
+            {
+                "calculation_result_id": "CAL2",
+                "status": "SUCCESS",
+                "formula_id": "AREA",
+                "formula_version": "2",
+                "substitution": "10*20",
+                "display_result": "200",
+                "raw_result": "200",
+                "comparison": "ABOVE_THRESHOLD",
+            }
+        ]
+    )
+    rules.extend(
+        [
+            {
+                "rule_id": "RULE2",
+                "rule_version": "2",
+                "status": "SATISFIED",
+                "reason_codes": [],
+            }
+        ]
+    )
+    model["exceptions"] = ["MISSING_REQUIRED_INPUT"]
+    model["conflicts"] = ["SOURCE_CONFLICT"]
+    model["abstention_reasons"] = ["TRACK_B_REJECTED"]
+    model["audit"] = {
+        "track_a_status": "COMPLETE",
+        "track_b_status": "TRACK_B_REJECTED",
+        "records": [
+            {
+                "audit_id": "AUDIT1",
+                "item_id": "ITEM-C1",
+                "status": "TRACK_B_REJECTED",
+            }
+        ],
+    }
+    model["review_items"] = [
+        {
+            "item_id": "ITEM-C1",
+            "claim_id": "C1",
+            "evidence_ids": ["E1"],
+            "calculation_ids": ["CAL1"],
+            "rule_ids": ["RULE1"],
+            "audit_ids": ["AUDIT1"],
+            "exception_codes": ["MISSING_REQUIRED_INPUT"],
+            "conflict_codes": ["SOURCE_CONFLICT"],
+            "status": "NOT_SATISFIED",
+            "completeness": "COMPLETE",
+        },
+        {
+            "item_id": "ITEM-C2",
+            "claim_id": "C1",
+            "evidence_ids": [],
+            "calculation_ids": ["CAL2"],
+            "rule_ids": ["RULE2"],
+            "audit_ids": [],
+            "exception_codes": [],
+            "conflict_codes": [],
+            "status": "SATISFIED",
+            "completeness": "COMPLETE",
+        },
+    ]
+    return model
+
+
+def test_complete_domain_projection_is_item_scoped_across_all_detail_domains(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_complete_domain_model(), tmp_path / "pages")
+    panels = {
+        item_id: panel
+        for item_id, panel in re.findall(
+            r'<article class="detail-panel(?: is-selected)?" data-item-id="([^"]+)">'
+            r"(?P<panel>.*?)"
+            r'(?=<article class="detail-panel|</section><section id="decision-form")',
+            html,
+            re.DOTALL,
+        )
+    }
+
+    assert 'data-detail-tab="evidence"' in html
+    assert 'data-detail-tab="rules-calculations"' in html
+    assert 'data-detail-tab="audit-exceptions"' in html
+    assert set(panels) == {"ITEM-C1", "ITEM-C2"}
+    assert "E1" in panels["ITEM-C1"]
+    assert "CAL1" in panels["ITEM-C1"]
+    assert "RULE1" in panels["ITEM-C1"]
+    assert "AUDIT1" in panels["ITEM-C1"]
+    assert "MISSING_REQUIRED_INPUT" in panels["ITEM-C1"]
+    assert "SOURCE_CONFLICT" in panels["ITEM-C1"]
+    assert "TRACK_B_REJECTED" in panels["ITEM-C1"]
+    assert "CAL2" not in panels["ITEM-C1"]
+    assert "RULE2" not in panels["ITEM-C1"]
+    assert "CAL1" not in panels["ITEM-C2"]
+    assert "RULE1" not in panels["ITEM-C2"]
+
+
+def test_final_decision_panel_is_blank_and_machine_warning_is_unambiguous(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    assert 'id="decision-form"' in html
+    assert 'name="reviewer_id"' in html
+    assert 'name="reviewed_at"' in html
+    assert 'name="packet_sha256"' in html
+    assert 'name="notes"' in html
+    assert 'name="decision"' in html
+    assert not re.search(r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected', html)
+    assert "checked" not in html
+
+
 def _inline_css(html: str) -> str:
     match = re.search(r"<style>(?P<css>.*?)</style>", html, re.DOTALL)
     assert match is not None

@@ -80,3 +80,22 @@ def test_review_workspace_decision_envelope_matches_the_protected_route_contract
         "decision",
         "notes",
     ]
+
+
+def test_review_workspace_localizes_compact_final_decision_controls_without_selection(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    assert "검토자의 최종 결정" in html
+    assert "결정 확정" in html
+    assert "결정 JSON 다운로드" in html
+    assert "기계 평가는 최종 결정이 아닙니다" in html
+    assert not re.search(
+        r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|'
+        r'ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected',
+        html,
+    )
+    assert "checked" not in html
