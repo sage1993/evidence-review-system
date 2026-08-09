@@ -197,3 +197,10 @@ def test_javascript_localizes_runtime_feedback_and_candidate_metadata() -> None:
         "Action failed.",
     ):
         assert english_copy not in javascript
+
+
+def test_javascript_resolves_late_injected_calibration_link() -> None:
+    javascript = _javascript()
+
+    assert "function getCalibrationLink" in javascript
+    assert "const calibrationLink = document.querySelector" not in javascript
