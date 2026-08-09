@@ -55,8 +55,8 @@ The implementation intentionally displays the hash-verified project drawing rath
 
 ## Repository verification
 
-- Documentation integrity: PASS, 0 errors, 72 warnings, 74 documents (28 current, 2 generated, 44 historical). Report: `build/documentation-integrity-report-issue5-final2.json`; SHA-256 `e0ad7f1bee3036236b312a469a862a6488126e78b3c078ef9597d32ce4b1bc3b`.
-- Pytest: 1080 passed, 6 skipped.
+- Documentation integrity: PASS, 0 errors, 72 warnings, 74 documents (28 current, 2 generated, 44 historical). Report: `build/documentation-integrity-report-issue5-final3.json`; SHA-256 `e0ad7f1bee3036236b312a469a862a6488126e78b3c078ef9597d32ce4b1bc3b`.
+- Pytest: 1082 passed, 6 skipped.
 - Ruff: `All checks passed!`.
 - Compileall: passed.
 - Required `mypy src`: environment gate failed before repository code analysis because installed NumPy 2.5.1 uses Python 3.12 PEP 695 syntax while the repository mypy target is Python 3.11 (`numpy/__init__.pyi:737`). Supplemental `mypy --python-version 3.13 src` passed for 170 source files. No dependency or typing-policy change was made as part of this UI issue.
