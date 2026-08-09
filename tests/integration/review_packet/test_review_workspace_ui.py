@@ -1,9 +1,28 @@
+import json
 import re
+import subprocess
 from pathlib import Path
 
 from ansim_review.review_packet.html_renderer import render_review_html
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
+
+
+def _inline_controller(html: str) -> str:
+    scripts = re.findall(r"<script(?: [^>]*)?>(.*?)</script>", html, re.DOTALL)
+    assert scripts
+    return scripts[-1]
+
+
+def _run_node_harness(controller: str, harness: str) -> subprocess.CompletedProcess[str]:
+    source = f"const controller = {json.dumps(controller)};\n{harness}"
+    return subprocess.run(
+        ["node", "-"],
+        input=source,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def test_review_workspace_escapes_user_content_and_has_blank_offline_controls(
@@ -100,3 +119,112 @@ def test_review_workspace_localizes_compact_final_decision_controls_without_sele
         decision_form,
     )
     assert "checked" not in html
+
+
+def test_print_lifecycle_reveals_all_detail_domains_and_restores_hidden_state(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
+    harness = r"""
+function node(hidden, dataset) {
+  return {
+    hidden,
+    dataset: dataset || {},
+    listeners: {},
+    attributes: {},
+    addEventListener(type, handler) { this.listeners[type] = handler; },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    querySelector() { return null; }
+  };
+}
+const panels = [
+  node(false, { tabPanel: "evidence" }),
+  node(true, { tabPanel: "rules-calculations" }),
+  node(true, { tabPanel: "audit-exceptions" })
+];
+const tabs = [
+  node(false, { detailTab: "evidence" }),
+  node(false, { detailTab: "rules-calculations" }),
+  node(false, { detailTab: "audit-exceptions" })
+];
+tabs[0].attributes["aria-selected"] = "true";
+tabs[1].attributes["aria-selected"] = "false";
+tabs[2].attributes["aria-selected"] = "false";
+const printListeners = {};
+global.window = {
+  addEventListener(type, handler) { printListeners[type] = handler; },
+  print() {}
+};
+global.document = {
+  getElementById() { return null; },
+  querySelector() { return null; },
+  querySelectorAll(selector) {
+    if (selector === ".detail-panel [data-tab-panel]") return panels;
+    if (selector === "[data-detail-tab]") return tabs;
+    return [];
+  }
+};
+eval(controller);
+if (typeof printListeners.beforeprint !== "function") throw new Error("beforeprint missing");
+if (typeof printListeners.afterprint !== "function") throw new Error("afterprint missing");
+const selectedBefore = tabs.map((tab) => tab.attributes["aria-selected"]);
+printListeners.beforeprint();
+printListeners.beforeprint();
+if (panels.some((panel) => panel.hidden)) throw new Error("print panel remained hidden");
+const selectedBeforePrint = JSON.stringify(selectedBefore);
+const selectedDuringPrint = JSON.stringify(
+  tabs.map((tab) => tab.attributes["aria-selected"])
+);
+if (selectedBeforePrint !== selectedDuringPrint) {
+  throw new Error("selected tab changed before print");
+}
+printListeners.afterprint();
+if (JSON.stringify(panels.map((panel) => panel.hidden)) !== JSON.stringify([false, true, true])) {
+  throw new Error("hidden state was not restored exactly");
+}
+const selectedAfterPrint = JSON.stringify(
+  tabs.map((tab) => tab.attributes["aria-selected"])
+);
+if (selectedBeforePrint !== selectedAfterPrint) {
+  throw new Error("selected tab changed after print");
+}
+"""
+
+    completed = _run_node_harness(controller, harness)
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_viewer_mode_listener_targets_buttons_not_the_shell(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
+    harness = r"""
+function node(dataset) {
+  return {
+    dataset,
+    listeners: {},
+    addEventListener(type, handler) { this.listeners[type] = handler; },
+    setAttribute() {}
+  };
+}
+const shell = node({ viewerMode: "compare" });
+const button = node({ viewerMode: "compare" });
+global.window = { addEventListener() {} };
+global.document = {
+  getElementById() { return null; },
+  querySelector(selector) { return selector === ".app-shell" ? shell : null; },
+  querySelectorAll(selector) {
+    if (selector === "button[data-viewer-mode]") return [button];
+    if (selector === "[data-viewer-mode]") return [shell, button];
+    return [];
+  }
+};
+eval(controller);
+if (shell.listeners.click) throw new Error("shell received a mode listener");
+if (typeof button.listeners.click !== "function") throw new Error("mode button listener missing");
+"""
+
+    completed = _run_node_harness(controller, harness)
+
+    assert completed.returncode == 0, completed.stderr
