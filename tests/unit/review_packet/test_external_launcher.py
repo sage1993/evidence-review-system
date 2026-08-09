@@ -25,9 +25,9 @@ def test_windows_launcher_falls_back_to_registered_browser_without_waiting(
     def denied_win_dll(*_args: object, **_kwargs: object) -> object:
         raise OSError("ShellExecute unavailable")
 
-    monkeypatch.setattr(external_launcher.ctypes, "WinDLL", denied_win_dll)
+    monkeypatch.setattr(external_launcher.ctypes, "WinDLL", denied_win_dll, raising=False)
     monkeypatch.setattr(external_launcher.sys, "platform", "win32")
-    monkeypatch.setattr(external_launcher.os, "startfile", denied_startfile)
+    monkeypatch.setattr(external_launcher.os, "startfile", denied_startfile, raising=False)
     monkeypatch.setattr(external_launcher.webbrowser, "_tryorder", ["fake-browser"])
     monkeypatch.setattr(
         external_launcher.webbrowser,
@@ -67,11 +67,12 @@ def test_windows_launcher_uses_shell_association_before_browser_process(monkeypa
         raise OSError("startfile denied")
 
     monkeypatch.setattr(external_launcher.sys, "platform", "win32")
-    monkeypatch.setattr(external_launcher.os, "startfile", denied_startfile)
+    monkeypatch.setattr(external_launcher.os, "startfile", denied_startfile, raising=False)
     monkeypatch.setattr(
         external_launcher.ctypes,
         "WinDLL",
         lambda *_args, **_kwargs: FakeShell32(),
+        raising=False,
     )
     monkeypatch.setattr(
         external_launcher.os,
@@ -92,6 +93,7 @@ def test_windows_startfile_success_does_not_spawn_a_second_launcher(monkeypatch)
         external_launcher.os,
         "startfile",
         lambda url: calls.append(url),
+        raising=False,
     )
     monkeypatch.setattr(
         external_launcher.os,
@@ -118,8 +120,8 @@ def test_windows_launcher_fails_closed_when_all_launchers_fail(monkeypatch) -> N
         raise OSError("browser process denied")
 
     monkeypatch.setattr(external_launcher.sys, "platform", "win32")
-    monkeypatch.setattr(external_launcher.os, "startfile", denied_startfile)
-    monkeypatch.setattr(external_launcher.ctypes, "WinDLL", denied_win_dll)
+    monkeypatch.setattr(external_launcher.os, "startfile", denied_startfile, raising=False)
+    monkeypatch.setattr(external_launcher.ctypes, "WinDLL", denied_win_dll, raising=False)
     monkeypatch.setattr(external_launcher.webbrowser, "_tryorder", ["fake-browser"])
     monkeypatch.setattr(
         external_launcher.webbrowser,
