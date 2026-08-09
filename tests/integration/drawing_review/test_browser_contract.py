@@ -65,6 +65,14 @@ def test_html_exposes_four_geometry_tools_and_action_form() -> None:
     assert "data-submit-action" in html
     assert "data-action-status" in html
     assert " checked" not in html
+    for forbidden in (
+        'type="file"',
+        "localStorage",
+        "sessionStorage",
+        "resetPrototype",
+        "runEngine()",
+    ):
+        assert forbidden not in html
 
 
 def test_svg_exposes_only_coordinate_projection_metadata() -> None:
@@ -74,6 +82,23 @@ def test_svg_exposes_only_coordinate_projection_metadata() -> None:
     assert 'data-page-height="800.0"' in html
     assert 'data-page-width="1000.0"' in html
     assert "data-source-sha256" not in html
+
+
+def test_server_rendered_metrics_are_not_rederived_in_the_browser() -> None:
+    html = _html()
+    javascript = _javascript()
+
+    assert "<strong data-candidate-count>1</strong>" in html
+    assert "<strong data-confirmed-count>0</strong>" in html
+    for browser_count_derivation in (
+        'querySelector("[data-candidate-count]")',
+        'querySelector("[data-confirmed-count]")',
+        "function updateCandidateWideCounts",
+        "updateCandidateWideCounts();",
+        "buttons.length",
+        'button.dataset.candidateStatus !== "UNCONFIRMED"',
+    ):
+        assert browser_count_derivation not in javascript
 
 
 def test_javascript_generates_exact_existing_and_manual_actions() -> None:
@@ -132,6 +157,46 @@ def test_javascript_keeps_actions_unselected_until_reviewer_input() -> None:
     assert "if (!selectedAction)" in javascript
     assert "selectCandidate(button.dataset.candidateId" in javascript
     assert ".checked = true" not in javascript
+
+
+def test_javascript_drives_reference_modes_tabs_and_candidate_metadata() -> None:
+    javascript = _javascript()
+
+    assert "function setDisplayMode" in javascript
+    assert "function activateWorkspaceTab" in javascript
+    assert "function updateCandidateMetrics" in javascript
+    assert 'querySelectorAll("[data-display-mode]")' in javascript
+    assert "querySelectorAll('[role=\"tab\"][data-workspace-tab]')" in javascript
+    assert 'querySelector("[data-open-confirmation]")' in javascript
+    assert 'activateWorkspaceTab("confirmation")' in javascript
+    assert 'querySelector("[data-selected-object]")' in javascript
+    assert 'querySelector("[data-selected-coordinates]")' in javascript
+    assert 'querySelector("[data-selected-status]")' in javascript
+
+
+def test_javascript_localizes_runtime_feedback_and_candidate_metadata() -> None:
+    javascript = _javascript()
+
+    for localized_copy in (
+        "검토자 ID가 필요합니다.",
+        "후보를 먼저 선택하세요.",
+        "검토자 조치를 선택하세요.",
+        "확인 기록을 저장했습니다.",
+        "점",
+        "사각형",
+        "선",
+        "다각형",
+    ):
+        assert localized_copy in javascript
+
+    for english_copy in (
+        "Reviewer ID is required.",
+        "Select a candidate first.",
+        "Select a reviewer action.",
+        "Saved confirmation",
+        "Action failed.",
+    ):
+        assert english_copy not in javascript
 
 
 def test_javascript_resolves_late_injected_calibration_link() -> None:
