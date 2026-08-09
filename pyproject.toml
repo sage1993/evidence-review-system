@@ -31,7 +31,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "ansim_review.evidence" = ["schema.sql"]
 "ansim_review.llm_layer" = ["templates/*.md"]
-"ansim_review.review_packet" = ["assets/*.css"]
+"ansim_review.review_packet" = ["assets/*.css", "assets/*.js"]
 "ansim_review.drawing_review" = ["assets/*.css", "assets/*.js"]
 
 [tool.pytest.ini_options]
