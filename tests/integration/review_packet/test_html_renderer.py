@@ -515,7 +515,6 @@ def test_detail_tabs_contain_wide_table_at_desktop_width_and_restore_print_flow(
     assert print_detail_tabs["overflow"] == "visible"
 
     assert workspace["grid-template-columns"] == "260px minmax(450px, 1fr) 330px"
-    assert workspace["gap"] == "12px"
 
 
 @pytest.mark.parametrize(

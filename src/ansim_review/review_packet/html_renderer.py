@@ -611,6 +611,7 @@ def _render_packet_global_review(model: Mapping[str, object]) -> str:
     return "".join(
         (
             '<section id="packet-global-review" aria-labelledby="packet-global-heading">',
+            '<div class="global-audit-layout">',
             '<div class="section-heading"><h2 id="packet-global-heading">패킷 전체 감사 정보</h2>',
             '<p>특정 항목 소유권을 추론하지 않는 전역 기록</p></div>',
             '<div class="global-review-grid">',
@@ -634,7 +635,7 @@ def _render_packet_global_review(model: Mapping[str, object]) -> str:
             f'<dt>수준</dt><dd>{_display_value(confidence.get("level"))}</dd>',
             "</dl>",
             _record_cards(confidence_factors, "전역 신뢰도 요인 없음"),
-            "</div></div></section>",
+            "</div></div></div></section>",
         )
     )
 

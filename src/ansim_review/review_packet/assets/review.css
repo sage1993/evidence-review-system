@@ -50,7 +50,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   display: grid;
   gap: 8px 18px;
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 15px 18px;
+  padding: 10px 14px;
 }
 .status-copy { min-width: 0; }
 .status-line { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; }
@@ -78,14 +78,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 
 .review-workspace {
   display: grid;
-  gap: 12px;
+  gap: 6px;
   grid-template-areas:
     "summary summary summary"
     "items viewer detail"
     "global global global"
     "decision decision decision";
   grid-template-columns: 260px minmax(450px, 1fr) 330px;
-  padding: 14px 18px 12px;
+  padding: 8px 18px 6px;
 }
 .review-workspace > section, #review-items {
   background: var(--surface);
@@ -207,7 +207,8 @@ th { color: var(--muted); white-space: nowrap; }
 .empty-state { color: var(--muted); font-size: 10px; margin: 7px 0; }
 .empty-state.unlinked { border: 1px dashed var(--border); border-radius: 8px; padding: 8px; }
 
-#packet-global-review .section-heading { margin-bottom: 4px; }
+.global-audit-layout { align-items: start; display: grid; gap: 10px; grid-template-columns: 210px minmax(0, 1fr); }
+.global-audit-layout .section-heading { align-items: flex-start; flex-direction: column; gap: 2px; margin: 0; }
 .global-review-grid { display: grid; gap: 6px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .global-card { align-content: start; background: var(--surface-strong); border: 1px solid var(--border-soft); border-radius: 10px; display: grid; gap: 2px; min-width: 0; padding: 6px 8px; }
 .global-card h3 { font-size: 10px; margin: 0; }
@@ -238,18 +239,20 @@ th { color: var(--muted); white-space: nowrap; }
 #decision-form input:not([type="radio"]), #decision-form textarea { background: #101925; color: var(--text); min-height: 30px; min-width: 0; padding: 4px 6px; width: 100%; }
 .packet-hash input { font-family: monospace; font-size: 9px; }
 .decision-notes { grid-column: span 1; }
-.decision-notes textarea { min-height: 48px; resize: vertical; }
+.decision-notes textarea { min-height: 42px; resize: vertical; }
 #decision-form .decision-actions { align-items: end; display: flex; gap: 4px; grid-column: 1 / -1; justify-content: flex-end; }
+#decision-form .decision-actions button { padding: 5px 9px; }
 .primary-action { align-self: end; background: var(--accent); border-color: var(--accent); color: #06261d; font-weight: 800; }
 .form-status { color: var(--muted); font-size: 10px; grid-column: 1 / -1; margin: 0; }
 .form-status:empty { display: none; }
 
-.process-strip { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; flex-wrap: wrap; font-size: 9px; gap: 6px; padding: 9px 18px 11px; }
+.process-strip { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; flex-wrap: wrap; font-size: 9px; gap: 4px; padding: 4px 12px 5px; }
 .process-strip strong { color: var(--text); font-size: 9px; }
 .visually-hidden { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0 0 0 0); white-space: nowrap; }
 
 @media (max-width: 1180px) {
   .review-workspace {
+    gap: 12px;
     grid-template-areas:
       "summary summary"
       "items viewer"
@@ -257,7 +260,10 @@ th { color: var(--muted); white-space: nowrap; }
       "global global"
       "decision decision";
     grid-template-columns: 260px minmax(0, 1fr);
+    padding: 14px 18px 12px;
   }
+  .global-audit-layout { display: block; }
+  .global-audit-layout .section-heading { margin-bottom: 4px; }
   .global-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -266,6 +272,7 @@ th { color: var(--muted); white-space: nowrap; }
   .status-band { grid-template-columns: 1fr; }
   .header-actions { justify-self: start; }
   .review-workspace {
+    gap: 8px;
     grid-template-areas: "summary" "items" "viewer" "detail" "global" "decision";
     grid-template-columns: minmax(0, 1fr);
     padding: 10px;
@@ -300,6 +307,7 @@ th { color: var(--muted); white-space: nowrap; }
   .app-shell { border: 0; margin: 0; max-width: none; overflow: visible; width: 100%; }
   .status-band { border: 0; padding: 0 0 6mm; }
   .review-workspace { display: block; padding: 0; }
+  .global-audit-layout { display: block; }
   .review-workspace > section, #review-items { background: #fff; border: 0; break-inside: avoid; color: #111827; margin-bottom: 7mm; padding: 0; }
   #detail-tabs { overflow: visible; }
   .detail-panel { display: block !important; }
