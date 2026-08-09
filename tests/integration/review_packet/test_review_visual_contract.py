@@ -128,9 +128,53 @@ def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     assert ".review-item" in css and "min-height: 68px" not in css
     decision_form = _css_rule(css, "#decision-form form")
     assert "display: grid" in decision_form
-    assert "gap: 10px" in decision_form
+    assert "gap: 6px" in decision_form
     decision_actions = _css_rule(css, "#decision-form .decision-actions")
     assert "grid-column: 1 / -1" in decision_actions
+
+
+def test_final_decision_panel_uses_compact_three_column_desktop_budget(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+
+    heading = _css_rule(css, ".decision-heading", require_once=True)
+    assert "padding: 8px 12px" in heading
+
+    form = _css_rule(css, "#decision-form form", require_once=True)
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in form
+    assert "gap: 6px" in form
+    assert "padding: 8px 12px" in form
+
+    choices = _css_rule(css, ".decision-choices", require_once=True)
+    assert "gap: 4px" in choices
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in choices
+    assert "margin-bottom: 3px" in _css_rule(
+        css, ".decision-choices legend", require_once=True
+    )
+    option = _css_rule(css, ".decision-option", require_once=True)
+    assert "min-height: 28px" in option
+    assert "padding: 5px 6px" in option
+
+    fields = _css_rule(css, ".decision-fields", require_once=True)
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in fields
+    assert "gap: 4px" in fields
+    controls = _css_rule(
+        css,
+        "#decision-form input:not([type=\"radio\"]), #decision-form textarea",
+        require_once=True,
+    )
+    assert "min-height: 32px" in controls
+    assert "padding: 5px 7px" in controls
+    notes = _css_rule(css, ".decision-notes textarea", require_once=True)
+    assert "min-height: 64px" in notes
+
+    actions = _css_rule(css, "#decision-form .decision-actions", require_once=True)
+    assert "align-items: end" in actions
+    primary_action = _css_rule(css, ".primary-action", require_once=True)
+    assert "align-self: end" in primary_action
+    assert "align-self: stretch" not in primary_action
 
 
 def test_final_review_css_freezes_concrete_viewport_budgets_and_print_flow(
