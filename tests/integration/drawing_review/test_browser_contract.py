@@ -65,6 +65,14 @@ def test_html_exposes_four_geometry_tools_and_action_form() -> None:
     assert "data-submit-action" in html
     assert "data-action-status" in html
     assert " checked" not in html
+    for forbidden in (
+        'type="file"',
+        "localStorage",
+        "sessionStorage",
+        "resetPrototype",
+        "runEngine()",
+    ):
+        assert forbidden not in html
 
 
 def test_svg_exposes_only_coordinate_projection_metadata() -> None:
