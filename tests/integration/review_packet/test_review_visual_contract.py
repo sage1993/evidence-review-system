@@ -35,6 +35,63 @@ def _media_rule(css: str, media: str) -> str:
     raise AssertionError(f"unclosed media rule: {media}")
 
 
+def _assert_review_viewport_budget(css: str) -> None:
+    shell = _css_rule(css, ".app-shell")
+    assert "max-width: 1700px" in shell
+    assert "margin: 18px auto" in shell
+    assert "width: calc(100% - 36px)" in shell
+
+    metrics = _css_rule(css, ".metrics")
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in metrics
+    assert "gap: 10px" in metrics
+
+    workspace = _css_rule(css, ".review-workspace")
+    assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in workspace
+
+    viewer = _css_rule(css, "#evidence-viewer")
+    assert "overflow: hidden" in viewer
+    detail_tabs = _css_rule(css, "#detail-tabs")
+    assert "min-width: 0" in detail_tabs
+    assert "overflow-x: auto" in detail_tabs
+
+    detail_panel = _css_rule(css, ".detail-panel")
+    assert "min-width: 0" in detail_panel
+
+    table_scroll = _css_rule(css, ".table-scroll")
+    assert "max-width: 100%" in table_scroll
+    assert "overflow-x: auto" in table_scroll
+
+    decision_form = _css_rule(css, "#decision-form form")
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in decision_form
+    assert "align-items: start" in decision_form
+    primary_action = _css_rule(css, ".primary-action")
+    assert "align-self: auto" in primary_action
+
+    body = _css_rule(css, "body")
+    assert "overflow-x: hidden" in body
+
+    assert "@media (max-width: 1180px)" in css
+    assert "@media (max-width: 820px)" in css
+    assert "@media (max-width: 1100px)" not in css
+    medium = _media_rule(css, "@media (max-width: 1180px)")
+    assert "grid-template-columns: 260px minmax(0, 1fr)" in _css_rule(
+        medium, ".review-workspace"
+    )
+    mobile = _media_rule(css, "@media (max-width: 820px)")
+    mobile_workspace = _css_rule(mobile, ".review-workspace")
+    assert (
+        'grid-template-areas: "summary" "items" "viewer" "detail" "global" "decision"'
+        in mobile_workspace
+    )
+    assert "grid-template-columns: 1fr" in _css_rule(mobile, "#decision-form form")
+
+    print_css = _media_rule(css, "@media print")
+    assert "overflow: visible" in _css_rule(print_css, "#detail-tabs")
+    assert "display: block" in _css_rule(print_css, ".review-workspace")
+    assert "overflow: visible" in _css_rule(print_css, ".table-scroll")
+    assert "display: block !important" in _css_rule(print_css, "[data-tab-panel]")
+
+
 def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     tmp_path: Path,
 ) -> None:
@@ -72,6 +129,14 @@ def test_final_review_css_freezes_responsive_print_and_overflow_safeguards(
     print_css = _media_rule(css, "@media print")
     assert "#detail-tabs { overflow: visible; }" in print_css
     assert "[data-tab-panel] { display: block !important; }" in print_css
+
+
+def test_final_review_css_freezes_concrete_viewport_budgets_and_print_flow(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+    _assert_review_viewport_budget(css)
 
 
 def test_final_review_print_overrides_dark_tokens_and_form_table_surfaces(
