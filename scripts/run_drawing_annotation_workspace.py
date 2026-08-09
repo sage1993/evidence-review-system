@@ -24,11 +24,16 @@ from ansim_review.contracts.validation import (
     require_fields,
 )
 from ansim_review.drawing_review.html_renderer import render_annotation_html
-from ansim_review.drawing_review.local_server import serve_annotation_workspace
+from ansim_review.drawing_review.local_server import (
+    AnnotationServer,
+    serve_annotation_workspace,
+)
 from ansim_review.drawing_review.view_model import (
     DrawingPage,
     build_drawing_review_view_model,
 )
+from ansim_review.math_engine.formulas import DRAWING_REGISTRY
+from ansim_review.math_engine.manifest import formula_manifest_hash
 from ansim_review.parsing.drawing_candidates import load_candidate, persist_candidate
 from ansim_review.parsing.drawing_case import (
     CaseManifestEntry,
@@ -200,12 +205,22 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--width", type=float, required=True)
     parser.add_argument("--height", type=float, required=True)
     parser.add_argument("--page", type=_positive_int, default=1)
+    parser.add_argument("--token")
     parser.add_argument("--coordinate-system", choices=_COORDINATE_SYSTEMS, required=True)
     parser.add_argument("--port", type=int, default=0)
     candidates = parser.add_mutually_exclusive_group()
     candidates.add_argument("--candidate-manifest", type=Path)
     candidates.add_argument("--candidate-fixture", type=Path)
     return parser
+
+
+def startup_url_lines(server: AnnotationServer) -> tuple[str, str, str]:
+    """Return the exact browser handoff lines emitted after startup."""
+    return (
+        f"Annotation workspace URL: {server.url}",
+        f"Calibration workspace URL: {server.calibration_url}",
+        f"Review Packet URL: {server.review_packet_url}",
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -221,6 +236,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidate_manifest=args.candidate_manifest,
             candidate_fixture=args.candidate_fixture,
         )
+        source_bytes = args.source.read_bytes()
+        mime, _ = sniff_drawing_mime(source_bytes[:16])
+        repository_root = Path(__file__).resolve().parents[1]
+        active_rule_manifest = repository_root / "rules" / "manifests" / "active.json"
+        if not active_rule_manifest.is_file():
+            raise ValueError("active rule manifest is missing")
+        rule_manifest_sha256 = hashlib.sha256(active_rule_manifest.read_bytes()).hexdigest()
         server = serve_annotation_workspace(
             html=html,
             case_dir=args.case_dir,
@@ -232,16 +254,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 height=args.height,
             ),
             candidate_entries=entries,
+            token=args.token,
             port=args.port,
+            page_image=source_bytes,
+            mime=mime,
+            rule_manifest_sha256=rule_manifest_sha256,
+            formula_manifest_sha256=formula_manifest_hash(DRAWING_REGISTRY.values()),
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        print(f"error: {error}", file=sys.stderr)
+        del error
+        print("error: STARTUP_FAILED", file=sys.stderr)
         return 2
 
     stop = Event()
     try:
-        print(f"Annotation workspace URL: {server.url}", flush=True)
-        print("Press Ctrl+C to stop.", flush=True)
+        for line in startup_url_lines(server):
+            print(line, flush=True)
         while not stop.wait(60):
             pass
     except KeyboardInterrupt:

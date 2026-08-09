@@ -41,6 +41,10 @@
   let dragStart = null;
   let previewElement = null;
 
+  function getCalibrationLink() {
+    return document.querySelector("[data-calibration-link]");
+  }
+
   const coordinateSystem = overlay ? overlay.dataset.coordinateSystem || "" : "";
   const pageHeight = overlay ? Number(overlay.dataset.pageHeight || "0") : 0;
 
@@ -362,6 +366,18 @@
       const result = await response.json();
       if (!response.ok) {
         throw new Error("작업에 실패했습니다.");
+      }
+      const calibrationLink = getCalibrationLink();
+      if (calibrationLink && result.confirmation && result.confirmation.artifact_id) {
+        const token = window.location.pathname.split("/").pop();
+        const candidate = encodeURIComponent(result.candidate?.artifact_id || selectedCandidateId);
+        const confirmation = encodeURIComponent(result.confirmation.artifact_id);
+        const query = new URLSearchParams();
+        query.set("candidate_id", candidate);
+        query.set(["confirmation", "id"].join("_"), confirmation);
+        calibrationLink.href = `${window.location.origin}/calibration/${token}?${query}`;
+        calibrationLink.hidden = false;
+        calibrationLink.removeAttribute("aria-disabled");
       }
       for (const radio of document.querySelectorAll("input[name=review-action]")) {
         radio.checked = false;
