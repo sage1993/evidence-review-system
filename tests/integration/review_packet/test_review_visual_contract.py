@@ -167,7 +167,7 @@ def test_final_decision_panel_uses_compact_three_column_desktop_budget(
     assert "min-height: 30px" in controls
     assert "padding: 4px 6px" in controls
     notes = _css_rule(css, ".decision-notes textarea", require_once=True)
-    assert "min-height: 48px" in notes
+    assert "min-height: 42px" in notes
 
     actions = _css_rule(css, "#decision-form .decision-actions", require_once=True)
     assert "align-items: end" in actions
@@ -184,9 +184,6 @@ def test_global_audit_and_decision_sections_use_the_second_round_compact_budget(
 
     audit = _css_rule(css, "#packet-global-review", require_once=True)
     assert "padding: 8px 12px" in audit
-    assert "margin-bottom: 4px" in _css_rule(
-        css, "#packet-global-review .section-heading", require_once=True
-    )
     audit_grid = _css_rule(css, ".global-review-grid", require_once=True)
     assert "gap: 6px" in audit_grid
     assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in audit_grid
@@ -202,6 +199,51 @@ def test_global_audit_and_decision_sections_use_the_second_round_compact_budget(
 
     empty_status = _css_rule(css, ".form-status:empty", require_once=True)
     assert "display: none" in empty_status
+
+
+def test_desktop_primary_workflow_uses_the_third_round_vertical_budget(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_model(), tmp_path / "pages")
+    css = _inline_css(html)
+
+    assert 'class="global-audit-layout"' in html
+
+    status_band = _css_rule(css, ".status-band", require_once=True)
+    assert "padding: 10px 14px" in status_band
+
+    workspace = _css_rule(css, ".review-workspace", require_once=True)
+    assert "gap: 6px" in workspace
+    assert "padding: 8px 18px 6px" in workspace
+    assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in workspace
+
+    audit_layout = _css_rule(css, ".global-audit-layout", require_once=True)
+    assert "display: grid" in audit_layout
+    assert "gap: 10px" in audit_layout
+    assert "grid-template-columns: 210px minmax(0, 1fr)" in audit_layout
+    assert "margin: 0" in _css_rule(
+        css, ".global-audit-layout .section-heading", require_once=True
+    )
+
+    action_buttons = _css_rule(
+        css, "#decision-form .decision-actions button", require_once=True
+    )
+    assert "padding: 5px 9px" in action_buttons
+    process_strip = _css_rule(css, ".process-strip", require_once=True)
+    assert "gap: 4px" in process_strip
+    assert "padding: 4px 12px 5px" in process_strip
+
+    medium = _media_rule(css, "@media (max-width: 1180px)")
+    medium_workspace = _css_rule(medium, ".review-workspace")
+    assert "gap: 12px" in medium_workspace
+    assert "padding: 14px 18px 12px" in medium_workspace
+    assert "display: block" in _css_rule(
+        medium, ".global-audit-layout", require_once=True
+    )
+
+    mobile = _media_rule(css, "@media (max-width: 820px)")
+    assert "gap: 8px" in _css_rule(mobile, ".review-workspace")
 
 
 def test_final_review_css_freezes_concrete_viewport_budgets_and_print_flow(

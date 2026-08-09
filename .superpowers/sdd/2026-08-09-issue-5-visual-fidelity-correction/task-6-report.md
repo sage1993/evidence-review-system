@@ -143,3 +143,83 @@ LF/CRLF notices.
 No browser QA or screenshot recapture was performed in this round, as directed. The
 controller must regenerate and recapture at 1863x1494 before the P1 finding can be
 closed. The supplied before-state image was not modified.
+
+## Browser QA Fix Round 2
+
+### Fresh before-state evidence
+
+The controller supplied `build/issue-5-visual-qa-final2/review-1863x1494.png` after
+commit `d4fcfd2`. At the exact acceptance viewport, `scrollHeight=1594`; the decision
+section ran from `1326` to `1529`. The action controls were clipped by 35px and the
+process strip remained below the viewport. Horizontal overflow remained false, the
+console was empty, and no decision was selected.
+
+This confirms that the second round reduced the document by 75px but did not satisfy
+the complete-primary-workflow target of 1494px.
+
+### Root cause and presentation-only correction
+
+The viewer and three desktop columns were already within the approved layout. The
+remaining vertical waste was structural: the packet-global heading/context occupied a
+full row above the four audit cards, the desktop workspace kept 12px row gaps and
+14/12px outer rhythm, and the process strip retained 9/11px vertical padding.
+
+The third round adds the single `global-audit-layout` renderer landmark around the
+existing heading and card grid. Above 1180px it presents a 210px heading/context column
+beside the unchanged four-card audit grid. It does not remove, hide, truncate, or
+reassign any audit, conflict, abstention, or confidence value. The desktop-only CSS
+budget also uses 6px workspace gaps, 8/6px workspace padding, a 10/14px header,
+42px notes field, compact action-button padding, and a 4/12/5px process strip.
+
+At and below 1180px the audit layout intentionally returns to a readable stacked heading
+and grid with the previous 12px workspace rhythm; at 820px it keeps an 8px stacked
+rhythm. Print also forces the audit layout back to a block so it stays readable.
+
+### RED/GREEN evidence
+
+Added `test_desktop_primary_workflow_uses_the_third_round_vertical_budget`. It verifies
+the new renderer landmark, the 260/flexible/330 desktop grid, desktop header/workspace
+budget, side-by-side audit composition, action-button and process-strip rhythm, and the
+1180px/820px responsive restoration.
+
+RED command:
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_review_visual_contract.py::test_desktop_primary_workflow_uses_the_third_round_vertical_budget -q -p no:cacheprovider --basetemp build/pytest-task6-round3-red
+```
+
+Result: `1 failed in 0.13s`, expected because the existing HTML had no
+`global-audit-layout` landmark.
+
+GREEN command ran the new third-round contract and the existing decision contract with
+`--basetemp build/pytest-task6-round3-green`.
+Result: `2 passed in 0.08s`.
+
+The unrelated wide-table renderer test and earlier audit test each contained an obsolete
+desktop-spacing assertion. Their exact spacing coverage now belongs to the new
+consolidated third-round contract, so the stale duplicates were removed without reducing
+coverage of table containment, print flow, or audit visibility.
+
+### Validation
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_html_renderer.py tests/integration/review_packet/test_review_workspace_ui.py tests/integration/review_packet/test_review_visual_contract.py tests/integration/test_review_routes.py tests/integration/drawing_review/test_visual_contract.py -q -p no:cacheprovider --basetemp build/pytest-task6-round3-focused-green
+```
+
+Result: `47 passed, 1 skipped in 10.18s`.
+
+```powershell
+& 'F:\evidence-review-system\.venv\Scripts\ruff.exe' check src tests
+git diff --check
+```
+
+Result: Ruff `All checks passed!`; diff check passed with only existing Windows
+LF/CRLF notices.
+
+### Browser QA handoff
+
+No browser QA or screenshot recapture was performed in this round, as directed. The
+controller must regenerate and recapture at 1863x1494 before the P1 finding can be
+closed. The supplied before-state image was not modified.
