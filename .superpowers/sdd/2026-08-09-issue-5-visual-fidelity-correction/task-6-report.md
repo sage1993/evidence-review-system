@@ -144,6 +144,65 @@ No browser QA or screenshot recapture was performed in this round, as directed. 
 controller must regenerate and recapture at 1863x1494 before the P1 finding can be
 closed. The supplied before-state image was not modified.
 
+## Final browser-fit pass
+
+### Fresh measurement and minimal scope
+
+After `e508af9`, the controller measured `decisionBottom=1473` and confirmed the
+decision section was fully visible. `processBottom=1502` remained eight pixels below the
+1494px acceptance viewport, with `scrollHeight=1521`; horizontal overflow, console
+errors, and decision selection were all absent. The only remaining cause was desktop
+bottom rhythm, not a content or viewer-size problem.
+
+This final pass preserves the required 18px outer shell margin. It changes only desktop
+`review-workspace` bottom padding from 6px to 0 and process-strip vertical padding from
+4/5px to 3/2px, a combined 10px reduction. The 1180px-and-below process-strip padding is
+explicitly restored to 4/5px; print behavior remains unchanged and hides the process
+strip as before.
+
+### RED/GREEN evidence
+
+Adjusted the selector-scoped desktop primary-workflow contract to require the preserved
+18px shell margin, zero desktop workspace bottom padding, 3/2px desktop process-strip
+padding, and the restored 4/5px process-strip padding below 1180px.
+
+RED command:
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_review_visual_contract.py::test_desktop_primary_workflow_uses_the_third_round_vertical_budget -q -p no:cacheprovider --basetemp build/pytest-task6-final-fit-red
+```
+
+Result: `1 failed in 0.13s`, expected because the previous desktop workspace bottom
+padding was 6px.
+
+GREEN command used the same selector-scoped test with
+`--basetemp build/pytest-task6-final-fit-green`.
+Result: `1 passed in 0.06s`.
+
+### Validation
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_html_renderer.py tests/integration/review_packet/test_review_workspace_ui.py tests/integration/review_packet/test_review_visual_contract.py tests/integration/test_review_routes.py tests/integration/drawing_review/test_visual_contract.py -q -p no:cacheprovider --basetemp build/pytest-task6-final-fit-focused
+```
+
+Result: `47 passed, 1 skipped in 10.17s`.
+
+```powershell
+& 'F:\evidence-review-system\.venv\Scripts\ruff.exe' check src tests
+git diff --check
+```
+
+Result: Ruff `All checks passed!`; diff check passed with only existing Windows
+LF/CRLF notices.
+
+### Browser QA handoff
+
+No browser QA or screenshot recapture was performed in this pass, as directed. The
+controller must regenerate and recapture at 1863x1494 to verify the full process strip
+now lies within the viewport before the P1 finding is closed.
+
 ## Browser QA Fix Round 2
 
 ### Fresh before-state evidence
