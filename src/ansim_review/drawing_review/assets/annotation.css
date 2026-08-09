@@ -200,6 +200,9 @@ input[type="radio"] { accent-color: var(--green); }
 .status-strip span:first-child { color: var(--green); }
 .status-strip i { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--green); }
 .status-strip strong { margin-left: auto; color: var(--text); font-weight: 600; }
+@media screen and (min-width: 1181px) {
+  .status-strip { min-height: 28px; padding: 4px 18px; }
+}
 @media (max-width: 1180px) {
   .main-grid { grid-template-columns: 260px minmax(420px, 1fr); }
   .detail-panel { grid-column: 1 / -1; }

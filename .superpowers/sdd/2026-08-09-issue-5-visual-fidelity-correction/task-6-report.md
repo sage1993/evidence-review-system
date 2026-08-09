@@ -203,6 +203,63 @@ No browser QA or screenshot recapture was performed in this pass, as directed. T
 controller must regenerate and recapture at 1863x1494 to verify the full process strip
 now lies within the viewport before the P1 finding is closed.
 
+## Final annotation fit pass
+
+### Fresh measurement and root cause
+
+After `e6fb9bc`, the controller measured the annotation `#reviewer-action` bottom at
+1451 (fully visible) and the status strip bottom at 1499, five pixels below the 1494px
+viewport. `scrollHeight=1512`; horizontal overflow, console errors, and preselected
+actions were absent. The mobile 820x1180 view remained stacked, reachable, and free of
+horizontal overflow.
+
+The only remaining height source was the desktop status strip's 34px minimum and 8px
+vertical padding, which exceeded the 9px monospace status content's required height.
+
+### RED/GREEN correction
+
+Added a selector-scoped screen-only desktop contract for
+`@media screen and (min-width: 1181px)`. It preserves the 18px shell margin and base
+34px/8px status-strip rule for non-desktop layouts while requiring a 28px minimum and
+4px vertical desktop padding. The mobile column layout remains asserted.
+
+RED command:
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/drawing_review/test_visual_contract.py::test_annotation_css_freezes_concrete_viewport_budgets_and_print_flow -q -p no:cacheprovider --basetemp build/pytest-task6-annotation-final-red
+```
+
+Result: `1 failed in 0.12s`, expected because the desktop-only status-strip rule was
+absent.
+
+GREEN command used the same test with
+`--basetemp build/pytest-task6-annotation-final-green`.
+Result: `1 passed in 0.07s`.
+
+### Validation
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/drawing_review/test_html_renderer.py tests/integration/drawing_review/test_visual_contract.py tests/integration/drawing_review/test_browser_contract.py tests/integration/drawing_review/test_manual_annotation_browser_flow.py tests/integration/drawing_review/test_local_server.py -q -p no:cacheprovider --basetemp build/pytest-task6-annotation-final-focused
+```
+
+Result: `25 passed, 1 skipped in 4.35s`.
+
+```powershell
+& 'F:\evidence-review-system\.venv\Scripts\ruff.exe' check src tests
+git diff --check
+```
+
+Result: Ruff `All checks passed!`; diff check passed with only existing Windows
+LF/CRLF notices.
+
+### Browser QA handoff
+
+No browser QA or screenshot recapture was performed in this pass, as directed. The
+controller must recapture at 1863x1494 to verify the status strip is now within the
+viewport before closing the final visual finding.
+
 ## Browser QA Fix Round 2
 
 ### Fresh before-state evidence
