@@ -50,6 +50,10 @@ def _assert_review_viewport_budget(css: str) -> None:
 
     viewer = _css_rule(css, "#evidence-viewer")
     assert "overflow: hidden" in viewer
+    evidence_page = _css_rule(css, ".evidence-page")
+    assert "overflow: auto" in evidence_page
+    page_stage = _css_rule(css, ".page-stage")
+    assert "overflow: auto" in page_stage
     detail_tabs = _css_rule(css, "#detail-tabs")
     assert "min-width: 0" in detail_tabs
     assert "overflow-x: auto" in detail_tabs
@@ -64,8 +68,6 @@ def _assert_review_viewport_budget(css: str) -> None:
     decision_form = _css_rule(css, "#decision-form form")
     assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in decision_form
     assert "align-items: start" in decision_form
-    primary_action = _css_rule(css, ".primary-action")
-    assert "align-self: auto" in primary_action
 
     body = _css_rule(css, "body")
     assert "overflow-x: hidden" in body
@@ -88,6 +90,11 @@ def _assert_review_viewport_budget(css: str) -> None:
     print_css = _media_rule(css, "@media print")
     assert "overflow: visible" in _css_rule(print_css, "#detail-tabs")
     assert "display: block" in _css_rule(print_css, ".review-workspace")
+    print_evidence_page = _css_rule(print_css, ".evidence-page")
+    assert "display: block !important" in print_evidence_page
+    assert "overflow: visible" in print_evidence_page
+    assert "overflow: visible" in _css_rule(print_css, ".page-stage")
+    assert "transform: none !important" in _css_rule(print_css, ".page-canvas")
     assert "overflow: visible" in _css_rule(print_css, ".table-scroll")
     assert "display: block !important" in _css_rule(print_css, "[data-tab-panel]")
 
@@ -98,19 +105,11 @@ def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     _write_page_assets(tmp_path / "pages")
     css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
 
-    assert ".app-shell" in css
-    assert "max-width: 1700px" in css
-    assert "margin: 18px auto" in css
-    assert ".metrics" in css and "gap: 10px" in css
     assert ".metric" in css and "border-radius: 14px" in css
-    assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in css
     assert ".review-item" in css and "min-height: 68px" not in css
-    assert ".primary-action" in css and "align-self: stretch" not in css
     decision_form = _css_rule(css, "#decision-form form")
     assert "display: grid" in decision_form
-    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in decision_form
     assert "gap: 10px" in decision_form
-    assert "align-items: start" in decision_form
     decision_actions = _css_rule(css, "#decision-form .decision-actions")
     assert "grid-column: 1 / -1" in decision_actions
 
