@@ -58,3 +58,88 @@ Result: Ruff `All checks passed!`; `git diff --check` passed. Git emitted only e
 ## Browser QA handoff
 
 No browser QA or screenshot recapture was performed for this correction, as directed. The controller must recapture the final-review route at the acceptance viewport and decide whether the visual P1 is cleared. The pre-fix images were not modified.
+
+## Browser QA Fix Round 1
+
+### Fresh before-state evidence
+
+The controller supplied `build/issue-5-visual-qa-final/review-1863x1494.png` after
+commit `4605583`. At `innerWidth=1863`, `innerHeight=1494`, and client width `1848`,
+the route had `document.scrollHeight=1669`; the decision form ran from `1378` to
+`1604`. The decision form was not fully visible, while horizontal overflow was false,
+console logs were empty, and no decision was selected.
+
+The image confirms that the first compact-form change was real but insufficient: the
+packet-global audit block immediately above the decision panel still consumed the
+remaining primary-workflow budget.
+
+### Root cause and presentation-only correction
+
+The audit area retained its original 14px outer padding, 9px card gap, 10px card
+padding, and inherited margins on headings, empty states, fact grids, record cards,
+and lists. Those four horizontally arranged cards therefore expanded vertically even
+when their values were empty. The decision form also retained an empty live-status row.
+
+The second-round CSS-only correction:
+
+- turns the global audit into a denser four-card desktop strip with 8/12px outer
+  padding, 6px grid gaps, 6/8px cards, and 2px internal rhythm;
+- preserves every audit, exception/conflict, abstention, and confidence record in its
+  existing card and normal document flow—nothing is hidden, removed, or height-clipped;
+- tightens only the decision presentation budget (6/10px heading and form padding,
+  4px form gap, 24px option floor, 30px inputs, and 48px notes field); and
+- suppresses `.form-status` only while it is empty. It returns to normal flow when the
+  controller writes a submission status.
+
+The 1180px/820px layout rules and print rules were not changed.
+
+### RED/GREEN evidence
+
+Added `test_global_audit_and_decision_sections_use_the_second_round_compact_budget`.
+It is selector-scoped and freezes the audit area padding, heading rhythm, four-card
+grid, card display/gap/padding, visible-content behavior (no clipping), empty-state
+margin, and the decision form's empty-status handling.
+
+RED command:
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_review_visual_contract.py::test_global_audit_and_decision_sections_use_the_second_round_compact_budget -q -p no:cacheprovider --basetemp build/pytest-task6-round2-red
+```
+
+Result: `1 failed in 0.12s`, expected because the previous audit padding was `14px`.
+
+GREEN command ran the new audit contract and the existing decision contract with
+`--basetemp build/pytest-task6-round2-green`.
+Result: `2 passed in 0.07s`.
+
+### Duplicate-contract cleanup
+
+Removed the duplicate selector-scoped `.metric` radius assertion from the broad review
+visual test. The identical check remains in `_assert_review_viewport_budget`, the
+consolidated viewport helper. Removed the analogous duplicate from the drawing broad
+visual test; `_assert_annotation_viewport_budget` retains its sole authoritative
+selector-scoped radius assertion. No metric-radius coverage was removed.
+
+### Validation
+
+```powershell
+$env:PYTHONPATH='src'
+& 'F:\evidence-review-system\.venv\Scripts\python.exe' -m pytest tests/integration/review_packet/test_html_renderer.py tests/integration/review_packet/test_review_workspace_ui.py tests/integration/review_packet/test_review_visual_contract.py tests/integration/test_review_routes.py tests/integration/drawing_review/test_visual_contract.py -q -p no:cacheprovider --basetemp build/pytest-task6-round2-focused-green
+```
+
+Result: `46 passed, 1 skipped in 10.17s`.
+
+```powershell
+& 'F:\evidence-review-system\.venv\Scripts\ruff.exe' check src tests
+git diff --check
+```
+
+Result: Ruff `All checks passed!`; diff check passed with only existing Windows
+LF/CRLF notices.
+
+### Browser QA handoff
+
+No browser QA or screenshot recapture was performed in this round, as directed. The
+controller must regenerate and recapture at 1863x1494 before the P1 finding can be
+closed. The supplied before-state image was not modified.

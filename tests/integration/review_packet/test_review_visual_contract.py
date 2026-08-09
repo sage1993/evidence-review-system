@@ -124,11 +124,10 @@ def test_final_review_css_matches_issue_5_shell_and_grid_contract(
     _write_page_assets(tmp_path / "pages")
     css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
 
-    assert "border-radius: 14px" in _css_rule(css, ".metric", require_once=True)
     assert ".review-item" in css and "min-height: 68px" not in css
     decision_form = _css_rule(css, "#decision-form form")
     assert "display: grid" in decision_form
-    assert "gap: 6px" in decision_form
+    assert "gap: 4px" in decision_form
     decision_actions = _css_rule(css, "#decision-form .decision-actions")
     assert "grid-column: 1 / -1" in decision_actions
 
@@ -140,41 +139,69 @@ def test_final_decision_panel_uses_compact_three_column_desktop_budget(
     css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
 
     heading = _css_rule(css, ".decision-heading", require_once=True)
-    assert "padding: 8px 12px" in heading
+    assert "padding: 6px 10px" in heading
 
     form = _css_rule(css, "#decision-form form", require_once=True)
     assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in form
-    assert "gap: 6px" in form
-    assert "padding: 8px 12px" in form
+    assert "gap: 4px" in form
+    assert "padding: 6px 10px" in form
 
     choices = _css_rule(css, ".decision-choices", require_once=True)
-    assert "gap: 4px" in choices
+    assert "gap: 3px" in choices
     assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in choices
-    assert "margin-bottom: 3px" in _css_rule(
+    assert "margin-bottom: 2px" in _css_rule(
         css, ".decision-choices legend", require_once=True
     )
     option = _css_rule(css, ".decision-option", require_once=True)
-    assert "min-height: 28px" in option
-    assert "padding: 5px 6px" in option
+    assert "min-height: 24px" in option
+    assert "padding: 4px 5px" in option
 
     fields = _css_rule(css, ".decision-fields", require_once=True)
     assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in fields
-    assert "gap: 4px" in fields
+    assert "gap: 3px" in fields
     controls = _css_rule(
         css,
         "#decision-form input:not([type=\"radio\"]), #decision-form textarea",
         require_once=True,
     )
-    assert "min-height: 32px" in controls
-    assert "padding: 5px 7px" in controls
+    assert "min-height: 30px" in controls
+    assert "padding: 4px 6px" in controls
     notes = _css_rule(css, ".decision-notes textarea", require_once=True)
-    assert "min-height: 64px" in notes
+    assert "min-height: 48px" in notes
 
     actions = _css_rule(css, "#decision-form .decision-actions", require_once=True)
     assert "align-items: end" in actions
     primary_action = _css_rule(css, ".primary-action", require_once=True)
     assert "align-self: end" in primary_action
     assert "align-self: stretch" not in primary_action
+
+
+def test_global_audit_and_decision_sections_use_the_second_round_compact_budget(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+
+    audit = _css_rule(css, "#packet-global-review", require_once=True)
+    assert "padding: 8px 12px" in audit
+    assert "margin-bottom: 4px" in _css_rule(
+        css, "#packet-global-review .section-heading", require_once=True
+    )
+    audit_grid = _css_rule(css, ".global-review-grid", require_once=True)
+    assert "gap: 6px" in audit_grid
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in audit_grid
+    audit_card = _css_rule(css, ".global-card", require_once=True)
+    assert "align-content: start" in audit_card
+    assert "display: grid" in audit_card
+    assert "gap: 2px" in audit_card
+    assert "padding: 6px 8px" in audit_card
+    assert "overflow: hidden" not in audit_card
+    assert "margin: 0" in _css_rule(
+        css, "#packet-global-review .empty-state", require_once=True
+    )
+
+    empty_status = _css_rule(css, ".form-status:empty", require_once=True)
+    assert "display: none" in empty_status
 
 
 def test_final_review_css_freezes_concrete_viewport_budgets_and_print_flow(
