@@ -145,6 +145,23 @@ def test_renderer_matches_approved_drawing_review_workspace_structure() -> None:
     assert 'data-status-strip' in html
 
 
+def test_annotation_workspace_matches_issue_5_semantic_layout() -> None:
+    html = _renderer()(_model(), b"\x89PNG\r\n\x1a\nfixture", "image/png")
+
+    assert 'class="app-shell"' in html
+    assert 'class="topbar"' in html
+    assert html.count('class="metric"') == 4
+    assert 'class="main-grid"' in html
+    assert 'class="candidate-panel' in html
+    assert 'class="viewer-panel' in html
+    assert 'class="detail-panel' in html
+    assert "도면 입력 확인" in html
+    assert "보류 사유" in html
+    assert "연결된 승인 규칙" in html
+    assert "검토자 확인 기록" in html
+    assert "검토자 최종 판정" not in html
+
+
 def test_renderer_localizes_visible_workspace_copy_without_changing_contract_values() -> None:
     render_annotation_html = _renderer()
 
