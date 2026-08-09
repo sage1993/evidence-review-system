@@ -213,9 +213,12 @@ def test_desktop_primary_workflow_uses_the_third_round_vertical_budget(
     status_band = _css_rule(css, ".status-band", require_once=True)
     assert "padding: 10px 14px" in status_band
 
+    shell = _css_rule(css, ".app-shell", require_once=True)
+    assert "margin: 18px auto" in shell
+
     workspace = _css_rule(css, ".review-workspace", require_once=True)
     assert "gap: 6px" in workspace
-    assert "padding: 8px 18px 6px" in workspace
+    assert "padding: 8px 18px 0" in workspace
     assert "grid-template-columns: 260px minmax(450px, 1fr) 330px" in workspace
 
     audit_layout = _css_rule(css, ".global-audit-layout", require_once=True)
@@ -232,7 +235,7 @@ def test_desktop_primary_workflow_uses_the_third_round_vertical_budget(
     assert "padding: 5px 9px" in action_buttons
     process_strip = _css_rule(css, ".process-strip", require_once=True)
     assert "gap: 4px" in process_strip
-    assert "padding: 4px 12px 5px" in process_strip
+    assert "padding: 3px 12px 2px" in process_strip
 
     medium = _media_rule(css, "@media (max-width: 1180px)")
     medium_workspace = _css_rule(medium, ".review-workspace")
@@ -240,6 +243,9 @@ def test_desktop_primary_workflow_uses_the_third_round_vertical_budget(
     assert "padding: 14px 18px 12px" in medium_workspace
     assert "display: block" in _css_rule(
         medium, ".global-audit-layout", require_once=True
+    )
+    assert "padding: 4px 12px 5px" in _css_rule(
+        medium, ".process-strip", require_once=True
     )
 
     mobile = _media_rule(css, "@media (max-width: 820px)")
