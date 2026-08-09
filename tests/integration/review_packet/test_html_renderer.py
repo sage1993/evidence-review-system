@@ -393,6 +393,65 @@ def _complete_domain_model() -> dict[str, object]:
     return model
 
 
+def _populated_global_audit_model() -> dict[str, object]:
+    model = _complete_domain_model()
+    audit = model["audit"]
+    confidence = model["confidence"]
+    assert isinstance(audit, dict)
+    assert isinstance(confidence, dict)
+    audit["records"] = [
+        {
+            "audit_id": "AUDIT1",
+            "item_id": "ITEM-C1",
+            "status": "TRACK_B_REJECTED",
+        },
+        {
+            "audit_id": "AUDIT2",
+            "item_id": "ITEM-C1",
+            "status": "CITATION_TRACE_VERIFIED",
+        },
+        {
+            "audit_id": "AUDIT3",
+            "item_id": "ITEM-C2",
+            "status": "RULE_AUTHORITY_VERIFIED",
+        },
+    ]
+    model["conflicts"] = [
+        "SOURCE_CONFLICT",
+        "REVISION_IDENTITY_CONFLICT",
+        "CITATION_COORDINATE_CONFLICT",
+    ]
+    model["abstention_reasons"] = [
+        "TRACK_B_REJECTED",
+        "UNRESOLVED_CONFLICT",
+        "LOW_CONFIDENCE",
+    ]
+    confidence["factors"] = [
+        {
+            "name": "traceability",
+            "value": "1.0000",
+            "weight": "0.15",
+            "contribution": "0.1500",
+            "source": "test-fixture-evidence",
+        },
+        {
+            "name": "source_agreement",
+            "value": "0.5000",
+            "weight": "0.30",
+            "contribution": "0.1500",
+            "source": "test-fixture-conflict-audit",
+        },
+        {
+            "name": "rule_coverage",
+            "value": "0.7500",
+            "weight": "0.20",
+            "contribution": "0.1500",
+            "source": "test-fixture-rule-results",
+        },
+    ]
+    return model
+
+
 def test_complete_domain_projection_is_item_scoped_across_all_detail_domains(
     tmp_path: Path,
 ) -> None:
@@ -435,6 +494,35 @@ def test_complete_domain_projection_is_item_scoped_across_all_detail_domains(
     assert "RULE2" not in panels["ITEM-C1"]
     assert "CAL1" not in panels["ITEM-C2"]
     assert "RULE1" not in panels["ITEM-C2"]
+
+
+def test_packet_global_review_preserves_populated_audit_content(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+
+    html = render_review_html(_populated_global_audit_model(), tmp_path / "pages")
+    packet_global = _packet_global_review_html(html)
+
+    for value in (
+        "AUDIT1",
+        "AUDIT2",
+        "AUDIT3",
+        "SOURCE_CONFLICT",
+        "REVISION_IDENTITY_CONFLICT",
+        "CITATION_COORDINATE_CONFLICT",
+        "TRACK_B_REJECTED",
+        "UNRESOLVED_CONFLICT",
+        "LOW_CONFIDENCE",
+        "traceability",
+        "source_agreement",
+        "rule_coverage",
+        "test-fixture-evidence",
+        "test-fixture-conflict-audit",
+        "test-fixture-rule-results",
+    ):
+        assert value in packet_global
+    assert "checked" not in html
 
 
 def test_final_decision_panel_is_blank_and_machine_warning_is_unambiguous(
