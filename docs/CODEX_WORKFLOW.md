@@ -98,7 +98,7 @@ source-batch CASE_DRAWING registration
   -> Math or Rule Engine binding
 ```
 
-The confirmation browser view is available at `/runs/<RUN-ID>/confirmation` while the run is `INPUT_CONFIRMATION_REQUIRED`. It is not the final review view. The final review route is token-protected and is served only after `final-review-packet.json` and `review.html` have both been created.
+The confirmation browser view is available at `/runs/<RUN-ID>/<TOKEN>/confirmation` while the run is `INPUT_CONFIRMATION_REQUIRED`. It is not the final review view. The confirmation, final review, packet, packet-hash, decision, and decision-status routes all require the run token. The final review route is served only after `final-review-packet.json` and `review.html` have both been created.
 
 Codex may help present candidate evidence or serialize an annotation that the user explicitly created or approved. Codex must not independently:
 

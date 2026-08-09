@@ -537,7 +537,10 @@ def test_final_decision_panel_is_blank_and_machine_warning_is_unambiguous(
     assert 'name="reviewed_at"' in decision_form
     assert 'name="packet_sha256"' in decision_form
     assert 'name="notes"' in decision_form
+    assert re.search(r'<textarea name="notes"[^>]*required', decision_form)
     assert 'name="decision"' in decision_form
+    assert 'data-display-status' in html
+    assert 'function refreshDisplayStatus' in html
     assert not re.search(
         r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|'
         r'ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected',

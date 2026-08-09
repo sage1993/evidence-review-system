@@ -16,7 +16,10 @@ from typing import Any, Literal, cast
 from urllib.parse import unquote, urlsplit
 
 from ansim_review.contracts.identifiers import validate_identifier
-from ansim_review.review_packet.decision_record import write_human_decision
+from ansim_review.review_packet.decision_record import (
+    has_valid_human_decision,
+    write_human_decision,
+)
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
@@ -33,7 +36,9 @@ _CSP = (
 @dataclass(frozen=True, slots=True)
 class _Route:
     run_id: str
-    endpoint: Literal["confirmation", "review", "packet", "packet_hash", "decision"]
+    endpoint: Literal[
+        "confirmation", "review", "packet", "packet_hash", "decision", "decision_status"
+    ]
     token: str | None = None
 
 
@@ -84,19 +89,21 @@ def _route_path(path: str) -> _Route | None:
         run_id = validate_identifier(parts[1], "run_id")
     except ValueError:
         return None
-    if len(parts) == 3 and parts[2] == "confirmation":
-        return _Route(run_id=run_id, endpoint="confirmation")
-    if len(parts) == 4 and parts[3] in {"review", "packet", "decision"}:
+    if len(parts) == 4 and parts[3] in {"confirmation", "review", "packet", "decision"}:
         token = parts[2]
         if not _TOKEN_PATTERN.fullmatch(token):
             return None
-        endpoint = cast(Literal["review", "packet", "decision"], parts[3])
+        endpoint = cast(Literal["confirmation", "review", "packet", "decision"], parts[3])
         return _Route(run_id=run_id, token=token, endpoint=endpoint)
-    if len(parts) == 5 and parts[3:] == ["packet", "hash"]:
+    if len(parts) == 5 and parts[3:] in (["packet", "hash"], ["decision", "status"]):
         token = parts[2]
         if not _TOKEN_PATTERN.fullmatch(token):
             return None
-        return _Route(run_id=run_id, token=token, endpoint="packet_hash")
+        return _Route(
+            run_id=run_id,
+            token=token,
+            endpoint="packet_hash" if parts[3:] == ["packet", "hash"] else "decision_status",
+        )
     return None
 
 
@@ -238,6 +245,23 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         except OSError:
             return None
 
+    def _display_status(self, run_id: str, packet_bytes: bytes) -> str:
+        try:
+            document = json.loads(packet_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            document = {}
+        machine_status = "READY_FOR_HUMAN_REVIEW"
+        if isinstance(document, dict):
+            candidate = document.get("finalizer_status", document.get("status"))
+            if isinstance(candidate, str) and candidate:
+                machine_status = candidate
+        run_directory = self._run_directory(run_id)
+        if run_directory is not None and has_valid_human_decision(
+            run_directory, hashlib.sha256(packet_bytes).hexdigest()
+        ):
+            return "REVIEW_COMPLETED"
+        return machine_status
+
     def do_GET(self) -> None:  # noqa: N802
         route = self._route()
         if route is None or not self._authorized(route, require_origin=False):
@@ -255,6 +279,16 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 )
             except OSError:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        if route.endpoint == "decision_status":
+            packet_and_html = self._packet_and_html(route.run_id)
+            if packet_and_html is None:
+                self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+                return
+            self._send_json(
+                HTTPStatus.OK,
+                {"display_status": self._display_status(route.run_id, packet_and_html)},
+            )
             return
         if route.endpoint not in {"review", "packet", "packet_hash"}:
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
@@ -365,7 +399,14 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         except OSError:
             self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
             return
-        self._send_json(HTTPStatus.CREATED, {"filename": output.name, "status": "RECORDED"})
+        self._send_json(
+            HTTPStatus.CREATED,
+            {
+                "filename": output.name,
+                "status": "RECORDED",
+                "display_status": self._display_status(route.run_id, packet_bytes),
+            },
+        )
 
 
 def create_review_server(

@@ -68,6 +68,7 @@ def test_view_model_projects_real_v1_and_v2_packets_with_verified_evidence(
     assert model["summary"]["citation_count"] == 1
     assert model["review_items"][0]["claim_id"] == "C1"
     assert model["decision"]["human_decision"] is None
+    assert model["display_status"] == model["status"]
     if fixture_name.startswith("review-packet-v2"):
         assert model["case_id"] == "CASE-LEGACY"
         assert model["finalizer_status"] == "READY_FOR_HUMAN_REVIEW"

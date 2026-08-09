@@ -34,7 +34,7 @@ Open the run-specific `review.html` created by `review-run finalize`. Confirm th
 When using the localhost browser server, open the confirmation route first:
 
 ```text
-http://127.0.0.1:<port>/runs/<RUN-ID>/confirmation
+http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/confirmation
 ```
 
 The separate final review route is tokenized:
@@ -43,7 +43,7 @@ The separate final review route is tokenized:
 http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
 ```
 
-The matching packet and packet-hash endpoints retain that same protected prefix: `/runs/<RUN-ID>/<TOKEN>/packet` and `/runs/<RUN-ID>/<TOKEN>/packet/hash`. The final route must remain unavailable until final packet and HTML artifacts exist. Verify that the browser never presents a final review screen while the run is waiting for drawing confirmation or Track A/Track B output.
+The matching packet, packet-hash, decision, and decision-status endpoints retain that same protected prefix: `/runs/<RUN-ID>/<TOKEN>/packet`, `/runs/<RUN-ID>/<TOKEN>/packet/hash`, `/runs/<RUN-ID>/<TOKEN>/decision`, and `/runs/<RUN-ID>/<TOKEN>/decision/status`. After a valid decision record is saved, the browser may project `REVIEW_COMPLETED`, but the machine packet remains unchanged with `human_decision: null`. The final route must remain unavailable until final packet and HTML artifacts exist. Verify that the browser never presents a final review screen while the run is waiting for drawing confirmation or Track A/Track B output.
 
 `review.html` can also be retained as an offline archival artifact and opened with `file:`. That mode cannot submit to the local decision endpoint. Use its separate **Download decision envelope** control if a handoff is needed; the envelope does not approve the packet and must be recorded through the protected workflow or the approved append-only process.
 

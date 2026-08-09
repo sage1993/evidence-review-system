@@ -372,6 +372,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
     model: dict[str, object] = {
         "run_id": metadata["run_id"],
         "status": status,
+        "display_status": status,
         "human_decision": None,
         "decision_options": [],
         "question": _string(document.get("question"), "question"),

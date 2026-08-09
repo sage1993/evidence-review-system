@@ -284,11 +284,12 @@ def _review_items(
 
 
 def _render_status_band(model: Mapping[str, object]) -> str:
+    display_status = model.get("display_status", model.get("status"))
     return "".join(
         (
             '<header id="review-status" class="status-band">',
             '<div class="status-copy"><div class="status-line">',
-            f'<span class="status-pill">{_text(model.get("status"))}</span>',
+            f'<span class="status-pill" data-display-status>{_text(display_status)}</span>',
             f'<code>{_text(model.get("run_id"))}</code></div>',
             '<h1>근거 검토 화면</h1>',
             f'<p class="question-context">{_text(model.get("question"))}</p></div>',
@@ -300,6 +301,7 @@ def _render_status_band(model: Mapping[str, object]) -> str:
 
 
 def _render_summary(model: Mapping[str, object]) -> str:
+    display_status = model.get("display_status", model.get("status"))
     summary = _mapping(model.get("summary", {}), "summary")
     audit = _mapping(model.get("audit", {}), "audit")
     return "".join(
@@ -318,7 +320,7 @@ def _render_summary(model: Mapping[str, object]) -> str:
             f'<dd>{_display_value(summary.get("calculation_count"))}</dd>',
             f'<small>충돌 {_display_value(summary.get("conflict_count"))}</small></div>',
             '<div class="metric" id="ready-for-review"><dt>현재 상태</dt>',
-            f'<dd class="status-metric">{_text(model.get("status"))}</dd>',
+            f'<dd class="status-metric" data-display-status>{_text(display_status)}</dd>',
             f'<small>신뢰도 {_display_value(summary.get("confidence_score"))} · '
             f'{_display_value(summary.get("confidence_level"))}</small></div>',
             "</dl>",
@@ -678,7 +680,7 @@ def _render_decision_form(model: Mapping[str, object]) -> str:
             '<label class="packet-hash">패킷 SHA-256<input name="packet_sha256" '
             f'value="{_text(decision.get("packet_sha256"))}" readonly required></label>',
             "</div>",
-            '<label class="decision-notes">판정 근거 메모<textarea name="notes" rows="3" '
+            '<label class="decision-notes">판정 근거 메모<textarea name="notes" rows="3" required '
             'placeholder="검토자가 확정한 근거와 후속 조치를 기록합니다."></textarea></label>',
             '<div class="decision-actions"><button class="primary-action" '
             'type="submit">결정 확정</button>',

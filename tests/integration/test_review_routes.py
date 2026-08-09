@@ -82,21 +82,31 @@ def _decision(packet: bytes, **changes: object) -> bytes:
     return json.dumps(payload).encode("utf-8")
 
 
-def test_confirmation_route_is_not_final_review_route(tmp_path: Path) -> None:
+def test_confirmation_route_requires_run_token_and_is_not_final_review_route(
+    tmp_path: Path,
+) -> None:
     run_dir = tmp_path / "runs" / "RUN-001"
     (run_dir / "machine").mkdir(parents=True)
     (run_dir / "machine" / "drawing-confirmation.json").write_text(
         json.dumps({"run_id": "RUN-001", "workflow_state": "INPUT_CONFIRMATION_REQUIRED"}),
         encoding="utf-8",
     )
-    server = create_review_server(tmp_path, run_tokens={})
+    server = create_review_server(tmp_path, run_tokens={"RUN-001": TOKEN})
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_port}"
     try:
-        with urlopen(f"{base}/runs/RUN-001/confirmation", timeout=5) as response:
+        with urlopen(
+            f"{base}/runs/RUN-001/{TOKEN}/confirmation", timeout=5
+        ) as response:
             assert response.status == 200
             assert b"INPUT_CONFIRMATION_REQUIRED" in response.read()
+        with pytest.raises(HTTPError) as error:
+            urlopen(f"{base}/runs/RUN-001/confirmation", timeout=5)
+        assert error.value.code == 404
+        with pytest.raises(HTTPError) as error:
+            urlopen(f"{base}/runs/RUN-001/{'b' * 32}/confirmation", timeout=5)
+        assert error.value.code == 403
         with pytest.raises(HTTPError) as error:
             urlopen(f"{base}/runs/RUN-001/review", timeout=5)
         assert error.value.code == 404
@@ -294,6 +304,20 @@ def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_
     assert not (run_dir / "human-decisions").exists()
 
 
+def test_decision_rejects_blank_notes_without_writing(tmp_path: Path) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(
+                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                method="POST",
+                body=_decision(packet, notes="  \t"),
+                headers={"Content-Type": "application/json", "Origin": base},
+            )
+        assert error.value.code == 400
+    assert not (run_dir / "human-decisions").exists()
+
+
 @pytest.mark.parametrize(
     "changes",
     [
@@ -335,5 +359,43 @@ def test_decision_appends_record_without_mutating_packet_or_html(tmp_path: Path)
         json.loads(decision_path.read_text(encoding="utf-8"))["packet_hash"]
         == hashlib.sha256(packet).hexdigest()
     )
+    assert (run_dir / "final-review-packet.json").read_bytes() == packet
+    assert (run_dir / "review.html").read_bytes() == html_before
+
+
+def test_decision_projects_completed_display_status_without_mutating_machine_packet(
+    tmp_path: Path,
+) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    html_before = (run_dir / "review.html").read_bytes()
+    decision_directory = run_dir / "human-decisions"
+    decision_directory.mkdir()
+    (decision_directory / "foreign.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-001",
+                "reviewer_id": "other-reviewer",
+                "reviewed_at": "2026-08-01T15:30:00+09:00",
+                "packet_hash": "b" * 64,
+                "decision": "SATISFIED",
+                "notes": "a decision for a different packet",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _server(tmp_path) as (_, base):
+        assert json.loads(
+            _request(f"{base}/runs/RUN-001/{TOKEN}/decision/status")
+        ) == {"display_status": "READY_FOR_HUMAN_REVIEW"}
+        response = _request(
+            f"{base}/runs/RUN-001/{TOKEN}/decision",
+            method="POST",
+            body=_decision(packet),
+            headers={"Content-Type": "application/json", "Origin": base},
+        )
+        assert json.loads(response)["display_status"] == "REVIEW_COMPLETED"
+        assert json.loads(
+            _request(f"{base}/runs/RUN-001/{TOKEN}/decision/status")
+        ) == {"display_status": "REVIEW_COMPLETED"}
     assert (run_dir / "final-review-packet.json").read_bytes() == packet
     assert (run_dir / "review.html").read_bytes() == html_before
