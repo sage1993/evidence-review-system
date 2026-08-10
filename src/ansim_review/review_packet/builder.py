@@ -80,9 +80,12 @@ def _resolve_citation(
 ) -> dict[str, object]:
     evidence_id = _evidence_id(citation_id)
     row = connection.execute(
-        """SELECT evidence_id, document_id, revision_id, page_number, bbox_json,
-                  source_hash, title, raw_text, evidence_type
-             FROM retrieval_records WHERE evidence_id = ?""",
+        """SELECT r.evidence_id, r.document_id, r.revision_id, r.page_number,
+                  r.bbox_json, r.source_hash, r.title, r.raw_text, r.evidence_type,
+                  p.width, p.height
+             FROM retrieval_records AS r
+             JOIN pages AS p ON p.id = r.page_id
+            WHERE r.evidence_id = ?""",
         (evidence_id,),
     ).fetchone()
     if row is None:
@@ -100,6 +103,8 @@ def _resolve_citation(
         "title": row[6],
         "quote": row[7],
         "evidence_type": row[8],
+        "page_width": float(row[9]),
+        "page_height": float(row[10]),
     }
 
 
