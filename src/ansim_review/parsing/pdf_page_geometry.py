@@ -70,7 +70,15 @@ def read_pdf_page_geometries(source_path: Path) -> tuple[PdfPageGeometry, ...]:
     try:
         reader = PdfReader(source_path)
         pages = tuple(reader.pages)
-    except (OSError, PdfReadError, ValueError) as error:
+    except (
+        OSError,
+        PdfReadError,
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+        IndexError,
+    ) as error:
         raise ValueError(
             f"PAGE_DIMENSIONS_UNAVAILABLE: unable to read {source_path.name}"
         ) from error
