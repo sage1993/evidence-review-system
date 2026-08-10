@@ -68,3 +68,25 @@ def test_unreadable_pdf_has_explicit_reason(tmp_path: Path) -> None:
     source.write_bytes(b"not-a-pdf")
     with pytest.raises(ValueError, match="PAGE_DIMENSIONS_UNAVAILABLE"):
         read_pdf_page_geometries(source)
+
+
+def test_inherited_cropbox_is_used_as_canonical_geometry(tmp_path: Path) -> None:
+    from pypdf import PdfWriter
+    from pypdf.generic import NameObject, RectangleObject
+
+    source = tmp_path / "inherited-crop.pdf"
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=600.0, height=800.0)
+    if "/CropBox" in page:
+        del page["/CropBox"]
+    writer._pages.get_object()[NameObject("/CropBox")] = RectangleObject(
+        (10.0, 20.0, 510.0, 720.0)
+    )
+    with source.open("wb") as stream:
+        writer.write(stream)
+
+    geometry = read_pdf_page_geometries(source)[0]
+
+    assert geometry.box_kind == "CROP_BOX"
+    assert (geometry.origin_x, geometry.origin_y) == (10.0, 20.0)
+    assert (geometry.width, geometry.height) == (500.0, 700.0)

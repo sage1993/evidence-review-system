@@ -23,3 +23,21 @@ def test_rotated_top_left_coordinates_are_unrotated() -> None:
 def test_bbox_outside_tolerance_is_rejected() -> None:
     with pytest.raises(ValueError, match="outside page bounds"):
         normalize_bbox((-1, 20, 110, 70), "TOP_LEFT", 600, 800)
+
+
+def test_pdf_bottom_left_a3_landscape_coordinates_are_preserved() -> None:
+    assert normalize_bbox(
+        (100.0, 100.0, 1100.0, 700.0),
+        "PDF_BOTTOM_LEFT",
+        1191.0,
+        842.0,
+    ) == BBox(100.0, 100.0, 1100.0, 700.0)
+
+
+def test_bbox_boundary_tolerance_clamps_exactly_half_point() -> None:
+    assert normalize_bbox(
+        (-0.5, 0.0, 1191.5, 842.0),
+        "PDF_BOTTOM_LEFT",
+        1191.0,
+        842.0,
+    ) == BBox(0.0, 0.0, 1191.0, 842.0)
