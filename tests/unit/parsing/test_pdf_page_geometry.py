@@ -39,6 +39,22 @@ def test_invalid_cropbox_falls_back_to_mediabox(tmp_path: Path) -> None:
     assert (page.width, page.height) == (1000.0, 700.0)
 
 
+def test_invalid_cropbox_and_mediabox_fail_closed(tmp_path: Path) -> None:
+    from pypdf import PdfWriter
+    from pypdf.generic import RectangleObject
+
+    source = tmp_path / "invalid-boxes.pdf"
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=600.0, height=800.0)
+    page.cropbox = RectangleObject((0.0, 0.0, 0.0, 0.0))
+    page.mediabox = RectangleObject((0.0, 0.0, 0.0, 0.0))
+    with source.open("wb") as stream:
+        writer.write(stream)
+
+    with pytest.raises(ValueError, match="PAGE_DIMENSIONS_UNAVAILABLE"):
+        read_pdf_page_geometries(source)
+
+
 def test_mixed_sizes_and_negative_rotation_are_normalized(tmp_path: Path) -> None:
     source = write_pdf_fixture(
         tmp_path / "mixed.pdf",
