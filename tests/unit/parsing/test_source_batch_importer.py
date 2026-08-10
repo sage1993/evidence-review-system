@@ -12,6 +12,7 @@ from ansim_review.parsing.source_batch_importer import (
     import_source_batch,
     prepare_source_batch,
 )
+from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 
 def _source(
@@ -218,8 +219,7 @@ def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
 ) -> None:
     source = tmp_path / "inputs" / "original" / "사용자-제공-기준.pdf"
     parser = tmp_path / "inputs" / "parser" / "result.json"
-    source.parent.mkdir(parents=True)
-    source.write_bytes(b"%PDF-1.7\narbitrary-user-document")
+    write_pdf_fixture(source, page_sizes=((1000.0, 700.0),))
     _write_parser(parser, source.name)
     parser_payload = json.loads(parser.read_text(encoding="utf-8"))
     parser_payload["title"] = "사용자 제공 기준"
@@ -247,8 +247,60 @@ def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
     with sqlite3.connect(output) as connection:
         title = connection.execute("SELECT title FROM documents").fetchone()
         indexed = connection.execute("SELECT COUNT(*) FROM retrieval_records").fetchone()
+        page_geometry = connection.execute(
+            "SELECT width, height FROM pages WHERE page_number = 1"
+        ).fetchone()
     assert title == ("사용자 제공 기준",)
     assert indexed == (1,)
+    assert page_geometry == (1000.0, 700.0)
+
+
+def test_geometry_mismatch_does_not_create_output_database(tmp_path: Path) -> None:
+    source = tmp_path / "inputs" / "original" / "document.pdf"
+    parser = tmp_path / "inputs" / "parser" / "result.json"
+    write_pdf_fixture(source, page_sizes=((1000.0, 700.0),))
+    _write_parser(parser, source.name)
+    payload = json.loads(parser.read_text(encoding="utf-8"))
+    payload["pages"] = [{"page_number": 1, "width": 595.0, "height": 842.0}]
+    parser.write_text(json.dumps(payload), encoding="utf-8")
+    output = tmp_path / "evidence.sqlite"
+
+    with pytest.raises(ValueError, match="PARSER_PDF_PAGE_DIMENSIONS_MISMATCH"):
+        import_source_batch(
+            tmp_path,
+            _batch(
+                _source(
+                    "inputs/original/document.pdf",
+                    parser_path="inputs/parser/result.json",
+                )
+            ),
+            output,
+        )
+
+    assert not output.exists()
+
+
+def test_unreadable_source_pdf_does_not_create_output_database(tmp_path: Path) -> None:
+    source = tmp_path / "inputs" / "original" / "document.pdf"
+    parser = tmp_path / "inputs" / "parser" / "result.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"not-a-pdf")
+    _write_parser(parser, source.name)
+    output = tmp_path / "evidence.sqlite"
+
+    with pytest.raises(ValueError, match="PAGE_DIMENSIONS_UNAVAILABLE"):
+        import_source_batch(
+            tmp_path,
+            _batch(
+                _source(
+                    "inputs/original/document.pdf",
+                    parser_path="inputs/parser/result.json",
+                )
+            ),
+            output,
+        )
+
+    assert not output.exists()
 
 
 def test_import_refuses_pending_parser_without_creating_empty_database(
