@@ -136,6 +136,8 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert citation["document_id"] == "DOC1"
     assert citation["page_number"] == 3
     assert citation["bbox"] == [10.0, 20.0, 110.0, 40.0]
+    assert citation["page_width"] == 120.0
+    assert citation["page_height"] == 200.0
     assert calculations[0]["display_result"] == "9.375%"
     assert rules[0]["rule_version"] == "1"
     assert confidence["factors"][0]["source"] == "evidence"
