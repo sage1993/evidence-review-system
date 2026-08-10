@@ -26,8 +26,16 @@ For a regulatory review question, follow this order:
 5. Run the deterministic finalizer and render the reviewer packet.
 6. Leave `human_decision` blank. Never decide for the reviewer.
 
+### Codex Desktop shortcuts
+
+- `$ERS_PDF` loads `ers-pdf` and parses the attached or explicitly named PDF.
+- `$ERS_REVIEW` loads `ers-review` and answers from parsed evidence before opening the
+  finalized review HTML.
+
 Do not use network APIs or remote search from project code.
 """
+
+USER_FACING_SKILL_NAMES = ("ers-pdf", "ers-review")
 
 
 def render_validation_document() -> str:
@@ -114,7 +122,11 @@ def build_codex_bundle(
         output_directory / "rules" / "manifests",
     )
 
-    skill_files = sorted((workspace_root / "skills").glob("*/SKILL.md"))
+    skill_files = sorted(
+        source
+        for source in (workspace_root / "skills").glob("*/SKILL.md")
+        if source.parent.name not in USER_FACING_SKILL_NAMES
+    )
     if len(skill_files) != 5:
         raise ValueError("Codex bundle requires exactly five PDF workflow skills")
     for source in skill_files:
@@ -122,6 +134,14 @@ def build_codex_bundle(
             source,
             output_directory / "skills" / source.parent.name / "SKILL.md",
         )
+
+    for name in USER_FACING_SKILL_NAMES:
+        source = workspace_root / "skills" / name / "SKILL.md"
+        if source.is_file():
+            _copy_file(
+                source,
+                output_directory / ".agents" / "skills" / name / "SKILL.md",
+            )
 
     (output_directory / "VALIDATE.md").write_text(
         render_validation_document(),
