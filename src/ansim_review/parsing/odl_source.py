@@ -4,14 +4,24 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
-from ansim_review.parsing.odl_adapter import RawElement
 from ansim_review.parsing.pdf_geometry import normalize_bbox
 
-_DEFAULT_PAGE_WIDTH = 595.0
-_DEFAULT_PAGE_HEIGHT = 842.0
+if TYPE_CHECKING:
+    from ansim_review.parsing.odl_adapter import RawElement
+
+ParserDimensionState = Literal["ABSENT", "VALID", "INVALID"]
+
+
+@dataclass(frozen=True, slots=True)
+class ParserPageDimensionsResult:
+    state: ParserDimensionState
+    width: float | None
+    height: float | None
 
 
 def read_parser_json(path: Path) -> dict[str, Any]:
@@ -50,27 +60,37 @@ def parser_document_title(payload: Mapping[str, Any], fallback: str) -> str:
 
 def parser_page_dimensions(
     payload: Mapping[str, Any], page_number: int
-) -> tuple[float, float]:
+) -> ParserPageDimensionsResult:
     pages = payload.get("pages")
-    if isinstance(pages, list):
-        for page in pages:
-            if not isinstance(page, dict):
-                continue
-            number = page.get("page_number", page.get("page number"))
-            if number != page_number:
-                continue
-            width = page.get("width")
-            height = page.get("height")
-            if (
-                isinstance(width, (int, float))
-                and not isinstance(width, bool)
-                and isinstance(height, (int, float))
-                and not isinstance(height, bool)
-                and float(width) > 0
-                and float(height) > 0
-            ):
-                return float(width), float(height)
-    return _DEFAULT_PAGE_WIDTH, _DEFAULT_PAGE_HEIGHT
+    if pages is None:
+        return ParserPageDimensionsResult("ABSENT", None, None)
+    if not isinstance(pages, list):
+        return ParserPageDimensionsResult("INVALID", None, None)
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        number = page.get("page_number", page.get("page number"))
+        if number != page_number:
+            continue
+        has_width = "width" in page
+        has_height = "height" in page
+        if not has_width and not has_height:
+            return ParserPageDimensionsResult("ABSENT", None, None)
+        width = page.get("width")
+        height = page.get("height")
+        if (
+            isinstance(width, (int, float))
+            and not isinstance(width, bool)
+            and isinstance(height, (int, float))
+            and not isinstance(height, bool)
+            and isfinite(float(width))
+            and isfinite(float(height))
+            and float(width) > 0
+            and float(height) > 0
+        ):
+            return ParserPageDimensionsResult("VALID", float(width), float(height))
+        return ParserPageDimensionsResult("INVALID", None, None)
+    return ParserPageDimensionsResult("ABSENT", None, None)
 
 
 def parser_bbox(
