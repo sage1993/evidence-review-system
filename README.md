@@ -1,61 +1,52 @@
 # Evidence Review System
 
-사용자가 제공하는 서로 다른 PDF와 parser artifact를 **출처 추적 가능한 evidence database**로 변환하고, 검색·계산·규칙 실행 결과를 사람이 최종 검토하도록 지원하는 범용 문서 검토 런타임이다.
+PDF를 근거가 남는 검색·계산 자료로 바꾸고, 마지막 판단은 사람이 하도록 돕는 문서 검토 프로그램입니다.
 
-> 시스템은 적합·부적합을 최종 결정하지 않는다. `READY_FOR_HUMAN_REVIEW`는 사람이 검토할 준비가 됐다는 뜻이며 승인 상태가 아니다.
+> **중요:** 이 프로그램은 승인·적합·부적합을 최종 결정하지 않습니다. `READY_FOR_HUMAN_REVIEW`는 “사람이 검토할 준비가 됨”이라는 뜻입니다.
 
-## 적용 대상
+## 먼저 이해하기
 
-입력 PDF의 파일명, 문서명, 분야, 페이지 수는 매번 달라도 된다.
-
-- 법령·조례·운영기준
-- 일반 보고서와 사업계획서
-- 표 중심 자료
-- 이미지 기반 스캔 PDF
-- 건축 도면 PDF
-- 사용자가 별도로 제공한 참고 이미지·표
-
-초기 개발에 사용된 안심주택 자료는 테스트 fixture 중 하나일 뿐이다. 신규 처리 로직은 문서명이나 `law-1`, `law-2` 같은 파일명에 의존하지 않는다.
-
-## 핵심 원칙
-
-| 원칙 | 적용 방식 |
-|---|---|
-| 원본 우선 | PDF 원본 SHA-256, parser artifact hash, page, bbox를 기록한다. |
-| 파일명 비종속 | 내부 ID는 명시적 ID 또는 원본 SHA-256으로 생성한다. |
-| 명시적 parser binding | parser 종류와 artifact를 source-batch manifest에 선언한다. |
-| 결정적 실행 | 동일한 정규화 입력은 동일한 JSON, snapshot hash, Run ID를 만든다. |
-| 계산 분리 | 숫자 계산은 등록된 Math Engine 공식으로만 수행한다. |
-| 규칙 승인 | 사람이 승인한 버전 규칙만 Rule Engine에서 실행한다. |
-| 불확실성 보존 | parser 누락, source 충돌, 확인되지 않은 도면값은 보류 또는 `ABSTAIN` 처리한다. |
-| 사람 최종 결정 | 기계 packet의 `human_decision`은 항상 `null`이며 사람 결정은 별도 기록한다. |
-
-## 처리 흐름
+이 프로그램의 흐름은 간단히 다음과 같습니다.
 
 ```text
-사용자 PDF와 parser artifact 등록
-→ source-batch prepare로 역할·parser·상태 검증
-→ 원본 SHA-256 및 document/revision ID 생성
-→ parser-ready reference ingest
-→ page_id 기반 문단·표·visual evidence 생성
-→ evidence.sqlite 및 FTS index 생성
-→ 도면은 별도 drawing backend에서 confirmation 처리
-→ 질문별 evidence 검색
-→ 필요한 계산·승인 규칙 실행
-→ Track A 설명 / Track B 감사
-→ review.html 및 final-review-packet.json 생성
-→ 사람 최종 검토
+원본 PDF와 parser 결과 준비
+→ 파일 연결 상태 확인
+→ 검색용 evidence DB 생성
+→ 질문에 맞는 근거 검색
+→ 필요한 계산과 승인된 규칙 실행
+→ 검토용 HTML과 결과 packet 생성
+→ 사람이 원본 근거를 확인하고 최종 결정
 ```
 
-## 요구 환경
+여기서 `parser artifact`는 PDF 안의 글자·표·페이지 위치를 읽어 둔 별도 결과 파일입니다. 참고 문서나 표를 검색하려면 원본 PDF만으로는 부족하고, 등록된 parser 결과가 필요합니다.
 
+## 어떤 PDF를 처리할 수 있나요?
+
+| 자료 | 처리 방식 |
+|---|---|
+| 법령, 기준, 보고서, 사업계획서 | parser 결과가 있으면 검색용 DB에 넣을 수 있습니다. |
+| 표 중심 자료 | `CASE_TABLE` 또는 `REFERENCE_DOCUMENT`로 등록합니다. |
+| 이미지 기반 PDF | parser가 페이지와 이미지 내용을 제공해야 합니다. |
+| 건축·사업 도면 | 일반 참고문서 검색과 분리해 도면 확인 절차를 거칩니다. 확인되지 않은 도면값은 계산에 사용하지 않습니다. |
+| 참고 이미지 | 보조 자료로 보관할 수 있지만, 그 자체가 승인된 기준이 되지는 않습니다. |
+
+파일명이나 제목만 보고 문서 종류를 추정하지 않습니다. 원본 파일과 parser 결과의 연결은 manifest와 SHA-256 해시로 확인합니다.
+
+## 1. 준비물과 설치
+
+### 필요한 것
+
+- Windows PowerShell 또는 터미널
 - Python 3.11 이상
 - Git
-- 로컬 파일 시스템
+- 원본 PDF
+- 검색하려는 참고문서의 parser 결과 파일
 
-런타임 패키지는 외부 Python 의존성이 없다. 테스트·정적 검증 도구는 `dev` extra로 설치한다.
+현재 런타임은 외부 API나 인터넷 검색 없이 로컬 파일을 처리합니다.
 
-## 설치
+### 설치
+
+PowerShell에서 다음을 실행합니다.
 
 ```powershell
 git clone https://github.com/sage1993/evidence-review-system.git
@@ -67,49 +58,37 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-설치 확인:
+설치가 끝났는지 확인합니다.
 
 ```powershell
 evidence-review --help
-python -m ansim_review --help
 ```
 
-`ansim_review`은 기존 실행 환경과 artifact 호환을 위해 유지되는 내부 Python namespace이다. 신규 사용자-facing 명칭과 JSON format은 `evidence-review`를 사용한다.
+`python -m ansim_review --help`도 동작하지만, 새 작업에서는 `evidence-review` 명령을 사용합니다.
 
-## 권장 워크스페이스
+## 2. 작업 폴더 만들기
+
+프로젝트 폴더와 원본 자료를 별도 작업 폴더에 둡니다. 아래 경로는 예시이므로 본인의 경로로 바꾸세요.
 
 ```text
 F:\evidence-review-workspace
 ├─ inputs
 │  ├─ original
-│  │  ├─ reference-a.pdf
-│  │  └─ project-drawing.pdf
+│  │  ├─ reference.pdf        ← 참고 기준 PDF
+│  │  └─ project-drawing.pdf  ← 검토 대상 도면 PDF(선택)
 │  └─ parser
-│     └─ reference-a.json
+│     └─ reference.json       ← reference.pdf에 대응하는 parser 결과
 ├─ manifests
-│  ├─ source-batch.json
-│  └─ visual-manifest.json
+│  └─ source-batch.json
 ├─ evidence
-│  └─ evidence.sqlite
-├─ cases
-│  └─ CASE-001
-│     ├─ sources\drawings
-│     ├─ candidates
-│     ├─ confirmations
-│     └─ confirmed-inputs.json
-├─ rules
-│  ├─ approved
-│  └─ manifests\active.json
 └─ runs
-   ├─ final-review-packet.json
-   └─ RUN-XXXXXXXXXXXXXXXXXXXX
 ```
 
-폴더 이름은 문서 역할, parser 종류, document ID, page ID를 결정하지 않는다. 모든 관계는 manifest와 hash로 명시한다.
+원본 PDF와 raw parser 결과는 보존해야 합니다. 프로그램이 만든 결과를 원본 폴더에 덮어쓰지 마세요.
 
-## 1. Source batch v2
+## 3. source manifest 작성하기
 
-새 manifest는 version 2로 작성한다.
+manifest는 “어떤 파일을 어떤 역할로 사용할지” 적는 JSON 파일입니다. `manifests\source-batch.json`을 만들고 다음과 같이 작성합니다.
 
 ```json
 {
@@ -117,13 +96,13 @@ F:\evidence-review-workspace
   "version": 2,
   "sources": [
     {
-      "source_path": "inputs/original/reference-a.pdf",
+      "source_path": "inputs/original/reference.pdf",
       "role": "REFERENCE_DOCUMENT",
       "document_id": null,
-      "display_title": "사용자 제공 참고 기준",
+      "display_title": "검토 기준 문서",
       "parser": {
         "kind": "OPENDATALOADER_JSON",
-        "artifact_path": "inputs/parser/reference-a.json",
+        "artifact_path": "inputs/parser/reference.json",
         "options": {}
       }
     },
@@ -131,28 +110,30 @@ F:\evidence-review-workspace
       "source_path": "inputs/original/project-drawing.pdf",
       "role": "CASE_DRAWING",
       "document_id": "PROJECT-DRAWING-001",
-      "display_title": "사업 도면",
+      "display_title": "검토 대상 도면",
       "parser": null
     }
   ]
 }
 ```
 
-### 필드 의미
+도면이 없으면 두 번째 항목은 삭제해도 됩니다. `source_path`와 `artifact_path`는 작업 폴더를 기준으로 한 상대경로여야 합니다.
 
-| 필드 | 의미 |
+주요 값은 다음 뜻입니다.
+
+| 값 | 쉬운 뜻 |
 |---|---|
-| `source_path` | batch root 아래 원본 파일의 안전한 상대경로 |
-| `role` | `REFERENCE_DOCUMENT`, `CASE_DRAWING`, `CASE_TABLE`, `SUPPORTING_IMAGE` |
-| `document_id` | 선택값. 없으면 원본 SHA-256에서 자동 생성 |
-| `display_title` | 표시용 제목. identity 생성에 사용하지 않음 |
-| `parser.kind` | registry에 등록된 대문자 machine identifier |
-| `parser.artifact_path` | source에 연결된 parser artifact 상대경로 |
-| `parser.options` | adapter 전용 명시적 옵션 object |
+| `REFERENCE_DOCUMENT` | 검색에 사용할 참고 기준 문서 |
+| `CASE_TABLE` | 검색에 사용할 표 자료 |
+| `CASE_DRAWING` | 별도 확인이 필요한 도면 |
+| `SUPPORTING_IMAGE` | 보조 이미지 |
+| `document_id` | 문서를 구분하는 ID. 비워 두면 원본 hash로 자동 생성 |
+| `parser.kind` | parser 결과의 종류 |
+| `parser.artifact_path` | PDF에 연결된 parser 결과 파일 |
 
-Version 1 manifest는 기존 `OPENDATALOADER_JSON` 입력을 읽기 위해서만 지원한다. Decoder는 v1을 내부 v2 모델로 변환하며, writer는 항상 v2를 출력한다.
+## 4. 파일 연결 상태 확인하기
 
-## 2. DB 생성 전 상태 확인
+DB를 만들기 전에 다음 명령으로 파일 연결과 준비 상태를 확인합니다.
 
 ```powershell
 evidence-review source-batch prepare `
@@ -160,21 +141,23 @@ evidence-review source-batch prepare `
   --manifest F:\evidence-review-workspace\manifests\source-batch.json
 ```
 
-이 명령은 DB를 만들지 않고 source별 상태와 reason code를 출력한다.
+이 단계는 DB를 만들지 않습니다. 파일이 올바르게 연결됐는지와 다음에 해야 할 일을 알려 줍니다.
 
-| 상태 | 의미 |
-|---|---|
-| `PENDING_PARSER_OUTPUT` | reference/table에 parser artifact가 없음 |
-| `PENDING_REFERENCE_INGESTION` | 등록된 parser가 준비돼 reference ingest 가능 |
-| `PENDING_DRAWING_INGESTION` | drawing backend로 전달해야 함 |
-| `INPUT_CONFIRMATION_REQUIRED` | 도면 candidate에 reviewer confirmation이 필요함 |
-| `READY_TO_EVALUATE` | ingest와 필요한 확인이 완료돼 평가 가능 |
-| `BLOCKED` | unsupported parser 또는 authority 제한으로 진행 불가 |
-| `FAILED` | source 구성이나 무결성 검증 실패 |
+| 표시 | 뜻 | 다음 행동 |
+|---|---|---|
+| `PENDING_PARSER_OUTPUT` | 참고문서에 parser 결과가 없음 | parser 결과를 준비해 manifest에 연결합니다. |
+| `PENDING_REFERENCE_INGESTION` | 참고문서를 DB에 넣을 준비가 됨 | `ingest`를 실행합니다. |
+| `PENDING_DRAWING_INGESTION` | 도면을 별도 도면 절차로 보낼 상태 | 도면 확인 작업을 진행합니다. |
+| `INPUT_CONFIRMATION_REQUIRED` | 사람이 도면 후보를 확인해야 함 | 확인 전에는 계산에 사용하지 않습니다. |
+| `READY_TO_EVALUATE` | 필요한 입력과 확인이 준비됨 | 검색·계산·규칙 실행을 진행합니다. |
+| `BLOCKED` | 지원하지 않는 parser나 권한 문제 | reason code를 확인하고 입력을 수정합니다. |
+| `FAILED` | 파일 구성 또는 무결성 검증 실패 | 경로, hash, JSON 형식을 확인합니다. |
 
-등록되지 않은 parser kind는 자동 fallback하지 않고 `BLOCKED`와 `UNSUPPORTED_PARSER_KIND`를 반환한다.
+등록하지 않은 parser를 다른 parser로 자동 대체하지 않습니다.
 
-## 3. Evidence DB 생성
+## 5. 검색용 evidence DB 만들기
+
+상태가 준비되면 다음 명령으로 검색용 SQLite DB를 만듭니다.
 
 ```powershell
 evidence-review source-batch ingest `
@@ -183,70 +166,27 @@ evidence-review source-batch ingest `
   --output F:\evidence-review-workspace\evidence\evidence.sqlite
 ```
 
-Importer는 parser-ready `REFERENCE_DOCUMENT`와 `CASE_TABLE`만 DB에 기록한다. Parserless drawing은 valid reference ingest를 막지 않지만 reference DB에는 들어가지 않는다.
+성공하면 `evidence\evidence.sqlite`가 생기고, 문서 ID·페이지·근거 ID·원본 hash 등의 추적 정보가 함께 기록됩니다.
 
-다음 경우 output DB를 만들지 않는다.
+다음 경우에는 불완전한 DB를 만들지 않고 멈춥니다.
 
-- reference/table parser output 누락
-- unsupported parser kind
-- parser metadata와 source PDF 불일치
-- source 또는 parser artifact hash 변경
-- parser-ready reference evidence가 하나도 없음
+- 참고문서의 parser 결과가 없음
+- 등록되지 않은 parser 종류를 사용함
+- PDF와 parser 결과의 hash가 서로 다름
+- 검색 가능한 참고 근거가 하나도 없음
 
-성공 결과에는 document ID, revision ID, source SHA-256, snapshot hash, record counts, source별 상태가 포함된다.
+## 6. 질문에 대한 근거 검색하기
 
-### ID 정책
-
-- 명시적 `document_id`가 있으면 path-safe machine ID 문법을 검증한다.
-- 없으면 `DOC-<원본 SHA-256 앞 20자리>`를 사용한다.
-- 동일 bytes와 다른 파일명은 같은 자동 document ID로 dedupe한다.
-- 같은 파일명이라도 bytes가 다르면 다른 자동 document ID가 된다.
-- 같은 명시적 document ID에 서로 다른 bytes를 연결할 수 없다.
-- page ID는 importer가 `<revision_id>-P<4자리 page number>`로 생성한다.
-- parser adapter는 document, revision, page ID를 생성하지 않는다.
-
-## 4. Parser registry
-
-기본 registry는 `OPENDATALOADER_JSON` adapter를 등록한다. 다른 parser는 `ParserAdapter`를 구현하고 registry에 명시적으로 등록한다.
-
-Registry는 다음을 보장한다.
-
-- case-sensitive kind
-- duplicate kind 거부
-- unknown kind fallback 금지
-- 안정적으로 정렬된 kind 목록
-- adapter 예외를 성공으로 변환하지 않음
-- module-level mutable singleton 미사용
-
-Adapter의 normalized contribution에는 page dimensions와 page-relative element, table, visual record만 포함된다. Page 연속성, bbox 범위, parser artifact hash는 ingest 전에 검증한다.
-
-## 5. Visual manifest
-
-Visual identity는 파일명에서 추론하지 않는다.
+검색할 질문을 `evidence-query.json`으로 저장합니다. 가장 단순한 형식은 다음과 같습니다.
 
 ```json
 {
-  "format": "evidence-review/visual-manifest",
-  "version": 1,
-  "records": [
-    {
-      "id": "VISUAL-001",
-      "document_id": "DOC-001",
-      "revision_id": "DOC-001-abcdef123456",
-      "page_id": "DOC-001-abcdef123456-P0001",
-      "kind": "page_render",
-      "path": "visuals/page-1.png",
-      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      "bbox": null,
-      "source_evidence_ids": []
-    }
-  ]
+  "question": "검토하려는 조건은 무엇인가?",
+  "limit": 20
 }
 ```
 
-Loader는 `document_id`, `revision_id`, `page_id`를 필수로 요구한다. DB binding 시 `pages → revisions → documents` join으로 관계를 재검증한다. 같은 image bytes가 여러 페이지에 있어도 visual ID와 page identity는 각각 유지한다.
-
-## 6. Evidence 검색
+그 다음 검색을 실행합니다.
 
 ```powershell
 evidence-review query `
@@ -255,9 +195,25 @@ evidence-review query `
   --output F:\review-case\evidence-bundle.json
 ```
 
-검색 결과는 document ID, revision ID, page, evidence ID, bbox, source SHA-256을 포함한다.
+`evidence-bundle.json`에는 찾은 근거와 함께 문서 ID, revision ID, 페이지 번호, evidence ID, 페이지 위치(`bbox`), 원본 SHA-256이 들어갑니다. 따라서 결과만 보지 말고 연결된 PDF의 해당 페이지를 함께 확인해야 합니다.
 
-## 7. 결정적 계산
+## 7. 필요한 숫자 계산 실행하기
+
+계산은 임의로 계산하지 않고, 등록된 공식 ID와 버전으로만 실행합니다. 요청 파일 예시는 다음과 같습니다.
+
+```json
+{
+  "formula_id": "FRONTAGE_RATIO",
+  "formula_version": "1.0.0",
+  "inputs": {
+    "frontage_length_m": "30",
+    "perimeter_length_m": "320",
+    "threshold_ratio": "0.125"
+  }
+}
+```
+
+위 공식과 입력 이름은 저장소에 등록된 예시입니다. 실제 업무에서는 해당 프로젝트에서 승인한 formula ID·버전·입력 이름을 사용해야 합니다.
 
 ```powershell
 evidence-review math-run `
@@ -265,9 +221,42 @@ evidence-review math-run `
   --output F:\review-case\calculation-result.json
 ```
 
-계산은 등록된 formula ID와 version으로만 실행한다. 결과에는 입력, 치환식, raw/display result, formula manifest hash, result hash가 기록된다.
+결과에는 입력값, 치환식, 결과값, 공식 manifest hash, 결과 hash가 기록됩니다. 계산 결과만 복사해 사용하지 말고, 어떤 근거에서 입력값이 나왔는지 함께 확인하세요.
 
-## 8. 검토 Run
+## 8. 사람 검토용 Run 준비하기
+
+검토 요청은 검토 대상(`case_id`), 질문(`question`), 첨부 파일의 역할과 hash를 포함해야 합니다. 실제 PDF의 hash와 파일 크기를 넣어야 하므로 아래 파일은 형식 참고용입니다.
+
+```json
+{
+  "format": "evidence-review/review-request",
+  "version": 1,
+  "case_id": "CASE-001",
+  "question": "이 기준을 충족하는가?",
+  "attachments": [
+    {
+      "attachment_id": "ATT-001",
+      "original_name": "reference.pdf",
+      "stored_path": "inputs/original/reference.pdf",
+      "sha256": "실제 PDF의 64자리 SHA-256",
+      "byte_size": 123456,
+      "mime": "application/pdf",
+      "role": "REFERENCE_DOCUMENT",
+      "role_confirmation": "USER_CONFIRMED",
+      "proposed_role": null
+    }
+  ]
+}
+```
+
+Windows에서 원본 hash와 파일 크기를 확인하는 예시는 다음과 같습니다.
+
+```powershell
+Get-FileHash F:\evidence-review-workspace\inputs\original\reference.pdf -Algorithm SHA256
+(Get-Item F:\evidence-review-workspace\inputs\original\reference.pdf).Length
+```
+
+검토 Run을 준비합니다.
 
 ```powershell
 evidence-review review-run prepare `
@@ -275,16 +264,18 @@ evidence-review review-run prepare `
   --request F:\review-case\review-request.json
 ```
 
-Prepared run의 다음 파일을 사용한다.
+준비가 끝나면 Run 폴더에 다음과 같은 파일이 생깁니다.
 
-- `track-a-bundle.json`
-- `TRACK_A_INSTRUCTIONS.md`
-- `TRACK_B_INSTRUCTIONS.md`
-- `confidence-input.json`
+- `track-a-bundle.json`: 제공된 근거와 계산 결과를 설명할 자료
+- `TRACK_A_INSTRUCTIONS.md`: Track A 작성 안내
+- `TRACK_B_INSTRUCTIONS.md`: Track B 독립 감사 안내
+- `confidence-input.json`: 신뢰도 입력 자료
 
-Track A는 제공된 evidence·calculation·rule result만 설명한다. Track B는 Track A claim을 독립적으로 감사한다. 두 track 모두 사람 결정, confidence, drawing confirmation을 만들 수 없다.
+Track A는 제공된 근거만 설명하고, Track B는 Track A의 주장을 독립적으로 점검합니다. 두 track 모두 사람의 최종 결정을 대신하지 않습니다.
 
-Finalization:
+## 9. 최종 검토 packet 만들기
+
+Track A와 Track B 결과 파일이 준비된 뒤 Run을 마무리합니다.
 
 ```powershell
 evidence-review review-run finalize `
@@ -292,70 +283,74 @@ evidence-review review-run finalize `
   --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
   --track-a-output F:\review-case\track-a-output.json `
   --track-b-output F:\review-case\track-b-output.json `
-  --publish
+  --publish `
+  --open
 ```
 
-`--publish`는 release builder가 사용할 packet을 선택할 뿐, 승인이나 전자서명을 의미하지 않는다.
+`--open`은 생성된 검토 HTML을 기본 브라우저로 엽니다. 결과 폴더에는 보통 다음 파일이 있습니다.
 
-## 9. 릴리스 Process Attestation
+- `review.html`: 사람이 읽고 확인하는 화면
+- `final-review-packet.json`: 최종 검토용 기계 packet
 
-릴리스 승인은 공개키 전자서명이 아니라 내부 절차용 `PROCESS_ATTESTATION` 모델을 사용한다. Named reviewer는 정확한 release candidate hash와 packet hash를 확인한 뒤 다음 canonical 기록을 append-only로 생성한다.
+검토자는 다음을 확인해야 합니다.
+
+- PDF의 문서 ID·revision ID·페이지가 실제 원본과 맞는가?
+- 인용된 evidence ID와 페이지 위치가 실제 내용과 맞는가?
+- 계산 입력과 공식 버전이 맞는가?
+- 규칙 결과와 예외·충돌·보류 사유가 빠지지 않았는가?
+- `human_decision`이 아직 `null`인가?
+
+`--publish`는 사용할 packet을 선택하는 동작일 뿐, 승인이나 전자서명이 아닙니다.
+
+## 도면 PDF를 사용하는 경우
+
+도면은 글자 검색만으로 안전하게 판단하기 어려울 수 있습니다. 도면에서 추출된 값은 후보로 보관하고, 사람이 원본 도면에서 위치와 의미를 확인한 뒤에만 확정 입력으로 사용할 수 있습니다.
+
+로컬 브라우저 화면을 사용하는 경우 확인 화면과 최종 검토 화면은 분리됩니다.
 
 ```text
-releases/evidence-review-v1.0/human-attestation.json
+http://127.0.0.1:<port>/runs/<RUN-ID>/confirmation
+http://127.0.0.1:<port>/runs/<RUN-ID>/review
 ```
 
-Attestation 계약의 핵심값:
+확인 전의 도면 후보, 충돌하는 후보, 확인이 필요한 값은 Math Engine이나 Rule Engine 입력으로 사용하지 않습니다.
 
-```json
-{
-  "format": "evidence-review/human-attestation",
-  "version": 1,
-  "assurance_level": "PROCESS_ATTESTATION",
-  "attestation": "REVIEWED_AND_ACCEPTED_FOR_RELEASE"
-}
-```
+## 자주 막히는 경우
 
-Release manifest는 검증 범위를 별도 필드로 명시한다.
+| 상황 | 확인할 것 |
+|---|---|
+| `PENDING_PARSER_OUTPUT` | parser 결과 파일이 실제로 있는지, manifest의 `artifact_path`가 맞는지 확인합니다. |
+| `UNSUPPORTED_PARSER_KIND` | `parser.kind`가 등록된 종류인지 확인합니다. 다른 종류로 자동 대체되지 않습니다. |
+| `BLOCKED` | 명령 출력의 reason code를 읽고 parser, authority, 경로 문제를 수정합니다. |
+| `INPUT_CONFIRMATION_REQUIRED` | 도면 후보를 사람이 확인해야 합니다. 확인 전에는 정상적인 대기 상태입니다. |
+| output 파일이 이미 있음 | 원본 결과를 덮어쓰지 않도록 새 출력 경로를 사용합니다. |
+| hash mismatch | PDF가 바뀌었거나 다른 parser 결과를 연결한 것입니다. 원본을 보존하고 다시 등록합니다. |
+| `ABSTAIN` | 근거·입력·규칙이 부족하거나 충돌해 자동으로 결론을 내리지 않은 상태입니다. 사람이 원인을 확인해야 합니다. |
 
-```json
-{
-  "attestation_assurance": "PROCESS_ATTESTATION",
-  "cryptographic_identity_verified": false
-}
-```
+## 안전 원칙
 
-실제 attestation에는 reviewer ID, timezone 포함 검토 시각, release candidate hash, packet hash와 모든 필수 checklist evidence가 포함되어야 한다. 현재 release policy에 expected reviewer ID가 설정된 경우 exact string mismatch는 실패한다.
+- 원본 PDF와 raw parser 결과를 덮어쓰지 않습니다.
+- 파일명만 보고 문서 종류나 법적 효력을 추정하지 않습니다.
+- parser 결과가 없는 참고문서의 내용을 임의로 만들어내지 않습니다.
+- 확인되지 않은 도면값을 계산·규칙 입력으로 사용하지 않습니다.
+- 기계 packet에 사람의 결정을 직접 삽입하지 않습니다.
+- 외부 API나 인터넷 검색 결과를 근거로 사용하지 않습니다.
 
-검증 명령:
+## 고급 작업
 
-```powershell
-evidence-review release validate-attestation `
-  --attestation releases/evidence-review-v1.0/human-attestation.json `
-  --candidate-hash <release-candidate-sha256> `
-  --packet-hash <final-review-packet-sha256>
-```
+처음 사용하는 사람은 위의 기본 흐름만 따라도 됩니다. 다음 작업은 담당 개발자·검토자가 상세 문서를 읽고 진행하세요.
 
-JSON 기록 보유 자체는 reviewer identity의 암호학적 증명이 아니다. 시스템은 공개키, 인증서 또는 계정 세션을 검증하지 않으며 release manifest의 `cryptographic_identity_verified`는 항상 `false`다. Attestation 누락, 형식 오류, reviewer policy 불일치, 오래된 candidate hash 또는 packet hash 불일치가 있으면 release는 `BLOCKED`로 유지된다.
+- [Source Batch v2 및 Parser Registry](docs/SOURCE_BATCH_V2.md)
+- [검토자 작업 절차](docs/REVIEWER_WORKFLOW.md)
+- [Codex 작업 절차](docs/CODEX_WORKFLOW.md)
+- [ChatGPT Web 작업 절차](docs/CHATGPT_WEB_WORKFLOW.md)
+- [오프라인 실행 경계](docs/OFFLINE_EXECUTION.md)
+- [Legacy document lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
+- [Track A 숫자 문법](docs/TRACK_A_NUMERIC_GRAMMAR.md)
 
-## 10. 최종 릴리스 ZIP 재검증
+### Legacy database migration
 
-Release builder는 process attestation을 검증하기 전에 최종 `codex-workspace.zip`과 `chatgpt-web-runtime.zip`을 다시 연다. `codex-workspace.zip`의 `bundle-manifest.json`과 `chatgpt-web-runtime.zip`의 `runtime-manifest.json`을 실제 member bytes와 비교한다.
-
-검증은 **without extracting** 방식으로 수행된다. 각 고유 `ZipInfo`를 직접 읽으며 다음 항목을 확인한다.
-
-- 최종 출력 디렉터리의 필수 파일 누락과 예상하지 않은 파일
-- manifest와 실제 ZIP member의 누락·추가·중복
-- 절대경로, `.`·`..`, 빈 경로 요소, 역슬래시, drive-prefixed 경로
-- Windows에서 충돌하는 case-fold collisions
-- manifest의 size와 실제 byte 수
-- manifest의 SHA-256과 실제 member hash
-
-결과는 `release-validation.json`의 `release_output`에 기록된다. 하나라도 불일치하면 `RELEASE_OUTPUT_VALIDATION_FAILED`가 추가되고, process attestation이 있더라도 release는 `BLOCKED` 상태를 유지한다.
-
-## 11. Legacy document lineage migration
-
-동일 PDF가 legacy document ID와 canonical document ID로 중복 등록된 evidence schema v2 database는 사람이 검토한 manifest를 사용해 copy-on-write로 정리한다.
+기존 evidence database를 별도 파일로 마이그레이션해야 하는 경우에만 사용합니다. 원본 DB는 수정하지 않습니다.
 
 ```powershell
 evidence-review evidence migrate-lineage `
@@ -364,51 +359,35 @@ evidence-review evidence migrate-lineage `
   --output migrated/evidence.sqlite
 ```
 
-`evidence migrate-lineage`는 source database hash, 명시적 revision mapping, page geometry, evidence payload, link, review flag와 retrieval counterpart가 모두 일치할 때만 legacy duplicate graph를 제거한다. 어떤 unresolved 항목도 부분 적용하지 않으며 원본 database를 수정하지 않는다.
+### 릴리스 검증
 
-상세 manifest 계약, output artifact, 종료 코드와 사후 검증 절차는 [LEGACY_LINEAGE_MIGRATION.md](docs/LEGACY_LINEAGE_MIGRATION.md)를 따른다. Alias registry는 historical lookup metadata일 뿐 신규 source-batch 또는 visual identity authority가 아니다.
-
-## 안전 경계
-
-- PDF 파일명이나 제목으로 문서 종류를 추정하지 않는다.
-- parser artifact가 없는 reference 내용을 만들어내지 않는다.
-- unknown parser를 다른 parser로 자동 처리하지 않는다.
-- parser adapter가 DB identity를 소유하지 않는다.
-- visual identity를 파일명이나 폴더명에서 추론하지 않는다.
-- parserless drawing을 자동 evidence로 취급하지 않는다.
-- 확인되지 않은 도면값을 Math/Rule Engine 입력으로 사용하지 않는다.
-- Track A가 새 숫자를 계산하거나 표기를 임의 정규화하지 않는다.
-- 사람의 결정은 기계 packet과 분리한다.
-
-## Legacy 호환
-
-다음은 기존 workspace와 artifact 이행을 위해서만 유지한다.
-
-- 내부 Python namespace `ansim_review`
-- 이전 CLI 별칭 `ansim-review`
-- source-batch version 1 reader
-- `ansim/*` 기존 review-run format
-- 번호 폴더 기반 legacy migration adapter
-- 기존 `ansim-v1.0` release artifact와 `ansim/human-acceptance` inspection reader
-
-Legacy acceptance는 이력 확인에만 사용하며 신규 릴리스를 승인할 수 없다. 신규 프로젝트는 위 legacy 구조를 기본 입력 방식으로 사용하지 않는다.
-
-## 개발 검증
+릴리스용 process attestation은 일반 사용자 작업이 아닙니다. 정확한 candidate hash와 packet hash를 확인한 named reviewer가 작성해야 합니다.
 
 ```powershell
+evidence-review release validate-attestation `
+  --attestation releases/evidence-review-v1.0/human-attestation.json `
+  --candidate-hash <release-candidate-sha256> `
+  --packet-hash <final-review-packet-sha256>
+```
+
+자세한 릴리스·오프라인·legacy 규칙은 위 문서를 기준으로 합니다.
+
+## 개발자 검증
+
+코드를 수정한 경우 저장소 루트에서 다음 검증을 실행합니다.
+
+```powershell
+evidence-review documentation validate `
+  --repository-root . `
+  --config documentation-integrity.json `
+  --output build/documentation-integrity-report.json
+
 pytest -v
 ruff check src tests
 mypy src
 python -m compileall -q src scripts web_runtime tests
 ```
 
-## 상세 문서
+## 주의할 상태
 
-- [Source Batch v2 및 Parser Registry](docs/SOURCE_BATCH_V2.md)
-- [Codex 작업 절차](docs/CODEX_WORKFLOW.md)
-- [ChatGPT Web 작업 절차](docs/CHATGPT_WEB_WORKFLOW.md)
-- [검토자 작업 절차](docs/REVIEWER_WORKFLOW.md)
-- [오프라인 실행 경계](docs/OFFLINE_EXECUTION.md)
-- [Legacy document lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
-- [Track A 숫자 문법](docs/TRACK_A_NUMERIC_GRAMMAR.md)
-- [Historical: 범용 PDF 및 hardening 설계](docs/superpowers/specs/2026-08-02-generic-pdf-and-hardening-design.md)
+최종 packet의 `human_decision`은 사람이 별도 기록하기 전까지 `null`이어야 합니다. `READY_FOR_HUMAN_REVIEW`가 표시되어도 원본 PDF와 모든 인용·계산·예외를 직접 확인한 뒤 별도 사람 결정을 기록해야 합니다.
