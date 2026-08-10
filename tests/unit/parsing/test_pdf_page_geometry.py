@@ -55,6 +55,21 @@ def test_invalid_cropbox_and_mediabox_fail_closed(tmp_path: Path) -> None:
         read_pdf_page_geometries(source)
 
 
+def test_malformed_page_tree_has_explicit_geometry_reason(tmp_path: Path) -> None:
+    from pypdf import PdfWriter
+
+    source = tmp_path / "malformed-tree.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=600.0, height=800.0)
+    pages = writer._pages.get_object()
+    del pages["/Kids"]
+    with source.open("wb") as stream:
+        writer.write(stream)
+
+    with pytest.raises(ValueError, match="PAGE_DIMENSIONS_UNAVAILABLE"):
+        read_pdf_page_geometries(source)
+
+
 def test_mixed_sizes_and_negative_rotation_are_normalized(tmp_path: Path) -> None:
     source = write_pdf_fixture(
         tmp_path / "mixed.pdf",
