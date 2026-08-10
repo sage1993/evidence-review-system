@@ -21,7 +21,7 @@ Confirm:
 Do not interpret similarly named values as interchangeable.
 
 - **Workflow state** reports processing progress, such as `PENDING_PARSER_OUTPUT`, `WAITING_TRACK_A`, `INPUT_CONFIRMATION_REQUIRED`, `BLOCKED`, or `READY_FOR_REVIEW`.
-- **Finalizer status** is only `READY_FOR_HUMAN_REVIEW` or `ABSTAIN`.
+- **Finalizer status** is only `READY_FOR_HUMAN_REVIEW` or `ABSTAIN`. `READY_FOR_HUMAN_REVIEW` means that the evidence packet is ready to inspect; it is not an approval. `ABSTAIN` requires its recorded reasons to remain visible for the reviewer.
 - **Rule status** is the result of one approved Rule-as-Code evaluation.
 - **Human decision** is a separate reviewer record and is never stored in the machine packet.
 
@@ -34,16 +34,20 @@ Open the run-specific `review.html` created by `review-run finalize`. Confirm th
 When using the localhost browser server, open the confirmation route first:
 
 ```text
-http://127.0.0.1:<port>/runs/<RUN-ID>/confirmation
+http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/confirmation
 ```
 
-The separate final review route is:
+The separate final review route is tokenized:
 
 ```text
-http://127.0.0.1:<port>/runs/<RUN-ID>/review
+http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
 ```
 
-The final route must remain unavailable until final packet and HTML artifacts exist. Verify that the browser never presents a final review screen while the run is waiting for drawing confirmation or Track A/Track B output.
+The matching packet, packet-hash, decision, and decision-status endpoints retain that same protected prefix: `/runs/<RUN-ID>/<TOKEN>/packet`, `/runs/<RUN-ID>/<TOKEN>/packet/hash`, `/runs/<RUN-ID>/<TOKEN>/decision`, and `/runs/<RUN-ID>/<TOKEN>/decision/status`. After a valid decision record is saved, the browser may project `REVIEW_COMPLETED`, but the machine packet remains unchanged with `human_decision: null`. The final route must remain unavailable until final packet and HTML artifacts exist. Verify that the browser never presents a final review screen while the run is waiting for drawing confirmation or Track A/Track B output.
+
+`review.html` can also be retained as an offline archival artifact and opened with `file:`. That mode cannot submit to the local decision endpoint. Use its separate **Download decision envelope** control if a handoff is needed; the envelope does not approve the packet and must be recorded through the protected workflow or the approved append-only process.
+
+Static CSS checks cover the declared desktop and print contracts for 1366x768, 1920x1080, and 3840x2160. They do not replace browser QA: validate the rendered workspace, citation overlays, and zoom behavior in the browser used for review.
 
 Review the matching run-specific `final-review-packet.json` and confirm:
 
@@ -80,6 +84,8 @@ Confirm that extractor candidates and reviewer-created annotations are visibly d
 ## Record the human decision separately
 
 Only after completing the review should the named reviewer create the separate append-only decision record. Never edit the machine packet to insert a human decision.
+
+In the protected browser workspace, submit the exact JSON fields `reviewer_id`, `reviewed_at`, `packet_hash`, `decision`, and `notes` to `POST /runs/<RUN-ID>/<TOKEN>/decision`. `reviewed_at` must be an ISO-8601 timestamp with timezone; `packet_hash` must match the displayed machine packet; and `decision` must be one of `SATISFIED`, `NOT_SATISFIED`, `CONDITIONAL`, or `ADDITIONAL_REVIEW_REQUIRED`. A successful request creates a new record in the run's `human-decisions/` directory. It cannot update the machine packet, finalizer status, or rendered HTML.
 
 `REVIEW_COMPLETED` is a display projection derived from a valid separate decision record. It is not a stored machine workflow state.
 

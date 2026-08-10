@@ -240,6 +240,6 @@ def build_parser() -> argparse.ArgumentParser:
     review_finalize.add_argument(
         "--open",
         action="store_true",
-        help="open the finalized review HTML in the default browser",
+        help="open the finalized review workspace through its protected loopback route",
     )
     return parser
