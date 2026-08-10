@@ -3,7 +3,20 @@
 
   const buttons = Array.from(document.querySelectorAll("[data-candidate-button]"));
   const geometries = Array.from(document.querySelectorAll(".candidate-geometry"));
+  const displayModeButtons = Array.from(
+    document.querySelectorAll("[data-display-mode]"),
+  );
+  const workspaceTabs = Array.from(
+    document.querySelectorAll('[role="tab"][data-workspace-tab]'),
+  );
+  const workspacePanes = Array.from(
+    document.querySelectorAll("[data-workspace-pane]"),
+  );
   const overlay = document.querySelector("[data-annotation-overlay]");
+  const drawingStage = document.querySelector("#drawingStage");
+  const selectedObject = document.querySelector("[data-selected-object]");
+  const selectedCoordinates = document.querySelector("[data-selected-coordinates]");
+  const selectedStatus = document.querySelector("[data-selected-status]");
   const detailId = document.querySelector("[data-detail-id]");
   const detailType = document.querySelector("[data-detail-type]");
   const detailOrigin = document.querySelector("[data-detail-origin]");
@@ -19,6 +32,8 @@
   const clearGeometry = document.querySelector("[data-clear-geometry]");
   const submitAction = document.querySelector("[data-submit-action]");
   const actionStatus = document.querySelector("[data-action-status]");
+  const openConfirmation = document.querySelector("[data-open-confirmation]");
+  const printWorkspace = document.querySelector("[data-print-workspace]");
 
   let selectedCandidateId = "";
   let draftDisplayPoints = [];
@@ -26,11 +41,67 @@
   let dragStart = null;
   let previewElement = null;
 
+  function getCalibrationLink() {
+    return document.querySelector("[data-calibration-link]");
+  }
+
   const coordinateSystem = overlay ? overlay.dataset.coordinateSystem || "" : "";
   const pageHeight = overlay ? Number(overlay.dataset.pageHeight || "0") : 0;
 
   function setStatus(message) {
     if (actionStatus) actionStatus.textContent = message;
+  }
+
+  function setDisplayMode(mode) {
+    if (!drawingStage) return;
+    drawingStage.classList.remove("mode-original", "mode-detection", "mode-compare");
+    drawingStage.classList.add(`mode-${mode}`);
+    for (const button of displayModeButtons) {
+      const active = button.dataset.displayMode === mode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+  }
+
+  function activateWorkspaceTab(name) {
+    for (const tab of workspaceTabs) {
+      const active = tab.dataset.workspaceTab === name;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      tab.tabIndex = active ? 0 : -1;
+    }
+    for (const pane of workspacePanes) {
+      pane.hidden = pane.dataset.workspacePane !== name;
+    }
+  }
+
+  function geometryDescription(candidateId) {
+    const geometry = geometries.find(
+      (item) => item.dataset.candidateId === candidateId,
+    );
+    if (!geometry) return "—";
+    const tag = geometry.tagName.toUpperCase();
+    if (tag === "CIRCLE") {
+      return `점 (${geometry.getAttribute("cx")}, ${geometry.getAttribute("cy")})`;
+    }
+    if (tag === "RECT") {
+      return `사각형 (${geometry.getAttribute("x")}, ${geometry.getAttribute("y")})`;
+    }
+    const geometryLabel = tag === "POLYLINE" ? "선" : "다각형";
+    return `${geometryLabel} ${geometry.getAttribute("points") || ""}`;
+  }
+
+  function updateCandidateMetrics(button) {
+    if (!button) return;
+    if (selectedObject) {
+      selectedObject.textContent = button.dataset.candidateTypeLabel || "—";
+    }
+    if (selectedCoordinates) {
+      selectedCoordinates.textContent = geometryDescription(button.dataset.candidateId || "");
+    }
+    if (selectedStatus) {
+      selectedStatus.textContent = button.dataset.candidateStatusLabel || "—";
+    }
   }
 
   function selectCandidate(candidateId) {
@@ -52,16 +123,17 @@
     );
     if (!selectedButton) return;
     if (detailId) detailId.textContent = selectedButton.dataset.candidateId || "";
-    if (detailType) detailType.textContent = selectedButton.dataset.candidateType || "";
-    if (detailOrigin) detailOrigin.textContent = selectedButton.dataset.candidateOrigin || "";
-    if (detailStatus) detailStatus.textContent = selectedButton.dataset.candidateStatus || "";
+    if (detailType) detailType.textContent = selectedButton.dataset.candidateTypeLabel || "";
+    if (detailOrigin) detailOrigin.textContent = selectedButton.dataset.candidateOriginLabel || "";
+    if (detailStatus) detailStatus.textContent = selectedButton.dataset.candidateStatusLabel || "";
     if (detailValue) detailValue.textContent = selectedButton.dataset.candidateValue || "";
+    updateCandidateMetrics(selectedButton);
   }
 
   function pointerPosition(event) {
-    if (!overlay) throw new Error("annotation overlay is unavailable");
+    if (!overlay) throw new Error("도면 주석 오버레이를 사용할 수 없습니다.");
     const matrix = overlay.getScreenCTM();
-    if (!matrix) throw new Error("annotation transform is unavailable");
+    if (!matrix) throw new Error("도면 좌표 변환을 사용할 수 없습니다.");
     const sourcePoint = overlay.createSVGPoint();
     sourcePoint.x = event.clientX;
     sourcePoint.y = event.clientY;
@@ -119,7 +191,7 @@
     element.setAttribute("height", String(Math.max(first.y, second.y) - top));
   }
 
-  function clearDraft(message = "Draft geometry cleared.") {
+  function clearDraft(message = "임시 형상을 지웠습니다.") {
     draftDisplayPoints = [];
     draftGeometry = null;
     dragStart = null;
@@ -132,7 +204,7 @@
     const tool = geometryTool.value;
     if (tool === "LINESTRING") {
       if (draftDisplayPoints.length < 2) {
-        setStatus("LINESTRING requires at least two points.");
+        setStatus("선에는 점이 두 개 이상 필요합니다.");
         return;
       }
       draftGeometry = {
@@ -141,12 +213,12 @@
         coordinates: draftDisplayPoints.map(canonicalPoint),
       };
       renderPath(draftDisplayPoints, false);
-      setStatus("LINESTRING geometry is ready.");
+      setStatus("선 형상을 확인할 준비가 됐습니다.");
       return;
     }
     if (tool === "POLYGON") {
       if (draftDisplayPoints.length < 3) {
-        setStatus("POLYGON requires at least three points.");
+        setStatus("다각형에는 점이 세 개 이상 필요합니다.");
         return;
       }
       const canonical = draftDisplayPoints.map(canonicalPoint);
@@ -157,7 +229,7 @@
         coordinates: canonical,
       };
       renderPath(draftDisplayPoints, true);
-      setStatus("POLYGON geometry is ready.");
+      setStatus("다각형 형상을 확인할 준비가 됐습니다.");
     }
   }
 
@@ -173,13 +245,14 @@
         coordinates: canonicalPoint(point),
       };
       renderPoint(point);
-      setStatus("POINT geometry is ready.");
+      setStatus("점 형상을 확인할 준비가 됐습니다.");
       return;
     }
     if (tool === "LINESTRING" || tool === "POLYGON") {
       draftDisplayPoints.push(point);
       renderPath(draftDisplayPoints, tool === "POLYGON");
-      setStatus(`${tool} point ${draftDisplayPoints.length} added.`);
+      const toolLabel = tool === "LINESTRING" ? "선" : "다각형";
+      setStatus(`${toolLabel}의 ${draftDisplayPoints.length}번째 점을 추가했습니다.`);
     }
   }
 
@@ -213,7 +286,7 @@
     };
     draftDisplayPoints = [dragStart, end];
     dragStart = null;
-    setStatus("BBOX geometry is ready.");
+    setStatus("사각형 형상을 확인할 준비가 됐습니다.");
   }
 
   function nullableValue(input) {
@@ -224,7 +297,7 @@
 
   function commonPayload(action, includeConfirmedValue) {
     if (!reviewer || reviewer.value.trim() === "") {
-      throw new Error("Reviewer ID is required.");
+      throw new Error("검토자 ID가 필요합니다.");
     }
     let value = null;
     let selectedUnit = null;
@@ -232,7 +305,7 @@
       value = nullableValue(confirmedValue);
       selectedUnit = nullableValue(unit);
       if ((value === null) !== (selectedUnit === null)) {
-        throw new Error("Confirmed value and unit must be entered together.");
+        throw new Error("확인 값과 단위를 함께 입력해야 합니다.");
       }
     }
     return {
@@ -246,7 +319,7 @@
 
   function existingActionPayload(action) {
     if (selectedCandidateId === "") {
-      throw new Error("Select a candidate first.");
+      throw new Error("후보를 먼저 선택하세요.");
     }
     return {
       ...commonPayload(action, action === "EDITED"),
@@ -257,13 +330,13 @@
 
   function manualCreatePayload() {
     if (!annotationId || annotationId.value.trim() === "") {
-      throw new Error("Annotation ID is required.");
+      throw new Error("주석 ID가 필요합니다.");
     }
     if (!candidateTypeInput || candidateTypeInput.value.trim() === "") {
-      throw new Error("Candidate type is required.");
+      throw new Error("후보 유형이 필요합니다.");
     }
     if (!draftGeometry) {
-      throw new Error("Create geometry before submitting.");
+      throw new Error("저장하기 전에 형상을 만드세요.");
     }
     return {
       ...commonPayload("CREATED", true),
@@ -277,7 +350,7 @@
   async function submitSelectedAction() {
     const selectedAction = document.querySelector("input[name=review-action]:checked");
     if (!selectedAction) {
-      setStatus("Select a reviewer action.");
+      setStatus("검토자 조치를 선택하세요.");
       return;
     }
     try {
@@ -292,15 +365,30 @@
       });
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result.error || "Action failed.");
+        throw new Error("작업에 실패했습니다.");
+      }
+      const calibrationLink = getCalibrationLink();
+      if (calibrationLink && result.confirmation && result.confirmation.artifact_id) {
+        const token = window.location.pathname.split("/").pop();
+        const candidate = encodeURIComponent(result.candidate?.artifact_id || selectedCandidateId);
+        const confirmation = encodeURIComponent(result.confirmation.artifact_id);
+        const query = new URLSearchParams();
+        query.set("candidate_id", candidate);
+        query.set(["confirmation", "id"].join("_"), confirmation);
+        calibrationLink.href = `${window.location.origin}/calibration/${token}?${query}`;
+        calibrationLink.hidden = false;
+        calibrationLink.removeAttribute("aria-disabled");
       }
       for (const radio of document.querySelectorAll("input[name=review-action]")) {
         radio.checked = false;
       }
       clearDraft("");
-      setStatus(`Saved confirmation ${result.confirmation.artifact_id}.`);
+      setStatus(`확인 기록을 저장했습니다. (${result.confirmation.artifact_id})`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Action failed.");
+      const message = error instanceof Error && /[가-힣]/.test(error.message)
+        ? error.message
+        : "작업에 실패했습니다. 입력과 서버 상태를 확인하세요.";
+      setStatus(message);
     }
   }
 
@@ -315,6 +403,23 @@
       selectCandidate(geometry.dataset.candidateId || "");
     });
   }
+  for (const button of displayModeButtons) {
+    button.addEventListener("click", () => {
+      setDisplayMode(button.dataset.displayMode || "detection");
+    });
+  }
+  for (const tab of workspaceTabs) {
+    tab.addEventListener("click", () => {
+      activateWorkspaceTab(tab.dataset.workspaceTab || "evidence");
+    });
+  }
+  if (openConfirmation) {
+    openConfirmation.addEventListener("click", () => {
+      activateWorkspaceTab("confirmation");
+      const reviewPanel = document.querySelector("#reviewer-action");
+      if (reviewPanel) reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
   if (overlay) {
     overlay.addEventListener("click", handleOverlayClick);
     overlay.addEventListener("pointerdown", handlePointerDown);
@@ -325,4 +430,5 @@
   if (clearGeometry) clearGeometry.addEventListener("click", () => clearDraft());
   if (geometryTool) geometryTool.addEventListener("change", () => clearDraft());
   if (submitAction) submitAction.addEventListener("click", submitSelectedAction);
+  if (printWorkspace) printWorkspace.addEventListener("click", () => window.print());
 })();
