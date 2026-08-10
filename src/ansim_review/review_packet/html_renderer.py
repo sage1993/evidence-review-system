@@ -11,6 +11,8 @@ from html import escape
 from pathlib import Path
 from typing import cast
 
+_GEOMETRY_TOLERANCE = 0.5
+
 
 @dataclass(frozen=True, slots=True)
 class _PageAsset:
@@ -136,6 +138,23 @@ def _verified_page_image(
     )
 
 
+def _verify_page_geometry(
+    citation: Mapping[str, object],
+    page_asset: _PageAsset,
+) -> None:
+    width = _positive_number(citation.get("page_width"), "citation.page_width")
+    height = _positive_number(citation.get("page_height"), "citation.page_height")
+    if (
+        abs(width - page_asset.pdf_width) > _GEOMETRY_TOLERANCE
+        or abs(height - page_asset.pdf_height) > _GEOMETRY_TOLERANCE
+    ):
+        raise ValueError(
+            "PAGE_RENDER_GEOMETRY_MISMATCH: "
+            f"citation={width}x{height} "
+            f"page_image={page_asset.pdf_width}x{page_asset.pdf_height}"
+        )
+
+
 def _citation_identity(citation: Mapping[str, object]) -> tuple[str, int, str]:
     return (
         str(citation.get("revision_id", "")),
@@ -147,7 +166,7 @@ def _citation_identity(citation: Mapping[str, object]) -> tuple[str, int, str]:
 def _page_assets(
     claims: Sequence[object], page_root: Path
 ) -> dict[tuple[str, int, str], tuple[str, _PageAsset]]:
-    """Read and verify each cited page once before rendering citations."""
+    """Read each cited page once and verify every citation against its geometry."""
     assets: dict[tuple[str, int, str], tuple[str, _PageAsset]] = {}
     for claim_value in claims:
         claim = _mapping(claim_value, "claim")
@@ -156,15 +175,17 @@ def _page_assets(
             identity = _citation_identity(citation)
             if identity not in assets:
                 revision_id, page_number, source_hash = identity
-                assets[identity] = (
-                    f"page-{len(assets) + 1}",
-                    _verified_page_image(
-                        page_root,
-                        revision_id,
-                        page_number,
-                        source_hash,
-                    ),
+                page_asset = _verified_page_image(
+                    page_root,
+                    revision_id,
+                    page_number,
+                    source_hash,
                 )
+                _verify_page_geometry(citation, page_asset)
+                assets[identity] = (f"page-{len(assets) + 1}", page_asset)
+            else:
+                _, page_asset = assets[identity]
+                _verify_page_geometry(citation, page_asset)
     return assets
 
 

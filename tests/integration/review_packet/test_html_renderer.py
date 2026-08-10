@@ -43,6 +43,8 @@ def _model() -> dict[str, object]:
                         "title": "제3조",
                         "quote": "정확한 <인용문>",
                         "evidence_type": "clause",
+                        "page_width": 120.0,
+                        "page_height": 200.0,
                     }
                 ],
             }
@@ -86,7 +88,12 @@ def _model() -> dict[str, object]:
     }
 
 
-def _write_page_assets(root: Path) -> bytes:
+def _write_page_assets(
+    root: Path,
+    *,
+    pdf_width: float = 120.0,
+    pdf_height: float = 200.0,
+) -> bytes:
     images = root / "REV1"
     images.mkdir(parents=True)
     page = images / "page-0003.png"
@@ -98,8 +105,8 @@ def _write_page_assets(root: Path) -> bytes:
         "revision_id": "REV1",
         "page_number": 3,
         "source_hash": "a" * 64,
-        "pdf_width": 120.0,
-        "pdf_height": 200.0,
+        "pdf_width": pdf_width,
+        "pdf_height": pdf_height,
         "image_sha256": hashlib.sha256(page_bytes).hexdigest(),
     }
     (images / "page-0003.json").write_text(
@@ -147,6 +154,66 @@ def test_self_contained_html_has_traceability_overlay_and_blank_decision(
     assert '<svg viewBox="0 0 120.0 200.0"' in html
     assert '<rect x="10.0" y="160.0" width="100.0" height="20.0">' in html
     assert "@page" in html and "size: A4" in html
+
+
+def test_page_image_geometry_mismatch_is_rejected(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages", pdf_width=121.0, pdf_height=200.0)
+
+    with pytest.raises(ValueError, match="PAGE_RENDER_GEOMETRY_MISMATCH"):
+        render_review_html(_model(), tmp_path / "pages")
+
+
+def test_a3_landscape_overlay_uses_canonical_geometry(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages", pdf_width=1191.0, pdf_height=842.0)
+    model = _model()
+    claims = model["claims"]
+    assert isinstance(claims, list)
+    claim = claims[0]
+    assert isinstance(claim, dict)
+    citations = claim["citations"]
+    assert isinstance(citations, list)
+    citation = citations[0]
+    assert isinstance(citation, dict)
+    citation["page_width"] = 1191.0
+    citation["page_height"] = 842.0
+    citation["bbox"] = [100.0, 100.0, 1100.0, 700.0]
+
+    html = render_review_html(model, tmp_path / "pages")
+
+    assert '<svg viewBox="0 0 1191.0 842.0"' in html
+    assert '<rect x="100.0" y="142.0" width="1000.0" height="600.0">' in html
+
+
+def test_page_geometry_within_half_point_is_accepted(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages", pdf_width=120.4, pdf_height=199.6)
+
+    html = render_review_html(_model(), tmp_path / "pages")
+
+    assert '<svg viewBox="0 0 120.4 199.6"' in html
+
+
+def test_cached_page_rejects_inconsistent_second_citation_geometry(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    model = _model()
+    claims = model["claims"]
+    assert isinstance(claims, list)
+    first_claim = claims[0]
+    assert isinstance(first_claim, dict)
+    first_citation = first_claim["citations"][0]
+    second_claim = dict(first_claim)
+    second_claim["claim_id"] = "C2"
+    second_claim["citations"] = [
+        {
+            **first_citation,
+            "citation_id": "CIT-E2",
+            "evidence_id": "E2",
+            "page_width": 130.0,
+        }
+    ]
+    model["claims"] = [first_claim, second_claim]
+
+    with pytest.raises(ValueError, match="PAGE_RENDER_GEOMETRY_MISMATCH"):
+        render_review_html(model, tmp_path / "pages")
 
 
 def test_review_workspace_embeds_shared_page_once_and_keeps_provenance(
@@ -480,8 +547,6 @@ def test_complete_domain_projection_is_item_scoped_across_all_detail_domains(
     assert "AUDIT1" in panels["ITEM-C1"]
     assert "MISSING_REQUIRED_INPUT" in panels["ITEM-C1"]
     assert "SOURCE_CONFLICT" in panels["ITEM-C1"]
-    # The audit record itself explicitly carries ITEM-C1 ownership. The same
-    # canonical string is also visible separately as a packet-global abstention reason.
     assert "TRACK_B_REJECTED" in panels["ITEM-C1"]
     assert "MISSING_REQUIRED_INPUT" not in panels["ITEM-C2"]
     assert "SOURCE_CONFLICT" not in panels["ITEM-C2"]
