@@ -112,11 +112,11 @@ CropBox와 MediaBox의 존재 여부보다 실제 계산 가능한 geometry 여�
 - 허용 값은 정규화된 `0`, `90`, `180`, `270`이다.
 - `PageDimensions.width/height` 자체는 rotation으로 swap하지 않는다.
 - OpenDataLoader의 현재 bbox contract는 `PDF_BOTTOM_LEFT`이므로 parser bbox는 이미 canonical PDF user-space 좌표로 취급하며 이 이슈에서 임의 inverse rotation을 추가하지 않는다.
-- page-image producer/renderer는 canonical PDF width/height와 화면 이미지 orientation의 관계를 유지해야 하며 Review Workspace에서는 page-image metadata와 DB geometry를 교차 검증한다.
+- page-image metadata의 `pdf_width`/`pdf_height`도 같은 unrotated effective-box dimensions를 의미해야 한다.
 
 따라서 `landscape`는 width > height인 실제 page box로 처리하며, landscape 여부를 A4 portrait fallback 또는 `/Rotate` 추정으로 만들지 않는다.
 
-비정상 `/Rotate` 값이 canonical orientation을 결정할 수 없게 만드는 경우에는 geometry를 추정하지 않고 `PAGE_ROTATION_INVALID`로 실패한다.
+비정상 `/Rotate` 값은 `PAGE_ROTATION_INVALID`로 실패한다. 이 이슈에서 rotation 기반 heuristic coordinate 변환은 추가하지 않는다.
 
 ## 5. PDF Geometry Resolver
 
@@ -126,7 +126,7 @@ CropBox와 MediaBox의 존재 여부보다 실제 계산 가능한 geometry 여�
 
 > 원본 PDF를 읽어 페이지별 검증된 canonical geometry를 결정한다.
 
-권장 데이터 모델:
+데이터 모델은 다음으로 고정한다.
 
 ```text
 PdfPageGeometry
@@ -139,11 +139,11 @@ PdfPageGeometry
 - rotation: int
 ```
 
-`origin_x`/`origin_y`는 향후 absolute PDF user-space 좌표와 page-local 좌표 변환 검증에 사용할 수 있도록 resolver 내부 결과에 보존한다. 현재 `PageDimensions`와 evidence DB에는 width/height만 전달한다.
+`origin_x`/`origin_y`는 absolute PDF user-space 좌표와 page-local 좌표를 구분할 수 있도록 resolver 결과에 보존한다. 현재 `PageDimensions`와 evidence DB에는 width/height만 전달한다.
 
 Resolver는 PDF당 `PdfReader`를 한 번만 생성하고 모든 page geometry를 한 번에 읽는다. 페이지마다 파일을 다시 열지 않는다.
 
-예상 public boundary:
+Public boundary는 다음으로 고정한다.
 
 ```text
 read_pdf_page_geometries(source_path: Path) -> tuple[PdfPageGeometry, ...]
@@ -237,7 +237,7 @@ A4 상수와 silent fallback은 완전히 삭제한다.
 
 ## 10. Error / Reason Code 계약
 
-최소 reason code는 다음과 같이 고정한다.
+reason code는 다음으로 고정한다.
 
 | Code | 의미 | 처리 |
 |---|---|---|
@@ -252,7 +252,7 @@ A4 상수와 silent fallback은 완전히 삭제한다.
 
 예외 메시지는 기존 저장소 패턴과 동일하게 reason code를 문자열에 포함하여 CLI와 테스트에서 deterministic하게 확인할 수 있게 한다.
 
-이 이슈에서는 source state enum을 추가하지 않는다. geometry 오류는 parser-ready source를 정상 ingest할 수 없는 상태이므로 현재 importer boundary에서 명시적 실패로 처리한다. 향후 CLI에서 구조화된 source report가 필요하면 별도 이슈에서 error-to-readiness projection을 추가할 수 있다.
+이 이슈에서는 source state enum을 추가하지 않는다. geometry 오류는 parser-ready source를 정상 ingest할 수 없는 상태이므로 현재 importer boundary에서 명시적 실패로 처리한다.
 
 ## 11. Evidence DB 계약
 
@@ -279,38 +279,42 @@ Issue #63 해결 후에는 renderer가 page-image metadata만 신뢰하지 않�
 
 ### 12.1 Builder 변경
 
-`review_packet/builder.py`의 citation resolution에서 citation이 속한 `pages` row의 width/height를 함께 조회한다.
+`review_packet/builder.py`의 `_resolve_citation()` query를 `retrieval_records.page_id = pages.id`로 join하여 `pages.width`, `pages.height`를 함께 읽는다.
 
-view model의 citation 또는 page asset identity에 다음 canonical geometry를 포함한다.
+citation view-model record에 다음 두 필드를 추가한다.
 
 ```text
 page_width
 page_height
 ```
 
-같은 revision/page를 공유하는 citations는 같은 geometry를 가져야 한다.
+이 값은 retrieval record에 중복 저장하지 않고 기존 `pages` table을 canonical source로 사용한다.
+
+같은 `revision_id + page_number`를 공유하는 citations는 동일한 `page_width/page_height`를 가져야 한다.
 
 ### 12.2 Renderer 변경
 
-`html_renderer.py`에서 verified page-image metadata를 읽은 뒤 다음을 검사한다.
+`html_renderer.py`에서 verified page-image metadata를 읽은 뒤 citation의 canonical geometry와 다음 조건으로 비교한다.
 
 ```text
-abs(db_page_width  - page_image.pdf_width)  <= 0.5
-abs(db_page_height - page_image.pdf_height) <= 0.5
+abs(citation.page_width  - page_image.pdf_width)  <= 0.5
+abs(citation.page_height - page_image.pdf_height) <= 0.5
 ```
+
+한 page에 여러 citation이 있으면 `_page_assets()`가 해당 page asset을 한 번 읽는 기존 구조를 유지하고, 같은 page identity에 연결된 모든 citation geometry가 동일한지 먼저 검증한다.
 
 불일치하면 `PAGE_RENDER_GEOMETRY_MISMATCH`로 HTML rendering을 중단한다.
 
-일치한 경우에만 해당 geometry로:
+일치한 경우에만 해당 geometry로 다음을 수행한다.
 
 - bbox bounds 검사
 - SVG `viewBox`
 - bottom-left -> SVG y 변환
-- overlay rect
+- overlay rect 생성
 
-을 생성한다.
+이 검사는 ingestion 후 page-image cache 또는 metadata가 잘못된 경우에도 overlay가 정상처럼 보이는 것을 막는 두 번째 방어선이다.
 
-이 검사는 ingestion 후 page-image generation 또는 cache가 잘못된 경우에도 overlay가 정상처럼 보이는 것을 막는 두 번째 방어선이다.
+page-image producer 자체는 이 이슈에서 리팩터링하지 않는다. 기존 producer가 `pdf_width`/`pdf_height`에 canonical unrotated effective-box dimensions를 기록하지 않는 것이 테스트로 확인될 경우에만 동일 계약을 만족하도록 최소 수정한다.
 
 ## 13. 테스트 전략
 
@@ -318,17 +322,15 @@ abs(db_page_height - page_image.pdf_height) <= 0.5
 
 ### 13.1 PDF fixture factory
 
-테스트에서 임의 byte string을 "PDF"처럼 사용하는 ingest fixture를 geometry 검증 경로에 사용하지 않는다.
-
-`pypdf.PdfWriter`를 사용하여 실제 유효한 최소 PDF를 생성하는 helper를 추가한다.
+`tests/helpers/pdf_fixtures.py`를 신규 생성하고, geometry 검증 경로에서 사용하는 PDF는 모두 `pypdf.PdfWriter` 기반의 실제 유효 PDF로 만든다.
 
 지원 fixture:
 
-- A4 portrait: 약 `595 × 842`
+- A4 portrait: `595 × 842`
 - A4 landscape: `842 × 595`
-- A3 portrait: 약 `842 × 1191`
-- A3 landscape: 약 `1191 × 842`
-- custom size: 예 `1000 × 700`
+- A3 portrait: `842 × 1191`
+- A3 landscape: `1191 × 842`
+- custom size: `1000 × 700`
 - CropBox가 MediaBox보다 작은 page
 - non-zero CropBox origin
 - multi-page mixed sizes
@@ -362,7 +364,7 @@ abs(db_page_height - page_image.pdf_height) <= 0.5
 
 ### 13.4 Unit tests — bbox regression
 
-`tests/unit/parsing/test_coordinate_normalization.py` 및 신규 ODL integration-style unit test에서 검증한다.
+`tests/unit/parsing/test_coordinate_normalization.py`와 ODL adapter tests에서 검증한다.
 
 - 기존 golden bbox 좌표 유지
 - A3 landscape bbox가 A4 bounds로 잘못 reject되지 않음
@@ -371,9 +373,9 @@ abs(db_page_height - page_image.pdf_height) <= 0.5
 
 ### 13.5 Source batch importer tests
 
-현재 `test_source_batch_importer.py`의 실제 ingest path에 사용되는 synthetic invalid PDF bytes는 valid PDF fixture로 교체한다.
+`tests/unit/parsing/test_source_batch_importer.py`의 실제 ingest path에서 사용하는 synthetic invalid PDF bytes는 `tests/helpers/pdf_fixtures.py`의 valid PDF로 교체한다.
 
-단, PDF 내용을 열지 않는 prepare/hash/dedup 전용 테스트는 기존 arbitrary bytes를 유지할 수 있다. 테스트 목적과 geometry parsing 의존성을 불필요하게 결합하지 않는다.
+PDF 내용을 열지 않는 prepare/hash/dedup 전용 테스트는 기존 arbitrary bytes를 유지한다. 테스트 목적과 geometry parsing 의존성을 불필요하게 결합하지 않는다.
 
 검증 항목:
 
@@ -386,7 +388,7 @@ abs(db_page_height - page_image.pdf_height) <= 0.5
 
 `tests/integration/review_packet/test_html_renderer.py`를 확장한다.
 
-- DB/citation canonical geometry와 page-image metadata 일치 시 기존 overlay 유지
+- canonical geometry와 page-image metadata 일치 시 기존 overlay 유지
 - A3 landscape `viewBox`와 rect 정확성
 - custom-size `viewBox` 정확성
 - DB/page-image mismatch 시 `PAGE_RENDER_GEOMETRY_MISMATCH`
@@ -411,8 +413,8 @@ abs(db_page_height - page_image.pdf_height) <= 0.5
 ### 신규
 
 - `src/ansim_review/parsing/pdf_page_geometry.py`
+- `tests/helpers/pdf_fixtures.py`
 - `tests/unit/parsing/test_pdf_page_geometry.py`
-- 필요 시 `tests/helpers/pdf_fixtures.py`
 
 ### 수정
 
@@ -425,7 +427,7 @@ abs(db_page_height - page_image.pdf_height) <= 0.5
 - `tests/unit/parsing/test_source_batch_importer.py`
 - `tests/integration/review_packet/test_html_renderer.py`
 
-실제 구현 중 page-image metadata producer가 별도 모듈에 있는 것이 확인되면 그 모듈은 동일 geometry contract를 적용하는 범위 안에서만 수정한다. renderer 또는 parser와 무관한 리팩터링은 포함하지 않는다.
+page-image producer는 기존 metadata contract가 canonical geometry를 위반하는 테스트가 발생한 경우에만 최소 수정 범위에 추가한다. 그 외 renderer 또는 parser와 무관한 리팩터링은 포함하지 않는다.
 
 ## 16. 구현 단계 경계
 
