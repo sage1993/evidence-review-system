@@ -218,6 +218,8 @@ def _source_records(
                 source_path=source.source_path,
                 parser_artifact_path=source.parser_path,
                 options=source.parser_options,
+                binding_authority="SOURCE_BATCH_MANIFEST",
+                source_sha256=source.source_sha256,
             ),
         )
         if sha256_file(source.parser_path) != contribution.parser_artifact_sha256:
