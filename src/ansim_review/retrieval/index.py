@@ -198,11 +198,24 @@ def require_fresh_index(connection: sqlite3.Connection) -> str:
     return evidence_hash
 
 
-def _match_expression(query: str) -> str:
+def _normalized_query(query: str) -> str:
     normalized = unicodedata.normalize("NFC", " ".join(query.split()))
     if not normalized:
         raise ValueError("query must not be empty")
-    return '"' + normalized.replace('"', '""') + '"'
+    return normalized
+
+
+def _quoted_literal(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _phrase_match_expression(query: str) -> str:
+    return _quoted_literal(_normalized_query(query))
+
+
+def _token_and_match_expression(query: str) -> str:
+    tokens = _normalized_query(query).split(" ")
+    return " AND ".join(_quoted_literal(token) for token in tokens)
 
 
 def _indexed_bbox(value: str) -> BBox | None:
@@ -219,7 +232,12 @@ def _indexed_bbox(value: str) -> BBox | None:
     return BBox(*(float(item) for item in payload))
 
 
-def _row_to_hit(row: sqlite3.Row, rank_index: int, query: str) -> RetrievalHit:
+def _row_to_hit(
+    row: sqlite3.Row,
+    rank_index: int,
+    query: str,
+    channel: str,
+) -> RetrievalHit:
     bbox = _indexed_bbox(row["bbox_json"])
     score = Decimal(1) / Decimal(rank_index + 1)
     return RetrievalHit(
@@ -232,16 +250,18 @@ def _row_to_hit(row: sqlite3.Row, rank_index: int, query: str) -> RetrievalHit:
         source_hash=row["source_hash"],
         title=row["title"],
         text=row["normalized_text"] or row["raw_text"],
-        channel_scores=(ChannelScore("fts", score, query),),
+        channel_scores=(ChannelScore(channel, score, query),),
     )
 
 
-def search_fts(
+def _search_fts(
     connection: sqlite3.Connection,
     query: str,
-    limit: int = 20,
+    *,
+    match_expression: str,
+    channel: str,
+    limit: int,
 ) -> tuple[RetrievalHit, ...]:
-    """Return deterministic page-resolved lexical hits."""
     require_fresh_index(connection)
     if limit < 1:
         return ()
@@ -254,11 +274,51 @@ def search_fts(
         ORDER BY bm25_rank ASC, rr.evidence_id ASC
         LIMIT ?
         """,
-        (_match_expression(query), limit),
+        (match_expression, limit),
     ).fetchall()
     return tuple(
-        _row_to_hit(row, index, query) for index, row in enumerate(rows)
+        _row_to_hit(row, index, query, channel)
+        for index, row in enumerate(rows)
     )
+
+
+def search_fts_phrase(
+    connection: sqlite3.Connection,
+    query: str,
+    limit: int = 20,
+) -> tuple[RetrievalHit, ...]:
+    """Return exact-phrase lexical hits for precision-sensitive matching."""
+    return _search_fts(
+        connection,
+        query,
+        match_expression=_phrase_match_expression(query),
+        channel="fts_phrase",
+        limit=limit,
+    )
+
+
+def search_fts_token_and(
+    connection: sqlite3.Connection,
+    query: str,
+    limit: int = 20,
+) -> tuple[RetrievalHit, ...]:
+    """Return order-insensitive hits requiring every whitespace-delimited token."""
+    return _search_fts(
+        connection,
+        query,
+        match_expression=_token_and_match_expression(query),
+        channel="fts_token_and",
+        limit=limit,
+    )
+
+
+def search_fts(
+    connection: sqlite3.Connection,
+    query: str,
+    limit: int = 20,
+) -> tuple[RetrievalHit, ...]:
+    """Compatibility wrapper for the historical exact-phrase FTS behavior."""
+    return search_fts_phrase(connection, query, limit)
 
 
 def load_indexed_hit(
