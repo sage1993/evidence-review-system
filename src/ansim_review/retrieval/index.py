@@ -92,12 +92,11 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
         JOIN pages p ON p.id = t.page_id
         JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
-        WHERE t.bbox_json IS NOT NULL
         ORDER BY t.id
         """
     ):
-        bbox = _bbox(row[5])
-        if bbox is None:
+        bbox_json = _bbox_json(row[5])
+        if bbox_json is None:
             continue
         rows.append(
             (
@@ -107,7 +106,7 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[2],
                 row[3],
                 row[4],
-                dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
+                bbox_json,
                 row[6],
                 _nfc(f"{row[7]} 표 {row[0]}"),
                 _nfc(row[8]),
@@ -122,12 +121,11 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
         JOIN pages p ON p.id = v.page_id
         JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
-        WHERE v.bbox_json IS NOT NULL
         ORDER BY v.id
         """
     ):
-        bbox = _bbox(row[5])
-        if bbox is None:
+        bbox_json = _bbox_json(row[5])
+        if bbox_json is None:
             continue
         text = _nfc(f"{row[8]} {row[9]}")
         rows.append(
@@ -138,7 +136,7 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[2],
                 row[3],
                 row[4],
-                dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
+                bbox_json,
                 row[6],
                 _nfc(f"{row[7]} {row[8]}"),
                 text,
