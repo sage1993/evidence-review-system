@@ -192,22 +192,28 @@ def prepare_source_batch(
 
 def _parser_context(source: PreparedSource) -> ParserContext:
     if source.parser_path is None:
-        raise PendingParserOutputError(f"PENDING_PARSER_OUTPUT: {source.source_path.name}")
+        raise PendingParserOutputError(
+            f"PENDING_PARSER_OUTPUT: {source.source_path.name}"
+        )
     options = dict(source.parser_options)
     bound_source_sha256 = options.pop(_PARSER_SOURCE_SHA256_OPTION, None)
-    if bound_source_sha256 is not None:
-        if not isinstance(bound_source_sha256, str) or _SHA256.fullmatch(bound_source_sha256) is None:
-            raise ValueError(
-                "PARSER_SOURCE_HASH_INVALID: parser.options.source_sha256 must be a lowercase SHA-256 digest"
-            )
-        binding_authority = "SOURCE_BATCH_MANIFEST"
-    else:
-        binding_authority = "DIRECT"
+    if bound_source_sha256 is not None and (
+        not isinstance(bound_source_sha256, str)
+        or _SHA256.fullmatch(bound_source_sha256) is None
+    ):
+        raise ValueError(
+            "PARSER_SOURCE_HASH_INVALID: "
+            "parser.options.source_sha256 must be a lowercase SHA-256 digest"
+        )
     return ParserContext(
         source_path=source.source_path,
         parser_artifact_path=source.parser_path,
         options=options,
-        binding_authority=binding_authority,
+        binding_authority=(
+            "SOURCE_BATCH_MANIFEST"
+            if bound_source_sha256 is not None
+            else "DIRECT"
+        ),
         source_sha256=bound_source_sha256,
     )
 
