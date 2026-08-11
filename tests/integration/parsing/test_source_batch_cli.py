@@ -8,6 +8,7 @@ import pytest
 
 from ansim_review import cli
 from ansim_review.canonical_json import dump_bytes
+from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 
 def _manifest(path: Path) -> None:
@@ -142,3 +143,76 @@ def test_source_batch_ingest_routes_and_outputs_generic_status(
     assert document["output_db"] == str(output)
     assert document["sources"][0]["document_id"] == "DOC-ABC"
     assert document["sources"][0]["state"] == "READY_TO_EVALUATE"
+
+
+def test_source_batch_ingest_reports_parser_page_out_of_range(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "batch"
+    root.mkdir()
+    source = write_pdf_fixture(
+        root / "inputs" / "original" / "policy.pdf",
+        page_sizes=((600.0, 800.0),),
+    )
+    parser = root / "parser" / "policy.json"
+    parser.parent.mkdir(parents=True, exist_ok=True)
+    parser.write_text(
+        json.dumps(
+            {
+                "file name": source.name,
+                "number of pages": 1,
+                "kids": [
+                    {
+                        "type": "paragraph",
+                        "page number": 2,
+                        "content": "out of range",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "source-batch.json"
+    manifest.write_bytes(
+        dump_bytes(
+            {
+                "format": "evidence-review/source-batch",
+                "version": 2,
+                "sources": [
+                    {
+                        "source_path": "inputs/original/policy.pdf",
+                        "role": "REFERENCE_DOCUMENT",
+                        "document_id": None,
+                        "display_title": None,
+                        "parser": {
+                            "kind": "OPENDATALOADER_JSON",
+                            "artifact_path": "parser/policy.json",
+                            "options": {},
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    output = tmp_path / "evidence" / "evidence.sqlite"
+
+    exit_code = cli.main(
+        [
+            "source-batch",
+            "ingest",
+            "--root",
+            str(root),
+            "--manifest",
+            str(manifest),
+            "--output",
+            str(output),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == ""
+    assert (
+        "PARSER_ELEMENT_PAGE_OUT_OF_RANGE: page=2 page_count=1" in captured.err
+    )
