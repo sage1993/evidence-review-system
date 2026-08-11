@@ -63,6 +63,55 @@ def _insert_element(
     connection.commit()
 
 
+def _insert_table(
+    connection: sqlite3.Connection,
+    *,
+    evidence_id: str,
+    text: str,
+    bbox: list[float] | None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO tables(id, page_id, bbox_json, raw_json, normalized_json)
+        VALUES(?, ?, ?, ?, ?)
+        """,
+        (
+            evidence_id,
+            "PAGE1",
+            None if bbox is None else dumps(bbox),
+            dumps({"text": text}),
+            dumps({"text": text}),
+        ),
+    )
+    connection.commit()
+
+
+def _insert_visual(
+    connection: sqlite3.Connection,
+    *,
+    evidence_id: str,
+    kind: str,
+    bbox: list[float] | None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO visuals(
+            id, page_id, kind, relative_path, sha256, bbox_json, duplicate_group
+        ) VALUES(?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            evidence_id,
+            "PAGE1",
+            kind,
+            f"visuals/{evidence_id}.png",
+            "d" * 64,
+            None if bbox is None else dumps(bbox),
+            f"group-{evidence_id}",
+        ),
+    )
+    connection.commit()
+
+
 def test_bboxless_element_is_lexically_retrievable() -> None:
     connection = _connection()
     try:
@@ -78,6 +127,46 @@ def test_bboxless_element_is_lexically_retrievable() -> None:
 
         assert [hit.evidence_id for hit in hits] == ["E-PAGE"]
         assert hits[0].page_number == 1
+        assert hits[0].bbox is None
+    finally:
+        connection.close()
+
+
+def test_bboxless_table_is_lexically_retrievable() -> None:
+    connection = _connection()
+    try:
+        _insert_table(
+            connection,
+            evidence_id="T-PAGE",
+            text="bboxlesstable",
+            bbox=None,
+        )
+        build_fts_index(connection)
+
+        hits = search_fts(connection, "bboxlesstable")
+
+        assert [hit.evidence_id for hit in hits] == ["T-PAGE"]
+        assert hits[0].evidence_type == "table"
+        assert hits[0].bbox is None
+    finally:
+        connection.close()
+
+
+def test_bboxless_visual_is_lexically_retrievable() -> None:
+    connection = _connection()
+    try:
+        _insert_visual(
+            connection,
+            evidence_id="V-PAGE",
+            kind="bboxlessvisual",
+            bbox=None,
+        )
+        build_fts_index(connection)
+
+        hits = search_fts(connection, "bboxlessvisual")
+
+        assert [hit.evidence_id for hit in hits] == ["V-PAGE"]
+        assert hits[0].evidence_type == "visual"
         assert hits[0].bbox is None
     finally:
         connection.close()
