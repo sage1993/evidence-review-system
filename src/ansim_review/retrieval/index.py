@@ -228,7 +228,7 @@ def _row_to_hit(row: sqlite3.Row, rank_index: int, query: str) -> RetrievalHit:
         document_id=row["document_id"],
         revision_id=row["revision_id"],
         page_number=row["page_number"],
-        bbox=bbox,  # type: ignore[arg-type]
+        bbox=bbox,
         source_hash=row["source_hash"],
         title=row["title"],
         text=row["normalized_text"] or row["raw_text"],
@@ -280,7 +280,7 @@ def load_indexed_hit(
         document_id=row["document_id"],
         revision_id=row["revision_id"],
         page_number=row["page_number"],
-        bbox=_indexed_bbox(row["bbox_json"]),  # type: ignore[arg-type]
+        bbox=_indexed_bbox(row["bbox_json"]),
         source_hash=row["source_hash"],
         title=row["title"],
         text=row["normalized_text"] or row["raw_text"],
