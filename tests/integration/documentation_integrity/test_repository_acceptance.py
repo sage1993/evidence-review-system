@@ -23,7 +23,8 @@ def _copy_documentation_scope(destination: Path) -> None:
 
 
 def _runtime_dependency_names() -> tuple[str, ...]:
-    payload = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    pyproject = (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    payload = tomllib.loads(pyproject)
     requirements = payload["project"].get("dependencies", [])
     names: list[str] = []
     for requirement in requirements:
@@ -46,7 +47,8 @@ def test_readme_documents_each_runtime_python_dependency() -> None:
     readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8").casefold()
 
     for dependency in _runtime_dependency_names():
-        assert dependency in readme, f"README does not document runtime dependency: {dependency}"
+        message = f"README does not document runtime dependency: {dependency}"
+        assert dependency in readme, message
     assert "외부 python 의존성이 없다" not in readme
 
 
