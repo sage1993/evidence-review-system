@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from ansim_review.canonical_json import dumps
+from ansim_review.retrieval.bundle import build_evidence_bundle
 from ansim_review.retrieval.fusion import fusion_document
 from ansim_review.retrieval.index import build_fts_index
 from ansim_review.retrieval.structured import retrieve_structured
@@ -77,5 +78,31 @@ def test_fusion_document_marks_page_only_without_fabricating_bbox() -> None:
 
         assert payload["bbox"] is None
         assert payload["citation_quality"] == "PAGE_ONLY"
+    finally:
+        connection.close()
+
+
+def test_bundle_keeps_page_only_hit_and_exposes_reason_code() -> None:
+    connection = _page_only_connection()
+    try:
+        payload = build_evidence_bundle(
+            connection,
+            {
+                "question": "pageonlystructured",
+                "expansions": [],
+                "synonym_manifest": {},
+                "filters": {"evidence_id": "E-PAGE"},
+                "clause_ids": [],
+                "seed_ids": [],
+                "graph_depth": 1,
+                "limit": 10,
+            },
+        )
+
+        hit = payload["hits"][0]
+        assert hit["evidence_id"] == "E-PAGE"
+        assert hit["citation_quality"] == "PAGE_ONLY"
+        assert hit["citation"] is None
+        assert hit["citation_unavailable_reason"] == "BBOX_UNAVAILABLE"
     finally:
         connection.close()
