@@ -21,7 +21,9 @@
       "parser": {
         "kind": "OPENDATALOADER_JSON",
         "artifact_path": "inputs/parser/reference.json",
-        "options": {}
+        "options": {
+          "source_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
       }
     },
     {
@@ -37,6 +39,19 @@
 
 `source_path`와 `artifact_path`는 batch root 아래의 안전한 POSIX 상대경로여야 한다. 절대경로, `..`, Windows drive prefix, backslash는 거부한다.
 
+### Parser source binding과 파일명 변경
+
+`OPENDATALOADER_JSON`의 `file name`은 provenance 보조 metadata이며 source identity 자체가 아니다. Source identity는 원본 PDF SHA-256과 명시적 `document_id`를 기준으로 한다.
+
+파일명을 변경한 동일 PDF에 기존 parser artifact를 재사용하려면 **parser를 생성한 시점의 원본 PDF SHA-256**을 `parser.options.source_sha256`에 기록해야 한다.
+
+- 현재 PDF SHA-256과 `parser.options.source_sha256`이 같으면 parser JSON의 `file name`이 현재 basename과 달라도 허용한다.
+- 두 SHA-256이 다르면 `PARSER_SOURCE_HASH_MISMATCH`로 거부한다.
+- `source_sha256` binding이 없는 기존 manifest는 parser JSON의 `file name`과 현재 PDF basename이 다를 때 `PARSER_SOURCE_FILENAME_MISMATCH`로 계속 fail-closed 한다.
+- `source_sha256`은 parser adapter에 전달하는 일반 option이 아니라 source-batch가 소비하는 binding metadata다.
+
+따라서 rename tolerance는 filename 검증을 단순 제거하는 방식이 아니라, parser 생성 시점에 저장한 source hash가 현재 source bytes와 동일할 때만 활성화된다.
+
 ## Version 1 compatibility
 
 Version 1은 기존 `OPENDATALOADER_JSON` manifest를 읽기 위한 compatibility input이다.
@@ -45,6 +60,7 @@ Version 1은 기존 `OPENDATALOADER_JSON` manifest를 읽기 위한 compatibilit
 - version 1에는 parser `options`가 없다.
 - decoder는 version 1을 내부 version 2 model로 변환한다.
 - canonical writer는 version 1을 다시 쓰지 않고 항상 version 2를 출력한다.
+- version 1은 parser-time source hash를 표현할 수 없으므로 filename mismatch에 대한 rename tolerance를 사용하지 않는다.
 
 ## Parser registry
 
