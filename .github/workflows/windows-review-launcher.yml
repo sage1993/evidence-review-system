@@ -1,0 +1,56 @@
+name: Windows review launcher
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-review-launcher.yml"
+      - "src/ansim_review/review_packet/**"
+      - "src/ansim_review/review_run.py"
+      - "src/web_runtime/**"
+      - "tests/unit/review_packet/**"
+      - "tests/integration/review_packet/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/windows-review-launcher.yml"
+      - "src/ansim_review/review_packet/**"
+      - "src/ansim_review/review_run.py"
+      - "src/web_runtime/**"
+      - "tests/unit/review_packet/**"
+      - "tests/integration/review_packet/**"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-review-launcher:
+    name: Windows review launcher / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.13"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and test dependencies
+        shell: pwsh
+        run: python -m pip install -e ".[dev]"
+
+      - name: Verify Windows launcher and loopback server
+        shell: pwsh
+        run: >-
+          python -m pytest -q
+          tests/unit/review_packet/test_external_launcher.py
+          tests/unit/review_packet/test_windows_runtime_contract.py
+          tests/integration/review_packet/test_local_server.py
