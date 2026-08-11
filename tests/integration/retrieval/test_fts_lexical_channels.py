@@ -87,6 +87,31 @@ def test_exact_phrase_keeps_precision_while_token_and_recovers_reordered_text(
     assert all(hit.channel_scores[0].channel == "fts_token_and" for hit in token_hits)
 
 
+def test_primary_query_recovers_reordered_text_without_synonym_or_llm(
+    tmp_path: Path,
+) -> None:
+    with _store(tmp_path) as store:
+        bundle = build_evidence_bundle(
+            store.require_connection(),
+            {
+                "question": "이면도로 차량 진출입 기준",
+                "synonym_manifest": {},
+                "expansions": [],
+                "limit": 20,
+            },
+        )
+
+    assert [hit["evidence_id"] for hit in bundle["hits"]] == [
+        "E-EXACT",
+        "E-REORDERED",
+    ]
+    reordered = bundle["hits"][1]
+    assert [item["channel"] for item in reordered["channel_scores"]] == [
+        "fts_token_and"
+    ]
+    assert reordered["channel_scores"][0]["detail"].startswith("primary:")
+
+
 def test_bundle_preserves_all_query_origins_without_duplicate_channel_weight(
     tmp_path: Path,
 ) -> None:
