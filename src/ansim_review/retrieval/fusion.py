@@ -10,7 +10,6 @@ CHANNEL_WEIGHTS: dict[str, Decimal] = {
     "structured_exact": Decimal("1.00"),
     "clause_id": Decimal("0.95"),
     "rule_source": Decimal("0.90"),
-    "fts": Decimal("0.70"),
     "fts_phrase": Decimal("0.55"),
     "fts_token_and": Decimal("0.15"),
     "linked_visual_table": Decimal("0.60"),
