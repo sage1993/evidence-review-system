@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from ansim_review.contracts.common import BBox, Citation
 
 
-class CitationQuality(str, Enum):
+class CitationQuality(StrEnum):
     """Location precision available for a retrieval hit."""
 
     EXACT_BBOX = "EXACT_BBOX"
