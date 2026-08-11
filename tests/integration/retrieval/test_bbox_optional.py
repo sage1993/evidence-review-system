@@ -191,3 +191,64 @@ def test_page_only_hit_has_explicit_quality_and_refuses_exact_citation() -> None
             hit.citation()
     finally:
         connection.close()
+
+
+def test_bbox_present_cases_remain_exact_for_all_evidence_types() -> None:
+    connection = _connection()
+    try:
+        bbox = [10.0, 20.0, 200.0, 50.0]
+        _insert_element(connection, evidence_id="E-EXACT", text="exactelement", bbox=bbox)
+        _insert_table(connection, evidence_id="T-EXACT", text="exacttable", bbox=bbox)
+        _insert_visual(connection, evidence_id="V-EXACT", kind="exactvisual", bbox=bbox)
+        build_fts_index(connection)
+
+        for query, expected_id in (
+            ("exactelement", "E-EXACT"),
+            ("exacttable", "T-EXACT"),
+            ("exactvisual", "V-EXACT"),
+        ):
+            hit = search_fts(connection, query)[0]
+            assert hit.evidence_id == expected_id
+            assert hit.citation_quality.value == "EXACT_BBOX"
+            assert hit.bbox is not None
+            assert [hit.bbox.left, hit.bbox.bottom, hit.bbox.right, hit.bbox.top] == bbox
+            citation = hit.citation()
+            assert citation.bbox == hit.bbox
+    finally:
+        connection.close()
+
+
+def test_bboxless_ordering_is_deterministic_across_rebuilds() -> None:
+    connection = _connection()
+    try:
+        _insert_element(connection, evidence_id="E2", text="sameneedle", bbox=None)
+        _insert_element(connection, evidence_id="E1", text="sameneedle", bbox=None)
+
+        build_fts_index(connection)
+        first = search_fts(connection, "sameneedle")
+        second = search_fts(connection, "sameneedle")
+        build_fts_index(connection)
+        rebuilt = search_fts(connection, "sameneedle")
+
+        assert [hit.evidence_id for hit in first] == ["E1", "E2"]
+        assert [hit.evidence_id for hit in second] == ["E1", "E2"]
+        assert [hit.evidence_id for hit in rebuilt] == ["E1", "E2"]
+        assert [hit.channel_scores for hit in first] == [hit.channel_scores for hit in rebuilt]
+    finally:
+        connection.close()
+
+
+def test_malformed_bbox_is_not_silently_downgraded_to_page_only() -> None:
+    connection = _connection()
+    try:
+        _insert_element(
+            connection,
+            evidence_id="E-BAD",
+            text="malformedneedle",
+            bbox=[10.0, 20.0],
+        )
+        build_fts_index(connection)
+
+        assert search_fts(connection, "malformedneedle") == ()
+    finally:
+        connection.close()
