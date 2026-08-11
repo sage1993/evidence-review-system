@@ -8,6 +8,8 @@ from ansim_review.parsing.source_batch_importer import import_source_batch
 from ansim_review.parsing.source_manifest import sha256_file
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
+_PAGE_SIZE = ((595.0, 842.0),)
+
 
 def _parser(path: Path, *, declared_name: str) -> Path:
     path.write_text(
@@ -31,7 +33,7 @@ def _parser(path: Path, *, declared_name: str) -> Path:
 
 
 def test_source_batch_allows_renamed_source_with_manifest_binding(tmp_path: Path) -> None:
-    source = write_pdf_fixture(tmp_path / "renamed.pdf")
+    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
     _parser(tmp_path / "parser.json", declared_name="original.pdf")
     batch = SourceBatch(
         format="evidence-review/source-batch",
