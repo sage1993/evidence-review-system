@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from ansim_review.contracts.attachments import AttachmentRole
@@ -24,7 +26,7 @@ from ansim_review.parsing.source_states import (
     SourceState,
     evaluate_source_readiness,
 )
-from ansim_review.retrieval.index import build_fts_index
+from ansim_review.retrieval.index import build_fts_index, require_fresh_index
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -357,17 +359,27 @@ def import_source_batch(
         tables=tables,
         visuals=visuals,
     )
-    with EvidenceStore(output, create=True) as store:
-        ingest_snapshot(store, snapshot)
-        snapshot_hash = compute_snapshot_hash(store)
-        connection = store.require_connection()
-        connection.execute(
-            "INSERT INTO snapshot_meta(key, value) VALUES('database_snapshot_hash', ?)",
-            (snapshot_hash,),
-        )
-        connection.commit()
-        build_fts_index(connection)
-        counts = snapshot_counts(store)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(
+        dir=output.parent,
+        prefix=f".{output.name}.tmp-",
+    ) as temporary_directory:
+        temporary_db = Path(temporary_directory) / output.name
+        with EvidenceStore(temporary_db, create=True) as store:
+            ingest_snapshot(store, snapshot)
+            snapshot_hash = compute_snapshot_hash(store)
+            connection = store.require_connection()
+            connection.execute(
+                "INSERT INTO snapshot_meta(key, value) VALUES('database_snapshot_hash', ?)",
+                (snapshot_hash,),
+            )
+            connection.commit()
+            build_fts_index(connection)
+            require_fresh_index(connection)
+            counts = snapshot_counts(store)
+        if output.exists():
+            raise FileExistsError(output)
+        os.replace(temporary_db, output)
     ingested_ids = {source.revision_id for source in ingestible}
     completed = tuple(
         replace(
