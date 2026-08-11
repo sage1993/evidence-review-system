@@ -9,7 +9,11 @@ from typing import cast
 from ansim_review.retrieval.fusion import fuse_hits, fusion_document
 from ansim_review.retrieval.graph import traverse_relations
 from ansim_review.retrieval.index import require_fresh_index, search_fts
-from ansim_review.retrieval.models import ChannelScore, RetrievalHit
+from ansim_review.retrieval.models import (
+    ChannelScore,
+    CitationUnavailableError,
+    RetrievalHit,
+)
 from ansim_review.retrieval.query import NormalizedQuery, normalize_query
 from ansim_review.retrieval.structured import (
     retrieve_clause_ids,
@@ -192,7 +196,11 @@ def build_evidence_bundle(
     for hit_document, hit in zip(hit_documents, fused, strict=True):
         if not isinstance(hit_document, dict):
             raise RuntimeError("invalid fusion hit document")
-        hit_document["citation"] = _citation_document(hit)
+        try:
+            hit_document["citation"] = _citation_document(hit)
+        except CitationUnavailableError as error:
+            hit_document["citation"] = None
+            hit_document["citation_unavailable_reason"] = error.reason_code
     return {
         "snapshot_hash": snapshot_hash,
         "query": {
