@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from ansim_review.canonical_json import dumps
+from ansim_review.retrieval.fusion import fusion_document
 from ansim_review.retrieval.index import build_fts_index
 from ansim_review.retrieval.structured import retrieve_structured
 
@@ -63,5 +64,18 @@ def test_structured_retrieval_preserves_page_only_hit() -> None:
         assert [hit.evidence_id for hit in hits] == ["E-PAGE"]
         assert hits[0].bbox is None
         assert hits[0].citation_quality.value == "PAGE_ONLY"
+    finally:
+        connection.close()
+
+
+def test_fusion_document_marks_page_only_without_fabricating_bbox() -> None:
+    connection = _page_only_connection()
+    try:
+        hit = retrieve_structured(connection, {"evidence_id": "E-PAGE"})[0]
+
+        payload = fusion_document((hit,))["hits"][0]
+
+        assert payload["bbox"] is None
+        assert payload["citation_quality"] == "PAGE_ONLY"
     finally:
         connection.close()
