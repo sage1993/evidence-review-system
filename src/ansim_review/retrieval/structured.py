@@ -22,14 +22,19 @@ _ALLOWED_FILTERS = {
 
 
 def _hit(row: sqlite3.Row, channel: str, detail: str) -> RetrievalHit:
-    bbox = json.loads(row["bbox_json"])
+    bbox_payload = json.loads(row["bbox_json"])
+    bbox = (
+        None
+        if bbox_payload is None
+        else BBox(*(float(item) for item in bbox_payload))
+    )
     return RetrievalHit(
         evidence_id=row["evidence_id"],
         evidence_type=row["evidence_type"],
         document_id=row["document_id"],
         revision_id=row["revision_id"],
         page_number=row["page_number"],
-        bbox=BBox(*(float(item) for item in bbox)),
+        bbox=bbox,
         source_hash=row["source_hash"],
         title=row["title"],
         text=row["normalized_text"] or row["raw_text"],

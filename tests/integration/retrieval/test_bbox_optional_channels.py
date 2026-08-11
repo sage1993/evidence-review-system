@@ -1,0 +1,108 @@
+import sqlite3
+from pathlib import Path
+
+from ansim_review.canonical_json import dumps
+from ansim_review.retrieval.bundle import build_evidence_bundle
+from ansim_review.retrieval.fusion import fusion_document
+from ansim_review.retrieval.index import build_fts_index
+from ansim_review.retrieval.structured import retrieve_structured
+
+SCHEMA = Path("src/ansim_review/evidence/schema.sql")
+
+
+def _page_only_connection() -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.executescript(SCHEMA.read_text(encoding="utf-8"))
+    connection.execute("INSERT INTO documents(id, title) VALUES(?, ?)", ("DOC1", "Test"))
+    connection.execute(
+        """
+        INSERT INTO revisions(id, document_id, source_hash, byte_size, page_count)
+        VALUES(?, ?, ?, ?, ?)
+        """,
+        ("REV1", "DOC1", "a" * 64, 1, 1),
+    )
+    connection.execute(
+        """
+        INSERT INTO pages(id, revision_id, page_number, width, height)
+        VALUES(?, ?, ?, ?, ?)
+        """,
+        ("PAGE1", "REV1", 1, 595.0, 842.0),
+    )
+    connection.execute(
+        """
+        INSERT INTO elements(
+            id, page_id, element_type, raw_json, raw_text, normalized_text,
+            raw_payload_hash, bbox_json, parser_order
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "E-PAGE",
+            "PAGE1",
+            "clause",
+            dumps({"text": "pageonlystructured"}),
+            "pageonlystructured",
+            "pageonlystructured",
+            "c" * 64,
+            None,
+            0,
+        ),
+    )
+    connection.execute(
+        "INSERT INTO snapshot_meta(key, value) VALUES('snapshot_hash', ?)",
+        ("b" * 64,),
+    )
+    connection.commit()
+    build_fts_index(connection)
+    return connection
+
+
+def test_structured_retrieval_preserves_page_only_hit() -> None:
+    connection = _page_only_connection()
+    try:
+        hits = retrieve_structured(connection, {"evidence_id": "E-PAGE"})
+
+        assert [hit.evidence_id for hit in hits] == ["E-PAGE"]
+        assert hits[0].bbox is None
+        assert hits[0].citation_quality.value == "PAGE_ONLY"
+    finally:
+        connection.close()
+
+
+def test_fusion_document_marks_page_only_without_fabricating_bbox() -> None:
+    connection = _page_only_connection()
+    try:
+        hit = retrieve_structured(connection, {"evidence_id": "E-PAGE"})[0]
+
+        payload = fusion_document((hit,))["hits"][0]
+
+        assert payload["bbox"] is None
+        assert payload["citation_quality"] == "PAGE_ONLY"
+    finally:
+        connection.close()
+
+
+def test_bundle_keeps_page_only_hit_and_exposes_reason_code() -> None:
+    connection = _page_only_connection()
+    try:
+        payload = build_evidence_bundle(
+            connection,
+            {
+                "question": "pageonlystructured",
+                "expansions": [],
+                "synonym_manifest": {},
+                "filters": {"evidence_id": "E-PAGE"},
+                "clause_ids": [],
+                "seed_ids": [],
+                "graph_depth": 1,
+                "limit": 10,
+            },
+        )
+
+        hit = payload["hits"][0]
+        assert hit["evidence_id"] == "E-PAGE"
+        assert hit["citation_quality"] == "PAGE_ONLY"
+        assert hit["citation"] is None
+        assert hit["citation_unavailable_reason"] == "BBOX_UNAVAILABLE"
+    finally:
+        connection.close()
