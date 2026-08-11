@@ -25,8 +25,11 @@ def _runtime_dependencies() -> tuple[str, ...]:
     payload = tomllib.loads(pyproject)
     requirements = payload["project"].get("dependencies", [])
     assert isinstance(requirements, list)
-    assert all(isinstance(requirement, str) for requirement in requirements)
-    return tuple(sorted(requirement.casefold() for requirement in requirements))
+    normalized: list[str] = []
+    for requirement in requirements:
+        assert isinstance(requirement, str)
+        normalized.append(requirement.casefold())
+    return tuple(sorted(normalized))
 
 
 def test_repository_documentation_has_no_errors() -> None:
