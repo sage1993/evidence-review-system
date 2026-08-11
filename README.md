@@ -13,13 +13,19 @@ Codex Desktop에 PDF와 질문을 주면, PDF 근거를 찾아 검토용 HTML �
 - 검토할 PDF 파일
 - PDF를 읽을 수 있는 로컬 parser 도구(OpenDataLoader PDF)
 
-배포 ZIP을 받았다면 압축을 풀고 그 폴더를 Codex Desktop에서 엽니다. 소스 코드로 설치하는 경우에는 PowerShell에서 다음을 한 번 실행합니다.
+배포 ZIP을 받았다면 압축을 풀고 그 폴더를 Codex Desktop에서 엽니다. 소스 코드로 일반 실행 환경을 설치하는 경우에는 PowerShell에서 다음을 한 번 실행합니다.
 
 ```powershell
 git clone https://github.com/sage1993/evidence-review-system.git
 Set-Location evidence-review-system
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+```
+
+테스트·정적 검증까지 수행하는 개발 환경에서는 마지막 명령 대신 다음을 사용합니다.
+
+```powershell
 python -m pip install -e ".[dev]"
 ```
 
