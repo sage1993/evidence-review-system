@@ -16,7 +16,23 @@ description: Use when a user invokes $ERS_PDF or asks Codex Desktop to parse a P
 3. If an immutable parser artifact is already supplied, bind and validate it. Otherwise check `opendataloader-pdf --help` and run the parser into a new output directory. If the parser is unavailable, stop and report the missing tool; never claim that a plain text extraction is an ERS parse.
 4. Keep `parser-run.json`, raw JSON, Markdown, images, logs, parser version, configuration, source hash, and page counts together. Never overwrite a source or raw parser run.
 5. Run two-run reproducibility validation and parser warning collection using fresh output paths. A mismatch, missing authority, or parser failure is not success.
-6. Create a source-batch v2 manifest, then run:
+6. Create a source-batch v2 manifest. For every `OPENDATALOADER_JSON` parser artifact, write the SHA-256 of the PDF bytes used to create that parser artifact to `parser.options.source_sha256`. If an existing immutable parser artifact cannot be tied to a parser-time source SHA-256, do not invent one; keep filename mismatch handling fail-closed.
+
+```json
+{
+  "source_path": "inputs/reference-renamed.pdf",
+  "role": "REFERENCE_DOCUMENT",
+  "parser": {
+    "kind": "OPENDATALOADER_JSON",
+    "artifact_path": "parser/reference.json",
+    "options": {
+      "source_sha256": "<sha256-of-pdf-used-for-this-parser-run>"
+    }
+  }
+}
+```
+
+Then run:
 
 ```powershell
 evidence-review source-batch prepare --root <workspace> --manifest <workspace>\manifests\source-batch.json
@@ -40,7 +56,8 @@ For a drawing-only PDF, explain that it is routed to drawing confirmation and is
 
 - 원본 PDF와 raw parser output을 덮어쓰지 않는다.
 - Do not infer document role, legal authority, dates, or identity from a filename or title.
-- Do not invent missing text, table cells, coordinates, parser metadata, or page references.
+- Do not invent missing text, table cells, coordinates, parser metadata, source hashes, or page references.
+- Do not replace a parser-time `source_sha256` with the hash of a different or merely renamed/re-exported PDF unless the bytes are identical.
 - Do not use unconfirmed drawing candidates as Math or Rule Engine inputs.
 - Do not call the PDF “parsed,” “searchable,” or “ready for questions” when `PENDING_PARSER_OUTPUT`, `BLOCKED`, or `FAILED` remains.
 
