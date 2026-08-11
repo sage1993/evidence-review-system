@@ -10,6 +10,8 @@ from ansim_review.parsing.parser_registry import ParserContext
 from ansim_review.parsing.source_manifest import sha256_file
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
+_PAGE_SIZE = ((595.0, 842.0),)
+
 
 def _parser(path: Path, *, declared_name: str) -> Path:
     path.write_text(
@@ -33,7 +35,7 @@ def _parser(path: Path, *, declared_name: str) -> Path:
 
 
 def test_direct_parser_filename_mismatch_remains_fail_closed(tmp_path: Path) -> None:
-    source = write_pdf_fixture(tmp_path / "renamed.pdf")
+    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
     parser = _parser(tmp_path / "parser.json", declared_name="original.pdf")
 
     with pytest.raises(ValueError, match="PARSER_SOURCE_FILENAME_MISMATCH"):
@@ -43,7 +45,7 @@ def test_direct_parser_filename_mismatch_remains_fail_closed(tmp_path: Path) -> 
 
 
 def test_manifest_bound_parser_allows_source_rename_when_hash_matches(tmp_path: Path) -> None:
-    source = write_pdf_fixture(tmp_path / "renamed.pdf")
+    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
     parser = _parser(tmp_path / "parser.json", declared_name="original.pdf")
 
     contribution = OpenDataLoaderJsonAdapter().parse(
@@ -61,7 +63,7 @@ def test_manifest_bound_parser_allows_source_rename_when_hash_matches(tmp_path: 
 
 
 def test_manifest_bound_parser_rejects_source_hash_mismatch(tmp_path: Path) -> None:
-    source = write_pdf_fixture(tmp_path / "renamed.pdf")
+    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
     parser = _parser(tmp_path / "parser.json", declared_name="original.pdf")
 
     with pytest.raises(ValueError, match="PARSER_SOURCE_HASH_MISMATCH"):
