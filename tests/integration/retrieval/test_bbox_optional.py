@@ -1,6 +1,8 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from ansim_review.canonical_json import dumps
 from ansim_review.retrieval.index import build_fts_index, search_fts
 
@@ -168,5 +170,24 @@ def test_bboxless_visual_is_lexically_retrievable() -> None:
         assert [hit.evidence_id for hit in hits] == ["V-PAGE"]
         assert hits[0].evidence_type == "visual"
         assert hits[0].bbox is None
+    finally:
+        connection.close()
+
+
+def test_page_only_hit_has_explicit_quality_and_refuses_exact_citation() -> None:
+    connection = _connection()
+    try:
+        _insert_element(
+            connection,
+            evidence_id="E-PAGE",
+            text="pageonlycitation",
+            bbox=None,
+        )
+        build_fts_index(connection)
+        hit = search_fts(connection, "pageonlycitation")[0]
+
+        assert hit.citation_quality.value == "PAGE_ONLY"
+        with pytest.raises(RuntimeError, match="BBOX_UNAVAILABLE"):
+            hit.citation()
     finally:
         connection.close()
