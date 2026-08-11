@@ -114,6 +114,33 @@ def test_existing_output_is_never_overwritten(tmp_path: Path) -> None:
     assert _temporary_artifacts(output) == ()
 
 
+def test_output_created_during_import_is_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    batch = _ready_batch(tmp_path)
+    output = tmp_path / "evidence.sqlite"
+    sentinel = b"competing output must survive"
+    original_require_fresh_index = source_batch_importer.require_fresh_index
+
+    def create_competing_output(connection: sqlite3.Connection) -> str:
+        snapshot_hash = original_require_fresh_index(connection)
+        output.write_bytes(sentinel)
+        return snapshot_hash
+
+    monkeypatch.setattr(
+        source_batch_importer,
+        "require_fresh_index",
+        create_competing_output,
+    )
+
+    with pytest.raises(FileExistsError):
+        source_batch_importer.import_source_batch(tmp_path, batch, output)
+
+    assert output.read_bytes() == sentinel
+    assert _temporary_artifacts(output) == ()
+
+
 def test_successful_import_publishes_fresh_index_without_temp_artifacts(
     tmp_path: Path,
 ) -> None:
