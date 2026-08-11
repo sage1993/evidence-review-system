@@ -96,3 +96,17 @@ def test_source_batch_rejects_wrong_parser_source_hash(tmp_path: Path) -> None:
             _batch(source, bound_source_sha256="0" * 64),
             tmp_path / "evidence.sqlite",
         )
+
+
+def test_source_hash_mismatch_is_rejected_even_when_filename_matches(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf_fixture(tmp_path / "same-name.pdf", page_sizes=_PAGE_SIZE)
+    _parser(tmp_path / "parser.json", declared_name="same-name.pdf")
+
+    with pytest.raises(ValueError, match="PARSER_SOURCE_HASH_MISMATCH"):
+        import_source_batch(
+            tmp_path,
+            _batch(source, bound_source_sha256="f" * 64),
+            tmp_path / "evidence.sqlite",
+        )
