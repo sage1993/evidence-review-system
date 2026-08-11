@@ -33,15 +33,30 @@ def read_parser_json(path: Path) -> dict[str, Any]:
     return {str(key): value for key, value in payload.items()}
 
 
+def _validate_element_page_bounds(
+    elements: tuple[RawElement, ...], page_count: int
+) -> None:
+    for item in elements:
+        if not 1 <= item.page_number <= page_count:
+            raise ValueError(
+                "PARSER_ELEMENT_PAGE_OUT_OF_RANGE: "
+                f"page={item.page_number} page_count={page_count} "
+                f"source_path={item.source_path!r}"
+            )
+
+
 def parser_page_count(
     payload: Mapping[str, Any], elements: tuple[RawElement, ...]
 ) -> int:
     value = payload.get("number of pages", payload.get("page_count"))
     if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-        return value
-    if elements:
-        return max(item.page_number for item in elements)
-    raise ValueError("parser output does not declare a positive page count")
+        page_count = value
+    elif elements:
+        page_count = max(item.page_number for item in elements)
+    else:
+        raise ValueError("parser output does not declare a positive page count")
+    _validate_element_page_bounds(elements, page_count)
+    return page_count
 
 
 def parser_document_title(payload: Mapping[str, Any], fallback: str) -> str:
