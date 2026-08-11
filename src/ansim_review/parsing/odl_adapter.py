@@ -3,21 +3,31 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeAlias, cast
 
 from ansim_review.canonical_json import sha256_json
+from ansim_review.parsing.odl_source import (
+    parser_bbox,
+    parser_document_title,
+    parser_page_count,
+    parser_page_dimensions,
+    read_parser_json,
+)
 from ansim_review.parsing.parser_models import (
     NormalizedParserContribution,
     PageDimensions,
     ParsedElement,
 )
 from ansim_review.parsing.parser_registry import ParserContext
+from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_page_geometries
 from ansim_review.parsing.source_manifest import sha256_file
 
 PathPart: TypeAlias = str | int
 _CHILD_KEYS = ("kids", "list items", "list_items", "children")
+_GEOMETRY_TOLERANCE = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +143,47 @@ def load_raw_elements(
     return tuple(result)
 
 
+def _reconcile_page_dimensions(
+    payload: Mapping[str, Any],
+    page_count: int,
+    pdf_pages: tuple[PdfPageGeometry, ...],
+) -> tuple[PageDimensions, ...]:
+    if len(pdf_pages) != page_count:
+        raise ValueError(
+            "PARSER_PDF_PAGE_COUNT_MISMATCH: "
+            f"parser={page_count} pdf={len(pdf_pages)}"
+        )
+
+    dimensions: list[PageDimensions] = []
+    for pdf_page in pdf_pages:
+        declared = parser_page_dimensions(payload, pdf_page.page_number)
+        if declared.state == "INVALID":
+            raise ValueError(
+                f"PARSER_PAGE_DIMENSIONS_INVALID: page {pdf_page.page_number}"
+            )
+        if declared.state == "VALID":
+            assert declared.width is not None
+            assert declared.height is not None
+            if (
+                abs(declared.width - pdf_page.width) > _GEOMETRY_TOLERANCE
+                or abs(declared.height - pdf_page.height) > _GEOMETRY_TOLERANCE
+            ):
+                raise ValueError(
+                    "PARSER_PDF_PAGE_DIMENSIONS_MISMATCH: "
+                    f"page {pdf_page.page_number} "
+                    f"parser={declared.width}x{declared.height} "
+                    f"pdf={pdf_page.width}x{pdf_page.height}"
+                )
+        dimensions.append(
+            PageDimensions(
+                pdf_page.page_number,
+                pdf_page.width,
+                pdf_page.height,
+            )
+        )
+    return tuple(dimensions)
+
+
 @dataclass(frozen=True, slots=True)
 class OpenDataLoaderJsonAdapter:
     """Normalize one OpenDataLoader JSON artifact without document identities."""
@@ -140,14 +191,6 @@ class OpenDataLoaderJsonAdapter:
     kind: str = "OPENDATALOADER_JSON"
 
     def parse(self, context: ParserContext) -> NormalizedParserContribution:
-        from ansim_review.parsing.odl_source import (
-            parser_bbox,
-            parser_document_title,
-            parser_page_count,
-            parser_page_dimensions,
-            read_parser_json,
-        )
-
         if context.options:
             unknown = ", ".join(sorted(context.options))
             raise ValueError(f"UNSUPPORTED_PARSER_OPTION: {unknown}")
@@ -167,10 +210,8 @@ class OpenDataLoaderJsonAdapter:
             revision_id="PARSER",
         )
         page_count = parser_page_count(payload, raw_elements)
-        dimensions = tuple(
-            PageDimensions(page_number, *parser_page_dimensions(payload, page_number))
-            for page_number in range(1, page_count + 1)
-        )
+        pdf_pages = read_pdf_page_geometries(context.source_path)
+        dimensions = _reconcile_page_dimensions(payload, page_count, pdf_pages)
         size_by_page = {
             page.page_number: (page.width, page.height) for page in dimensions
         }

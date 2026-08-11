@@ -11,6 +11,7 @@ from ansim_review.parsing.source_batch_importer import (
     import_source_batch,
     prepare_source_batch,
 )
+from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 
 def _write_parser(path: Path, file_name: str) -> None:
@@ -69,8 +70,12 @@ def test_parserless_case_drawing_does_not_block_reference_ingestion(
     original = tmp_path / "inputs" / "original"
     parser = tmp_path / "inputs" / "parser" / "reference.json"
     original.mkdir(parents=True)
-    (original / "reference.pdf").write_bytes(b"%PDF-1.7\nreference")
-    (original / "drawing.pdf").write_bytes(b"%PDF-1.7\ndrawing")
+    write_pdf_fixture(original / "reference.pdf", page_sizes=((600.0, 800.0),))
+    write_pdf_fixture(
+        original / "drawing.pdf",
+        page_sizes=((600.0, 800.0),),
+        metadata={"/SourceRole": "drawing"},
+    )
     _write_parser(parser, "reference.pdf")
 
     prepared = prepare_source_batch(tmp_path, _mixed_batch())
@@ -96,8 +101,7 @@ def test_parserless_case_drawing_does_not_block_reference_ingestion(
 
 def test_drawing_only_batch_refuses_empty_evidence_database(tmp_path: Path) -> None:
     source = tmp_path / "inputs" / "original" / "drawing.pdf"
-    source.parent.mkdir(parents=True)
-    source.write_bytes(b"%PDF-1.7\ndrawing")
+    write_pdf_fixture(source, page_sizes=((600.0, 800.0),), metadata={"/SourceRole": "drawing"})
     batch = decode_source_batch(
         {
             "format": "evidence-review/source-batch",
