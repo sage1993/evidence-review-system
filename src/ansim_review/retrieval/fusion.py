@@ -72,6 +72,17 @@ def _decimal_text(value: Decimal) -> str:
     return format(value, "f")
 
 
+def _bbox_document(hit: RetrievalHit) -> list[float] | None:
+    if hit.bbox is None:
+        return None
+    return [
+        hit.bbox.left,
+        hit.bbox.bottom,
+        hit.bbox.right,
+        hit.bbox.top,
+    ]
+
+
 def fusion_document(hits: Sequence[RetrievalHit]) -> dict[str, object]:
     """Return canonical JSON-ready fused evidence output."""
     return {
@@ -82,12 +93,8 @@ def fusion_document(hits: Sequence[RetrievalHit]) -> dict[str, object]:
                 "document_id": hit.document_id,
                 "revision_id": hit.revision_id,
                 "page_number": hit.page_number,
-                "bbox": [
-                    hit.bbox.left,
-                    hit.bbox.bottom,
-                    hit.bbox.right,
-                    hit.bbox.top,
-                ],
+                "bbox": _bbox_document(hit),
+                "citation_quality": hit.citation_quality.value,
                 "source_hash": hit.source_hash,
                 "title": hit.title,
                 "text": hit.text,

@@ -33,6 +33,15 @@ def _bbox(value: str | None) -> BBox | None:
     return BBox(*(float(item) for item in payload))
 
 
+def _bbox_json(value: str | None) -> str | None:
+    bbox = _bbox(value)
+    if value is not None and bbox is None:
+        return None
+    if bbox is None:
+        return dumps(None)
+    return dumps([bbox.left, bbox.bottom, bbox.right, bbox.top])
+
+
 def _snapshot_hash(connection: sqlite3.Connection) -> str:
     row = connection.execute(
         "SELECT value FROM snapshot_meta WHERE key = 'snapshot_hash'"
@@ -53,12 +62,11 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
         JOIN pages p ON p.id = e.page_id
         JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
-        WHERE e.bbox_json IS NOT NULL
         ORDER BY e.id
         """
     ):
-        bbox = _bbox(row[6])
-        if bbox is None:
+        bbox_json = _bbox_json(row[6])
+        if bbox_json is None:
             continue
         rows.append(
             (
@@ -68,7 +76,7 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[3],
                 row[4],
                 row[5],
-                dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
+                bbox_json,
                 row[7],
                 _nfc(row[8]),
                 _nfc(row[9]),
@@ -84,12 +92,11 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
         JOIN pages p ON p.id = t.page_id
         JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
-        WHERE t.bbox_json IS NOT NULL
         ORDER BY t.id
         """
     ):
-        bbox = _bbox(row[5])
-        if bbox is None:
+        bbox_json = _bbox_json(row[5])
+        if bbox_json is None:
             continue
         rows.append(
             (
@@ -99,7 +106,7 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[2],
                 row[3],
                 row[4],
-                dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
+                bbox_json,
                 row[6],
                 _nfc(f"{row[7]} 표 {row[0]}"),
                 _nfc(row[8]),
@@ -114,12 +121,11 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
         JOIN pages p ON p.id = v.page_id
         JOIN revisions r ON r.id = p.revision_id
         JOIN documents d ON d.id = r.document_id
-        WHERE v.bbox_json IS NOT NULL
         ORDER BY v.id
         """
     ):
-        bbox = _bbox(row[5])
-        if bbox is None:
+        bbox_json = _bbox_json(row[5])
+        if bbox_json is None:
             continue
         text = _nfc(f"{row[8]} {row[9]}")
         rows.append(
@@ -130,7 +136,7 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 row[2],
                 row[3],
                 row[4],
-                dumps([bbox.left, bbox.bottom, bbox.right, bbox.top]),
+                bbox_json,
                 row[6],
                 _nfc(f"{row[7]} {row[8]}"),
                 text,
@@ -199,9 +205,22 @@ def _match_expression(query: str) -> str:
     return '"' + normalized.replace('"', '""') + '"'
 
 
+def _indexed_bbox(value: str) -> BBox | None:
+    payload = json.loads(value)
+    if payload is None:
+        return None
+    if not isinstance(payload, list) or len(payload) != 4:
+        raise ValueError("INVALID_INDEXED_BBOX")
+    if any(
+        isinstance(item, bool) or not isinstance(item, (int, float))
+        for item in payload
+    ):
+        raise ValueError("INVALID_INDEXED_BBOX")
+    return BBox(*(float(item) for item in payload))
+
+
 def _row_to_hit(row: sqlite3.Row, rank_index: int, query: str) -> RetrievalHit:
-    bbox_payload = json.loads(row["bbox_json"])
-    bbox = BBox(*(float(item) for item in bbox_payload))
+    bbox = _indexed_bbox(row["bbox_json"])
     score = Decimal(1) / Decimal(rank_index + 1)
     return RetrievalHit(
         evidence_id=row["evidence_id"],
@@ -255,14 +274,13 @@ def load_indexed_hit(
     ).fetchone()
     if row is None:
         return None
-    bbox_payload = json.loads(row["bbox_json"])
     return RetrievalHit(
         evidence_id=row["evidence_id"],
         evidence_type=row["evidence_type"],
         document_id=row["document_id"],
         revision_id=row["revision_id"],
         page_number=row["page_number"],
-        bbox=BBox(*(float(item) for item in bbox_payload)),
+        bbox=_indexed_bbox(row["bbox_json"]),
         source_hash=row["source_hash"],
         title=row["title"],
         text=row["normalized_text"] or row["raw_text"],
