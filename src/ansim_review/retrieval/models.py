@@ -57,8 +57,23 @@ class RetrievalHit:
     def with_channel(self, channel: ChannelScore) -> RetrievalHit:
         scores = {item.channel: item for item in self.channel_scores}
         existing = scores.get(channel.channel)
-        if existing is None or channel.score > existing.score:
+        if existing is None:
             scores[channel.channel] = channel
+        else:
+            details = tuple(
+                sorted(
+                    {
+                        detail
+                        for detail in (existing.detail, channel.detail)
+                        if detail
+                    }
+                )
+            )
+            scores[channel.channel] = ChannelScore(
+                channel=channel.channel,
+                score=max(existing.score, channel.score),
+                detail=" | ".join(details),
+            )
         return replace(
             self,
             channel_scores=tuple(scores[name] for name in sorted(scores)),
