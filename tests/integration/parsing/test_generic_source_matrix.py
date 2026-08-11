@@ -9,12 +9,16 @@ from ansim_review.parsing.source_batch_importer import (
     import_source_batch,
     prepare_source_batch,
 )
+from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 
 def _write_source(root: Path, relative: str, content: bytes) -> None:
     path = root / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(content)
+    write_pdf_fixture(
+        path,
+        page_sizes=((600.0, 800.0),),
+        metadata={"/SourceBytes": content.hex()},
+    )
 
 
 def _write_parser(root: Path, relative: str, text: str, kind: str) -> None:
