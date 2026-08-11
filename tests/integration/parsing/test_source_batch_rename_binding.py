@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ansim_review.contracts.source_batch import ParserBinding, SourceBatch, SourceItem
 from ansim_review.parsing.source_batch_importer import import_source_batch
 from ansim_review.parsing.source_manifest import sha256_file
@@ -32,10 +34,11 @@ def _parser(path: Path, *, declared_name: str) -> Path:
     return path
 
 
-def test_source_batch_allows_renamed_source_with_manifest_binding(tmp_path: Path) -> None:
-    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
-    _parser(tmp_path / "parser.json", declared_name="original.pdf")
-    batch = SourceBatch(
+def _batch(source: Path, *, bound_source_sha256: str | None) -> SourceBatch:
+    options: dict[str, object] = {}
+    if bound_source_sha256 is not None:
+        options["source_sha256"] = bound_source_sha256
+    return SourceBatch(
         format="evidence-review/source-batch",
         version=2,
         sources=(
@@ -47,14 +50,49 @@ def test_source_batch_allows_renamed_source_with_manifest_binding(tmp_path: Path
                 parser=ParserBinding(
                     kind="OPENDATALOADER_JSON",
                     artifact_path="parser.json",
-                    options={},
+                    options=options,
                 ),
             ),
         ),
     )
 
-    report = import_source_batch(tmp_path, batch, tmp_path / "evidence.sqlite")
+
+def test_source_batch_allows_rename_with_parser_time_source_hash(tmp_path: Path) -> None:
+    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
+    _parser(tmp_path / "parser.json", declared_name="original.pdf")
+
+    report = import_source_batch(
+        tmp_path,
+        _batch(source, bound_source_sha256=sha256_file(source)),
+        tmp_path / "evidence.sqlite",
+    )
 
     assert report.sources[0].source_sha256 == sha256_file(source)
     assert report.sources[0].document_id == "DOC-RENAMED"
     assert report.output_db.is_file()
+
+
+def test_source_batch_rename_without_parser_time_hash_remains_fail_closed(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
+    _parser(tmp_path / "parser.json", declared_name="original.pdf")
+
+    with pytest.raises(ValueError, match="PARSER_SOURCE_FILENAME_MISMATCH"):
+        import_source_batch(
+            tmp_path,
+            _batch(source, bound_source_sha256=None),
+            tmp_path / "evidence.sqlite",
+        )
+
+
+def test_source_batch_rejects_wrong_parser_source_hash(tmp_path: Path) -> None:
+    source = write_pdf_fixture(tmp_path / "renamed.pdf", page_sizes=_PAGE_SIZE)
+    _parser(tmp_path / "parser.json", declared_name="original.pdf")
+
+    with pytest.raises(ValueError, match="PARSER_SOURCE_HASH_MISMATCH"):
+        import_source_batch(
+            tmp_path,
+            _batch(source, bound_source_sha256="0" * 64),
+            tmp_path / "evidence.sqlite",
+        )
