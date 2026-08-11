@@ -118,6 +118,8 @@ def _twenty_page_model(source_hashes: list[str]) -> dict[str, object]:
                         "title": f"Page {page_number} evidence",
                         "quote": f"Verified citation {number}",
                         "evidence_type": "clause",
+                        "page_width": 600.0,
+                        "page_height": 800.0,
                     }
                 ],
             }
