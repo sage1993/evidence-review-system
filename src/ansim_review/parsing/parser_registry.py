@@ -26,9 +26,15 @@ class ParserContext:
     source_sha256: str | None = None
 
     def __post_init__(self) -> None:
-        if self.source_sha256 is not None and _SHA256.fullmatch(self.source_sha256) is None:
+        if (
+            self.source_sha256 is not None
+            and _SHA256.fullmatch(self.source_sha256) is None
+        ):
             raise ValueError("source_sha256 must be a lowercase SHA-256 digest")
-        if self.binding_authority == "SOURCE_BATCH_MANIFEST" and self.source_sha256 is None:
+        if (
+            self.binding_authority == "SOURCE_BATCH_MANIFEST"
+            and self.source_sha256 is None
+        ):
             raise ValueError("SOURCE_BATCH_MANIFEST binding requires source_sha256")
 
 
