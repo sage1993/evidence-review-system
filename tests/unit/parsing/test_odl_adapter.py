@@ -227,3 +227,92 @@ def test_parser_pdf_page_count_mismatch_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="PARSER_PDF_PAGE_COUNT_MISMATCH"):
         _parse(source, parser)
+
+
+@pytest.mark.parametrize("page_number", [0, -1])
+def test_load_raw_elements_rejects_non_positive_page_numbers(
+    tmp_path: Path,
+    page_number: int,
+) -> None:
+    parser = tmp_path / "invalid-page.json"
+    parser.write_text(
+        json.dumps(
+            {
+                "kids": [
+                    {
+                        "type": "paragraph",
+                        "page number": page_number,
+                        "content": "invalid page",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="page number must be a positive integer"):
+        load_raw_elements(parser, document_id="DOC", revision_id="REV")
+
+
+@pytest.mark.parametrize("element_type", ["paragraph", "table", "figure"])
+def test_parser_page_bound_record_above_declared_page_count_is_rejected(
+    tmp_path: Path,
+    element_type: str,
+) -> None:
+    source = write_pdf_fixture(
+        tmp_path / "one-page.pdf",
+        page_sizes=((600.0, 800.0),),
+    )
+    parser = tmp_path / "one-page.json"
+    parser.write_text(
+        json.dumps(
+            {
+                "file name": source.name,
+                "number of pages": 1,
+                "kids": [
+                    {
+                        "type": element_type,
+                        "page number": 2,
+                        "content": "out of range",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"PARSER_ELEMENT_PAGE_OUT_OF_RANGE: page=2 page_count=1",
+    ):
+        _parse(source, parser)
+
+
+def test_parser_page_count_is_inferred_from_elements_when_metadata_is_absent(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf_fixture(
+        tmp_path / "two-page.pdf",
+        page_sizes=((600.0, 800.0), (600.0, 800.0)),
+    )
+    parser = tmp_path / "two-page.json"
+    parser.write_text(
+        json.dumps(
+            {
+                "file name": source.name,
+                "kids": [
+                    {
+                        "type": "paragraph",
+                        "page number": 2,
+                        "content": "inferred page count",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    contribution = _parse(source, parser)
+
+    assert len(contribution.page_dimensions) == 2
+    assert contribution.elements[0].page_number == 2
