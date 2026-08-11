@@ -16,6 +16,7 @@ def write_pdf_fixture(
     page_sizes: Sequence[PageSize],
     crop_boxes: Mapping[int, PageBox] | None = None,
     rotations: Mapping[int, int] | None = None,
+    metadata: Mapping[str, str] | None = None,
 ) -> Path:
     writer = PdfWriter()
     crops = crop_boxes or {}
@@ -28,6 +29,8 @@ def write_pdf_fixture(
         rotation = page_rotations.get(page_number)
         if rotation is not None:
             page[NameObject("/Rotate")] = NumberObject(rotation)
+    if metadata:
+        writer.add_metadata(dict(metadata))
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as stream:
         writer.write(stream)
