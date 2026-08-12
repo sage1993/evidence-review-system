@@ -34,11 +34,14 @@ from ansim_review.parsing.source_batch_importer import (
 )
 from ansim_review.release.attestation import PROCESS_ATTESTATION, validate_attestation
 from ansim_review.retrieval.bundle import build_evidence_bundle
+from ansim_review.review_question import prepare_review_question
 from ansim_review.review_run import (
     close_review_run,
     finalize_review_run,
     open_review_run,
     prepare_review_run,
+    submit_track_a,
+    submit_track_b,
     wait_for_review_run,
 )
 from ansim_review.rule_engine.activation import (
@@ -486,6 +489,89 @@ def _review_run_prepare(workspace: Path, request: Path) -> int:
     return 0
 
 
+def _review_question_prepare(
+    workspace: Path,
+    question: str,
+    expansions: Sequence[str],
+) -> int:
+    try:
+        result = prepare_review_question(workspace, question, expansions)
+    except (
+        FileNotFoundError,
+        OSError,
+        sqlite3.Error,
+        ValueError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/review-question-status",
+            "version": 1,
+            "stage": "prepare",
+            "status": "WAITING_TRACK_A",
+            "run_id": result.run_id,
+            "next_action_path": str(result.next_action_path),
+            "resumed": result.resumed,
+        }
+    )
+    return 0
+
+
+def _review_question_submit_track_a(
+    workspace: Path,
+    run_id: str,
+    output: Path,
+) -> int:
+    try:
+        result = submit_track_a(workspace, run_id, output)
+    except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/review-question-status",
+            "version": 1,
+            "stage": "submit-track-a",
+            "status": "WAITING_TRACK_B",
+            "run_id": result.run_id,
+            "next_action_path": str(result.next_action_path),
+        }
+    )
+    return 0
+
+
+def _review_question_submit_track_b(
+    workspace: Path,
+    run_id: str,
+    output: Path,
+    *,
+    publish: bool,
+) -> int:
+    try:
+        result = submit_track_b(workspace, run_id, output, publish=publish)
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        OSError,
+        json.JSONDecodeError,
+        sqlite3.Error,
+        ValueError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    _write_stdout(
+        {
+            "format": "evidence-review/review-question-status",
+            "version": 1,
+            "stage": "submit-track-b",
+            "status": result.packet.status,
+            "run_id": result.run_id,
+        }
+    )
+    return 0
+
+
 def _review_run_finalize(
     workspace: Path,
     run_id: str,
@@ -608,6 +694,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _math_run(args.request, args.output)
     if args.command == "query":
         return _query_run(args.db, args.request, args.output)
+    if args.command == "review-question" and args.review_question_stage == "prepare":
+        return _review_question_prepare(args.workspace, args.question, args.expansion)
+    if args.command == "review-question" and args.review_question_stage == "submit-track-a":
+        return _review_question_submit_track_a(
+            args.workspace,
+            args.run_id,
+            args.track_a_output,
+        )
+    if args.command == "review-question" and args.review_question_stage == "submit-track-b":
+        return _review_question_submit_track_b(
+            args.workspace,
+            args.run_id,
+            args.track_b_output,
+            publish=args.publish,
+        )
     if args.command == "review-run" and args.review_stage == "prepare":
         return _review_run_prepare(args.workspace, args.request)
     if args.command == "review-run" and args.review_stage == "finalize":

@@ -11,7 +11,12 @@ from ansim_review import cli
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
 from ansim_review.evidence.store import EvidenceStore
-from ansim_review.review_run import finalize_review_run, prepare_review_run
+from ansim_review.review_run import (
+    finalize_review_run,
+    prepare_review_run,
+    submit_track_a,
+    submit_track_b,
+)
 
 
 def _citation() -> dict[str, object]:
@@ -272,6 +277,17 @@ def test_finalize_writes_packet_html_manifest_and_published_packet(
     assert "기계 평가는 최종 판정이 아닙니다." in html
     assert "9.375%" in html
     assert "data:image/png;base64," in html
+
+
+def test_submit_track_b_finalizes_a_prevalidated_track_a(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_run(workspace, _write_request(tmp_path / "request.json"))
+    track_a, track_b = _write_tracks(tmp_path, prepared.run_id)
+
+    submit_track_a(workspace, prepared.run_id, track_a)
+    result = submit_track_b(workspace, prepared.run_id, track_b)
+
+    assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
 
 
 def test_finalize_open_cli_prints_only_the_protected_review_url(

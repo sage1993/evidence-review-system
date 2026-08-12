@@ -1,6 +1,6 @@
 # Codex Workflow
 
-Use local evidence only. Retrieval, Math Engine, and approved Rule Engine results must already exist as deterministic artifacts in an `evidence-review/review-run-request` document. Project code never invokes a model or API and never replaces deterministic output with prose calculations.
+Use local evidence only. Project code never invokes a model or API and never replaces deterministic output with prose calculations.
 
 Shared status, attachment, Review Packet v2, and next-action rules are governed by `docs/CONTRACT_GOVERNANCE.md`.
 
@@ -43,7 +43,53 @@ Visual manifests must explicitly declare `document_id`, `revision_id`, and `page
 
 Do not create Track output from an empty or fabricated evidence database.
 
-## 2. Prepare an immutable run
+## 2. Start one formal review from a question
+
+For every user question, use the question orchestration command. It retrieves
+local evidence, writes the canonical `evidence-review/review-run-request`, and
+creates the immutable Track A handoff. Do not hand-author a query bundle or a
+review-run request between these stages.
+
+```powershell
+evidence-review review-question prepare `
+  --workspace F:\evidence-review-workspace `
+  --question "질문" `
+  --expansion "명시적 검색 확장어"
+```
+
+Its stdout contains only status, Run ID, next-action path, and resume status;
+it never prints the question or evidence text. Repeating the exact question and
+expansions resumes the same immutable run. A changed deterministic request
+creates a different Run ID.
+
+After producing `track-a-output.json`, validate it before any Track B work:
+
+```powershell
+evidence-review review-question submit-track-a `
+  --workspace F:\evidence-review-workspace `
+  --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
+  --track-a-output F:\review-case\track-a-output.json
+```
+
+This gate validates run binding, citations, calculations, rules, and exact
+numeric tokens. A failure leaves the run waiting for Track A and does not
+create a Track B action. Only a successful command returns the Track B action.
+
+Submit the independent Track B output through the same orchestration boundary:
+
+```powershell
+evidence-review review-question submit-track-b `
+  --workspace F:\evidence-review-workspace `
+  --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
+  --track-b-output F:\review-case\track-b-output.json `
+  --publish
+```
+
+Track B claim coverage and run binding are checked before the existing finalizer
+is invoked. This is the preferred user-facing workflow; the lower-level
+`review-run` commands remain available for compatibility and controlled tests.
+
+## 3. Prepare an immutable run directly
 
 ```powershell
 evidence-review review-run prepare `
@@ -64,7 +110,7 @@ Track A may explain supplied evidence, CalculationResult, and RuleResult artifac
 
 Run Track B independently against every Track A claim. Track B may audit but may not rewrite Track A or set confidence, final status, drawing confirmation, or a human decision. Save its JSON as `track-b-output.json`.
 
-## 3. Follow `next-action.json`
+## 4. Follow `next-action.json`
 
 Project code does not invoke Track A or Track B. When agent work is required, the workflow writes a deterministic `next-action.json` document.
 

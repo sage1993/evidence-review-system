@@ -214,6 +214,37 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--request", required=True, type=Path)
     query.add_argument("--output", required=True, type=Path)
 
+    review_question = subparsers.add_parser(
+        "review-question",
+        help="retrieve evidence and drive one staged formal review run",
+    )
+    question_stages = review_question.add_subparsers(
+        dest="review_question_stage",
+        required=True,
+    )
+    question_prepare = question_stages.add_parser(
+        "prepare",
+        help="retrieve evidence and emit the Track A handoff",
+    )
+    question_prepare.add_argument("--workspace", required=True, type=Path)
+    question_prepare.add_argument("--question", required=True)
+    question_prepare.add_argument("--expansion", action="append", default=[])
+    question_track_a = question_stages.add_parser(
+        "submit-track-a",
+        help="validate Track A before issuing the Track B handoff",
+    )
+    question_track_a.add_argument("--workspace", required=True, type=Path)
+    question_track_a.add_argument("--run-id", required=True)
+    question_track_a.add_argument("--track-a-output", required=True, type=Path)
+    question_track_b = question_stages.add_parser(
+        "submit-track-b",
+        help="validate Track B then finalize the prepared review run",
+    )
+    question_track_b.add_argument("--workspace", required=True, type=Path)
+    question_track_b.add_argument("--run-id", required=True)
+    question_track_b.add_argument("--track-b-output", required=True, type=Path)
+    question_track_b.add_argument("--publish", action="store_true")
+
     review_run = subparsers.add_parser(
         "review-run",
         help="prepare or finalize an immutable staged review run",

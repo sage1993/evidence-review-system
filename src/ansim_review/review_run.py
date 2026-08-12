@@ -20,6 +20,7 @@ from ansim_review.contracts.codecs import (
 )
 from ansim_review.contracts.common import Citation
 from ansim_review.contracts.engines import CalculationResult, RuleResult
+from ansim_review.contracts.next_action import NextAction, next_action_document
 from ansim_review.contracts.review import ReviewPacket
 from ansim_review.contracts.run_context import (
     compute_run_id_from_request,
@@ -27,9 +28,13 @@ from ansim_review.contracts.run_context import (
 )
 from ansim_review.llm_layer.track_a import (
     EvidenceExcerpt,
+    TrackABundle,
     build_track_a_bundle,
     track_a_bundle_document,
+    validate_track_a_output,
 )
+from ansim_review.llm_layer.track_b import validate_track_b_output
+from ansim_review.llm_layer.validators import validate_track_a_integrity
 from ansim_review.review_packet.browser_launcher import (
     close_open_review_server,
     open_protected_review_workspace,
@@ -85,6 +90,15 @@ class FinalizedReviewRun:
     published_packet: Path | None
 
 
+@dataclass(frozen=True, slots=True)
+class SubmittedTrackA:
+    """A validated Track A submission and the only permitted next handoff."""
+
+    run_id: str
+    run_directory: Path
+    next_action_path: Path
+
+
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(
         isinstance(key, str) for key in value
@@ -120,6 +134,17 @@ def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(text)
+
+
+def _write_json_or_identical(path: Path, document: object) -> None:
+    encoded = dump_bytes(document)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(encoded)
+    except FileExistsError:
+        if path.read_bytes() != encoded:
+            raise FileExistsError(f"existing artifact differs: {path.name}") from None
 
 
 def _citation_document(citation: Citation) -> dict[str, object]:
@@ -395,6 +420,118 @@ def _require_prepared_run(workspace_root: Path, run_id: str) -> Path:
     return run_directory
 
 
+def _track_a_bundle_for_run(run_directory: Path) -> TrackABundle:
+    (
+        question,
+        inputs,
+        evidence,
+        calculations,
+        rules,
+        approved,
+        _confidence,
+        _request,
+    ) = _decode_request(run_directory / "review-request.json")
+    return build_track_a_bundle(
+        run_id=run_directory.name,
+        question=question,
+        inputs=inputs,
+        evidence=evidence,
+        rules=rules,
+        calculations=calculations,
+        approved_rule_result_ids=approved,
+    )
+
+
+def validate_track_a_submission(
+    workspace_root: Path,
+    run_id: str,
+    track_a_output: Path,
+) -> object:
+    """Perform Track A's full structural and numeric validation before Track B."""
+    run_directory = _require_prepared_run(workspace_root, run_id)
+    bundle = _track_a_bundle_for_run(run_directory)
+    output = _json(track_a_output)
+    validated = validate_track_a_output(output, bundle)
+    validate_track_a_integrity(validated, bundle)
+    return output
+
+
+def _track_b_action(run_id: str) -> NextAction:
+    return NextAction(
+        format="evidence-review/next-action",
+        version=1,
+        run_id=run_id,
+        workflow_state="WAITING_TRACK_B",
+        action="PRODUCE_TRACK_B",
+        input_bundle="track-a-output.json",
+        instructions="TRACK_B_INSTRUCTIONS.md",
+        expected_output="track-b-output.json",
+        resume_command=(
+            "python",
+            "-m",
+            "evidence_review",
+            "review-question",
+            "submit-track-b",
+            "--run-id",
+            run_id,
+        ),
+        track_a_validated=True,
+    )
+
+
+def submit_track_a(
+    workspace_root: Path,
+    run_id: str,
+    track_a_output: Path,
+) -> SubmittedTrackA:
+    """Validate Track A now; emit Track B only after all validations pass."""
+    run_directory = _require_prepared_run(workspace_root, run_id)
+    output = validate_track_a_submission(workspace_root, run_id, track_a_output)
+    _write_json_or_identical(run_directory / "track-a-output.json", output)
+    action_path = run_directory / "next-action-track-b.json"
+    _write_json_or_identical(action_path, next_action_document(_track_b_action(run_id)))
+    _write_json_or_identical(
+        run_directory / "track-a-validation.json",
+        {
+            "format": "evidence-review/track-a-validation",
+            "version": 1,
+            "run_id": run_id,
+            "status": "VALIDATED",
+            "track_a_sha256": _sha256(run_directory / "track-a-output.json"),
+        },
+    )
+    return SubmittedTrackA(
+        run_id=run_id,
+        run_directory=run_directory,
+        next_action_path=action_path,
+    )
+
+
+def submit_track_b(
+    workspace_root: Path,
+    run_id: str,
+    track_b_output: Path,
+    *,
+    publish: bool = False,
+) -> FinalizedReviewRun:
+    """Reject incomplete Track B output before the existing finalizer can run."""
+    run_directory = _require_prepared_run(workspace_root, run_id)
+    track_a_path = run_directory / "track-a-output.json"
+    if not track_a_path.is_file():
+        raise ValueError("Track A must validate before Track B submission")
+    bundle = _track_a_bundle_for_run(run_directory)
+    validated_a = validate_track_a_output(_json(track_a_path), bundle)
+    validate_track_a_integrity(validated_a, bundle)
+    validate_track_b_output(_json(track_b_output), validated_a)
+    return finalize_review_run(
+        workspace_root,
+        run_id,
+        track_a_path,
+        track_b_output,
+        publish=publish,
+    )
+
+
 def _validate_track_output_run_id(value: object, run_id: str, field: str) -> None:
     payload = _mapping(value, field)
     if payload.get("run_id") != run_id:
@@ -426,8 +563,13 @@ def finalize_review_run(
     _validate_track_output_run_id(track_a_document, run_id, "track_a")
     _validate_track_output_run_id(track_b_document, run_id, "track_b")
 
+    imported_a = run_directory / "track-a-output.json"
+    imported_b = run_directory / "track-b-output.json"
+    prevalidated_track_a = imported_a.exists()
+    if prevalidated_track_a and track_a_output.resolve() != imported_a.resolve():
+        raise FileExistsError(imported_a)
+
     generated = (
-        run_directory / "track-a-output.json",
         run_directory / "track-b-output.json",
         run_directory / "run-manifest.json",
         run_directory / "final-review-packet.json",
@@ -440,14 +582,15 @@ def finalize_review_run(
     if publish and published.exists():
         raise FileExistsError(published)
 
-    imported_a = run_directory / "track-a-output.json"
-    imported_b = run_directory / "track-b-output.json"
     manifest_path = run_directory / "run-manifest.json"
     packet_path = run_directory / "final-review-packet.json"
     html_path = run_directory / "review.html"
-    cleanup = [imported_a, imported_b, manifest_path, packet_path, html_path]
+    cleanup = [imported_b, manifest_path, packet_path, html_path]
+    if not prevalidated_track_a:
+        cleanup.append(imported_a)
     try:
-        _write_json(imported_a, track_a_document)
+        if not prevalidated_track_a:
+            _write_json(imported_a, track_a_document)
         _write_json(imported_b, track_b_document)
         artifacts = {
             name: _sha256(run_directory / name)
