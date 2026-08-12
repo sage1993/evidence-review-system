@@ -287,6 +287,22 @@ def test_track_b_recovers_partial_html_while_finalizing(tmp_path: Path) -> None:
     assert load_workflow_events(run_directory / "events")[-1].next_state == "READY_FOR_REVIEW"
 
 
+def test_track_b_recovers_malformed_import_while_finalizing(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+    _page_assets(workspace)
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+    track_b = _track_b(run_directory)
+    _append_event(run_directory, "FINALIZING", hashlib.sha256(track_b.read_bytes()).hexdigest())
+    (run_directory / "track-b-output.json").write_text("{partial", encoding="utf-8")
+
+    result = submit_question_track_b(workspace, first.run_id, track_b)
+
+    assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
+    assert load_workflow_events(run_directory / "events")[-1].next_state == "READY_FOR_REVIEW"
+
+
 def test_track_b_retries_after_interruption_before_finalizer_starts(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path / "workspace")
     first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")

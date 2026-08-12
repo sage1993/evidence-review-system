@@ -301,8 +301,15 @@ def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
 def _recover_incomplete_finalization(run_directory: Path, track_b_output: Path) -> None:
     """Remove only restartable finalizer outputs from an interrupted FINALIZING run."""
     track_b = run_directory / "track-b-output.json"
-    if track_b.exists() and dump_bytes(_json(track_b)) != dump_bytes(_json(track_b_output)):
-        raise FileExistsError("existing Track B artifact differs from retry input")
+    if track_b.exists():
+        try:
+            existing_track_b = dump_bytes(_json(track_b))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            existing_track_b = None
+        if existing_track_b is not None and existing_track_b != dump_bytes(
+            _json(track_b_output)
+        ):
+            raise FileExistsError("existing Track B artifact differs from retry input")
     for name in (
         "track-b-output.json",
         "run-manifest.json",
@@ -398,6 +405,7 @@ def submit_question_track_b(
         validate_track_b_submission(workspace, run_id, track_b_output)
         _append_event(run_directory, "FINALIZING", _sha256(track_b_output))
     else:
+        validate_track_b_submission(workspace, run_id, track_b_output)
         try:
             finalized = _existing_finalized_run(run_directory)
         except ValueError:
