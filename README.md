@@ -13,17 +13,30 @@ Codex Desktop에 PDF와 질문을 주면, PDF 근거를 찾아 검토용 HTML �
 - 검토할 PDF 파일
 - PDF를 읽을 수 있는 로컬 parser 도구(OpenDataLoader PDF)
 
-배포 ZIP을 받았다면 압축을 풀고 그 폴더를 Codex Desktop에서 엽니다. 소스 코드로 설치하는 경우에는 PowerShell에서 다음을 한 번 실행합니다.
+배포 ZIP을 받았다면 압축을 풀고 그 폴더를 Codex Desktop에서 엽니다. 소스 코드로 일반 실행 환경을 설치하는 경우에는 PowerShell에서 다음을 한 번 실행합니다.
 
 ```powershell
 git clone https://github.com/sage1993/evidence-review-system.git
 Set-Location evidence-review-system
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+```
+
+테스트·정적 검증까지 수행하는 개발 환경에서는 마지막 명령 대신 다음을 사용합니다.
+
+```powershell
 python -m pip install -e ".[dev]"
 ```
 
-프로그램은 인터넷 검색이나 외부 API를 사용하지 않습니다. PDF와 생성된 근거 자료는 사용자의 컴퓨터 안에서 처리됩니다.
+### Python 의존성과 오프라인 실행
+
+- 런타임 Python 패키지로 `pypdf>=5,<6`를 사용합니다. PDF 페이지 수와 페이지 geometry를 원본 PDF에서 검증하는 데 사용됩니다.
+- `.[dev]`에는 런타임 의존성에 더해 `pytest`, `mypy`, `ruff` 같은 개발·검증 도구가 포함됩니다. 일반 실행에 개발 도구는 필요하지 않습니다.
+- 여기서 **오프라인 실행**은 프로그램 실행 중 인터넷 검색이나 외부 API 호출이 필요하지 않다는 의미입니다. 제3자 Python 패키지가 전혀 필요 없다는 의미는 아닙니다.
+- 인터넷이 차단된 환경에 새로 설치할 때는 `pypdf`를 포함한 필요한 wheel 또는 패키지를 미리 준비해야 합니다.
+
+PDF와 생성된 근거 자료는 사용자의 컴퓨터 안에서 처리됩니다.
 
 ## 2. PDF 파싱하는 방법
 
