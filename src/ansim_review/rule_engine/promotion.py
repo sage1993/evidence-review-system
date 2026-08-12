@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -20,14 +21,6 @@ def _validate_review(reviewer_id: str, review_date: str) -> None:
         date.fromisoformat(review_date)
     except ValueError as error:
         raise ValueError("review date must use ISO YYYY-MM-DD") from error
-
-
-def _same_inode(path: Path, device: int, inode: int) -> bool:
-    try:
-        status = path.stat(follow_symlinks=False)
-    except FileNotFoundError:
-        return False
-    return not path.is_symlink() and status.st_dev == device and status.st_ino == inode
 
 
 def approve_candidate(
@@ -55,17 +48,20 @@ def approve_candidate(
         "approved_rule_path",
     )
     approved_path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(approved_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    created = os.fstat(descriptor)
+    descriptor, staging_name = tempfile.mkstemp(
+        prefix=f".{approved_path.name}.",
+        suffix=".tmp",
+        dir=approved_path.parent,
+    )
+    staging_path = Path(staging_name)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(candidate_bytes)
             stream.flush()
             os.fsync(stream.fileno())
-    except BaseException:
-        if _same_inode(approved_path, created.st_dev, created.st_ino):
-            approved_path.unlink(missing_ok=True)
-        raise
+        os.link(staging_path, approved_path)
+    finally:
+        staging_path.unlink(missing_ok=True)
     return approved_path
 
 

@@ -7,6 +7,7 @@ from typing import BinaryIO
 
 import pytest
 
+from ansim_review.rule_engine import promotion
 from ansim_review.rule_engine.promotion import approve_candidate
 
 
@@ -25,7 +26,7 @@ class _ReplaceOnExit:
         traceback: object,
     ) -> None:
         self._stream.close()
-        self._destination.unlink()
+        self._destination.unlink(missing_ok=True)
         self._destination.write_bytes(b"competing approved copy")
 
     def write(self, data: bytes) -> int:
@@ -94,6 +95,12 @@ def test_write_failure_does_not_delete_concurrent_replacement(
 
     monkeypatch.setattr(os, "fdopen", replacement_fdopen)
     monkeypatch.setattr(os, "fsync", failing_fsync)
+    monkeypatch.setattr(
+        promotion,
+        "_same_inode",
+        lambda path, device, inode: True,
+        raising=False,
+    )
 
     with pytest.raises(OSError, match="simulated write failure"):
         approve_candidate(
@@ -104,3 +111,4 @@ def test_write_failure_does_not_delete_concurrent_replacement(
         )
 
     assert approved_path.read_bytes() == b"competing approved copy"
+    assert list(approved_dir.glob(".*.tmp")) == []

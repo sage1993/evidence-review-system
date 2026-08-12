@@ -19,3 +19,9 @@ htmlcov/
 # Local virtual environments
 .venv/
 venv/
+
+# Local and agent-generated work products
+tmp/
+.superpowers/
+docs/superpowers/
+design-qa.md

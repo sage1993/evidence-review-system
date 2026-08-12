@@ -8,19 +8,10 @@
     "skills"
   ],
   "historical_roots": [
-    "docs/acceptance",
-    "docs/superpowers/plans",
-    "docs/superpowers/specs"
+    "docs/acceptance"
   ],
   "current_overrides": [
-    "docs/acceptance/issue-52/README.md",
-    "docs/superpowers/plans/2026-08-03-documentation-integrity.md",
-    "docs/superpowers/plans/2026-08-03-drawing-manual-annotation-ui.md",
-    "docs/superpowers/plans/2026-08-03-opendataloader-parser-reproducibility-bindings.md",
-    "docs/superpowers/plans/2026-08-03-opendataloader-parser-reproducibility.md",
-    "docs/superpowers/specs/2026-08-03-documentation-integrity-design.md",
-    "docs/superpowers/specs/2026-08-03-drawing-manual-annotation-ui-design.md",
-    "docs/superpowers/specs/2026-08-03-opendataloader-parser-reproducibility-design.md"
+    "docs/acceptance/issue-52/README.md"
   ],
   "historical_overrides": [],
   "generated_documents": [
