@@ -67,7 +67,7 @@ def test_korean_fts_query_returns_page_resolved_hits(tmp_path: Path) -> None:
     assert hit.page_number == 1
     assert hit.bbox.left == 10.0
     assert hit.source_hash == "a" * 64
-    assert hit.channel_scores[0].channel == "fts"
+    assert hit.channel_scores[0].channel == "fts_phrase"
 
 
 def test_stale_index_is_rejected(tmp_path: Path) -> None:
