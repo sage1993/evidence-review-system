@@ -2,13 +2,27 @@ from __future__ import annotations
 
 import ctypes
 import importlib
+import multiprocessing
 import threading
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
+from typing import Protocol
 
 import pytest
+
+from ansim_review.workflow.events import WorkflowEvent
+
+
+class _BarrierLike(Protocol):
+    def wait(self, timeout: float | None = None) -> int:
+        ...
+
+
+class _QueueLike(Protocol):
+    def put(self, value: tuple[str, str | None]) -> None:
+        ...
 
 
 def _events() -> ModuleType:
@@ -354,6 +368,85 @@ def test_concurrent_events_cannot_publish_two_events_for_one_sequence(
     assert len(persisted) == 1
     assert persisted[0].sequence == 1
     assert persisted[0] == successes[0][0]
+    assert persisted[0] in (first, second)
+
+    json_files = sorted(root.glob("*.json"))
+    assert len(json_files) == 1
+    assert json_files[0].read_bytes() == events.workflow_event_bytes(persisted[0])
+
+
+
+def _append_event_in_spawned_process(
+    root: str,
+    event: WorkflowEvent,
+    barrier: _BarrierLike,
+    result_queue: _QueueLike,
+) -> None:
+    events = _events()
+    original_journal_lock = events._journal_lock
+
+    @contextmanager
+    def synchronized_journal_lock(events_dir: Path):
+        barrier.wait(timeout=10)
+        with original_journal_lock(events_dir):
+            yield
+
+    events._journal_lock = synchronized_journal_lock
+    try:
+        events.append_workflow_event(Path(root), event)
+    except FileExistsError:
+        result_queue.put(("FILE_EXISTS", None))
+    except BaseException as exc:
+        result_queue.put(("ERROR", f"{type(exc).__name__}: {exc}"))
+    else:
+        result_queue.put(("SUCCESS", None))
+
+def test_windows_processes_cannot_publish_two_events_for_one_sequence(
+    tmp_path: Path,
+) -> None:
+    events = _events()
+    if events.os.name != "nt":
+        pytest.skip("Windows process journal lock backend")
+
+    ctx = multiprocessing.get_context("spawn")
+    root = tmp_path / "events"
+    first = _event(
+        events,
+        sequence=1,
+        previous_state=None,
+        next_state="RECEIVED",
+    )
+    second = replace(first, event_id="EVT-OTHER")
+    barrier = ctx.Barrier(2)
+    result_queue = ctx.Queue()
+    processes = [
+        ctx.Process(
+            target=_append_event_in_spawned_process,
+            args=(str(root), first, barrier, result_queue),
+        ),
+        ctx.Process(
+            target=_append_event_in_spawned_process,
+            args=(str(root), second, barrier, result_queue),
+        ),
+    ]
+
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=20)
+    for process in processes:
+        if process.is_alive():
+            process.terminate()
+
+    assert all(not process.is_alive() for process in processes)
+    assert all(process.exitcode == 0 for process in processes)
+
+    results = [result_queue.get(timeout=5) for _ in processes]
+    assert sorted(status for status, _ in results) == ["FILE_EXISTS", "SUCCESS"]
+    assert all(detail is None for _, detail in results)
+
+    persisted = events.load_workflow_events(root)
+    assert len(persisted) == 1
     assert persisted[0] in (first, second)
 
     json_files = sorted(root.glob("*.json"))
