@@ -15,6 +15,7 @@ from ansim_review.contracts.source_batch import ParserKind, SourceBatch, SourceI
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from ansim_review.evidence.snapshot import compute_snapshot_hash, snapshot_counts
 from ansim_review.evidence.store import EvidenceStore
+from ansim_review.parsing.page_image_cache import PageImageSource, cache_page_images
 from ansim_review.parsing.parser_registry import (
     ParserContext,
     ParserRegistry,
@@ -379,6 +380,19 @@ def import_source_batch(
         root,
         ingestible,
         selected_registry,
+    )
+    workspace_root = output.parent.parent if output.parent.name == "evidence" else output.parent
+    cache_page_images(
+        workspace_root / "page-images",
+        tuple(
+            PageImageSource(
+                source_path=source.source_path,
+                revision_id=source.revision_id,
+                source_hash=source.source_sha256,
+            )
+            for source in ingestible
+            if source.parser_kind == "OPENDATALOADER_JSON"
+        ),
     )
     snapshot = EvidenceSnapshot(
         documents=documents,

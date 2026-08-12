@@ -244,6 +244,13 @@ def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
     assert report.counts["documents"] == 1
     assert report.counts["elements"] == 1
     assert output.is_file()
+    image = tmp_path / "page-images" / report.sources[0].revision_id / "page-0001.png"
+    metadata = image.with_suffix(".json")
+    assert image.is_file()
+    assert (
+        json.loads(metadata.read_text(encoding="utf-8"))["source_hash"]
+        == report.sources[0].source_sha256
+    )
     with sqlite3.connect(output) as connection:
         title = connection.execute("SELECT title FROM documents").fetchone()
         indexed = connection.execute("SELECT COUNT(*) FROM retrieval_records").fetchone()
