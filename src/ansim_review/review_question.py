@@ -248,7 +248,12 @@ def _resume_state(run_directory: Path) -> tuple[str, Path | None]:
     elif state == "WAITING_TRACK_B":
         path = run_directory / "next-action-track-b.json"
     elif state in {"FINALIZING", "READY_FOR_REVIEW"}:
-        finalized = _existing_finalized_run(run_directory)
+        try:
+            finalized = _existing_finalized_run(run_directory)
+        except ValueError:
+            if state == "FINALIZING":
+                return state, run_directory / "next-action-track-b.json"
+            raise
         if finalized is not None:
             _append_event(
                 run_directory,
@@ -296,7 +301,7 @@ def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
 def _recover_incomplete_finalization(run_directory: Path, track_b_output: Path) -> None:
     """Remove only restartable finalizer outputs from an interrupted FINALIZING run."""
     track_b = run_directory / "track-b-output.json"
-    if track_b.exists() and track_b.read_bytes() != track_b_output.read_bytes():
+    if track_b.exists() and dump_bytes(_json(track_b)) != dump_bytes(_json(track_b_output)):
         raise FileExistsError("existing Track B artifact differs from retry input")
     for name in (
         "track-b-output.json",
@@ -393,7 +398,10 @@ def submit_question_track_b(
         validate_track_b_submission(workspace, run_id, track_b_output)
         _append_event(run_directory, "FINALIZING", _sha256(track_b_output))
     else:
-        finalized = _existing_finalized_run(run_directory)
+        try:
+            finalized = _existing_finalized_run(run_directory)
+        except ValueError:
+            finalized = None
         if finalized is not None:
             _append_event(
                 run_directory,
