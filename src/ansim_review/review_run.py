@@ -479,6 +479,25 @@ def _track_b_action(run_id: str) -> NextAction:
     )
 
 
+def _recover_malformed_track_a_submission(run_directory: Path) -> None:
+    """Discard only incomplete JSON left before the Track A handoff is journaled."""
+    generated = (
+        "track-a-output.json",
+        "next-action-track-b.json",
+        "track-a-validation.json",
+    )
+    for name in generated:
+        path = run_directory / name
+        if not path.exists():
+            continue
+        try:
+            _json(path)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            for generated_name in generated:
+                (run_directory / generated_name).unlink(missing_ok=True)
+            return
+
+
 def submit_track_a(
     workspace_root: Path,
     run_id: str,
@@ -487,6 +506,7 @@ def submit_track_a(
     """Validate Track A now; emit Track B only after all validations pass."""
     run_directory = _require_prepared_run(workspace_root, run_id)
     output = validate_track_a_submission(workspace_root, run_id, track_a_output)
+    _recover_malformed_track_a_submission(run_directory)
     _write_json_or_identical(run_directory / "track-a-output.json", output)
     action_path = run_directory / "next-action-track-b.json"
     _write_json_or_identical(action_path, next_action_document(_track_b_action(run_id)))

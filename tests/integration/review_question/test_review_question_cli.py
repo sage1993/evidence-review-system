@@ -205,6 +205,20 @@ def test_prepare_after_valid_track_a_resumes_track_b_without_regression(
     assert load_workflow_events(run_directory / "events")[-1].next_state == "WAITING_TRACK_B"
 
 
+def test_track_a_recovers_malformed_partial_submission(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+    (run_directory / "track-a-output.json").write_text("{partial", encoding="utf-8")
+    (run_directory / "next-action-track-b.json").write_text("partial", encoding="utf-8")
+    (run_directory / "track-a-validation.json").write_text("partial", encoding="utf-8")
+
+    submitted = submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+
+    assert submitted.next_action_path.is_file()
+    assert load_workflow_events(run_directory / "events")[-1].next_state == "WAITING_TRACK_B"
+
+
 def test_prepare_after_finalization_does_not_reopen_track_a(
     tmp_path: Path,
 ) -> None:
