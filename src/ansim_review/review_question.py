@@ -12,6 +12,7 @@ from typing import cast
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
+from ansim_review.contracts.codecs import decode_review_packet
 from ansim_review.contracts.next_action import NextAction, next_action_document
 from ansim_review.contracts.review import FinalizerStatus
 from ansim_review.contracts.run_context import compute_run_id_from_request
@@ -25,6 +26,7 @@ from ansim_review.review_run import (
     prepare_review_run,
     submit_track_a,
     submit_track_b,
+    validate_track_b_submission,
 )
 from ansim_review.workflow.events import (
     append_workflow_event,
@@ -182,6 +184,10 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _json(path: Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def _append_event(
     run_directory: Path,
     next_state: WorkflowState,
@@ -239,20 +245,58 @@ def _resume_state(run_directory: Path) -> tuple[str, Path | None]:
         path = run_directory / "next-action-track-a.json"
     elif state == "WAITING_TRACK_B":
         path = run_directory / "next-action-track-b.json"
-    elif state == "READY_FOR_REVIEW":
-        packet = _mapping(
-            json.loads((run_directory / "final-review-packet.json").read_text(encoding="utf-8")),
-            "final_review_packet",
-        )
-        status = packet.get("status")
-        if status not in {"READY_FOR_HUMAN_REVIEW", "ABSTAIN"}:
-            raise ValueError("final review packet has an invalid status")
-        return status, None
+    elif state in {"FINALIZING", "READY_FOR_REVIEW"}:
+        finalized = _existing_finalized_run(run_directory)
+        if finalized is not None:
+            _append_event(
+                run_directory,
+                "READY_FOR_REVIEW",
+                _sha256(finalized.packet_path),
+                finalizer_status=finalized.packet.status,
+            )
+            return finalized.packet.status, None
+        if state == "FINALIZING":
+            return state, run_directory / "next-action-track-b.json"
+        raise ValueError("READY_FOR_REVIEW requires complete final review artifacts")
     else:
         raise ValueError(f"review question run cannot resume from {state}")
     if not path.is_file():
         raise FileNotFoundError(path)
     return state, path
+
+
+def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
+    packet_path = run_directory / "final-review-packet.json"
+    html_path = run_directory / "review.html"
+    if not packet_path.exists() and not html_path.exists():
+        return None
+    if not packet_path.is_file() or not html_path.is_file():
+        return None
+    packet = decode_review_packet(_json(packet_path))
+    if packet.run_id != run_directory.name:
+        raise ValueError("final review packet run_id does not match run directory")
+    return FinalizedReviewRun(
+        run_id=run_directory.name,
+        run_directory=run_directory,
+        packet=packet,
+        packet_path=packet_path,
+        review_html=html_path,
+        published_packet=None,
+    )
+
+
+def _recover_incomplete_finalization(run_directory: Path, track_b_output: Path) -> None:
+    """Remove only restartable finalizer outputs from an interrupted FINALIZING run."""
+    track_b = run_directory / "track-b-output.json"
+    if track_b.exists() and track_b.read_bytes() != track_b_output.read_bytes():
+        raise FileExistsError("existing Track B artifact differs from retry input")
+    for name in (
+        "track-b-output.json",
+        "run-manifest.json",
+        "final-review-packet.json",
+        "review.html",
+    ):
+        (run_directory / name).unlink(missing_ok=True)
 
 
 def _prepare_from_document(workspace: Path, document: dict[str, object]) -> PreparedReviewRun:
@@ -327,13 +371,31 @@ def submit_question_track_b(
     *,
     publish: bool = False,
 ) -> FinalizedReviewRun:
-    """Finalize only from the Track B waiting state and journal the result."""
+    """Finalize idempotently from a Track B handoff or interrupted finalization."""
     run_directory = workspace / "runs" / run_id
     state, _action = _resume_state(run_directory)
-    if state != "WAITING_TRACK_B":
+    if state == "READY_FOR_HUMAN_REVIEW" or state == "ABSTAIN":
+        finalized = _existing_finalized_run(run_directory)
+        if finalized is None:
+            raise ValueError("final review artifacts are incomplete")
+        return finalized
+    if state not in {"WAITING_TRACK_B", "FINALIZING"}:
         raise ValueError("review question run is not waiting for Track B")
+    if state == "WAITING_TRACK_B":
+        validate_track_b_submission(workspace, run_id, track_b_output)
+        _append_event(run_directory, "FINALIZING", _sha256(track_b_output))
+    else:
+        finalized = _existing_finalized_run(run_directory)
+        if finalized is not None:
+            _append_event(
+                run_directory,
+                "READY_FOR_REVIEW",
+                _sha256(finalized.packet_path),
+                finalizer_status=finalized.packet.status,
+            )
+            return finalized
+        _recover_incomplete_finalization(run_directory, track_b_output)
     result = submit_track_b(workspace, run_id, track_b_output, publish=publish)
-    _append_event(result.run_directory, "FINALIZING", _sha256(track_b_output))
     _append_event(
         result.run_directory,
         "READY_FOR_REVIEW",

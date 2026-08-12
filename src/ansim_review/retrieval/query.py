@@ -58,7 +58,7 @@ def normalize_query(
         if text != normalized_primary:
             by_text[text] = QueryTerm(text, "approved_synonym")
 
-    llm_terms: set[str] = set()
+    expansion_terms: dict[str, QueryOrigin] = {}
     for index, expansion in enumerate(expansions):
         origin = expansion.get("origin")
         if origin not in {"llm", "user"}:
@@ -68,10 +68,13 @@ def normalize_query(
             raise ValueError(f"expansions[{index}].text must be a string")
         normalized = normalize_text(text_value)
         if normalized:
-            llm_terms.add(normalized)
-    for text in sorted(llm_terms):
+            normalized_origin: QueryOrigin = "user" if origin == "user" else "llm"
+            existing = expansion_terms.get(normalized)
+            if existing is None or normalized_origin == "user":
+                expansion_terms[normalized] = normalized_origin
+    for text, origin in sorted(expansion_terms.items()):
         if text not in by_text:
-            by_text[text] = QueryTerm(text, "llm")
+            by_text[text] = QueryTerm(text, origin)
 
     priority = {"primary": 0, "approved_synonym": 1, "user": 2, "llm": 3}
     terms = tuple(

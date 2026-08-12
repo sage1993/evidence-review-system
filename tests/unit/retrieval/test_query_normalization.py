@@ -40,6 +40,23 @@ def test_nfc_exact_deduplication() -> None:
     ]
 
 
+def test_user_expansion_keeps_user_provenance() -> None:
+    normalized = normalize_query(
+        "주차장 기준",
+        expansions=(
+            {"text": "  별표 2  ", "origin": "user"},
+            {"text": "설치 기준", "origin": "llm"},
+        ),
+        synonym_manifest={},
+    )
+
+    assert [(term.text, term.origin) for term in normalized.terms] == [
+        ("주차장 기준", "primary"),
+        ("별표 2", "user"),
+        ("설치 기준", "llm"),
+    ]
+
+
 def test_non_llm_expansion_origin_is_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported expansion origin"):
         normalize_query(

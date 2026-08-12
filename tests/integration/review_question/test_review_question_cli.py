@@ -9,6 +9,7 @@ from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.index import build_fts_index
 from ansim_review.review_question import (
+    _append_event,
     prepare_review_question,
     submit_question_track_a,
     submit_question_track_b,
@@ -223,6 +224,42 @@ def test_prepare_after_finalization_does_not_reopen_track_a(
         "FINALIZING",
         "READY_FOR_REVIEW",
     ]
+
+
+def test_prepare_completes_interrupted_finalization_from_valid_artifacts(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+    _page_assets(workspace)
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+    track_b = _track_b(run_directory)
+    _append_event(run_directory, "FINALIZING", hashlib.sha256(track_b.read_bytes()).hexdigest())
+    from ansim_review.review_run import submit_track_b
+
+    submit_track_b(workspace, first.run_id, track_b)
+
+    resumed = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+
+    assert resumed.status == "READY_FOR_HUMAN_REVIEW"
+    assert resumed.next_action_path is None
+    assert load_workflow_events(run_directory / "events")[-1].next_state == "READY_FOR_REVIEW"
+
+
+def test_track_b_retries_after_interruption_before_finalizer_starts(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+    _page_assets(workspace)
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+    track_b = _track_b(run_directory)
+    _append_event(run_directory, "FINALIZING", hashlib.sha256(track_b.read_bytes()).hexdigest())
+
+    result = submit_question_track_b(workspace, first.run_id, track_b)
+
+    assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
+    assert load_workflow_events(run_directory / "events")[-1].next_state == "READY_FOR_REVIEW"
 
 
 def test_invalid_track_b_keeps_the_run_waiting_for_track_b(tmp_path: Path) -> None:

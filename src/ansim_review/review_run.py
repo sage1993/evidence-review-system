@@ -515,6 +515,24 @@ def submit_track_b(
     publish: bool = False,
 ) -> FinalizedReviewRun:
     """Reject incomplete Track B output before the existing finalizer can run."""
+    validate_track_b_submission(workspace_root, run_id, track_b_output)
+    run_directory = _require_prepared_run(workspace_root, run_id)
+    track_a_path = run_directory / "track-a-output.json"
+    return finalize_review_run(
+        workspace_root,
+        run_id,
+        track_a_path,
+        track_b_output,
+        publish=publish,
+    )
+
+
+def validate_track_b_submission(
+    workspace_root: Path,
+    run_id: str,
+    track_b_output: Path,
+) -> None:
+    """Validate Track B against the immutable, validated Track A handoff."""
     run_directory = _require_prepared_run(workspace_root, run_id)
     track_a_path = run_directory / "track-a-output.json"
     if not track_a_path.is_file():
@@ -523,13 +541,6 @@ def submit_track_b(
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
     validate_track_b_output(_json(track_b_output), validated_a)
-    return finalize_review_run(
-        workspace_root,
-        run_id,
-        track_a_path,
-        track_b_output,
-        publish=publish,
-    )
 
 
 def _validate_track_output_run_id(value: object, run_id: str, field: str) -> None:

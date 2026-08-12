@@ -111,7 +111,8 @@ def test_query_cli_exports_traceable_evidence_bundle(
             {
                 "question": "이면도로 차량 진출입",
                 "expansions": [
-                    {"text": "차량 출입", "origin": "llm"}
+                    {"text": "차량 출입", "origin": "user"},
+                    {"text": "주차장", "origin": "llm"},
                 ],
                 "synonym_manifest": {
                     "이면도로 차량 진출입": [
@@ -144,6 +145,7 @@ def test_query_cli_exports_traceable_evidence_bundle(
     ] == [
         "primary",
         "approved_synonym",
+        "user",
         "llm",
     ]
     assert payload["hits"]
