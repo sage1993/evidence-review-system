@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 import stat
+import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from http.server import ThreadingHTTPServer
 from pathlib import Path
-from threading import Lock, Thread
-from typing import cast
+from threading import Lock
 
 from ansim_review.contracts.identifiers import validate_identifier
-from ansim_review.review_packet.local_server import create_review_server
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
@@ -47,17 +47,16 @@ def _server_key(workspace_root: Path, run_id: str) -> tuple[Path, str]:
 class ReviewWorkspaceServer:
     """A running protected review server that must be closed by its owner."""
 
-    _server: ThreadingHTTPServer
-    _thread: Thread
+    _process: subprocess.Popen[str]
     _run_id: str
     _token: str
+    _url: str
     _closed: bool = False
     _close_lock: Lock = field(default_factory=Lock)
 
     @property
     def url(self) -> str:
-        host, port = cast(tuple[str, int], self._server.server_address)
-        return f"http://{host}:{port}/runs/{self._run_id}/{self._token}/review"
+        return self._url
 
     def close(self) -> None:
         """Stop the serving thread and release the loopback port exactly once."""
@@ -65,32 +64,53 @@ class ReviewWorkspaceServer:
             if self._closed:
                 return
             self._closed = True
-        self._server.shutdown()
-        self._server.server_close()
-        self._thread.join(timeout=5)
-        if self._thread.is_alive():
-            raise RuntimeError("protected review server did not stop")
+        self._process.terminate()
+        self._process.wait(timeout=5)
 
     def wait(self) -> None:
         """Wait until the server session is closed."""
-        self._thread.join()
+        self._process.wait()
 
 
 def _start_review_server(workspace_root: Path, run_id: str) -> ReviewWorkspaceServer:
     validated_run_id = validate_identifier(run_id, "run_id")
     _required_artifacts(workspace_root, validated_run_id)
     token = secrets.token_urlsafe(32)
-    server = create_review_server(workspace_root, run_tokens={validated_run_id: token})
-    thread = Thread(
-        target=server.serve_forever,
-        name="protected-review-server",
+    command = (
+        sys.executable,
+        "-m",
+        "ansim_review.review_packet.server_process",
+        "--workspace",
+        str(workspace_root.resolve(strict=True)),
+        "--run-id",
+        validated_run_id,
+        "--token",
+        token,
+    )
+    child_python_path = str(Path(__file__).parents[2]) + os.pathsep + os.environ.get(
+        "PYTHONPATH", ""
+    )
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,
+        env={
+            **os.environ,
+            "PYTHONPATH": child_python_path,
+        },
     )
     try:
-        thread.start()
-    except BaseException:
-        server.server_close()
-        raise
-    return ReviewWorkspaceServer(server, thread, validated_run_id, token)
+        assert process.stdout is not None
+        port = int(process.stdout.readline().strip())
+    except (OSError, ValueError, AssertionError):
+        process.terminate()
+        process.wait(timeout=2)
+        raise OSError("protected review server did not start") from None
+    url = f"http://127.0.0.1:{port}/runs/{validated_run_id}/{token}/review"
+    return ReviewWorkspaceServer(process, validated_run_id, token, url)
 
 
 def close_open_review_servers() -> None:
