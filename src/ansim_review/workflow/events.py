@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import BinaryIO, Literal, Protocol, cast
 
 if os.name == "nt":
-    import msvcrt
+    from ansim_review.workflow.windows_lock import (
+        acquire_exclusive_file_lock,
+        release_file_lock,
+    )
 else:
     import fcntl
 
@@ -50,27 +53,12 @@ from ansim_review.workflow.state_machine import (
 )
 
 
-class _MsvcrtApi(Protocol):
-    LK_LOCK: int
-    LK_UNLCK: int
-
-    def locking(self, file_descriptor: int, mode: int, byte_count: int) -> None:
-        ...
-
-
 class _FcntlApi(Protocol):
     LOCK_EX: int
     LOCK_UN: int
 
     def flock(self, file_descriptor: int, operation: int) -> None:
         ...
-
-
-def _lock_with_msvcrt(stream: BinaryIO, *, unlock: bool) -> None:
-    api = cast(_MsvcrtApi, msvcrt)
-    file_descriptor = stream.fileno()
-    mode = api.LK_UNLCK if unlock else api.LK_LOCK
-    api.locking(file_descriptor, mode, 1)
 
 
 def _lock_with_fcntl(stream: BinaryIO, *, unlock: bool) -> None:
@@ -328,12 +316,7 @@ def _journal_lock(events_dir: Path) -> Iterator[None]:
         acquired = False
         try:
             if os.name == "nt":
-                stream.seek(0, os.SEEK_END)
-                if stream.tell() == 0:
-                    stream.write(b"\0")
-                    stream.flush()
-                stream.seek(0)
-                _lock_with_msvcrt(stream, unlock=False)
+                acquire_exclusive_file_lock(stream)
             else:
                 _lock_with_fcntl(stream, unlock=False)
             acquired = True
@@ -341,8 +324,7 @@ def _journal_lock(events_dir: Path) -> Iterator[None]:
         finally:
             if acquired:
                 if os.name == "nt":
-                    stream.seek(0)
-                    _lock_with_msvcrt(stream, unlock=True)
+                    release_file_lock(stream)
                 else:
                     _lock_with_fcntl(stream, unlock=True)
 
