@@ -163,12 +163,12 @@ Record:
 
 Run the single concurrency test repeatedly without adding a retry dependency.
 
-Required minimum:
+Required minimum on every available Windows interpreter in the supported test matrix:
 
 - Windows Python 3.11: 200 consecutive passes
 - Windows Python 3.13: 200 consecutive passes
 
-A single failure resets the acceptance run and returns the work to investigation.
+If a required interpreter is unavailable in the execution environment, record it explicitly as `UNAVAILABLE` and do not claim a PASS for that interpreter. A single targeted failure resets the acceptance run and returns the work to investigation.
 
 ### Regression suites
 
@@ -199,8 +199,9 @@ Issue #80 acceptance criteria are satisfied when:
    - Exactly one success and one immutable conflict remain mandatory.
 
 3. **Repeated Windows verification**
-   - Python 3.11: 200/200 targeted passes.
-   - Python 3.13: 200/200 targeted passes where the environment is available.
+   - Python 3.11: 200/200 targeted passes when available.
+   - Python 3.13: 200/200 targeted passes when available.
+   - Any unavailable interpreter is reported as `UNAVAILABLE`, never implied to have passed.
 
 4. **Repository regression verification**
    - Targeted, workflow integration, and full-suite results recorded.
