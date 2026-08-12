@@ -18,7 +18,6 @@ from ansim_review.evidence.store import EvidenceStore
 from ansim_review.parsing.page_image_cache import (
     PageImageSource,
     cache_page_images,
-    rollback_page_image_cache,
 )
 from ansim_review.parsing.parser_registry import (
     ParserContext,
@@ -386,7 +385,7 @@ def import_source_batch(
         selected_registry,
     )
     workspace_root = output.parent.parent if output.parent.name == "evidence" else output.parent
-    published_page_images = cache_page_images(
+    cache_page_images(
         workspace_root / "page-images",
         tuple(
             PageImageSource(
@@ -406,30 +405,26 @@ def import_source_batch(
         visuals=visuals,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with TemporaryDirectory(
-            dir=output.parent,
-            prefix=f".{output.name}.tmp-",
-        ) as temporary_directory:
-            temporary_db = Path(temporary_directory) / output.name
-            with EvidenceStore(temporary_db, create=True) as store:
-                ingest_snapshot(store, snapshot)
-                snapshot_hash = compute_snapshot_hash(store)
-                connection = store.require_connection()
-                connection.execute(
-                    "INSERT INTO snapshot_meta(key, value) VALUES('database_snapshot_hash', ?)",
-                    (snapshot_hash,),
-                )
-                connection.commit()
-                build_fts_index(connection)
-                require_fresh_index(connection)
-                counts = snapshot_counts(store)
-            if output.exists():
-                raise FileExistsError(output)
-            os.replace(temporary_db, output)
-    except Exception:
-        rollback_page_image_cache(published_page_images)
-        raise
+    with TemporaryDirectory(
+        dir=output.parent,
+        prefix=f".{output.name}.tmp-",
+    ) as temporary_directory:
+        temporary_db = Path(temporary_directory) / output.name
+        with EvidenceStore(temporary_db, create=True) as store:
+            ingest_snapshot(store, snapshot)
+            snapshot_hash = compute_snapshot_hash(store)
+            connection = store.require_connection()
+            connection.execute(
+                "INSERT INTO snapshot_meta(key, value) VALUES('database_snapshot_hash', ?)",
+                (snapshot_hash,),
+            )
+            connection.commit()
+            build_fts_index(connection)
+            require_fresh_index(connection)
+            counts = snapshot_counts(store)
+        if output.exists():
+            raise FileExistsError(output)
+        os.replace(temporary_db, output)
     ingested_ids = {source.revision_id for source in ingestible}
     completed = tuple(
         replace(

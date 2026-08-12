@@ -15,6 +15,11 @@ from tempfile import mkdtemp
 
 if os.name != "nt":
     import fcntl
+else:
+    from ansim_review.workflow.windows_lock import (
+        acquire_exclusive_file_lock,
+        release_file_lock,
+    )
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_page_geometries
@@ -59,12 +64,16 @@ def _revision_lock(root: Path, revision_id: str) -> Iterator[None]:
     root.mkdir(parents=True, exist_ok=True)
     path = root / f".{revision_id}.lock"
     with path.open("a+b") as stream:
-        if os.name != "nt":
+        if os.name == "nt":
+            acquire_exclusive_file_lock(stream)
+        else:
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
         try:
             yield
         finally:
-            if os.name != "nt":
+            if os.name == "nt":
+                release_file_lock(stream)
+            else:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
@@ -152,11 +161,12 @@ def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
             if sha256_file(source.source_path) != source.source_hash:
                 raise ValueError("page image source hash changed during rendering")
             os.rename(temporary_root, destination)
-            directory_descriptor = os.open(root, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
+            if os.name != "nt":
+                directory_descriptor = os.open(root, os.O_RDONLY)
+                try:
+                    os.fsync(directory_descriptor)
+                finally:
+                    os.close(directory_descriptor)
             return tuple(path for path in destination.iterdir() if path.is_file())
         except Exception:
             shutil.rmtree(temporary_root, ignore_errors=True)

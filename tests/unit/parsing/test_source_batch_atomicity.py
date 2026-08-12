@@ -76,8 +76,8 @@ def test_fts_failure_does_not_publish_output_database(
 
     assert not output.exists()
     assert _temporary_artifacts(output) == ()
-    assert not tuple((tmp_path / "page-images").rglob("*.png"))
-    assert not tuple((tmp_path / "page-images").rglob("*.json"))
+    assert tuple((tmp_path / "page-images").rglob("*.png"))
+    assert tuple((tmp_path / "page-images").rglob("*.json"))
 
 
 def test_snapshot_hash_failure_cleans_temporary_database(
