@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Identify the Windows concurrency failure path in the workflow event journal and replace the flaky race orchestration with a deterministic safety regression test without weakening the append-only journal invariant.
+**Goal:** Identify the actual Windows failure interleaving in the workflow event journal and, only if production locking is proven sound, replace the flaky test orchestration with a deterministic safety regression test without weakening the append-only journal invariant.
 
-**Architecture:** Investigation comes first. A test-local wrapper forces both worker threads to the same pre-lock rendezvous, then delegates to the real production `_journal_lock()` and measures whether its critical sections overlap. If overlap or an unexpected loser failure is observed, this plan stops before any production edit; if serialization is proven, the final test replaces the global `os.open()` call-count barrier with an explicit journal-lock-boundary rendezvous and stronger persistence assertions.
+**Architecture:** Diagnosis preserves the existing flaky `events.os.open` barrier so it does not change the scheduling behavior under investigation. Test-only tracing records the intercepted open paths, real `_journal_lock()` critical-section entry/exit, worker completion, and exceptions. Only a captured failure that proves serialized production critical sections and implicates the test orchestration authorizes the test-only fix; overlap or an unexpected production-lock exception terminates this plan and requires a new design.
 
 **Tech Stack:** Python 3.11/3.13, pytest, `threading`, `contextlib.contextmanager`, Windows `msvcrt.locking`, POSIX `fcntl.flock`, PowerShell, Ruff, mypy.
 
@@ -13,8 +13,9 @@
 - Execution branch: `agent/issue-80-event-journal-concurrency`.
 - Approved design: `docs/superpowers/specs/2026-08-12-issue-80-event-journal-concurrency-design.md`.
 - Do not modify `src/ansim_review/workflow/events.py` under this plan.
-- If Task 1 proves real critical-section overlap, stop and return to brainstorming for a separate production-lock design before editing `events.py`.
-- If Task 1 produces an exception other than the expected `FileExistsError`, stop and trace that exception before changing the test expectation.
+- Do not change the current concurrency schedule during Task 1; preserve the existing first-two-`os.open` barrier and add observation only.
+- If Task 1 proves real critical-section overlap, stop and return to brainstorming for a production-lock design before editing `events.py`.
+- If Task 1 captures an exception other than the expected sequence-conflict `FileExistsError` and that exception originates from production locking/persistence rather than the test hook, stop and trace it before changing test expectations.
 - Do not use `sleep`, `xfail`, Windows-specific skip markers, retry plugins, or a timeout increase as the correctness fix.
 - Keep exactly one successful append and exactly one `FileExistsError` mandatory for two conflicting sequence-1 events.
 - The final journal must contain exactly one canonical event and remain loadable.
@@ -27,11 +28,12 @@
 
 ## File Structure
 
-**Expected final code scope when Task 1 proves production locking is sound:**
+**Expected final code scope when Task 1 proves a test-orchestration defect:**
 
 - Modify: `tests/integration/workflow/test_event_journal.py:1-210`
   - Add `contextmanager` import.
-  - Replace `events.os.open` call-count synchronization in `test_concurrent_events_cannot_publish_two_events_for_one_sequence`.
+  - Remove global `events.os.open` call-count synchronization from the final test.
+  - Synchronize both contenders explicitly at the real journal-lock boundary.
   - Keep synchronization test-local.
   - Add thread-safe outcome collection.
   - Require both workers to terminate.
@@ -51,17 +53,17 @@
 
 ---
 
-### Task 1: Prove whether the real journal lock serializes the two Windows workers
+### Task 1: Capture the existing flaky interleaving without changing its schedule
 
 **Files:**
 - Modify temporarily: `tests/integration/workflow/test_event_journal.py:1-210`
-- Read only: `src/ansim_review/workflow/events.py` (`_journal_lock`, `append_workflow_event`, `load_workflow_events`)
+- Read only: `src/ansim_review/workflow/events.py` (`_journal_lock`, `_lock_with_msvcrt`, `append_workflow_event`, `load_workflow_events`)
 - Generate locally: `build/issue80-diagnostic-py311.txt`
 
 **Interfaces:**
-- Consumes: `events._journal_lock(events_dir: Path)` and `events.append_workflow_event(root, event)`.
-- Produces exactly one classification: `SERIALIZED`, `OVERLAP`, or `UNEXPECTED_EXCEPTION`.
-- Only `SERIALIZED` authorizes Task 2.
+- Consumes: the current `events.os.open` barrier, real `events._journal_lock(events_dir: Path)`, and `events.append_workflow_event(root, event)`.
+- Produces exactly one evidence-backed disposition: `TEST_ORCHESTRATION_DEFECT`, `PRODUCTION_LOCK_DEFECT`, `PRODUCTION_EXCEPTION`, or `NOT_REPRODUCED`.
+- Only `TEST_ORCHESTRATION_DEFECT` authorizes Task 2.
 
 - [ ] **Step 1: Create the execution worktree with the required Superpowers skill**
 
@@ -81,22 +83,24 @@ branch: agent/issue-80-event-journal-concurrency
 working tree: clean
 ```
 
-If `origin/main` is ahead, inspect those commits and reconcile the branch before investigation. Do not begin diagnosis on an unreviewed stale base.
+If `origin/main` is ahead, inspect those commits and reconcile the branch before diagnosis. Do not investigate an unreviewed stale base.
 
-- [ ] **Step 2: Replace the current race hook temporarily with a trace wrapper around the real `_journal_lock`**
+- [ ] **Step 2: Add observation imports only**
 
-Add these imports while diagnosing:
+At the top of `tests/integration/workflow/test_event_journal.py`, add:
 
 ```python
-from contextlib import contextmanager
 import time
+from contextlib import contextmanager
 ```
 
-Inside `test_concurrent_events_cannot_publish_two_events_for_one_sequence`, keep `first`, `second`, `root`, and the two worker threads, but replace the existing `events.os.open` monkeypatch with:
+Keep the existing imports and existing test logic otherwise unchanged at this step.
+
+- [ ] **Step 3: Add a thread-safe trace recorder inside the existing concurrency test**
+
+Immediately after `second = replace(first, event_id="EVT-OTHER")`, add:
 
 ```python
-rendezvous = threading.Barrier(2)
-original_journal_lock = events._journal_lock
 trace: list[tuple[int, int, str]] = []
 trace_guard = threading.Lock()
 active_sections = 0
@@ -106,27 +110,75 @@ max_active_sections = 0
 def record(label: str) -> None:
     with trace_guard:
         trace.append((time.monotonic_ns(), threading.get_ident(), label))
+```
 
+- [ ] **Step 4: Instrument the existing `events.os.open` barrier without changing which calls wait**
 
+Keep the existing:
+
+```python
+barrier = threading.Barrier(2)
+original_open = events.os.open
+open_calls = 0
+open_calls_lock = threading.Lock()
+```
+
+Replace only the body of `synchronized_open` with the traced equivalent below. The first two calls must still wait on the same barrier exactly as before:
+
+```python
+def synchronized_open(*args, **kwargs):
+    nonlocal open_calls
+    path = str(args[0]) if args else "<missing-path>"
+    with open_calls_lock:
+        open_calls += 1
+        call_number = open_calls
+        should_wait = call_number <= 2
+    record(f"os_open_before:{call_number}:{path}")
+    if should_wait:
+        record(f"os_open_barrier_enter:{call_number}:{path}")
+        barrier.wait(timeout=5)
+        record(f"os_open_barrier_exit:{call_number}:{path}")
+    descriptor = original_open(*args, **kwargs)
+    record(f"os_open_after:{call_number}:{path}")
+    return descriptor
+```
+
+Keep:
+
+```python
+monkeypatch.setattr(events.os, "open", synchronized_open)
+```
+
+This step observes the current schedule; it must not move the barrier to a new location.
+
+- [ ] **Step 5: Wrap the real `_journal_lock` only to measure critical-section overlap**
+
+Save the current function after the `events.os.open` monkeypatch is configured:
+
+```python
+original_journal_lock = events._journal_lock
+```
+
+Add:
+
+```python
 @contextmanager
 def traced_journal_lock(events_dir: Path):
     nonlocal active_sections, max_active_sections
-    record("pre_lock")
-    rendezvous.wait(timeout=5)
-    record("lock_attempt")
+    record("journal_lock_enter")
     with original_journal_lock(events_dir):
         with trace_guard:
             active_sections += 1
             max_active_sections = max(max_active_sections, active_sections)
             trace.append(
-                (time.monotonic_ns(), threading.get_ident(), "lock_acquired")
+                (time.monotonic_ns(), threading.get_ident(), "journal_lock_acquired")
             )
         try:
             yield
         finally:
             with trace_guard:
                 trace.append(
-                    (time.monotonic_ns(), threading.get_ident(), "lock_release")
+                    (time.monotonic_ns(), threading.get_ident(), "journal_lock_release")
                 )
                 active_sections -= 1
 
@@ -134,11 +186,11 @@ def traced_journal_lock(events_dir: Path):
 monkeypatch.setattr(events, "_journal_lock", traced_journal_lock)
 ```
 
-This wrapper must delegate to `original_journal_lock`; it is not a fake lock.
+The wrapper delegates to the real production lock and introduces no new rendezvous.
 
-- [ ] **Step 3: Make diagnostic outcome capture thread-safe**
+- [ ] **Step 6: Make outcome collection thread-safe while preserving the same two append workers**
 
-Replace the shared outcome list logic with:
+Replace the raw shared outcome list with:
 
 ```python
 outcomes: list[tuple[object, BaseException | None]] = []
@@ -154,8 +206,11 @@ def append(event) -> None:
         outcome = (event, None)
     with outcomes_guard:
         outcomes.append(outcome)
+```
 
+Keep the same two worker threads and the existing 5-second join during diagnosis:
 
+```python
 threads = [
     threading.Thread(target=append, args=(first,)),
     threading.Thread(target=append, args=(second,)),
@@ -163,49 +218,41 @@ threads = [
 for thread in threads:
     thread.start()
 for thread in threads:
-    thread.join(timeout=15)
+    thread.join(timeout=5)
 ```
 
-Then emit diagnostic data before assertions:
+The current join timeout is deliberately preserved in Task 1 because changing it would alter the failure condition being investigated.
+
+- [ ] **Step 7: Print the diagnostic state before the existing assertions**
+
+Add:
 
 ```python
 print(f"ISSUE80 max_active_sections={max_active_sections}")
+print(f"ISSUE80 open_calls={open_calls}")
+print(f"ISSUE80 alive={[thread.is_alive() for thread in threads]!r}")
 print(f"ISSUE80 outcomes={outcomes!r}")
 for entry in trace:
     print(f"ISSUE80 trace={entry!r}")
-
-assert all(not thread.is_alive() for thread in threads), trace
 ```
 
-The 15-second join is a deadlock guard only; it is not the correctness mechanism.
+Then adapt the existing assertions only enough to account for `(event, exception)` tuples while preserving the same safety requirements:
 
-- [ ] **Step 4: Run the diagnostic test on actual Windows Python 3.11 and preserve the output**
+```python
+exceptions = [item[1] for item in outcomes]
+assert len(outcomes) == 2
+assert exceptions.count(None) == 1
+assert sum(isinstance(exc, FileExistsError) for exc in exceptions) == 1
+```
+
+Do not add a new passing condition.
+
+- [ ] **Step 8: Run the instrumented current test on actual Windows Python 3.11 and preserve all output**
 
 ```powershell
 New-Item -ItemType Directory -Force build | Out-Null
 $test = "tests/integration/workflow/test_event_journal.py::test_concurrent_events_cannot_publish_two_events_for_one_sequence"
-py -3.11 -m pytest -q -s $test 2>&1 | Tee-Object -FilePath build/issue80-diagnostic-py311.txt
-```
-
-Then execute a bounded 50-run probe, appending all output to the same local evidence file:
-
-```powershell
-1..50 | ForEach-Object {
-    "=== diagnostic iteration $_ ===" | Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
-    py -3.11 -m pytest -q -s $test 2>&1 |
-        Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
-    if ($LASTEXITCODE -ne 0) {
-        "=== stopped on iteration $_ ===" |
-            Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
-        break
-    }
-}
-```
-
-Also capture the environment in the same file:
-
-```powershell
-"=== environment ===" | Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
+"=== environment ===" | Set-Content build/issue80-diagnostic-py311.txt
 [System.Environment]::OSVersion.VersionString |
     Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
 py -3.11 --version 2>&1 |
@@ -216,45 +263,65 @@ git rev-parse HEAD |
     Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
 ```
 
-- [ ] **Step 5: Apply the root-cause gate from the captured evidence**
+Run up to 100 iterations, stopping on the first failure:
 
-Use these exact classifications:
+```powershell
+$failed = $false
+1..100 | ForEach-Object {
+    if ($failed) { return }
+    "=== diagnostic iteration $_ ===" |
+        Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
+    py -3.11 -m pytest -q -s $test 2>&1 |
+        Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
+    if ($LASTEXITCODE -ne 0) {
+        "=== captured failure at iteration $_ ===" |
+            Tee-Object -FilePath build/issue80-diagnostic-py311.txt -Append
+        $failed = $true
+    }
+}
+```
+
+- [ ] **Step 9: Classify the captured run without inference beyond the trace**
+
+Use these exact dispositions:
 
 ```text
-SERIALIZED
-- max_active_sections == 1 on completed runs;
-- exactly one append succeeds;
-- the other completed append raises FileExistsError;
-- both workers terminate.
+TEST_ORCHESTRATION_DEFECT
+- a failing run is captured;
+- max_active_sections never exceeds 1;
+- the trace proves the first two synchronized os.open calls are lock-file opens rather than event-file create attempts;
+- the observed failure is attributable to the test schedule/completion logic rather than an exception originating from the production lock/persistence path.
 
-OVERLAP
-- max_active_sections > 1 in any completed run.
+PRODUCTION_LOCK_DEFECT
+- max_active_sections > 1 in any run.
 
-UNEXPECTED_EXCEPTION
-- max_active_sections == 1, but a worker raises an exception other than FileExistsError;
-- or a worker remains alive after the deadlock guard;
-- or the diagnostic wrapper itself cannot complete consistently.
+PRODUCTION_EXCEPTION
+- max_active_sections <= 1, but a failing run contains an unexpected exception originating from _journal_lock, msvcrt.locking, file creation, fsync, or journal loading rather than the test barrier itself.
+
+NOT_REPRODUCED
+- 100 instrumented iterations complete without a failing run.
 ```
 
 Gate:
 
 ```text
-SERIALIZED           -> proceed to Task 2.
-OVERLAP              -> STOP this plan; do not edit events.py; create a new production-lock design.
-UNEXPECTED_EXCEPTION -> STOP this plan; trace that exact exception before proposing a change.
+TEST_ORCHESTRATION_DEFECT -> proceed to Task 2.
+PRODUCTION_LOCK_DEFECT    -> STOP; do not edit events.py; create a new production-lock design.
+PRODUCTION_EXCEPTION      -> STOP; trace the exact production exception before designing a fix.
+NOT_REPRODUCED            -> STOP; do not claim root cause or modify the test yet.
 ```
 
-Do not reinterpret `OVERLAP` as a flaky-test-only defect.
+The Issue #80 acceptance criterion requires an identified condition, so `NOT_REPRODUCED` is not sufficient to proceed.
 
-- [ ] **Step 6: Do not commit temporary diagnostics**
+- [ ] **Step 10: Do not commit temporary diagnostics**
 
-`time`, `trace`, `active_sections`, `max_active_sections`, diagnostic `print()` calls, and `build/issue80-diagnostic-py311.txt` are investigation-only. Task 2 replaces the temporary code with the final regression test. Do not stage or commit the generated diagnostic file.
+`time`, the trace recorder, open-path logging, critical-section counters, diagnostic `print()` calls, and `build/issue80-diagnostic-py311.txt` are investigation-only. Do not stage or commit them.
 
 ---
 
 ### Task 2: Replace global `os.open()` call-count synchronization with an explicit journal-lock rendezvous
 
-**Precondition:** Task 1 classification is exactly `SERIALIZED`.
+**Precondition:** Task 1 disposition is exactly `TEST_ORCHESTRATION_DEFECT`.
 
 **Files:**
 - Modify: `tests/integration/workflow/test_event_journal.py:1-210`
@@ -265,9 +332,9 @@ Do not reinterpret `OVERLAP` as a flaky-test-only defect.
 - Produces: deterministic `test_concurrent_events_cannot_publish_two_events_for_one_sequence`.
 - Outcome contract: one success, one `FileExistsError`, zero live workers, one canonical persisted event matching the winner.
 
-- [ ] **Step 1: Remove all temporary diagnosis and the old `events.os.open` hook**
+- [ ] **Step 1: Remove all temporary diagnosis and the old global `events.os.open` hook**
 
-Remove:
+Remove all Task 1-only instrumentation, including:
 
 ```text
 import time
@@ -278,6 +345,7 @@ max_active_sections
 record()
 traced_journal_lock()
 diagnostic print() calls
+open-path trace labels
 original_open
 open_calls
 open_calls_lock
@@ -293,7 +361,7 @@ from contextlib import contextmanager
 
 - [ ] **Step 2: Replace the full concurrency test with the deterministic lock-boundary version**
 
-Use this final function body:
+Use this final function:
 
 ```python
 def test_concurrent_events_cannot_publish_two_events_for_one_sequence(
@@ -371,11 +439,7 @@ The test must not depend on which event wins.
 py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_concurrent_events_cannot_publish_two_events_for_one_sequence
 ```
 
-Expected:
-
-```text
-1 passed
-```
+Expected: `1 passed`.
 
 - [ ] **Step 4: Run the focused test on Python 3.13 when available**
 
@@ -383,31 +447,25 @@ Expected:
 py -3.13 -m pytest -q tests/integration/workflow/test_event_journal.py::test_concurrent_events_cannot_publish_two_events_for_one_sequence
 ```
 
-Expected when available:
+Expected when available: `1 passed`. If unavailable, record exactly `Python 3.13: UNAVAILABLE`; do not substitute another interpreter.
 
-```text
-1 passed
-```
-
-If the Python launcher reports that 3.13 is unavailable, record exactly `Python 3.13: UNAVAILABLE`; do not substitute another interpreter.
-
-- [ ] **Step 5: Run the entire event-journal test module on each available interpreter**
+- [ ] **Step 5: Run the entire event-journal module on each available interpreter**
 
 ```powershell
 py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py
 py -3.13 -m pytest -q tests/integration/workflow/test_event_journal.py
 ```
 
-Expected: all tests in the module pass on each available interpreter.
+Expected: all module tests pass on each available interpreter.
 
-- [ ] **Step 6: Review the diff before committing**
+- [ ] **Step 6: Review the final code diff**
 
 ```powershell
 git diff -- tests/integration/workflow/test_event_journal.py
 git diff --check
 ```
 
-The diff must contain no production file changes and no temporary diagnostic trace code.
+The diff must contain no production file change and no temporary diagnostic code.
 
 - [ ] **Step 7: Commit the deterministic regression test**
 
@@ -454,13 +512,7 @@ $test = "tests/integration/workflow/test_event_journal.py::test_concurrent_event
 }
 ```
 
-Acceptance:
-
-```text
-Python 3.11 targeted: 200/200 PASS
-```
-
-One failure invalidates the run and returns the work to Task 1 investigation.
+Acceptance: `Python 3.11 targeted: 200/200 PASS`. One failure invalidates the run and returns the work to Task 1.
 
 - [ ] **Step 3: Run 200 consecutive targeted passes on Windows Python 3.13 when available**
 
@@ -473,17 +525,7 @@ One failure invalidates the run and returns the work to Task 1 investigation.
 }
 ```
 
-Acceptance when available:
-
-```text
-Python 3.13 targeted: 200/200 PASS
-```
-
-When unavailable:
-
-```text
-Python 3.13: UNAVAILABLE
-```
+Acceptance when available: `Python 3.13 targeted: 200/200 PASS`. When unavailable, record exactly `Python 3.13: UNAVAILABLE`.
 
 - [ ] **Step 4: Prove the final test contains no forbidden workaround**
 
@@ -493,7 +535,7 @@ git grep -n -E "open_calls|synchronized_open|time\.monotonic_ns|pytest\.mark\.xf
 
 Expected: no matches.
 
-Then verify the expected explicit hook remains:
+Verify the intended explicit synchronization hook remains:
 
 ```powershell
 git grep -n "synchronized_journal_lock" -- tests/integration/workflow/test_event_journal.py
@@ -527,7 +569,7 @@ Expected: PASS.
 py -3.13 -m pytest -q tests/integration/workflow/
 ```
 
-Expected when available: PASS. Otherwise record `Python 3.13 workflow integration: UNAVAILABLE`.
+Expected when available: PASS. Otherwise record exactly `Python 3.13 workflow integration: UNAVAILABLE`.
 
 - [ ] **Step 3: Run the full repository suite on Python 3.11**
 
@@ -543,7 +585,7 @@ Expected: PASS with only repository-approved skips.
 py -3.13 -m pytest -q
 ```
 
-Expected when available: PASS with only repository-approved skips. Otherwise record `Python 3.13 full pytest: UNAVAILABLE`.
+Expected when available: PASS with only repository-approved skips. Otherwise record exactly `Python 3.13 full pytest: UNAVAILABLE`.
 
 - [ ] **Step 5: Run Ruff**
 
@@ -583,7 +625,7 @@ py -3.11 -m evidence_review documentation validate `
   --output $out
 ```
 
-Expected: PASS with `0 errors`. Record the warning count exactly; do not omit it.
+Expected: PASS with `0 errors`. Record the warning count exactly.
 
 - [ ] **Step 9: Confirm exact final HEAD and clean worktree**
 
@@ -593,14 +635,7 @@ git status --short
 git diff --check
 ```
 
-Required:
-
-```text
-working tree: clean
-git diff --check: no output
-```
-
-Generated `build/` evidence must remain untracked or ignored and must not be committed as part of the code fix.
+Required: clean working tree and no `git diff --check` output. Generated `build/` evidence must not be committed.
 
 ---
 
@@ -612,7 +647,7 @@ Generated `build/` evidence must remain untracked or ignored and must not be com
 - Pull request from `agent/issue-80-event-journal-concurrency` to `main`.
 
 **Interfaces:**
-- Consumes: Task 1 classification and all exact Task 3-4 command results.
+- Consumes: Task 1 disposition and all exact Task 3-4 command results.
 - Produces: auditable Issue #80 evidence and a focused PR linked with `Fixes #80`.
 
 - [ ] **Step 1: Recheck branch scope against current main**
@@ -624,7 +659,7 @@ git diff --stat origin/main...HEAD
 git diff --check origin/main...HEAD
 ```
 
-Under the `SERIALIZED` path, the only expected repository paths are:
+Under the `TEST_ORCHESTRATION_DEFECT` path, the only expected repository paths are:
 
 ```text
 tests/integration/workflow/test_event_journal.py
@@ -632,7 +667,7 @@ docs/superpowers/specs/2026-08-12-issue-80-event-journal-concurrency-design.md
 docs/superpowers/plans/2026-08-12-issue-80-event-journal-concurrency.md
 ```
 
-Any `src/` path in the diff blocks PR creation under this plan.
+Any `src/` path blocks PR creation under this plan.
 
 - [ ] **Step 2: Post an Issue #80 verification comment using only observed results**
 
@@ -647,9 +682,11 @@ The comment must contain these sections and no blank result fields:
 - Python and pytest versions used
 
 ### Root cause
-- Critical-section classification: `SERIALIZED`
-- State that the real `_journal_lock` serialized the two contenders in the Windows trace.
-- State that the removed test orchestration synchronized global `os.open()` call order instead of an explicit journal-lock boundary.
+- Critical disposition: `TEST_ORCHESTRATION_DEFECT`
+- State the exact first two `os.open` paths shown in the captured failing trace.
+- State the measured `max_active_sections` from the captured failing trace.
+- State the exact losing-worker outcome from that trace.
+- Explain why those observations identify the test orchestration rather than production locking as the defect.
 - State that production `events.py` is unchanged.
 
 ### Targeted stress
@@ -674,7 +711,7 @@ The comment must contain these sections and no blank result fields:
 - If jobs have no executed runner steps, record `ACTIONS_UNAVAILABLE` and do not claim PASS.
 ```
 
-Do not post `SERIALIZED` if Task 1 did not prove it.
+Do not post `TEST_ORCHESTRATION_DEFECT` unless Task 1 captured evidence satisfying that disposition.
 
 - [ ] **Step 3: Open the focused PR only after all available local acceptance gates pass**
 
@@ -684,13 +721,13 @@ Use this title exactly:
 test: make Windows event-journal concurrency regression deterministic (#80)
 ```
 
-Use this fixed body, selecting the correct literal Python 3.13 line from the two choices below:
+Use this body when Python 3.13 completed the acceptance run:
 
 ```markdown
 Fixes #80
 
 - replaces global `os.open()` call-count synchronization with an explicit rendezvous at the real journal-lock boundary
-- keeps production event-journal code unchanged because the Windows trace proved serialized critical sections
+- keeps production event-journal code unchanged because the captured Windows failure showed a test-orchestration defect with serialized production critical sections
 - preserves exactly-one-success / exactly-one-`FileExistsError` safety assertions
 - verifies canonical single-event persistence after the race
 
@@ -705,13 +742,7 @@ Validation:
 - documentation integrity: PASS
 ```
 
-If Python 3.13 was unavailable, replace only this line:
-
-```text
-- Windows Python 3.13 targeted stress: 200/200 PASS
-```
-
-with:
+If Python 3.13 was unavailable, change only the Python 3.13 validation line to:
 
 ```text
 - Windows Python 3.13 targeted stress: UNAVAILABLE
@@ -719,7 +750,7 @@ with:
 
 Do not change a failed validation into `UNAVAILABLE`.
 
-- [ ] **Step 4: Keep #80 open until exact-PR-HEAD review remains clean**
+- [ ] **Step 4: Keep #80 open until exact-PR-HEAD verification remains clean**
 
 Before merge, run:
 
@@ -729,14 +760,16 @@ git diff --check origin/main...HEAD
 git rev-parse HEAD
 ```
 
-If the PR HEAD changes after the recorded acceptance run, refresh the Issue #80 evidence for the new HEAD before merge or closure.
+If the PR HEAD changes after the acceptance run, refresh Issue #80 evidence for the new HEAD before merge or closure.
 
 ---
 
 ## Self-Review Mapping
 
-- Windows root-cause evidence: Task 1.
-- Explicit stop gate for production-lock defects: Task 1 Step 5.
+- Existing flaky schedule preserved during root-cause capture: Task 1 Steps 2-8.
+- Actual `os.open` paths captured: Task 1 Step 4 and Step 8.
+- Real critical-section overlap measured: Task 1 Step 5.
+- Explicit production-defect stop gates: Task 1 Step 9.
 - Removal of global `os.open` call-count race: Task 2 Steps 1-2.
 - Exactly one success and one `FileExistsError`: Task 2 Step 2 assertions.
 - Worker termination: Task 2 Step 2 assertions.
@@ -746,18 +779,18 @@ If the PR HEAD changes after the recorded acceptance run, refresh the Issue #80 
 - Workflow/full/static/documentation regression: Task 4.
 - Exact-head Issue evidence and PR linkage: Task 5.
 
-No production code change is authorized by this implementation plan. A proven production-lock defect terminates this plan and requires a new approved design.
+No production code change is authorized by this implementation plan. Any `PRODUCTION_LOCK_DEFECT`, `PRODUCTION_EXCEPTION`, or `NOT_REPRODUCED` disposition terminates the test-only implementation path.
 
 ## Completion Definition
 
-Issue #80 is implementation-ready for review only when all of the following are true:
+Issue #80 is implementation-ready for review under this plan only when all of the following are true:
 
-1. Task 1 proves `SERIALIZED` critical-section behavior on actual Windows.
+1. Task 1 captures an actual failing Windows interleaving and classifies it `TEST_ORCHESTRATION_DEFECT` from trace evidence.
 2. The final test no longer monkeypatches global `events.os.open` or uses call-count synchronization.
 3. Exactly one append succeeds and exactly one conflicting append raises `FileExistsError`.
 4. Both workers terminate and exactly one canonical journal event remains.
 5. Python 3.11 targeted stress is 200/200 PASS when available.
 6. Python 3.13 targeted stress is 200/200 PASS when available, otherwise explicitly `UNAVAILABLE`.
 7. Workflow integration, full pytest, Ruff, mypy, compileall, and documentation integrity are recorded for the exact final HEAD.
-8. Issue #80 contains the trace-backed root-cause summary and exact verification evidence.
+8. Issue #80 contains the captured root-cause trace summary and exact verification evidence.
 9. The focused PR links `Fixes #80` and contains no unauthorized production-lock change.
