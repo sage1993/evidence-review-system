@@ -33,6 +33,10 @@ def _metadata(source: PageImageSource, page: PdfPageGeometry, image: bytes) -> d
         "source_hash": source.source_hash,
         "pdf_width": page.width,
         "pdf_height": page.height,
+        "origin_x": page.origin_x,
+        "origin_y": page.origin_y,
+        "rotation": page.rotation,
+        "box_kind": page.box_kind,
         "image_sha256": hashlib.sha256(image).hexdigest(),
     }
 
@@ -113,22 +117,43 @@ def _stage_source(
             )
             staged.append((destination_image, image))
             staged.append((destination_metadata, dump_bytes(_metadata(source, page, image))))
+    if sha256_file(source.source_path) != source.source_hash:
+        raise ValueError("page image source hash changed during rendering")
     return staged
 
 
-def cache_page_images(root: Path, sources: tuple[PageImageSource, ...]) -> None:
+def cache_page_images(root: Path, sources: tuple[PageImageSource, ...]) -> tuple[Path, ...]:
     """Render every missing page after all existing caches have been verified."""
     staged: list[tuple[Path, bytes]] = []
     for source in sources:
         staged.extend(_stage_source(root, source, read_pdf_page_geometries(source.source_path)))
-    for path, data in staged:
-        path.parent.mkdir(parents=True, exist_ok=True)
+    published: list[Path] = []
+    try:
+        for path, data in staged:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError as error:
+                raise ValueError("page image cache changed during publication") from error
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            published.append(path)
+    except Exception:
+        rollback_page_image_cache(published)
+        raise
+    return tuple(published)
+
+
+def rollback_page_image_cache(paths: tuple[Path, ...] | list[Path]) -> None:
+    """Remove only paths newly published by a failed ingestion transaction."""
+    for path in reversed(paths):
+        path.unlink(missing_ok=True)
         try:
-            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError as error:
-            raise ValueError("page image cache changed during publication") from error
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(data)
+            path.parent.rmdir()
+        except OSError:
+            pass
 
 
 def cache_pdf_page_images(

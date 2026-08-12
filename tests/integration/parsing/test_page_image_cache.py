@@ -29,6 +29,10 @@ def test_page_image_cache_writes_and_reuses_verified_pngs(tmp_path: Path) -> Non
         "source_hash": source_hash,
         "pdf_width": 100.0,
         "pdf_height": 200.0,
+        "origin_x": 0.0,
+        "origin_y": 0.0,
+        "rotation": 0,
+        "box_kind": "MEDIA_BOX",
         "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
     }
     before = (image.read_bytes(), image.stat().st_mtime_ns, metadata.stat().st_mtime_ns)

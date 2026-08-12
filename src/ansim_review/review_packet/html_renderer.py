@@ -19,6 +19,7 @@ class _PageAsset:
     data_uri: str
     pdf_width: float
     pdf_height: float
+    rotation: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +112,8 @@ def _verified_page_image(
         "pdf_height",
         "image_sha256",
     }
-    if set(metadata) != required:
+    optional = {"origin_x", "origin_y", "rotation", "box_kind"}
+    if not required.issubset(metadata) or set(metadata) - required - optional:
         raise ValueError("page image metadata fields are invalid")
     if metadata.get("format") != "ansim/page-image" or metadata.get("version") != 1:
         raise ValueError("unsupported page image metadata")
@@ -131,10 +133,18 @@ def _verified_page_image(
 
     pdf_width = _positive_number(metadata.get("pdf_width"), "pdf_width")
     pdf_height = _positive_number(metadata.get("pdf_height"), "pdf_height")
+    rotation = metadata.get("rotation", 0)
+    if (
+        isinstance(rotation, bool)
+        or not isinstance(rotation, int)
+        or rotation not in {0, 90, 180, 270}
+    ):
+        raise ValueError("page image rotation is invalid")
     return _PageAsset(
         data_uri="data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii"),
         pdf_width=pdf_width,
         pdf_height=pdf_height,
+        rotation=rotation,
     )
 
 
@@ -200,7 +210,22 @@ def _citation_render(
     left, bottom, right, top = _bbox(citation.get("bbox", []))
     if left < 0 or bottom < 0 or right > page_asset.pdf_width or top > page_asset.pdf_height:
         raise ValueError("citation bbox is outside the verified page bounds")
-    rect_y = page_asset.pdf_height - top
+    if page_asset.rotation == 0:
+        viewport_width, viewport_height = page_asset.pdf_width, page_asset.pdf_height
+        rect_x, rect_y = left, page_asset.pdf_height - top
+        rect_width, rect_height = right - left, top - bottom
+    elif page_asset.rotation == 90:
+        viewport_width, viewport_height = page_asset.pdf_height, page_asset.pdf_width
+        rect_x, rect_y = bottom, left
+        rect_width, rect_height = top - bottom, right - left
+    elif page_asset.rotation == 180:
+        viewport_width, viewport_height = page_asset.pdf_width, page_asset.pdf_height
+        rect_x, rect_y = page_asset.pdf_width - right, bottom
+        rect_width, rect_height = right - left, top - bottom
+    else:
+        viewport_width, viewport_height = page_asset.pdf_height, page_asset.pdf_width
+        rect_x, rect_y = page_asset.pdf_height - top, page_asset.pdf_width - right
+        rect_width, rect_height = top - bottom, right - left
     bbox_text = ",".join(str(item) for item in (left, bottom, right, top))
     citation_id = str(citation.get("citation_id", ""))
     evidence_id = str(citation.get("evidence_id", ""))
@@ -233,14 +258,14 @@ def _citation_render(
     )
     overlay_html = "".join(
         (
-            f'<svg viewBox="0 0 {page_asset.pdf_width} {page_asset.pdf_height}" ',
+            f'<svg viewBox="0 0 {viewport_width} {viewport_height}" ',
             'class="citation-overlay" ',
             f'data-asset-key="{_text(asset_key)}" ',
             f'data-citation-id="{_text(citation_id)}" ',
             f'data-evidence-id="{_text(evidence_id)}" ',
             'preserveAspectRatio="none" aria-label="citation bbox overlay">',
-            f'<rect x="{left}" y="{rect_y}" width="{right - left}" ',
-            f'height="{top - bottom}"></rect>',
+            f'<rect x="{rect_x}" y="{rect_y}" width="{rect_width}" ',
+            f'height="{rect_height}"></rect>',
             "</svg>",
         )
     )

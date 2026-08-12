@@ -17,6 +17,7 @@ from ansim_review.parsing.source_batch_importer import (
     import_source_batch,
     prepare_source_batch,
 )
+from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,7 @@ def _batch(role: str, parser: dict[str, object] | None):
 
 def test_unknown_parser_kind_is_blocked_without_database(tmp_path: Path) -> None:
     (tmp_path / "inputs").mkdir()
-    (tmp_path / "inputs/source.pdf").write_bytes(b"pdf")
+    write_pdf_fixture(tmp_path / "inputs/source.pdf", page_sizes=((100.0, 200.0),))
     (tmp_path / "inputs/parser.json").write_text("{}", encoding="utf-8")
     batch = _batch(
         "REFERENCE_DOCUMENT",
@@ -108,7 +109,7 @@ def test_drawing_only_batch_does_not_create_empty_database(tmp_path: Path) -> No
 
 def test_registered_custom_adapter_can_ingest_v2_source(tmp_path: Path) -> None:
     (tmp_path / "inputs").mkdir()
-    (tmp_path / "inputs/source.pdf").write_bytes(b"pdf")
+    write_pdf_fixture(tmp_path / "inputs/source.pdf", page_sizes=((100.0, 200.0),))
     (tmp_path / "inputs/parser.json").write_text("{}", encoding="utf-8")
     batch = _batch(
         "REFERENCE_DOCUMENT",

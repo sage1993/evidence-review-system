@@ -76,6 +76,7 @@ def test_fts_failure_does_not_publish_output_database(
 
     assert not output.exists()
     assert _temporary_artifacts(output) == ()
+    assert tuple((tmp_path / "page-images").rglob("*")) == ()
 
 
 def test_snapshot_hash_failure_cleans_temporary_database(
