@@ -4,32 +4,32 @@
 
 **Goal:** Replace the Windows CRT journal lock with a blocking Win32 `LockFileEx`/`UnlockFileEx` backend so normal contention waits, conflicting sequence publication resolves as one success plus one `FileExistsError`, and genuine Windows API failures remain fail-closed.
 
-**Architecture:** Keep journal semantics and the persistent sibling `.events.lock` path in `events.py`, but isolate the Windows native file-lock primitive in `src/ansim_review/workflow/windows_lock.py`. The Windows helper converts a CRT file descriptor to a native handle, acquires byte range `[0, 1)` with blocking exclusive `LockFileEx`, and releases the same range with `UnlockFileEx`; the POSIX `flock(LOCK_EX)` path is unchanged. Regression coverage proves same-process blocking/GIL behavior, Issue #80 sequence conflict behavior, cross-process serialization, and genuine Win32 error propagation.
+**Architecture:** Keep journal semantics and the persistent sibling `.events.lock` path in `events.py`, while isolating the Windows native primitive in `src/ansim_review/workflow/windows_lock.py`. The Windows helper converts the CRT descriptor to a native handle, locks byte range `[0, 1)` with blocking exclusive `LockFileEx`, and releases the same range with `UnlockFileEx`; the POSIX `flock(LOCK_EX)` path is unchanged. Tests cover the primitive, GIL-safe same-process contention, Issue #80 conflicting sequence publication, spawned-process contention, and genuine Win32 failures.
 
-**Tech Stack:** Python 3.11/3.13, standard-library `ctypes`, `ctypes.wintypes`, `msvcrt.get_osfhandle`, Win32 Kernel32 `LockFileEx`/`UnlockFileEx`, `threading`, `multiprocessing`, pytest, Ruff, mypy, compileall.
+**Tech Stack:** Python 3.11/3.13, standard-library `ctypes`, `ctypes.wintypes`, `msvcrt.get_osfhandle`, Kernel32 `LockFileEx`/`UnlockFileEx`, `threading`, `multiprocessing`, pytest, Ruff, mypy, compileall.
 
 ## Global Constraints
 
-- Execute on branch `agent/issue-80-event-journal-concurrency`; do not implement on `main`.
-- At execution start, load `superpowers:using-git-worktrees`, create or verify an isolated worktree, fetch `origin/main`, and reconcile any branch drift before editing production code.
-- Approved design spec: `docs/superpowers/specs/2026-08-12-issue-80-windows-production-lock-design.md` at or after commit `c282a6afc24bec54dd1a639b59ee0f5a361feea6`.
-- Preserve the diagnostic disposition `PRODUCTION_EXCEPTION`: Windows Python 3.11 iteration 23, `max_active_sections=1`, same `.events.lock` path, winner `EVT-0001`, loser `EVT-OTHER`, `PermissionError(13)` from `_lock_with_msvcrt`, diagnostic SHA-256 `B6FE5D487AFCDB58563F5908A5D249B7CC27CFB2E12447114806B43A99D4422E`.
-- Normal Windows lock contention must block until the owner releases; it must not be converted into `PermissionError`, polling, retries, sleeps, xfail, skip masking, or timeout-based correctness.
-- Windows acquire uses `LockFileEx` with `LOCKFILE_EXCLUSIVE_LOCK` only; `LOCKFILE_FAIL_IMMEDIATELY` is absent; `dwReserved=0`; offset `0`; low length `1`; high length `0`.
-- Windows release uses `UnlockFileEx` on the same handle, offset, and one-byte range.
-- Use `ctypes.WinDLL(..., use_last_error=True)`, not `ctypes.PyDLL`, so a blocking waiter does not retain the GIL and prevent the owner thread from releasing the lock.
-- Preserve genuine Win32 failures as `OSError`/`WinError` with the Windows error code; never suppress broad `OSError` or retry `PermissionError` as contention.
-- Keep `.events.lock` persistent; do not delete/recreate it per critical section.
-- Remove the Windows-only sentinel-byte write used by the old CRT path; lock-file contents carry no semantic state.
-- Do not change journal file format, append ordering, sequence validation, canonical bytes, `O_CREAT | O_EXCL` event publication, or POSIX `fcntl.flock` behavior.
+- Execute on branch `agent/issue-80-event-journal-concurrency`; never implement on `main`.
+- At execution start load `superpowers:using-git-worktrees`, create or verify an isolated worktree, fetch `origin/main`, and reconcile branch drift before editing production code.
+- Approved design spec: `docs/superpowers/specs/2026-08-12-issue-80-windows-production-lock-design.md`, latest approved design commit `c282a6afc24bec54dd1a639b59ee0f5a361feea6`.
+- Preserve the diagnostic classification `PRODUCTION_EXCEPTION`: Windows Python 3.11 iteration 23, `max_active_sections=1`, same `.events.lock`, winner `EVT-0001`, loser `EVT-OTHER`, `PermissionError(13)` from `_lock_with_msvcrt`, diagnostic SHA-256 `B6FE5D487AFCDB58563F5908A5D249B7CC27CFB2E12447114806B43A99D4422E`.
+- Normal Windows contention must block until release. It must not be implemented with polling, `PermissionError` retry, sleeps, xfail, skip masking, or timeout-based correctness.
+- Acquire uses `LockFileEx` with `LOCKFILE_EXCLUSIVE_LOCK` only. `LOCKFILE_FAIL_IMMEDIATELY` is absent; `dwReserved=0`; offset `0`; low length `1`; high length `0`.
+- Release uses `UnlockFileEx` on the same handle, offset, and one-byte range.
+- Use `ctypes.WinDLL(..., use_last_error=True)`, never `ctypes.PyDLL`, so a waiter blocked in native code does not retain the GIL.
+- Preserve genuine Win32 failures as `OSError`/`WinError` with their Windows error code. Never suppress broad `OSError` or infer contention from an exception class.
+- Keep `.events.lock` persistent. Do not delete and recreate it for each critical section.
+- Remove the Windows-only sentinel-byte write used by the old CRT path. Lock-file bytes carry no semantic state.
+- Do not change journal format, canonical event bytes, append ordering, sequence validation, `O_CREAT | O_EXCL` publication, or POSIX `fcntl.flock` behavior.
 - Add no third-party dependency.
-- Python 3.11 Windows verification is mandatory. Python 3.13 is required when installed; if unavailable, record `UNAVAILABLE` rather than PASS.
-- One failure in a stress loop invalidates that loop and returns the work to systematic debugging.
-- GitHub Actions status is reported literally. No usable runner means `ACTIONS_UNAVAILABLE`, never PASS.
+- Windows Python 3.11 verification is mandatory. Run Python 3.13 verification when installed; otherwise record `UNAVAILABLE`.
+- One failure in a stress loop invalidates the loop and returns execution to `superpowers:systematic-debugging`.
+- GitHub Actions status is literal. No usable runner means `ACTIONS_UNAVAILABLE`, never PASS.
 
 ---
 
-### Task 1: Implement and unit-test the Win32 file-lock primitive
+### Task 1: Implement and unit-test the Win32 primitive
 
 **Files:**
 - Create: `src/ansim_review/workflow/windows_lock.py`
@@ -38,12 +38,10 @@
 **Interfaces:**
 - Produces: `acquire_exclusive_file_lock(stream: BinaryIO) -> None`
 - Produces: `release_file_lock(stream: BinaryIO) -> None`
-- Private test seams: module-level `_lock_file_ex` and `_unlock_file_ex` bound once to Kernel32 callables.
-- Consumes: `stream.fileno()`, `msvcrt.get_osfhandle()`, `ctypes.get_last_error()`, `ctypes.WinError()`.
+- Private test seams: `_lock_file_ex`, `_unlock_file_ex`
+- Consumes: `stream.fileno()`, `msvcrt.get_osfhandle()`, `ctypes.get_last_error()`, `ctypes.WinError()`
 
-- [ ] **Step 1: Pre-flight the branch and isolated worktree**
-
-Run in PowerShell:
+- [ ] **Step 1: Pre-flight branch and worktree**
 
 ```powershell
 git status --short --branch
@@ -53,7 +51,7 @@ git rev-list --left-right --count HEAD...origin/main
 git log --oneline --decorate -8
 ```
 
-If the right-hand count shows `origin/main` commits missing from the branch, rebase the clean Issue #80 branch before code changes:
+If the branch is behind `origin/main`, rebase the clean Issue #80 branch before code edits:
 
 ```powershell
 git rebase origin/main
@@ -61,13 +59,11 @@ git status --short --branch
 git rev-list --left-right --count HEAD...origin/main
 ```
 
-Expected before implementation: clean worktree, Issue #80 spec/plan preserved, zero commits behind `origin/main`. If a source/test conflict appears during rebase, stop the rebase resolution long enough to inspect the conflicting upstream change; do not blindly choose either side.
+Required result: clean worktree, approved Issue #80 spec/plan retained, zero commits behind `origin/main`. If a source or test conflict appears, inspect the upstream change before resolving it; do not choose a side blindly.
 
-- [ ] **Step 2: Write the Windows-only unit tests first**
+- [ ] **Step 2: Write the primitive tests first**
 
-Create `tests/unit/workflow/test_windows_lock.py` with Windows-only collection and controlled native-call seams. The tests must cover exact acquire parameters, exact release parameters, acquire error propagation, and release error propagation.
-
-Use this structure:
+Create `tests/unit/workflow/test_windows_lock.py`. Skip the whole module before importing the Windows helper when `os.name != "nt"`:
 
 ```python
 from __future__ import annotations
@@ -78,55 +74,57 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows file-lock backend")
+if os.name != "nt":
+    pytest.skip("Windows file-lock backend", allow_module_level=True)
 
-if os.name == "nt":
-    from ansim_review.workflow import windows_lock
-else:
-    windows_lock = None
-
-
-def _require_windows_lock():
-    assert windows_lock is not None
-    return windows_lock
+from ansim_review.workflow import windows_lock
 
 
 def test_acquire_uses_blocking_exclusive_one_byte_range(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _require_windows_lock()
     calls: list[tuple[int, int, int, int]] = []
 
-    def fake_lock(handle, flags, reserved, low, high, overlapped):
+    def fake_lock(
+        handle: object,
+        flags: int,
+        reserved: int,
+        low: int,
+        high: int,
+        overlapped: object,
+    ) -> int:
         del handle, overlapped
-        calls.append((int(flags), int(reserved), int(low), int(high)))
+        calls.append((flags, reserved, low, high))
         return 1
 
-    monkeypatch.setattr(module, "_lock_file_ex", fake_lock)
-    path = tmp_path / "lock"
-    with path.open("w+b") as stream:
-        module.acquire_exclusive_file_lock(stream)
+    monkeypatch.setattr(windows_lock, "_lock_file_ex", fake_lock)
+    with (tmp_path / "lock").open("w+b") as stream:
+        windows_lock.acquire_exclusive_file_lock(stream)
 
-    assert calls == [(module.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0)]
+    assert calls == [(windows_lock.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0)]
 
 
 def test_release_uses_same_one_byte_range(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _require_windows_lock()
     calls: list[tuple[int, int, int]] = []
 
-    def fake_unlock(handle, reserved, low, high, overlapped):
+    def fake_unlock(
+        handle: object,
+        reserved: int,
+        low: int,
+        high: int,
+        overlapped: object,
+    ) -> int:
         del handle, overlapped
-        calls.append((int(reserved), int(low), int(high)))
+        calls.append((reserved, low, high))
         return 1
 
-    monkeypatch.setattr(module, "_unlock_file_ex", fake_unlock)
-    path = tmp_path / "lock"
-    with path.open("w+b") as stream:
-        module.release_file_lock(stream)
+    monkeypatch.setattr(windows_lock, "_unlock_file_ex", fake_unlock)
+    with (tmp_path / "lock").open("w+b") as stream:
+        windows_lock.release_file_lock(stream)
 
     assert calls == [(0, 1, 0)]
 
@@ -135,18 +133,15 @@ def test_acquire_preserves_win32_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _require_windows_lock()
-
-    def fail_lock(*args):
+    def fail_lock(*args: object) -> int:
         del args
         ctypes.set_last_error(5)
         return 0
 
-    monkeypatch.setattr(module, "_lock_file_ex", fail_lock)
-    path = tmp_path / "lock"
-    with path.open("w+b") as stream:
+    monkeypatch.setattr(windows_lock, "_lock_file_ex", fail_lock)
+    with (tmp_path / "lock").open("w+b") as stream:
         with pytest.raises(OSError) as exc_info:
-            module.acquire_exclusive_file_lock(stream)
+            windows_lock.acquire_exclusive_file_lock(stream)
 
     assert getattr(exc_info.value, "winerror", None) == 5
 
@@ -155,35 +150,30 @@ def test_release_preserves_win32_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _require_windows_lock()
-
-    def fail_unlock(*args):
+    def fail_unlock(*args: object) -> int:
         del args
         ctypes.set_last_error(6)
         return 0
 
-    monkeypatch.setattr(module, "_unlock_file_ex", fail_unlock)
-    path = tmp_path / "lock"
-    with path.open("w+b") as stream:
+    monkeypatch.setattr(windows_lock, "_unlock_file_ex", fail_unlock)
+    with (tmp_path / "lock").open("w+b") as stream:
         with pytest.raises(OSError) as exc_info:
-            module.release_file_lock(stream)
+            windows_lock.release_file_lock(stream)
 
     assert getattr(exc_info.value, "winerror", None) == 6
 ```
 
-If strict typing rejects the unannotated fake native callables, give each fake explicit `object` parameters rather than introducing `Any` broadly.
-
-- [ ] **Step 3: Run the focused tests and record RED**
+- [ ] **Step 3: Run the new unit test and record RED**
 
 ```powershell
 py -3.11 -m pytest -q tests/unit/workflow/test_windows_lock.py
 ```
 
-Expected before production implementation: collection/import failure because `ansim_review.workflow.windows_lock` does not yet exist, or focused test failures showing the required interface is absent. Record the exact RED output in the SDD task report.
+Required RED: import/collection failure because `ansim_review.workflow.windows_lock` does not exist yet, or focused failures proving the required interface is absent. Save the exact command and output in the Task 1 SDD report.
 
-- [ ] **Step 4: Implement `windows_lock.py` minimally**
+- [ ] **Step 4: Implement the minimal Windows helper module**
 
-Create a Windows-native helper module with these concrete responsibilities:
+Create `src/ansim_review/workflow/windows_lock.py` with the exact public API above. Define the Win32 layout explicitly:
 
 ```python
 from __future__ import annotations
@@ -230,14 +220,14 @@ class _Overlapped(ctypes.Structure):
     ]
 ```
 
-On Windows, bind Kernel32 once with `ctypes.WinDLL("kernel32", use_last_error=True)`. Define explicit `argtypes`/`restype` for:
+On Windows, bind `kernel32` exactly once with `ctypes.WinDLL("kernel32", use_last_error=True)`. Bind these signatures with explicit `argtypes` and `restype`:
 
 ```text
-LockFileEx(HANDLE, DWORD, DWORD, DWORD, DWORD, POINTER(OVERLAPPED)) -> BOOL
-UnlockFileEx(HANDLE, DWORD, DWORD, DWORD, POINTER(OVERLAPPED)) -> BOOL
+LockFileEx(HANDLE, DWORD, DWORD, DWORD, DWORD, POINTER(_Overlapped)) -> BOOL
+UnlockFileEx(HANDLE, DWORD, DWORD, DWORD, POINTER(_Overlapped)) -> BOOL
 ```
 
-The public functions must:
+The public functions are:
 
 ```python
 def acquire_exclusive_file_lock(stream: BinaryIO) -> None:
@@ -273,9 +263,9 @@ def release_file_lock(stream: BinaryIO) -> None:
         raise ctypes.WinError(ctypes.get_last_error())
 ```
 
-Do not add `LOCKFILE_FAIL_IMMEDIATELY`, polling, retry loops, or an application timeout.
+Do not define or pass `LOCKFILE_FAIL_IMMEDIATELY`. Do not add polling or application-level retry.
 
-- [ ] **Step 5: Run unit tests and static checks for the new module**
+- [ ] **Step 5: Verify Task 1 GREEN**
 
 ```powershell
 py -3.11 -m pytest -q tests/unit/workflow/test_windows_lock.py
@@ -284,7 +274,7 @@ py -3.11 -m mypy src/ansim_review/workflow/windows_lock.py
 py -3.11 -m compileall -q src/ansim_review/workflow/windows_lock.py tests/unit/workflow/test_windows_lock.py
 ```
 
-Expected: all commands PASS. If Windows mypy or a later Linux/static run exposes platform-stub issues, solve them with a narrow protocol/conditional-import boundary; do not move the Win32 implementation back into `events.py`.
+All four commands must PASS. Cross-platform typing adjustments, if needed, must remain inside the new Windows helper's import/type boundary; they must not reintroduce CRT locking into `events.py`.
 
 - [ ] **Step 6: Commit Task 1**
 
@@ -295,21 +285,21 @@ git commit -m "fix: add blocking Win32 journal lock primitive"
 
 ---
 
-### Task 2: Integrate the Win32 backend into the journal and replace the flaky thread orchestration
+### Task 2: Integrate the primitive and make the thread contract deterministic
 
 **Files:**
-- Modify: `src/ansim_review/workflow/events.py` — platform import block, old `_lock_with_msvcrt`, `_journal_lock`
-- Modify: `tests/integration/workflow/test_event_journal.py` — Windows lock contract and Issue #80 conflicting-sequence regression
+- Modify: `src/ansim_review/workflow/events.py` — Windows import block, `_lock_with_msvcrt`, `_journal_lock`
+- Modify: `tests/integration/workflow/test_event_journal.py` — Windows routing, GIL/blocking, failure propagation, Issue #80 regression
 
 **Interfaces:**
-- Consumes from Task 1: `acquire_exclusive_file_lock(BinaryIO) -> None`, `release_file_lock(BinaryIO) -> None`
+- Consumes: `acquire_exclusive_file_lock(BinaryIO) -> None`, `release_file_lock(BinaryIO) -> None`
 - Preserves: `_journal_lock(events_dir: Path) -> Iterator[None]`
 - Preserves: `append_workflow_event(events_dir: Path, event: WorkflowEvent) -> Path`
-- Produces test contract: one thread success, one `FileExistsError`, no `PermissionError`, exactly one canonical persisted event.
+- Required conflict result: one success, one `FileExistsError`, zero normal-contention `PermissionError`, one canonical event matching the winner.
 
-- [ ] **Step 1: Add a deterministic RED integration test for backend routing**
+- [ ] **Step 1: Add deterministic RED routing coverage**
 
-Add a Windows-only test that injects the new helper names into `events` and proves `_journal_lock()` must call them in acquire/body/release order:
+Add a Windows-only test that injects the Task 1 helper names and proves `_journal_lock()` must call them:
 
 ```python
 def test_windows_journal_lock_routes_through_win32_backend(
@@ -322,11 +312,11 @@ def test_windows_journal_lock_routes_through_win32_backend(
 
     calls: list[str] = []
 
-    def acquire(stream) -> None:
+    def acquire(stream: object) -> None:
         del stream
         calls.append("acquire")
 
-    def release(stream) -> None:
+    def release(stream: object) -> None:
         del stream
         calls.append("release")
 
@@ -339,17 +329,17 @@ def test_windows_journal_lock_routes_through_win32_backend(
     assert calls == ["acquire", "body", "release"]
 ```
 
-- [ ] **Step 2: Run the routing test and confirm RED against the CRT path**
+Run:
 
 ```powershell
 py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_routes_through_win32_backend
 ```
 
-Expected before modifying `events.py`: FAIL because the current Windows branch still calls `_lock_with_msvcrt()` and never calls the injected Task 1 helpers.
+Required RED: the current CRT branch ignores the injected Win32 helpers.
 
-- [ ] **Step 3: Replace only the Windows lock backend in `events.py`**
+- [ ] **Step 2: Replace only the Windows lock backend in `events.py`**
 
-Change the platform import boundary to import the Task 1 helpers only on Windows and retain `fcntl` only on non-Windows:
+Use the Task 1 helpers only on Windows:
 
 ```python
 if os.name == "nt":
@@ -361,9 +351,9 @@ else:
     import fcntl
 ```
 
-Remove the `_MsvcrtApi` protocol and `_lock_with_msvcrt()` helper if they are no longer referenced. Preserve the existing `_FcntlApi`/`_lock_with_fcntl()` path.
+Remove `_MsvcrtApi` and `_lock_with_msvcrt()` when no references remain. Keep `_FcntlApi` and `_lock_with_fcntl()` unchanged.
 
-Replace only the Windows body inside `_journal_lock()` so it becomes:
+The lock lifetime becomes:
 
 ```python
 with os.fdopen(descriptor, "r+b") as stream:
@@ -383,47 +373,28 @@ with os.fdopen(descriptor, "r+b") as stream:
                 _lock_with_fcntl(stream, unlock=True)
 ```
 
-Delete the old Windows-only sentinel logic:
+Delete only the obsolete Windows sentinel block that seeks to EOF, writes `b"\0"` for an empty lock file, flushes it, and seeks back to zero. Preserve lock-path construction, link/reparse checks, `os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)`, and all append logic.
 
-```python
-stream.seek(0, os.SEEK_END)
-if stream.tell() == 0:
-    stream.write(b"\0")
-    stream.flush()
-stream.seek(0)
-```
+Run the routing test again; it must PASS.
 
-Do not change lock-path construction, link/reparse checks, `os.open(..., O_RDWR | O_CREAT, 0o600)`, or journal append semantics.
+- [ ] **Step 3: Add a real GIL-safe same-process contention regression**
 
-- [ ] **Step 4: Run the routing test GREEN**
+Use the actual native `LockFileEx` call. Patch the private native callable only to observe when the waiter reaches the real blocking call; the wrapper must immediately delegate to the original `_lock_file_ex`.
 
-```powershell
-py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_routes_through_win32_backend
-```
+Test choreography:
 
-Expected: PASS.
+1. Owner thread enters the real `_journal_lock()` and signals `owner_acquired`.
+2. Waiter thread attempts the same `_journal_lock()`.
+3. The tracing wrapper signals `waiter_native_call_started` for the waiter immediately before calling the original WinDLL function.
+4. Owner waits for that signal while still holding the lock, then records `owner_progress_after_waiter_started` and exits its critical section.
+5. Waiter subsequently enters and records `waiter_entered`.
+6. Join both threads with bounded deadlock guards.
 
-- [ ] **Step 5: Add a real same-process blocking/GIL regression**
+Assert the recorded order contains `owner_acquired`, `waiter_native_call_started`, `owner_progress_after_waiter_started`, `owner_release`, then `waiter_entered`; both threads are dead; no exception was captured. This proves the owner Python thread can continue after the waiter reaches the blocking native call. Do not use `sleep()`.
 
-Add a Windows-only test using the real `_journal_lock()` without mocking the native lock. Use `threading.Event` for choreography: owner acquires; waiter announces it is about to attempt; owner confirms waiter has not entered; owner releases; waiter enters. Use bounded waits only as deadlock guards.
+- [ ] **Step 4: Replace the old `os.open` call-count barrier in the Issue #80 regression**
 
-Required assertions:
-
-```text
-owner acquired before waiter entered
-waiter did not enter while owner held the lock
-owner remained able to execute Python and release
-waiter entered after release
-both threads terminated
-no PermissionError
-no unexpected exception
-```
-
-Use a thread-safe list or guarded tuple list for captured exceptions. No `sleep()` call is permitted.
-
-- [ ] **Step 6: Replace the old Issue #80 `os.open` call-count barrier test**
-
-Remove the global `events.os.open` monkeypatch and its `open_calls <= 2` barrier. Synchronize the two contenders immediately before the real `_journal_lock` boundary instead:
+Remove the global `events.os.open` monkeypatch and `open_calls <= 2` synchronization. Rendezvous at the actual journal-lock boundary while retaining the real production lock:
 
 ```python
 original_journal_lock = events._journal_lock
@@ -438,9 +409,9 @@ def synchronized_journal_lock(events_dir: Path):
 monkeypatch.setattr(events, "_journal_lock", synchronized_journal_lock)
 ```
 
-Capture `(event, exception)` pairs under a `threading.Lock`, join both workers with a bounded deadlock guard, assert both are dead, then restore the real `_journal_lock` before calling `load_workflow_events()`.
+Capture `(event, exception)` pairs under a `threading.Lock`; join both workers with a bounded deadlock guard; assert neither remains alive; restore the real `_journal_lock` before loading the journal.
 
-Required assertions after restoration:
+Required assertions:
 
 ```python
 assert len(outcomes) == 2
@@ -462,49 +433,40 @@ assert len(json_files) == 1
 assert json_files[0].read_bytes() == events.workflow_event_bytes(persisted[0])
 ```
 
-The test must not assert which event wins.
+The test must not assume which event wins.
 
-- [ ] **Step 7: Add failed-acquisition/no-mutation regression**
+- [ ] **Step 5: Add genuine acquire/release failure regressions at the journal boundary**
 
-On Windows, monkeypatch `events.acquire_exclusive_file_lock` to raise a controlled `OSError` before the critical section and call `append_workflow_event()`.
+Acquire failure case:
+- monkeypatch `events.acquire_exclusive_file_lock` to raise `ctypes.WinError(5)`;
+- call `append_workflow_event()`;
+- assert the OS error propagates with `winerror == 5`;
+- assert no event JSON file was created.
 
-Assert:
+Release failure with a body exception:
+- monkeypatch acquire to succeed and release to raise `ctypes.WinError(6)`;
+- enter `_journal_lock()` and raise `ValueError("body failure")` inside it;
+- assert the propagated exception has `winerror == 6`;
+- assert its `__context__` is the original `ValueError`.
 
-```text
-same OSError class/error detail propagates
-no *.json event file exists
-journal reload is empty after restoring the real helper
-failure is not translated to FileExistsError
-```
+This fixes the exception-preservation policy required by the design: unlock failure is never hidden; when the body is already unwinding, Python context chaining retains the body exception.
 
-This proves genuine OS failures stay fail-closed.
-
-- [ ] **Step 8: Run the focused thread/journal tests**
-
-```powershell
-$tests = @(
-  "tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_routes_through_win32_backend",
-  "tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_blocks_competing_thread_until_release",
-  "tests/integration/workflow/test_event_journal.py::test_concurrent_events_cannot_publish_two_events_for_one_sequence",
-  "tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_acquire_failure_does_not_publish_event"
-)
-py -3.11 -m pytest -q $tests
-```
-
-Expected: all focused tests PASS with the real Win32 backend.
-
-- [ ] **Step 9: Run the complete event-journal module and static checks**
+- [ ] **Step 6: Run focused Task 2 tests and module regression**
 
 ```powershell
+py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_routes_through_win32_backend
+py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_allows_owner_to_progress_while_waiter_blocks
+py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_concurrent_events_cannot_publish_two_events_for_one_sequence
+py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_acquire_failure_does_not_publish_event
+py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py::test_windows_journal_lock_release_failure_preserves_body_context
 py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py
 py -3.11 -m ruff check src/ansim_review/workflow/events.py tests/integration/workflow/test_event_journal.py
 py -3.11 -m mypy src/ansim_review/workflow/events.py src/ansim_review/workflow/windows_lock.py
-py -3.11 -m compileall -q src/ansim_review/workflow/events.py src/ansim_review/workflow/windows_lock.py tests/integration/workflow/test_event_journal.py
 ```
 
-Expected: PASS.
+All commands must PASS.
 
-- [ ] **Step 10: Commit Task 2**
+- [ ] **Step 7: Commit Task 2**
 
 ```powershell
 git add src/ansim_review/workflow/events.py tests/integration/workflow/test_event_journal.py
@@ -513,18 +475,19 @@ git commit -m "fix: use blocking Win32 lock for workflow journal"
 
 ---
 
-### Task 3: Prove cross-process serialization under Windows spawn semantics
+### Task 3: Add Windows spawned-process contention coverage
 
 **Files:**
 - Modify: `tests/integration/workflow/test_event_journal.py`
 
 **Interfaces:**
-- Consumes the real Task 2 `_journal_lock()` and `append_workflow_event()` behavior.
-- Produces a module-scope spawn-safe worker returning one of `SUCCESS`, `FILE_EXISTS`, or `ERROR:<type>:<message>` through a multiprocessing queue.
+- Consumes the real Task 2 journal lock.
+- Produces a module-scope spawn-safe worker and a Windows process regression.
+- Process outcomes are exactly `SUCCESS`, `FILE_EXISTS`, or `ERROR` with a diagnostic detail string.
 
-- [ ] **Step 1: Add spawn-safe process test helpers at module scope**
+- [ ] **Step 1: Add typed spawn-safe synchronization interfaces**
 
-Define small test-only protocols for the synchronization/result objects so strict mypy does not require importing private multiprocessing implementation types:
+At module scope:
 
 ```python
 class _BarrierLike(Protocol):
@@ -537,7 +500,9 @@ class _QueueLike(Protocol):
         ...
 ```
 
-Define a module-scope worker. Inside the spawned child, import the production events module, wrap its real `_journal_lock` with a child-local rendezvous, and then call `append_workflow_event()`:
+Add required `multiprocessing` and `Protocol` imports without altering production code.
+
+- [ ] **Step 2: Add the module-scope spawned worker**
 
 ```python
 def _append_event_in_spawned_process(
@@ -555,7 +520,7 @@ def _append_event_in_spawned_process(
         with original_journal_lock(events_dir):
             yield
 
-    events._journal_lock = synchronized_journal_lock
+    setattr(events, "_journal_lock", synchronized_journal_lock)
     try:
         events.append_workflow_event(Path(root), event)
     except FileExistsError:
@@ -566,11 +531,11 @@ def _append_event_in_spawned_process(
         result_queue.put(("SUCCESS", None))
 ```
 
-If assigning to the private module attribute is rejected by type checking, use `setattr(events, "_journal_lock", synchronized_journal_lock)` in the child process.
+Use the repository's concrete `WorkflowEvent` type annotation for `event` if it is already imported by the test module; otherwise import that public/dataclass type from the same production module used by the existing test helpers. Do not leave the worker parameter untyped in the committed code.
 
-- [ ] **Step 2: Add the Windows spawn regression test**
+- [ ] **Step 3: Add the Windows `spawn` regression**
 
-Use an explicit Windows-compatible context:
+Use:
 
 ```python
 ctx = multiprocessing.get_context("spawn")
@@ -578,18 +543,18 @@ barrier = ctx.Barrier(2)
 result_queue = ctx.Queue()
 ```
 
-Start two `ctx.Process` instances with the same journal root and conflicting sequence-1 events. Join each with a bounded 20-second deadlock guard, assert neither remains alive, and require zero abnormal exit codes.
+Start two `ctx.Process` workers with one shared journal root and the conflicting sequence-1 events. Join each with a 20-second deadlock guard, assert both are no longer alive and both exit codes are zero, then read exactly two result tuples.
 
-Read exactly two result tuples from the queue and assert:
+Required outcome:
 
 ```python
 assert sorted(status for status, _ in results) == ["FILE_EXISTS", "SUCCESS"]
 assert all(detail is None for _, detail in results)
 ```
 
-Then reload the journal in the parent and require exactly one canonical event file whose bytes match the persisted event.
+Reload in the parent and assert exactly one canonical event file remains, the event is one of the contenders, and its file bytes equal `workflow_event_bytes(persisted[0])`.
 
-- [ ] **Step 3: Run the cross-process test repeatedly before committing**
+- [ ] **Step 4: Run a 20-iteration process pre-commit gate**
 
 ```powershell
 $test = "tests/integration/workflow/test_event_journal.py::test_windows_processes_cannot_publish_two_events_for_one_sequence"
@@ -599,17 +564,10 @@ $test = "tests/integration/workflow/test_event_journal.py::test_windows_processe
         throw "Cross-process pre-commit iteration $_ failed"
     }
 }
-```
-
-Expected: 20/20 PASS. If any iteration reports `PermissionError`, another `OSError`, abnormal child exit, or more than one event, stop and return to `superpowers:systematic-debugging`; do not weaken the assertion.
-
-- [ ] **Step 4: Re-run the full event-journal module**
-
-```powershell
 py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py
 ```
 
-Expected: PASS.
+Required: 20/20 PASS plus full event-journal module PASS. Any `PermissionError`, unrelated `OSError`, abnormal child exit, deadlock, or duplicate event returns the task to systematic debugging.
 
 - [ ] **Step 5: Commit Task 3**
 
@@ -620,30 +578,29 @@ git commit -m "test: cover Windows process journal contention"
 
 ---
 
-### Task 4: Execute the Windows acceptance stress matrix and repository regression gates
+### Task 4: Run the Windows acceptance stress matrix and repository gates
 
 **Files:**
-- No planned source changes.
-- Local-only evidence outputs under `build/` are not committed unless an existing repository acceptance policy explicitly requires a tracked artifact.
+- No planned tracked changes.
+- `build/` outputs are local evidence unless an existing repository policy explicitly requires a tracked acceptance artifact.
 
 **Interfaces:**
-- Consumes the exact final implementation HEAD from Tasks 1-3.
-- Produces exact command/result evidence for Issue #80 and PR review.
+- Consumes exact Task 1-3 candidate HEAD.
+- Produces exact environment, stress, pytest, static, and documentation-integrity evidence for Issue #80.
 
-- [ ] **Step 1: Freeze and record the candidate HEAD/environment**
+- [ ] **Step 1: Freeze candidate HEAD and environment**
 
 ```powershell
 git status --short --branch
 git rev-parse HEAD
-git rev-parse origin/agent/issue-80-event-journal-concurrency 2>$null
 py -3.11 --version
 py -3.13 --version
 [System.Environment]::OSVersion.VersionString
 ```
 
-The worktree must be clean before stress verification. If Python 3.13 is not installed, record `Python 3.13: UNAVAILABLE` and skip only the 3.13 commands below.
+Worktree must be clean. Record the exact full HEAD and exact interpreter versions. If `py -3.13 --version` fails because Python 3.13 is not installed, record `Python 3.13: UNAVAILABLE` and omit only the 3.13 commands.
 
-- [ ] **Step 2: Run the mandatory Python 3.11 thread stress loop**
+- [ ] **Step 2: Run Python 3.11 thread stress — 200 consecutive passes**
 
 ```powershell
 $threadTest = "tests/integration/workflow/test_event_journal.py::test_concurrent_events_cannot_publish_two_events_for_one_sequence"
@@ -657,7 +614,7 @@ $threadTest = "tests/integration/workflow/test_event_journal.py::test_concurrent
 
 Required: 200/200 PASS.
 
-- [ ] **Step 3: Run the mandatory Python 3.11 process stress loop**
+- [ ] **Step 3: Run Python 3.11 process stress — 100 consecutive passes**
 
 ```powershell
 $processTest = "tests/integration/workflow/test_event_journal.py::test_windows_processes_cannot_publish_two_events_for_one_sequence"
@@ -671,7 +628,7 @@ $processTest = "tests/integration/workflow/test_event_journal.py::test_windows_p
 
 Required: 100/100 PASS.
 
-- [ ] **Step 4: Run the same stress matrix on Python 3.13 when available**
+- [ ] **Step 4: Run the Python 3.13 stress matrix when available**
 
 ```powershell
 1..200 | ForEach-Object {
@@ -688,9 +645,9 @@ Required: 100/100 PASS.
 }
 ```
 
-Required when installed: 200/200 thread and 100/100 process PASS.
+Required when installed: 200/200 thread PASS and 100/100 process PASS.
 
-- [ ] **Step 5: Run focused and workflow regressions on every available interpreter**
+- [ ] **Step 5: Run focused and workflow regressions**
 
 ```powershell
 py -3.11 -m pytest -q tests/unit/workflow/test_windows_lock.py
@@ -698,23 +655,23 @@ py -3.11 -m pytest -q tests/integration/workflow/test_event_journal.py
 py -3.11 -m pytest -q tests/integration/workflow
 ```
 
-When Python 3.13 is available, repeat the three commands with `py -3.13`.
+Repeat those three commands with `py -3.13` when Python 3.13 is installed. Record exact passed/skipped/failed counts.
 
-- [ ] **Step 6: Run the full repository suite**
+- [ ] **Step 6: Run full pytest on every available interpreter**
 
 ```powershell
 py -3.11 -m pytest -q
 ```
 
-When Python 3.13 is available:
+When available:
 
 ```powershell
 py -3.13 -m pytest -q
 ```
 
-Record exact passed/skipped/failed counts and duration. Any failure invalidates final acceptance until root-caused.
+Any failure blocks acceptance until root-caused.
 
-- [ ] **Step 7: Run static and bytecode gates at the exact candidate HEAD**
+- [ ] **Step 7: Run static and bytecode gates**
 
 ```powershell
 py -3.11 -m ruff check src tests
@@ -724,7 +681,7 @@ git diff --check
 git status --short
 ```
 
-Expected: PASS and clean worktree.
+Required: every command PASS and clean worktree.
 
 - [ ] **Step 8: Run documentation integrity**
 
@@ -738,9 +695,9 @@ py -3.11 -m evidence_review documentation validate `
     --output $output
 ```
 
-Expected: exit code 0 and report status PASS. Record warning count exactly; warnings are not silently converted into errors or hidden.
+Required: exit 0 and report status PASS. Record document/error/warning counts exactly.
 
-- [ ] **Step 9: Re-check candidate immutability**
+- [ ] **Step 9: Reconfirm exact candidate state**
 
 ```powershell
 git rev-parse HEAD
@@ -748,22 +705,22 @@ git status --short
 git diff --check
 ```
 
-The HEAD used for all reported acceptance results must be the same implementation HEAD. If evidence-only documentation is committed after verification, re-run the repository gates required by the repository's acceptance policy at the new HEAD rather than claiming the old HEAD results for the new commit.
+The HEAD must match Step 1 and the worktree must remain clean. If any tracked evidence change is committed afterward, the acceptance gates required by repository policy must be rerun at the new HEAD before making final PASS claims.
 
 ---
 
-### Task 5: Record Issue #80 evidence and open a focused PR
+### Task 5: Record Issue #80 evidence and open the focused PR
 
 **Files:**
-- No production/test changes planned.
+- No planned source/test changes.
 - GitHub Issue #80 comment.
-- New PR from `agent/issue-80-event-journal-concurrency` to `main` only after Task 4 passes.
+- PR from `agent/issue-80-event-journal-concurrency` to `main` after Task 4 passes.
 
 **Interfaces:**
-- Consumes exact diagnostic evidence and exact Task 4 results.
-- Produces the final review package without closing Issue #80 prematurely.
+- Consumes exact diagnostic constants from the approved design and exact observed values from Task 4.
+- Produces an auditable Issue #80 resolution record and focused review request.
 
-- [ ] **Step 1: Audit the final branch diff before publishing evidence**
+- [ ] **Step 1: Audit branch scope**
 
 ```powershell
 git fetch origin main
@@ -771,10 +728,9 @@ git status --short
 git log --oneline --decorate -8
 git diff --check
 git diff --name-only origin/main...HEAD
-git diff -- src/ansim_review/workflow/events.py src/ansim_review/workflow/windows_lock.py tests/unit/workflow/test_windows_lock.py tests/integration/workflow/test_event_journal.py
 ```
 
-Expected implementation scope:
+Expected implementation files are limited to:
 
 ```text
 src/ansim_review/workflow/windows_lock.py
@@ -783,66 +739,38 @@ tests/unit/workflow/test_windows_lock.py
 tests/integration/workflow/test_event_journal.py
 ```
 
-The approved spec and implementation plan are also valid branch documentation changes. No unrelated parser, retrieval, browser, database, or rule-engine production changes are allowed.
+The approved Issue #80 spec and this plan are also valid branch documentation changes. No unrelated parser, retrieval, browser, database, rule-engine, or persistence refactor is allowed.
 
-- [ ] **Step 2: Post the Issue #80 evidence comment**
+- [ ] **Step 2: Build the Issue #80 comment from exact recorded evidence**
 
-The comment must state the root cause as a production locking backend defect, not a flaky-test-only defect. Include:
+Write the comment only after Task 4 has completed. Copy the exact observed values from the Task 4 transcript; do not estimate or reuse counts from an earlier HEAD. The comment must contain all of these fields:
 
-```markdown
-## Issue #80 production-lock resolution
+1. `PRODUCTION_EXCEPTION` pre-fix classification.
+2. Windows Python 3.11 reproduction at iteration 23.
+3. `max_active_sections=1`.
+4. Same `.events.lock` path for the first two intercepted opens.
+5. Winner `EVT-0001`; loser `EVT-OTHER`; loser `PermissionError(13, "Permission denied")` inside `_lock_with_msvcrt`.
+6. Diagnostic SHA-256 `B6FE5D487AFCDB58563F5908A5D249B7CC27CFB2E12447114806B43A99D4422E`.
+7. Root cause: CRT locking could maintain mutual exclusion while violating the journal's required blocking-acquisition contract.
+8. Fix: blocking exclusive `LockFileEx`/`UnlockFileEx`, persistent sibling lock file, no sentinel mutation, genuine OS errors preserved.
+9. Exact final full commit SHA from Task 4.
+10. Python 3.11 thread stress result `200/200 PASS` and process stress `100/100 PASS`.
+11. Python 3.13 thread/process results, or the literal status `UNAVAILABLE` if that interpreter was not installed.
+12. Exact focused test, event-journal module, workflow integration, and full pytest counts.
+13. Ruff, mypy, compileall, diff-check, and documentation-integrity results including document/error/warning counts.
+14. Literal GitHub Actions status; when no usable runner executed, write `ACTIONS_UNAVAILABLE`.
 
-### Pre-fix diagnosis
-- disposition: `PRODUCTION_EXCEPTION`
-- Windows Python 3.11 reproduction: iteration 23
-- `max_active_sections=1`
-- first two intercepted `os.open` paths: same `.events.lock`
-- winner: `EVT-0001`
-- loser: `EVT-OTHER`
-- loser exception: `PermissionError(13, "Permission denied")`
-- exception origin: `_journal_lock` -> `_lock_with_msvcrt`
-- diagnostic SHA-256: `B6FE5D487AFCDB58563F5908A5D249B7CC27CFB2E12447114806B43A99D4422E`
+Do not post the comment if any required Task 4 gate failed.
 
-### Root cause
-The CRT `msvcrt.locking(..., LK_LOCK, 1)` backend could preserve mutual exclusion while surfacing a normal contender as `PermissionError` instead of providing the blocking serialization contract required by the workflow journal. The production Windows backend was replaced with blocking exclusive `LockFileEx`/`UnlockFileEx` over the persistent sibling lock file. Normal contention now waits; genuine Win32 failures remain fail-closed.
+- [ ] **Step 3: Open the focused PR with a static body**
 
-### Safety contract
-- one conflicting sequence-1 append succeeds
-- the other reaches journal validation and raises `FileExistsError`
-- no normal-contention `PermissionError`
-- exactly one canonical event remains
-- same contract verified across threads and Windows spawned processes
-- POSIX `flock` path unchanged
-
-### Verification
-- exact HEAD: `<paste exact SHA>`
-- Windows/Python 3.11 thread stress: `200/200 PASS`
-- Windows/Python 3.11 process stress: `100/100 PASS`
-- Windows/Python 3.13 thread stress: `<200/200 PASS or UNAVAILABLE>`
-- Windows/Python 3.13 process stress: `<100/100 PASS or UNAVAILABLE>`
-- Windows lock unit tests: `<exact count>`
-- event-journal module: `<exact count>`
-- workflow integration: `<exact count>`
-- full pytest 3.11: `<exact count>`
-- full pytest 3.13: `<exact count or UNAVAILABLE>`
-- Ruff: `<PASS/FAIL>`
-- mypy: `<PASS/FAIL and source count if reported>`
-- compileall: `<PASS/FAIL>`
-- documentation integrity: `<PASS/FAIL, errors, warnings>`
-- GitHub Actions: `<literal status; use ACTIONS_UNAVAILABLE when no usable runner executed>`
-```
-
-Replace every angle-bracket field with the exact observed value before posting; do not post the template with unresolved fields.
-
-- [ ] **Step 3: Open the focused PR**
-
-Use this body after all fields are known:
+Use this PR body:
 
 ```markdown
 Fixes #80
 
 ## Root cause
-Windows journal contention used CRT `msvcrt.locking(..., LK_LOCK, 1)`. The Issue #80 trace proved that mutual exclusion could remain intact while a normal contender failed in the production lock acquisition path with `PermissionError(13)` instead of waiting and reaching journal-level conflict detection.
+Windows journal contention used CRT `msvcrt.locking(..., LK_LOCK, 1)`. The Issue #80 trace proved that mutual exclusion could remain intact while a normal contender failed in the production acquisition path with `PermissionError(13)` instead of waiting and reaching journal-level conflict detection.
 
 ## Fix
 - replace the Windows CRT journal-lock backend with blocking exclusive `LockFileEx` / `UnlockFileEx`
@@ -851,13 +779,13 @@ Windows journal contention used CRT `msvcrt.locking(..., LK_LOCK, 1)`. The Issue
 - remove the obsolete Windows sentinel-byte mutation
 - preserve genuine Win32 failures as OS errors
 - replace the low-level `os.open` race test with synchronization at the actual journal-lock boundary
-- add same-process blocking/GIL, Win32 error, and spawned-process regressions
+- add same-process GIL/blocking, Win32 error, and spawned-process regressions
 
 ## Verification
 Issue #80 contains the exact Windows environment, diagnostic lineage, thread/process stress counts, full regression counts, static checks, documentation-integrity result, and GitHub Actions status for the final candidate HEAD.
 ```
 
-Open as Draft if any external/human acceptance step remains. Do not close Issue #80 merely because the PR exists; closure follows successful review/merge under repository policy.
+Open as Draft if repository policy still requires a human review step. Do not close Issue #80 merely because the PR exists; closure follows successful review/merge under repository policy.
 
 - [ ] **Step 4: Final branch-state check**
 
@@ -867,23 +795,24 @@ git rev-parse HEAD
 git diff --check
 ```
 
-Expected: clean worktree and exact HEAD matching the evidence record.
+Required: clean worktree and exact HEAD matching the Issue #80 evidence record.
 
 ---
 
 ## Final Acceptance Checklist
 
-- [ ] The pre-fix Windows failure remains classified as `PRODUCTION_EXCEPTION`, not rewritten as a test-only flake.
-- [ ] The Windows production primitive is `LockFileEx`/`UnlockFileEx`; journal locking no longer uses `msvcrt.LK_LOCK`.
+- [ ] The pre-fix failure remains classified `PRODUCTION_EXCEPTION`, not rewritten as a test-only flake.
+- [ ] Windows journal locking uses `LockFileEx`/`UnlockFileEx`; `msvcrt.LK_LOCK` is absent from the production journal synchronization path.
 - [ ] Acquire is blocking exclusive and does not use `LOCKFILE_FAIL_IMMEDIATELY`.
-- [ ] The blocking native call uses `ctypes.WinDLL`, not `PyDLL`, and the same-process regression proves the owner thread can run and release while another thread waits.
+- [ ] Blocking uses `ctypes.WinDLL`, not `PyDLL`, and the same-process regression proves the owner can execute and release while a waiter is in the native acquisition call.
 - [ ] `.events.lock` remains persistent and no sentinel byte is written solely for locking.
-- [ ] Genuine Win32 acquire/release errors preserve their Windows error code and are not retried or suppressed.
-- [ ] The Issue #80 conflict regression requires exactly one success, exactly one `FileExistsError`, zero normal-contention `PermissionError`, and exactly one canonical persisted event matching the winner.
-- [ ] Windows spawned-process contention satisfies the same one-success/one-`FileExistsError` contract.
-- [ ] Python 3.11 thread stress is 200/200 PASS and process stress is 100/100 PASS.
-- [ ] Python 3.13 thread/process stress passes at 200/200 and 100/100 when available; otherwise availability is recorded as `UNAVAILABLE`.
-- [ ] Full event-journal, workflow, repository pytest, Ruff, mypy, compileall, diff check, and documentation-integrity results are recorded at the exact final candidate HEAD.
+- [ ] Genuine Win32 acquire/release failures preserve Windows error codes and are not retried or suppressed.
+- [ ] Unlock failure during body unwinding preserves the original body exception through `__context__`.
+- [ ] Thread conflict requires exactly one success, one `FileExistsError`, zero normal-contention `PermissionError`, and one canonical persisted event matching the winner.
+- [ ] Spawned-process conflict satisfies the same one-success/one-`FileExistsError` contract.
+- [ ] Python 3.11 stress is 200/200 thread PASS and 100/100 process PASS.
+- [ ] Python 3.13 stress is 200/200 thread PASS and 100/100 process PASS when available; otherwise it is explicitly `UNAVAILABLE`.
+- [ ] Full focused/workflow/repository pytest, Ruff, mypy, compileall, diff check, and documentation-integrity results are recorded at the exact final candidate HEAD.
 - [ ] GitHub Actions status is reported literally with no fabricated PASS.
 - [ ] Final diff contains no unrelated production refactor.
-- [ ] Issue #80 contains the diagnostic lineage, exact final SHA, stress counts, and final verification evidence before closure.
+- [ ] Issue #80 contains diagnostic lineage, exact final SHA, stress counts, and final verification evidence before closure.
