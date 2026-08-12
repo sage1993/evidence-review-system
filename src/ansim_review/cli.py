@@ -40,11 +40,9 @@ from ansim_review.review_question import (
     submit_question_track_b,
 )
 from ansim_review.review_run import (
-    close_review_run,
     finalize_review_run,
     open_review_run,
     prepare_review_run,
-    wait_for_review_run,
 )
 from ansim_review.rule_engine.activation import (
     activation_report_bytes,
@@ -622,22 +620,6 @@ def _review_run_finalize(
             url = open_review_run(workspace, result.run_id)
         except (OSError, RuntimeError, ValueError) as error:
             print(str(error), file=sys.stderr)
-            return 2
-        lifecycle_error: OSError | RuntimeError | ValueError | None = None
-        try:
-            wait_for_review_run(workspace, result.run_id)
-        except KeyboardInterrupt:
-            pass
-        except (OSError, RuntimeError, ValueError) as error:
-            lifecycle_error = error
-        finally:
-            try:
-                close_review_run(workspace, result.run_id)
-            except (OSError, RuntimeError, ValueError) as error:
-                if lifecycle_error is None:
-                    lifecycle_error = error
-        if lifecycle_error is not None:
-            print(str(lifecycle_error), file=sys.stderr)
             return 2
         _write_stdout(
             {

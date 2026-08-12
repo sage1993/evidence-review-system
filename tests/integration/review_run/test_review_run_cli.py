@@ -126,6 +126,32 @@ def test_review_run_finalize_cli_routes_publish_and_outputs_status(
     }
 
 
+def test_review_run_finalize_open_returns_url_without_waiting(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    run_id = "RUN-0123456789ABCDEF0123"
+    result = SimpleNamespace(
+        run_id=run_id,
+        run_directory=tmp_path / "workspace" / "runs" / run_id,
+        packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
+        packet_path=tmp_path / "packet.json",
+        review_html=tmp_path / "review.html",
+        published_packet=None,
+    )
+    monkeypatch.setattr(cli, "finalize_review_run", lambda *_args, **_kwargs: result)
+    monkeypatch.setattr(cli, "open_review_run", lambda *_args, **_kwargs: "http://127.0.0.1/review")
+
+    assert cli.main([
+        "review-run", "finalize", "--workspace", str(tmp_path / "workspace"),
+        "--run-id", run_id, "--track-a-output", str(tmp_path / "a.json"),
+        "--track-b-output", str(tmp_path / "b.json"), "--open",
+    ]) == 0
+
+    assert json.loads(capsys.readouterr().out)["url"] == "http://127.0.0.1/review"
+
+
 def test_review_run_cli_uses_declared_error_exit_codes(
     monkeypatch,
     capsys,
