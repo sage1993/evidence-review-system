@@ -25,3 +25,10 @@ tmp/
 .superpowers/
 docs/superpowers/
 design-qa.md
+
+# User-provided evidence and generated workspace artifacts
+/01_database/
+/02_source_pdf/
+/03_extracted_images/
+/04_visuals/
+/05_exports/
