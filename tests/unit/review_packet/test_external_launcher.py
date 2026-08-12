@@ -85,6 +85,52 @@ def test_windows_launcher_uses_shell_association_before_browser_process(monkeypa
     assert calls == [(None, "open", url, None, None, external_launcher._SW_SHOWNORMAL)]
 
 
+def test_windows_shell_association_error_code_falls_back_to_browser(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    class FakeShellExecute:
+        argtypes: list[object] | None = None
+        restype: object | None = None
+
+        def __call__(self, *_args: object) -> int:
+            return 31
+
+    class FakeShell32:
+        ShellExecuteW = FakeShellExecute()
+
+    class FakeBrowser(external_launcher.webbrowser.BackgroundBrowser):
+        def __init__(self) -> None:
+            super().__init__("C:/Browser/browser.exe")
+            self.args = ["--new-tab", "%s"]
+
+    def denied_startfile(_url: str) -> None:
+        raise OSError("startfile denied")
+
+    def fake_spawnv(_mode: int, _path: str, command: list[str]) -> int:
+        calls.append(command)
+        return 1234
+
+    monkeypatch.setattr(external_launcher.sys, "platform", "win32")
+    monkeypatch.setattr(external_launcher.os, "startfile", denied_startfile, raising=False)
+    monkeypatch.setattr(
+        external_launcher.ctypes,
+        "WinDLL",
+        lambda *_args, **_kwargs: FakeShell32(),
+        raising=False,
+    )
+    monkeypatch.setattr(external_launcher.webbrowser, "_tryorder", ["fake-browser"])
+    monkeypatch.setattr(
+        external_launcher.webbrowser,
+        "get",
+        lambda name=None: FakeBrowser() if name in (None, "fake-browser") else None,
+    )
+    monkeypatch.setattr(external_launcher.os, "spawnv", fake_spawnv)
+
+    url = "http://127.0.0.1:8123/review"
+    assert external_launcher.open_external_url(url)
+    assert calls == [["C:/Browser/browser.exe", "--new-tab", url]]
+
+
 def test_windows_startfile_success_does_not_spawn_a_second_launcher(monkeypatch) -> None:
     calls: list[str] = []
 
