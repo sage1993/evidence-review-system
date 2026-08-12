@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import queue
@@ -181,7 +182,32 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
     except OSError:
         path.unlink(missing_ok=True)
         return {"running": False, "run_id": validated_run_id}
+    if not _matches_server_process(pid, validated_run_id, state.get("token_sha256")):
+        path.unlink(missing_ok=True)
+        return {"running": False, "run_id": validated_run_id}
     return {"running": True, "run_id": validated_run_id, "pid": pid, "port": state.get("port")}
+
+
+def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
+    """Defend against PID reuse before a management operation can signal it."""
+    if not isinstance(token_hash, str) or len(token_hash) != 64 or os.name == "nt":
+        return False
+    try:
+        arguments = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return False
+    decoded = [item.decode("utf-8") for item in arguments if item]
+    if "ansim_review.review_packet.server_process" not in decoded:
+        return False
+    try:
+        token = decoded[decoded.index("--token") + 1]
+        actual_run_id = decoded[decoded.index("--run-id") + 1]
+    except (ValueError, IndexError):
+        return False
+    return (
+        actual_run_id == run_id
+        and hashlib.sha256(token.encode("ascii")).hexdigest() == token_hash
+    )
 
 
 def stop_review_server(workspace_root: Path, run_id: str) -> None:
@@ -202,6 +228,9 @@ def open_protected_review_workspace(
     browser: Callable[[str], bool],
 ) -> str:
     """Open one finalized run through a retained, tokenized loopback server."""
+    stale = review_server_status(workspace_root, run_id)
+    if stale["running"]:
+        raise RuntimeError("protected review server is already running")
     server = _start_review_server(workspace_root, run_id)
     try:
         if not browser(server.url):

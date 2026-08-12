@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -20,7 +21,12 @@ def main(argv: list[str] | None = None) -> int:
     state_path = Path(args.workspace) / "runs" / args.run_id / "review-server.json"
     try:
         port = server.server_address[1]
-        state = {"pid": os.getpid(), "port": port, "run_id": args.run_id}
+        state = {
+            "pid": os.getpid(),
+            "port": port,
+            "run_id": args.run_id,
+            "token_sha256": hashlib.sha256(args.token.encode("ascii")).hexdigest(),
+        }
         with state_path.open("x", encoding="utf-8") as stream:
             json.dump(state, stream, sort_keys=True, separators=(",", ":"))
             stream.flush()
