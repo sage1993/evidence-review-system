@@ -38,6 +38,8 @@ from ansim_review.llm_layer.validators import validate_track_a_integrity
 from ansim_review.review_packet.browser_launcher import (
     close_open_review_server,
     open_protected_review_workspace,
+    review_server_status,
+    stop_review_server,
     wait_for_open_review_server,
 )
 from ansim_review.review_packet.builder import build_review_view_model
@@ -680,3 +682,11 @@ def wait_for_review_run(workspace_root: Path, run_id: str) -> None:
 def close_review_run(workspace_root: Path, run_id: str) -> None:
     """Close the protected browser session opened for one review run."""
     close_open_review_server(workspace_root, run_id)
+
+
+def review_run_server_status(workspace_root: Path, run_id: str) -> dict[str, object]:
+    return review_server_status(workspace_root, run_id)
+
+
+def stop_review_run_server(workspace_root: Path, run_id: str) -> None:
+    stop_review_server(workspace_root, run_id)

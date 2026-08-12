@@ -28,7 +28,12 @@ def main(argv: list[str] | None = None) -> int:
         server.serve_forever(poll_interval=0.5)
     finally:
         server.server_close()
-        state_path.unlink(missing_ok=True)
+        try:
+            current = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            current = None
+        if isinstance(current, dict) and current.get("pid") == os.getpid():
+            state_path.unlink(missing_ok=True)
     return 0
 
 

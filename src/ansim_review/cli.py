@@ -43,6 +43,8 @@ from ansim_review.review_run import (
     finalize_review_run,
     open_review_run,
     prepare_review_run,
+    review_run_server_status,
+    stop_review_run_server,
 )
 from ansim_review.rule_engine.activation import (
     activation_report_bytes,
@@ -725,4 +727,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             publish=args.publish,
             open_browser=args.open,
         )
+    if args.command == "review-run" and args.review_stage == "serve-status":
+        try:
+            _write_stdout(review_run_server_status(args.workspace, args.run_id))
+            return 0
+        except (OSError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return 2
+    if args.command == "review-run" and args.review_stage == "serve-stop":
+        try:
+            stop_review_run_server(args.workspace, args.run_id)
+            _write_stdout({"run_id": args.run_id, "stopped": True})
+            return 0
+        except (OSError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return 2
     raise RuntimeError("unreachable command state")

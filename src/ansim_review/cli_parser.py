@@ -276,4 +276,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="open the finalized review workspace through its protected loopback route",
     )
+    review_serve_status = review_stages.add_parser("serve-status")
+    review_serve_status.add_argument("--workspace", required=True, type=Path)
+    review_serve_status.add_argument("--run-id", required=True)
+    review_serve_stop = review_stages.add_parser("serve-stop")
+    review_serve_stop.add_argument("--workspace", required=True, type=Path)
+    review_serve_stop.add_argument("--run-id", required=True)
     return parser

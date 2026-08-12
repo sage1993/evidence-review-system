@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import secrets
+import signal
 import stat
 import subprocess
 import sys
@@ -159,6 +161,40 @@ def close_open_review_server(workspace_root: Path, run_id: str) -> None:
         active_server.close()
 
 
+def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]:
+    """Return a run-scoped detached server state, removing stale PID records."""
+    validated_run_id = validate_identifier(run_id, "run_id")
+    path = workspace_root / "runs" / validated_run_id / "review-server.json"
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"running": False, "run_id": validated_run_id}
+    except (OSError, json.JSONDecodeError):
+        path.unlink(missing_ok=True)
+        return {"running": False, "run_id": validated_run_id}
+    pid = state.get("pid") if isinstance(state, dict) else None
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1:
+        path.unlink(missing_ok=True)
+        return {"running": False, "run_id": validated_run_id}
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        path.unlink(missing_ok=True)
+        return {"running": False, "run_id": validated_run_id}
+    return {"running": True, "run_id": validated_run_id, "pid": pid, "port": state.get("port")}
+
+
+def stop_review_server(workspace_root: Path, run_id: str) -> None:
+    """Stop only the live PID recorded for this run, then clear its state."""
+    status = review_server_status(workspace_root, run_id)
+    if not status["running"]:
+        return
+    pid = status["pid"]
+    assert isinstance(pid, int)
+    os.kill(pid, signal.SIGTERM)
+    (workspace_root / "runs" / run_id / "review-server.json").unlink(missing_ok=True)
+
+
 def open_protected_review_workspace(
     workspace_root: Path,
     run_id: str,
@@ -190,5 +226,7 @@ __all__ = [
     "close_open_review_server",
     "close_open_review_servers",
     "open_protected_review_workspace",
+    "review_server_status",
+    "stop_review_server",
     "wait_for_open_review_server",
 ]
