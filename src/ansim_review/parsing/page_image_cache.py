@@ -176,12 +176,8 @@ def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
 def cache_page_images(root: Path, sources: tuple[PageImageSource, ...]) -> tuple[Path, ...]:
     """Render every missing page after all existing caches have been verified."""
     published: list[Path] = []
-    try:
-        for source in sources:
-            published.extend(_cache_source(root, source))
-    except Exception:
-        rollback_page_image_cache(published)
-        raise
+    for source in sources:
+        published.extend(_cache_source(root, source))
     return tuple(published)
 
 
