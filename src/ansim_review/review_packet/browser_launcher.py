@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import queue
 import secrets
 import stat
 import subprocess
@@ -10,13 +11,32 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
+from typing import TextIO
 
 from ansim_review.contracts.identifiers import validate_identifier
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
 _ACTIVE_SERVERS_LOCK = Lock()
+_READY_TIMEOUT_SECONDS = 2.0
+
+
+def _readline_with_timeout(stream: TextIO) -> str:
+    """Read child readiness without allowing a broken child to hang the CLI."""
+    result: queue.Queue[str] = queue.Queue(maxsize=1)
+
+    def read() -> None:
+        try:
+            result.put(stream.readline())
+        except Exception:
+            result.put("")
+
+    Thread(target=read, daemon=True).start()
+    try:
+        return result.get(timeout=_READY_TIMEOUT_SECONDS)
+    except queue.Empty:
+        return ""
 
 
 def _is_regular_file(path: Path) -> bool:
@@ -104,7 +124,7 @@ def _start_review_server(workspace_root: Path, run_id: str) -> ReviewWorkspaceSe
     )
     try:
         assert process.stdout is not None
-        port = int(process.stdout.readline().strip())
+        port = int(_readline_with_timeout(process.stdout).strip())
     except (OSError, ValueError, AssertionError):
         process.terminate()
         process.wait(timeout=2)
