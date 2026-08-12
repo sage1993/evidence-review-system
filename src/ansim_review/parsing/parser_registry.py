@@ -6,11 +6,13 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from ansim_review.parsing.parser_models import NormalizedParserContribution
 
 _KIND = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+SourceBindingAuthority = Literal["DIRECT", "SOURCE_BATCH_MANIFEST"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +22,20 @@ class ParserContext:
     source_path: Path
     parser_artifact_path: Path
     options: Mapping[str, object]
+    binding_authority: SourceBindingAuthority = "DIRECT"
+    source_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            self.source_sha256 is not None
+            and _SHA256.fullmatch(self.source_sha256) is None
+        ):
+            raise ValueError("source_sha256 must be a lowercase SHA-256 digest")
+        if (
+            self.binding_authority == "SOURCE_BATCH_MANIFEST"
+            and self.source_sha256 is None
+        ):
+            raise ValueError("SOURCE_BATCH_MANIFEST binding requires source_sha256")
 
 
 class ParserAdapter(Protocol):

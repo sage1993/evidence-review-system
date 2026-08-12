@@ -29,6 +29,7 @@ from ansim_review.parsing.source_states import (
 from ansim_review.retrieval.index import build_fts_index, require_fresh_index
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_PARSER_SOURCE_SHA256_OPTION = "source_sha256"
 
 
 class SourceBatchNotReady(ValueError):
@@ -189,6 +190,34 @@ def prepare_source_batch(
     )
 
 
+def _parser_context(source: PreparedSource) -> ParserContext:
+    if source.parser_path is None:
+        raise PendingParserOutputError(
+            f"PENDING_PARSER_OUTPUT: {source.source_path.name}"
+        )
+    options = dict(source.parser_options)
+    bound_source_sha256 = options.pop(_PARSER_SOURCE_SHA256_OPTION, None)
+    if bound_source_sha256 is not None and (
+        not isinstance(bound_source_sha256, str)
+        or _SHA256.fullmatch(bound_source_sha256) is None
+    ):
+        raise ValueError(
+            "PARSER_SOURCE_HASH_INVALID: "
+            "parser.options.source_sha256 must be a lowercase SHA-256 digest"
+        )
+    return ParserContext(
+        source_path=source.source_path,
+        parser_artifact_path=source.parser_path,
+        options=options,
+        binding_authority=(
+            "SOURCE_BATCH_MANIFEST"
+            if bound_source_sha256 is not None
+            else "DIRECT"
+        ),
+        source_sha256=bound_source_sha256,
+    )
+
+
 def _source_records(
     batch_root: Path,
     sources: tuple[PreparedSource, ...],
@@ -214,11 +243,7 @@ def _source_records(
             )
         contribution = registry.parse(
             source.parser_kind,
-            ParserContext(
-                source_path=source.source_path,
-                parser_artifact_path=source.parser_path,
-                options=source.parser_options,
-            ),
+            _parser_context(source),
         )
         if sha256_file(source.parser_path) != contribution.parser_artifact_sha256:
             raise ValueError("PARSER_ARTIFACT_CHANGED")
