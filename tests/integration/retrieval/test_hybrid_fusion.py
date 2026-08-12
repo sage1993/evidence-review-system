@@ -33,7 +33,7 @@ def test_equal_scores_sort_by_stable_evidence_id() -> None:
 
 def test_fusion_preserves_channels_and_is_byte_reproducible() -> None:
     e1_structured = _hit("E1")
-    e1_fts = _hit("E1", channel="fts")
+    e1_fts = _hit("E1", channel="fts_phrase")
     e2 = _hit("E2")
     unrelated = _hit(
         "A0",
@@ -50,7 +50,7 @@ def test_fusion_preserves_channels_and_is_byte_reproducible() -> None:
         hit.evidence_id for hit in first if hit.document_id == "LAW1"
     ] == ["E1", "E2"]
     assert [item.channel for item in first[0].channel_scores] == [
-        "fts",
+        "fts_phrase",
         "structured_exact",
     ]
     assert dump_bytes(fusion_document(first)) == dump_bytes(

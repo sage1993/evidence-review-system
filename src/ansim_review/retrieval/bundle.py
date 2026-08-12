@@ -8,7 +8,11 @@ from typing import cast
 
 from ansim_review.retrieval.fusion import fuse_hits, fusion_document
 from ansim_review.retrieval.graph import traverse_relations
-from ansim_review.retrieval.index import require_fresh_index, search_fts
+from ansim_review.retrieval.index import (
+    require_fresh_index,
+    search_fts_phrase,
+    search_fts_token_and,
+)
 from ansim_review.retrieval.models import (
     ChannelScore,
     CitationUnavailableError,
@@ -121,6 +125,27 @@ def _normalize_request(
     )
 
 
+def _trace_hits(
+    hits: tuple[RetrievalHit, ...],
+    *,
+    origin: str,
+    term: str,
+) -> tuple[RetrievalHit, ...]:
+    return tuple(
+        replace(
+            hit,
+            channel_scores=(
+                ChannelScore(
+                    hit.channel_scores[0].channel,
+                    hit.channel_scores[0].score,
+                    f"{origin}:{term}",
+                ),
+            ),
+        )
+        for hit in hits
+    )
+
+
 def _origin_hits(
     connection: sqlite3.Connection,
     query: NormalizedQuery,
@@ -128,21 +153,22 @@ def _origin_hits(
 ) -> tuple[tuple[RetrievalHit, ...], ...]:
     channels: list[tuple[RetrievalHit, ...]] = []
     for term in query.terms:
-        hits = search_fts(connection, term.text, limit)
-        traced = tuple(
-            replace(
-                hit,
-                channel_scores=(
-                    ChannelScore(
-                        "fts",
-                        hit.channel_scores[0].score,
-                        f"{term.origin}:{term.text}",
-                    ),
-                ),
+        phrase_hits = search_fts_phrase(connection, term.text, limit)
+        token_hits = search_fts_token_and(connection, term.text, limit)
+        channels.append(
+            _trace_hits(
+                phrase_hits,
+                origin=term.origin,
+                term=term.text,
             )
-            for hit in hits
         )
-        channels.append(traced)
+        channels.append(
+            _trace_hits(
+                token_hits,
+                origin=term.origin,
+                term=term.text,
+            )
+        )
     return tuple(channels)
 
 
