@@ -1,5 +1,7 @@
 import hashlib
 import json
+import shutil
+import sqlite3
 import subprocess
 import sys
 import zipfile
@@ -9,19 +11,28 @@ from ansim_review.packaging.web_bundle import build_web_runtime_zip
 
 
 def _workspace(root: Path) -> None:
+    repository_root = Path(__file__).parents[3]
+    shutil.copytree(
+        repository_root / "src" / "evidence_review",
+        root / "src" / "evidence_review",
+    )
+    shutil.copytree(
+        repository_root / "src" / "ansim_review",
+        root / "src" / "ansim_review",
+    )
     package = root / "src" / "ansim_review"
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("", encoding="utf-8")
     cache = package / "__pycache__"
-    cache.mkdir()
+    cache.mkdir(exist_ok=True)
     (cache / "generated.cpython-313.pyc").write_bytes(b"generated")
     egg_info = package / "noise.egg-info"
     egg_info.mkdir()
     (egg_info / "PKG-INFO").write_text("generated", encoding="utf-8")
     (root / "evidence").mkdir()
-    (root / "evidence" / "evidence.sqlite").write_bytes(
-        b"SQLite format 3\0fixture"
-    )
+    connection = sqlite3.connect(root / "evidence" / "evidence.sqlite")
+    connection.execute("CREATE TABLE probe(id INTEGER PRIMARY KEY)")
+    connection.execute("INSERT INTO probe(id) VALUES(1)")
+    connection.commit()
+    connection.close()
     (root / "rules" / "approved").mkdir(parents=True)
     (root / "rules" / "approved" / "R1.json").write_text(
         "{}",
@@ -33,7 +44,6 @@ def _workspace(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "web_runtime").mkdir()
-    repository_root = Path(__file__).parents[3]
     for filename in ("bootstrap.py", "runtime_runner.py"):
         source = repository_root / "web_runtime" / filename
         (root / "web_runtime" / filename).write_text(
@@ -84,6 +94,8 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
         / "noise.egg-info"
     ).exists()
     assert (extracted / "evidence" / "evidence.sqlite").is_file()
+    assert (extracted / "evidence_review" / "__main__.py").is_file()
+    assert (extracted / "ansim_review" / "__main__.py").is_file()
     assert (extracted / "examples" / "golden-cases.json").is_file()
     assert (extracted / "rules" / "approved" / "R1.json").is_file()
 
@@ -93,7 +105,9 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
     assert runtime_manifest["format"] == "evidence-review/chatgpt-web-runtime"
 
     formula_manifest = json.loads(
-        (extracted / "formulas" / "manifest.json").read_text(encoding="utf-8")
+        (extracted / "formulas" / "manifest.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert [item["formula_id"] for item in formula_manifest["formulas"]] == [
         "FRONTAGE_RATIO"
@@ -114,3 +128,83 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
         },
     }
     assert not (extracted / "02_source_pdf").exists()
+
+    for module in ("evidence_review", "ansim_review"):
+        completed = subprocess.run(
+            [sys.executable, "-m", module, "--help"],
+            cwd=extracted,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        assert completed.stdout.startswith("usage: evidence-review")
+
+
+def _extract_runtime(root: Path, tmp_path: Path) -> Path:
+    archive = tmp_path / "runtime.zip"
+    build_web_runtime_zip(root, archive)
+    extracted = tmp_path / "extracted"
+    with zipfile.ZipFile(archive) as bundle:
+        bundle.extractall(extracted)
+    return extracted
+
+
+def _refresh_database_manifest(extracted: Path) -> None:
+    manifest_path = extracted / "runtime-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    digest = hashlib.sha256(
+        (extracted / "evidence" / "evidence.sqlite").read_bytes()
+    ).hexdigest()
+    for item in manifest["files"]:
+        if item["path"] == "evidence/evidence.sqlite":
+            item["sha256"] = digest
+            item["size"] = (extracted / "evidence" / "evidence.sqlite").stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_web_runtime_self_test_rejects_corrupt_sqlite(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    extracted = _extract_runtime(root, tmp_path)
+    database = extracted / "evidence" / "evidence.sqlite"
+    database.write_bytes(b"not-a-sqlite-database")
+    _refresh_database_manifest(extracted)
+
+    completed = subprocess.run(
+        [sys.executable, "bootstrap.py", "--self-test"],
+        cwd=extracted,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode != 0
+    assert "WEB_RUNTIME_SELF_TEST_PASS" not in completed.stdout
+    assert "SQLITE_INTEGRITY_FAILED" in completed.stderr
+
+
+def test_web_runtime_self_test_rejects_foreign_key_errors(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    extracted = _extract_runtime(root, tmp_path)
+    database = extracted / "evidence" / "evidence.sqlite"
+    connection = sqlite3.connect(database)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("CREATE TABLE parent(id INTEGER PRIMARY KEY)")
+    connection.execute(
+        "CREATE TABLE child(parent_id INTEGER REFERENCES parent(id))"
+    )
+    connection.execute("INSERT INTO child(parent_id) VALUES(99)")
+    connection.commit()
+    connection.close()
+    _refresh_database_manifest(extracted)
+
+    completed = subprocess.run(
+        [sys.executable, "bootstrap.py", "--self-test"],
+        cwd=extracted,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode != 0
+    assert "WEB_RUNTIME_SELF_TEST_PASS" not in completed.stdout
+    assert "SQLITE_INTEGRITY_FAILED" in completed.stderr

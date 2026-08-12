@@ -4,7 +4,11 @@ from pathlib import Path
 import pytest
 
 import ansim_review.network_guard as network_guard
-from ansim_review.network_guard import find_forbidden_imports, install_network_guard
+from ansim_review.network_guard import (
+    find_forbidden_imports,
+    install_network_guard,
+    offline_guard_context,
+)
 
 
 def test_nonloopback_create_connection_is_blocked() -> None:
@@ -100,3 +104,115 @@ def test_runtime_has_no_forbidden_capabilities() -> None:
     findings = find_forbidden_imports(Path("src"))
 
     assert findings == ()
+
+def test_nonloopback_getaddrinfo_is_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    def fake_getaddrinfo(host: object, *args: object, **kwargs: object) -> object:
+        calls.append(host)
+        return ()
+
+    monkeypatch.setattr(network_guard, "_ORIGINAL_GETADDRINFO", fake_getaddrinfo)
+    install_network_guard()
+
+    with pytest.raises(RuntimeError, match="non-loopback network access is disabled"):
+        socket.getaddrinfo("external.example", 443)
+
+    assert calls == []
+
+
+def test_loopback_resolvers_delegate_to_original(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    def fake_getaddrinfo(host: object, *args: object, **kwargs: object) -> object:
+        calls.append(("getaddrinfo", host))
+        return ()
+
+    def fake_gethostbyname(host: str) -> str:
+        calls.append(("gethostbyname", host))
+        return "127.0.0.1"
+
+    def fake_gethostbyname_ex(host: str) -> tuple[str, list[str], list[str]]:
+        calls.append(("gethostbyname_ex", host))
+        return host, [], ["127.0.0.1"]
+
+    monkeypatch.setattr(network_guard, "_ORIGINAL_GETADDRINFO", fake_getaddrinfo)
+    monkeypatch.setattr(network_guard, "_ORIGINAL_GETHOSTBYNAME", fake_gethostbyname)
+    monkeypatch.setattr(
+        network_guard,
+        "_ORIGINAL_GETHOSTBYNAME_EX",
+        fake_gethostbyname_ex,
+    )
+    install_network_guard()
+
+    socket.getaddrinfo("localhost", 17841)
+    socket.getaddrinfo("127.0.0.1", 17841)
+    socket.getaddrinfo("::1", 17841)
+    socket.gethostbyname("localhost")
+    socket.gethostbyname_ex("127.0.0.1")
+
+    assert calls == [
+        ("getaddrinfo", "localhost"),
+        ("getaddrinfo", "127.0.0.1"),
+        ("getaddrinfo", "::1"),
+        ("gethostbyname", "localhost"),
+        ("gethostbyname_ex", "127.0.0.1"),
+    ]
+
+
+@pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"), reason="sendmsg unavailable")
+def test_nonloopback_sendmsg_is_blocked() -> None:
+    install_network_guard()
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+        with pytest.raises(RuntimeError, match="non-loopback network access is disabled"):
+            client.sendmsg([b"x"], [], 0, ("8.8.8.8", 53))
+
+
+def test_connected_socket_send_and_sendall_are_guarded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    send_calls: list[bytes] = []
+    sendall_calls: list[bytes] = []
+
+    def fake_send(client: socket.socket, data: bytes, *args: object) -> int:
+        send_calls.append(data)
+        return len(data)
+
+    def fake_sendall(client: socket.socket, data: bytes, *args: object) -> None:
+        sendall_calls.append(data)
+
+    monkeypatch.setattr(network_guard, "_ORIGINAL_SEND", fake_send)
+    monkeypatch.setattr(network_guard, "_ORIGINAL_SENDALL", fake_sendall)
+    monkeypatch.setattr(
+        socket.socket,
+        "getpeername",
+        lambda client: ("8.8.8.8", 53),
+    )
+    install_network_guard()
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+        with pytest.raises(RuntimeError, match="non-loopback network access is disabled"):
+            client.send(b"x")
+        with pytest.raises(RuntimeError, match="non-loopback network access is disabled"):
+            client.sendall(b"x")
+
+    assert send_calls == []
+    assert sendall_calls == []
+
+
+def test_offline_guard_context_restores_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def sentinel(*args: object, **kwargs: object) -> tuple[object, ...]:
+        return ()
+    monkeypatch.setattr(socket, "getaddrinfo", sentinel)
+
+    with offline_guard_context():
+        assert socket.getaddrinfo is not sentinel
+
+    assert socket.getaddrinfo is sentinel

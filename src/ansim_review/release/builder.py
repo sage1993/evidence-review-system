@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import tempfile
 import zipfile
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -115,101 +117,150 @@ def _combined_validation_report(
     }
 
 
-def build_evidence_release(
+@dataclass(frozen=True, slots=True)
+class ReleaseInputs:
+    """Read-only inputs validated before a release stage is created."""
+
+    evidence: Path
+    packet: Path
+
+
+def _preflight_release(
     workspace_root: Path,
     output_directory: Path,
-    *,
-    config: ReleaseConfig = DEFAULT_RELEASE_CONFIG,
-) -> dict[str, object]:
-    """Build release artifacts and require exact named process attestation."""
+    config: ReleaseConfig,
+) -> ReleaseInputs:
     if output_directory.exists():
         raise FileExistsError(output_directory)
-    output_directory.mkdir(parents=True)
-
     evidence = resolve_evidence_database(workspace_root, config)
     packet = workspace_root / "runs" / "final-review-packet.json"
     if not evidence.is_file():
         raise FileNotFoundError(evidence)
     if not packet.is_file():
         raise FileNotFoundError(packet)
-    shutil.copyfile(evidence, output_directory / "evidence.sqlite")
-    shutil.copyfile(packet, output_directory / "final-review-packet.json")
+    return ReleaseInputs(evidence=evidence, packet=packet)
 
-    with tempfile.TemporaryDirectory(prefix="evidence-review-release-build-") as temporary:
-        temp = Path(temporary)
-        codex = temp / "codex-workspace"
-        build_codex_bundle(workspace_root, codex)
-        _zip_directory(codex, output_directory / "codex-workspace.zip")
-        _zip_directory(
-            workspace_root / "rules" / "approved",
-            output_directory / "approved-rules.zip",
+
+def _publish_stage(stage: Path, output_directory: Path) -> None:
+    """Publish one completed stage without replacing an existing output."""
+    parent = output_directory.parent.resolve()
+    lock_path = parent / f".{output_directory.name}.publish.lock"
+    try:
+        descriptor = os.open(
+            lock_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
         )
-    build_web_runtime_zip(
-        workspace_root,
-        output_directory / "chatgpt-web-runtime.zip",
-    )
+        os.close(descriptor)
+    except FileExistsError as error:
+        raise FileExistsError(output_directory) from error
+    try:
+        if output_directory.exists():
+            raise FileExistsError(output_directory)
+        os.replace(stage, output_directory)
+    finally:
+        lock_path.unlink(missing_ok=True)
 
-    workspace_validation = validate_release_workspace(workspace_root)
-    output_validation = validate_release_output(output_directory)
-    validation = _combined_validation_report(
-        workspace_validation,
-        output_validation,
-    )
-    (output_directory / "release-validation.json").write_bytes(
-        dump_bytes(validation)
-    )
 
-    artifacts = _artifact_entries(output_directory)
-    candidate_hash = sha256_json(artifacts)
-    packet_hash = _sha(output_directory / "final-review-packet.json")
-    reasons = _automated_reason_codes(
-        workspace_validation,
-        output_validation,
-    )
+def build_evidence_release(
+    workspace_root: Path,
+    output_directory: Path,
+    *,
+    config: ReleaseConfig = DEFAULT_RELEASE_CONFIG,
+) -> dict[str, object]:
+    """Build and atomically publish a deterministic evidence release."""
+    workspace_root = workspace_root.resolve()
+    output_directory = output_directory.resolve(strict=False)
+    inputs = _preflight_release(workspace_root, output_directory, config)
+    output_parent = output_directory.parent
+    output_parent.mkdir(parents=True, exist_ok=True)
 
-    attestation_path = resolve_attestation_record(workspace_root, config)
-    attestation: HumanAttestation | None = None
-    if not attestation_path.is_file():
-        reasons.append("PROCESS_ATTESTATION_MISSING")
-    else:
-        try:
-            attestation = validate_attestation(
-                attestation_path,
-                expected_candidate_hash=candidate_hash,
-                expected_packet_hash=packet_hash,
-                expected_reviewer_id=config.expected_reviewer_id,
+    with tempfile.TemporaryDirectory(
+        dir=output_parent,
+        prefix=f".{output_directory.name}.stage-",
+    ) as temporary:
+        stage = Path(temporary) / "release"
+        stage.mkdir()
+        shutil.copyfile(inputs.evidence, stage / "evidence.sqlite")
+        shutil.copyfile(inputs.packet, stage / "final-review-packet.json")
+
+        with tempfile.TemporaryDirectory(
+            prefix="evidence-review-release-build-"
+        ) as temporary_build:
+            build_root = Path(temporary_build)
+            codex = build_root / "codex-workspace"
+            build_codex_bundle(workspace_root, codex)
+            _zip_directory(codex, stage / "codex-workspace.zip")
+            _zip_directory(
+                workspace_root / "rules" / "approved",
+                stage / "approved-rules.zip",
             )
-        except (OSError, ValueError):
-            reasons.append("PROCESS_ATTESTATION_INVALID")
-
-    status = "RELEASE_READY" if not reasons else "BLOCKED"
-    if attestation is not None and status == "RELEASE_READY":
-        write_attestation(
-            output_directory / config.attestation_record_name,
-            attestation,
+        build_web_runtime_zip(
+            workspace_root,
+            stage / "chatgpt-web-runtime.zip",
         )
-    manifest = {
-        "format": RELEASE_FORMAT,
-        "version": 1,
-        "release": config.release_id,
-        "status": status,
-        "reason_codes": reasons,
-        "candidate_hash": candidate_hash,
-        "packet_hash": packet_hash,
-        "artifacts": artifacts,
-        "attestation_assurance": PROCESS_ATTESTATION,
-        "cryptographic_identity_verified": False,
-        "expected_reviewer_id": config.expected_reviewer_id,
-        "attestation": (
-            None if attestation is None else attestation_document(attestation)
-        ),
-        "tag_allowed": status == "RELEASE_READY",
-    }
-    (output_directory / "release-manifest.json").write_bytes(
-        dump_bytes(manifest)
-    )
-    return manifest
 
+        workspace_validation = validate_release_workspace(workspace_root)
+        output_validation = validate_release_output(stage)
+        validation = _combined_validation_report(
+            workspace_validation,
+            output_validation,
+        )
+        (stage / "release-validation.json").write_bytes(
+            dump_bytes(validation)
+        )
+
+        artifacts = _artifact_entries(stage)
+        candidate_hash = sha256_json(artifacts)
+        packet_hash = _sha(stage / "final-review-packet.json")
+        reasons = _automated_reason_codes(
+            workspace_validation,
+            output_validation,
+        )
+
+        attestation_path = resolve_attestation_record(workspace_root, config)
+        attestation: HumanAttestation | None = None
+        if not attestation_path.is_file():
+            reasons.append("PROCESS_ATTESTATION_MISSING")
+        else:
+            try:
+                attestation = validate_attestation(
+                    attestation_path,
+                    expected_candidate_hash=candidate_hash,
+                    expected_packet_hash=packet_hash,
+                    expected_reviewer_id=config.expected_reviewer_id,
+                )
+            except (OSError, ValueError):
+                reasons.append("PROCESS_ATTESTATION_INVALID")
+
+        status = "RELEASE_READY" if not reasons else "BLOCKED"
+        if attestation is not None and status == "RELEASE_READY":
+            write_attestation(
+                stage / config.attestation_record_name,
+                attestation,
+            )
+        manifest = {
+            "format": RELEASE_FORMAT,
+            "version": 1,
+            "release": config.release_id,
+            "status": status,
+            "reason_codes": reasons,
+            "candidate_hash": candidate_hash,
+            "packet_hash": packet_hash,
+            "artifacts": artifacts,
+            "attestation_assurance": PROCESS_ATTESTATION,
+            "cryptographic_identity_verified": False,
+            "expected_reviewer_id": config.expected_reviewer_id,
+            "attestation": (
+                None if attestation is None else attestation_document(attestation)
+            ),
+            "tag_allowed": status == "RELEASE_READY",
+        }
+        (stage / "release-manifest.json").write_bytes(
+            dump_bytes(manifest)
+        )
+        _publish_stage(stage, output_directory)
+    return manifest
 
 def build_ansim_release(
     workspace_root: Path,

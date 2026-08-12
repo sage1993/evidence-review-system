@@ -1,4 +1,8 @@
 import json
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from ansim_review.packaging.codex_bundle import build_codex_bundle
@@ -8,18 +12,25 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "workspace"
+    repository_root = Path(__file__).parents[3]
+    shutil.copytree(
+        repository_root / "src" / "evidence_review",
+        root / "src" / "evidence_review",
+    )
+    shutil.copytree(
+        repository_root / "src" / "ansim_review",
+        root / "src" / "ansim_review",
+    )
     package = root / "src" / "ansim_review"
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("", encoding="utf-8")
     cache = package / "__pycache__"
-    cache.mkdir()
+    cache.mkdir(exist_ok=True)
     (cache / "generated.cpython-313.pyc").write_bytes(b"generated")
     egg_info = package / "noise.egg-info"
     egg_info.mkdir()
     (egg_info / "PKG-INFO").write_text("generated", encoding="utf-8")
     (root / "evidence").mkdir()
     (root / "evidence" / "evidence.sqlite").write_bytes(
-        b"SQLite format 3\0fixture"
+        b"SQLite format 3\\0fixture"
     )
     (root / "rules" / "approved").mkdir(parents=True)
     (root / "rules" / "approved" / "R1.json").write_text(
@@ -41,6 +52,7 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     manifest = build_codex_bundle(root, output)
     assert (output / "AGENTS.md").is_file()
     assert len(list((output / "skills").glob("*/SKILL.md"))) == 5
+    assert (output / "src" / "evidence_review" / "__main__.py").is_file()
     assert (output / "src" / "ansim_review" / "__init__.py").is_file()
     assert not (
         output
@@ -69,3 +81,14 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     assert all("__pycache__" not in item["path"] for item in data["files"])
     assert all(not item["path"].endswith(".pyc") for item in data["files"])
     assert all(".egg-info/" not in item["path"] for item in data["files"])
+
+    environment = {**os.environ, "PYTHONPATH": str(output / "src")}
+    for module in ("evidence_review", "ansim_review"):
+        completed = subprocess.run(
+            [sys.executable, "-m", module, "--help"],
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        assert completed.stdout.startswith("usage: evidence-review")

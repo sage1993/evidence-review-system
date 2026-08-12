@@ -1,12 +1,19 @@
+import shutil
 from pathlib import Path
 
 from ansim_review.packaging.codex_bundle import build_codex_bundle
 
 
 def _workspace(root: Path) -> None:
-    package = root / "src" / "ansim_review"
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("", encoding="utf-8")
+    repository_root = Path(__file__).parents[3]
+    shutil.copytree(
+        repository_root / "src/evidence_review",
+        root / "src/evidence_review",
+    )
+    shutil.copytree(
+        repository_root / "src/ansim_review",
+        root / "src/ansim_review",
+    )
     (root / "evidence").mkdir()
     (root / "evidence" / "evidence.sqlite").write_bytes(
         b"SQLite format 3\0fixture"

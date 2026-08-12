@@ -160,7 +160,7 @@ def _schema_is_supported(connection: sqlite3.Connection) -> bool:
         ).fetchone()
     except sqlite3.Error:
         return False
-    if row is None or row[0] != "2":
+    if row is None or str(row[0]) not in {"2", "3"}:
         return False
     tables = _user_tables(connection)
     unexpected = {
@@ -490,7 +490,7 @@ def _plan_revision(
                     code="PAGE_GEOMETRY_MISMATCH",
                     legacy_id=str(legacy_page["id"]),
                     canonical_id=str(canonical_page["id"]),
-                    detail="page width or height differs",
+                    detail="page geometry differs",
                 )
             )
             continue

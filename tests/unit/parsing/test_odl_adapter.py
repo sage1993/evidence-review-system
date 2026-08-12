@@ -316,3 +316,52 @@ def test_parser_page_count_is_inferred_from_elements_when_metadata_is_absent(
 
     assert len(contribution.page_dimensions) == 2
     assert contribution.elements[0].page_number == 2
+
+def test_odl_preserves_cropbox_origin_and_rotation_in_canonical_bbox(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf_fixture(
+        tmp_path / "rotated.pdf",
+        page_sizes=((500.0, 700.0),),
+        crop_boxes={1: (10.0, 20.0, 510.0, 720.0)},
+        rotations={1: 90},
+    )
+    parser = tmp_path / "rotated.json"
+    parser.write_text(
+        json.dumps(
+            {
+                "file name": "rotated.pdf",
+                "number of pages": 1,
+                "pages": [
+                    {
+                        "page_number": 1,
+                        "width": 500,
+                        "height": 700,
+                        "origin_x": 10,
+                        "origin_y": 20,
+                        "rotation": 90,
+                        "box_kind": "CROP_BOX",
+                    }
+                ],
+                "kids": [
+                    {
+                        "type": "paragraph",
+                        "page number": 1,
+                        "bounding box": [110, 220, 210, 320],
+                        "content": "rotated evidence",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    contribution = OpenDataLoaderJsonAdapter().parse(
+        ParserContext(source, parser, {})
+    )
+
+    page = contribution.page_dimensions[0]
+    assert (page.origin_x, page.origin_y) == (10.0, 20.0)
+    assert page.rotation == 90
+    assert page.box_kind == "CROP_BOX"
+    assert contribution.elements[0].bbox == (100.0, 200.0, 200.0, 300.0)

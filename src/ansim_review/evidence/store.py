@@ -7,15 +7,24 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
-from ansim_review.evidence.schema_version import require_current_schema
+from ansim_review.evidence.schema_version import detect_schema_version, require_current_schema
 
 
 class EvidenceStore:
     """Own one version-checked SQLite evidence connection."""
 
-    def __init__(self, path: Path, *, create: bool = False) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        create: bool = False,
+        schema_resource: str = "schema.sql",
+        require_current: bool = True,
+    ) -> None:
         self.path = path
         self.create = create
+        self.schema_resource = schema_resource
+        self.require_current = require_current
         self.connection: sqlite3.Connection | None = None
 
     def __enter__(self) -> EvidenceStore:
@@ -40,11 +49,12 @@ class EvidenceStore:
         try:
             schema = (
                 files("ansim_review.evidence")
-                .joinpath("schema.sql")
+                .joinpath(self.schema_resource)
                 .read_text(encoding="utf-8")
             )
             connection.executescript(schema)
-            require_current_schema(connection)
+            if self.require_current:
+                require_current_schema(connection)
         except BaseException:
             connection.close()
             self.path.unlink(missing_ok=True)
@@ -57,7 +67,10 @@ class EvidenceStore:
         uri = f"{self.path.resolve().as_uri()}?mode=rw"
         connection = self._configured_connection(uri, uri=True)
         try:
-            require_current_schema(connection)
+            if self.require_current:
+                require_current_schema(connection)
+            else:
+                detect_schema_version(connection)
         except BaseException:
             connection.close()
             raise

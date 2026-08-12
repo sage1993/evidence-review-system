@@ -8,6 +8,26 @@ import sqlite3
 from pathlib import Path
 
 
+def validate_database(database: Path) -> None:
+    """Validate the bundled database without opening it for writes."""
+    try:
+        uri = f"{database.resolve().as_uri()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True)
+        try:
+            integrity = connection.execute(
+                "PRAGMA integrity_check"
+            ).fetchone()
+            foreign_keys = connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+        finally:
+            connection.close()
+    except sqlite3.DatabaseError as error:
+        raise SystemExit("SQLITE_INTEGRITY_FAILED") from error
+    if integrity != ("ok",) or foreign_keys:
+        raise SystemExit("SQLITE_INTEGRITY_FAILED")
+
+
 def self_test(root: Path) -> None:
     database = root / "evidence/evidence.sqlite"
     required = [
@@ -27,12 +47,7 @@ def self_test(root: Path) -> None:
         path = root / item["path"]
         if hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
             raise SystemExit(f"hash mismatch: {item['path']}")
-    try:
-        connection = sqlite3.connect(database)
-        connection.execute("PRAGMA integrity_check").fetchone()
-        connection.close()
-    except sqlite3.DatabaseError:
-        pass
+    validate_database(database)
     print("WEB_RUNTIME_SELF_TEST_PASS")
 
 

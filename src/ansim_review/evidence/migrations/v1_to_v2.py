@@ -16,7 +16,7 @@ from ansim_review.evidence.page_geometry import (
     PageGeometry,
     validate_bbox_within_page,
 )
-from ansim_review.evidence.schema_version import SCHEMA_VERSION, detect_schema_version
+from ansim_review.evidence.schema_version import detect_schema_version
 from ansim_review.evidence.snapshot import (
     compute_logical_snapshot_hash,
     compute_snapshot_hash,
@@ -327,7 +327,12 @@ def migrate_v1_to_v2(source: Path, output: Path) -> MigrationReport:
         logical_hash = compute_logical_snapshot_hash(source_connection)
         snapshot = _source_snapshot(source_connection)
 
-        with EvidenceStore(temporary_path, create=True) as store:
+        with EvidenceStore(
+            temporary_path,
+            create=True,
+            schema_resource="schema_v2.sql",
+            require_current=False,
+        ) as store:
             ingest_snapshot(store, snapshot)
             connection = store.require_connection()
             physical_snapshot_hash = compute_snapshot_hash(store)
@@ -366,7 +371,7 @@ def migrate_v1_to_v2(source: Path, output: Path) -> MigrationReport:
         output_db=output_path,
         report_path=report_path,
         source_schema_version=1,
-        output_schema_version=SCHEMA_VERSION,
+        output_schema_version=2,
         source_sha256=source_sha256,
         output_sha256=output_sha256,
         logical_snapshot_hash=logical_hash,

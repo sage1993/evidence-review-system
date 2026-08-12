@@ -14,6 +14,10 @@ def _workspace(root: Path) -> None:
     repository_root = Path(__file__).parents[3]
     (root / "src").mkdir(parents=True)
     shutil.copytree(
+        repository_root / "src/evidence_review",
+        root / "src/evidence_review",
+    )
+    shutil.copytree(
         repository_root / "src/ansim_review",
         root / "src/ansim_review",
     )

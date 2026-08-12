@@ -6,6 +6,7 @@ from ansim_review.offline_policy import (
     POLICY_VERSION,
     default_offline_policy,
     is_allowed_local_address,
+    is_allowed_resolution_host,
 )
 
 
@@ -61,3 +62,18 @@ def test_local_addresses_are_allowed(address: object) -> None:
 )
 def test_nonlocal_addresses_are_rejected(address: object) -> None:
     assert is_allowed_local_address(address) is False
+
+@pytest.mark.parametrize(
+    "host",
+    ["localhost", "LOCALHOST", "127.0.0.1", "::1"],
+)
+def test_resolution_hosts_allow_only_loopback_names_and_addresses(host: str) -> None:
+    assert is_allowed_resolution_host(host) is True
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["example.com", "8.8.8.8", "2001:4860:4860::8888", None],
+)
+def test_resolution_hosts_reject_nonloopback_values(host: object) -> None:
+    assert is_allowed_resolution_host(host) is False

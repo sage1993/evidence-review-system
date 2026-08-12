@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SchemaUpgradeRequired(RuntimeError):
@@ -85,6 +85,56 @@ _V1_COLUMNS: dict[str, tuple[str, ...]] = {
         "normalized_text",
     ),
 }
+
+_V3_COLUMNS: dict[str, tuple[str, ...]] = {
+    **_COMMON_COLUMNS,
+    "pages": (
+        "id", "revision_id", "page_number", "width", "height",
+        "origin_x", "origin_y", "rotation", "box_kind",
+    ),
+    "schema_meta": ("key", "value"),
+    "elements": (
+        "id",
+        "page_id",
+        "element_type",
+        "raw_json",
+        "raw_text",
+        "normalized_text",
+        "raw_payload_hash",
+        "bbox_json",
+        "parser_order",
+    ),
+    "tables": (
+        "id",
+        "page_id",
+        "bbox_json",
+        "raw_json",
+        "normalized_json",
+    ),
+    "visuals": (
+        "id",
+        "page_id",
+        "kind",
+        "relative_path",
+        "sha256",
+        "bbox_json",
+        "duplicate_group",
+    ),
+    "retrieval_records": (
+        "evidence_id",
+        "evidence_type",
+        "document_id",
+        "revision_id",
+        "page_id",
+        "page_number",
+        "bbox_json",
+        "source_hash",
+        "title",
+        "raw_text",
+        "normalized_text",
+    ),
+}
+
 
 _V2_COLUMNS: dict[str, tuple[str, ...]] = {
     **_COMMON_COLUMNS,
@@ -201,13 +251,17 @@ def detect_schema_version(connection: sqlite3.Connection) -> int:
             raise UnsupportedSchemaVersion(
                 f"unsupported evidence schema version: {version}"
             )
-        if version == SCHEMA_VERSION and not _is_exact_shape(connection, _V2_COLUMNS):
+        if version == 3 and not _is_exact_shape(connection, _V3_COLUMNS):
             raise UnsupportedSchemaVersion(
                 f"evidence schema version {version} shape is invalid"
             )
         if version == 1:
             raise UnsupportedSchemaVersion(
                 "schema version 1 metadata does not match the recognized legacy shape"
+            )
+        if version == 2 and not _is_exact_shape(connection, _V2_COLUMNS):
+            raise UnsupportedSchemaVersion(
+                "evidence schema version 2 shape is invalid"
             )
         return version
 
@@ -220,9 +274,9 @@ def detect_schema_version(connection: sqlite3.Connection) -> int:
 def require_current_schema(connection: sqlite3.Connection) -> None:
     """Require the current evidence schema without mutating the database."""
     version = detect_schema_version(connection)
-    if version == 1:
+    if version in (1, 2):
         raise SchemaUpgradeRequired(
-            "database uses schema version 1; explicit migration is required"
+            f"database uses schema version {version}; explicit migration is required"
         )
     if version != SCHEMA_VERSION:
         raise UnsupportedSchemaVersion(

@@ -1,10 +1,38 @@
 """Normalize parser bounding boxes into canonical PDF coordinates."""
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from math import isfinite
 
 from ansim_review.contracts.common import BBox
+
+
+@dataclass(frozen=True, slots=True)
+class PdfPageGeometry:
+    """PDF page dimensions and source-box metadata from a parser."""
+
+    width: float
+    height: float
+    origin_x: float = 0.0
+    origin_y: float = 0.0
+    rotation: int = 0
+    box_kind: str = "MEDIA_BOX"
+
+    def __post_init__(self) -> None:
+        values = (self.width, self.height, self.origin_x, self.origin_y)
+        if not all(isfinite(float(value)) for value in values):
+            raise ValueError("page geometry values must be finite")
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError("page dimensions must be positive")
+        if self.rotation not in (0, 90, 180, 270):
+            raise ValueError("rotation must be one of 0, 90, 180, 270")
+        if self.box_kind not in {"CROP_BOX", "MEDIA_BOX"}:
+            raise ValueError("box_kind must be CROP_BOX or MEDIA_BOX")
+
+    def __iter__(self) -> Iterator[float]:
+        yield self.width
+        yield self.height
 
 _TOLERANCE = 0.5
 
@@ -96,3 +124,38 @@ def normalize_bbox(
     xs = tuple(_clamp(point[0], page_width) for point in points)
     ys = tuple(_clamp(point[1], page_height) for point in points)
     return BBox(min(xs), min(ys), max(xs), max(ys))
+
+def project_bbox_for_display(
+    bbox: BBox,
+    page_width: float,
+    page_height: float,
+    *,
+    rotation: int = 0,
+) -> BBox:
+    """Project canonical bottom-left points into rotated display coordinates."""
+    if rotation not in (0, 90, 180, 270):
+        raise ValueError("rotation must be one of 0, 90, 180, 270")
+    if page_width <= 0 or page_height <= 0:
+        raise ValueError("page dimensions must be positive")
+    if rotation == 0:
+        return bbox
+    if rotation == 90:
+        return BBox(
+            page_height - bbox.top,
+            bbox.left,
+            page_height - bbox.bottom,
+            bbox.right,
+        )
+    if rotation == 180:
+        return BBox(
+            page_width - bbox.right,
+            page_height - bbox.top,
+            page_width - bbox.left,
+            page_height - bbox.bottom,
+        )
+    return BBox(
+        bbox.bottom,
+        page_width - bbox.right,
+        bbox.top,
+        page_width - bbox.left,
+    )

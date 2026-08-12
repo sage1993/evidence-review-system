@@ -211,3 +211,12 @@ docker run --rm --network none \
 [ ] release candidate hash와 packet hash가 정확히 일치함
 [ ] cryptographic_identity_verified가 false임
 ```
+
+## Application socket and resolver boundary
+
+The application-level offline guard is not an OS sandbox. It patches outbound socket and resolver capabilities used by the packaged Python runtime:
+
+- DNS and reverse lookup APIs accept only localhost or literal loopback addresses.
+- TCP connect, connect_ex, UDP sendto, sendmsg, and connected send/sendall reject non-loopback peers.
+- Loopback TCP/UDP and local Unix-domain sockets remain available for the local review server.
+- cryptographic_network_isolation_verified remains false; OS firewall, namespace, container, or interpreter isolation must be evidenced separately.

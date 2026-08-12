@@ -21,6 +21,7 @@ class OfflinePolicy:
     forbidden_import_roots: frozenset[str]
     forbidden_import_names: frozenset[str]
     forbidden_process_calls: frozenset[str]
+    forbidden_socket_capabilities: frozenset[str]
 
 
 def default_offline_policy() -> OfflinePolicy:
@@ -39,6 +40,10 @@ def default_offline_policy() -> OfflinePolicy:
             }
         ),
         forbidden_import_names=frozenset({"urllib.request"}),
+        forbidden_socket_capabilities=frozenset({
+            "dns_resolution", "connect", "connect_ex", "send", "sendall",
+            "sendmsg", "sendto",
+        }),
         forbidden_process_calls=frozenset(
             {
                 "asyncio.create_subprocess_exec",
@@ -64,6 +69,11 @@ def _is_loopback_host(value: object) -> bool:
         return ipaddress.ip_address(value).is_loopback
     except ValueError:
         return False
+
+
+def is_allowed_resolution_host(host: object) -> bool:
+    """Allow DNS APIs to resolve only loopback names or literal loopback IPs."""
+    return _is_loopback_host(host)
 
 
 def _is_unix_socket_address(value: object) -> bool:

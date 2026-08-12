@@ -179,6 +179,10 @@ def _reconcile_page_dimensions(
                 pdf_page.page_number,
                 pdf_page.width,
                 pdf_page.height,
+                pdf_page.origin_x,
+                pdf_page.origin_y,
+                pdf_page.rotation,
+                pdf_page.box_kind,
             )
         )
     return tuple(dimensions)
@@ -228,16 +232,15 @@ class OpenDataLoaderJsonAdapter:
         page_count = parser_page_count(payload, raw_elements)
         pdf_pages = read_pdf_page_geometries(context.source_path)
         dimensions = _reconcile_page_dimensions(payload, page_count, pdf_pages)
-        size_by_page = {
-            page.page_number: (page.width, page.height) for page in dimensions
+        geometry_by_page = {
+            page.page_number: page for page in pdf_pages
         }
         page_counts: dict[int, int] = {}
         elements: list[ParsedElement] = []
         for raw in raw_elements:
             page_counts[raw.page_number] = page_counts.get(raw.page_number, 0) + 1
             index = page_counts[raw.page_number]
-            width, height = size_by_page[raw.page_number]
-            bbox = parser_bbox(raw, width, height)
+            bbox = parser_bbox(raw, geometry_by_page[raw.page_number])
             bbox_value = (
                 None
                 if bbox is None

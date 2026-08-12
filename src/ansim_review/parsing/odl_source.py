@@ -7,9 +7,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ansim_review.parsing.pdf_geometry import normalize_bbox
+from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry
 
 if TYPE_CHECKING:
     from ansim_review.parsing.odl_adapter import RawElement
@@ -22,6 +23,10 @@ class ParserPageDimensionsResult:
     state: ParserDimensionState
     width: float | None
     height: float | None
+    origin_x: float = 0.0
+    origin_y: float = 0.0
+    rotation: int = 0
+    box_kind: Literal["CROP_BOX", "MEDIA_BOX"] = "MEDIA_BOX"
 
 
 def read_parser_json(path: Path) -> dict[str, Any]:
@@ -93,25 +98,66 @@ def parser_page_dimensions(
             return ParserPageDimensionsResult("ABSENT", None, None)
         width = page.get("width")
         height = page.get("height")
+        origin_x = page.get("origin_x", 0.0)
+        origin_y = page.get("origin_y", 0.0)
+        rotation = page.get("rotation", 0)
+        box_kind = page.get("box_kind", "MEDIA_BOX")
         if (
-            isinstance(width, (int, float))
-            and not isinstance(width, bool)
-            and isinstance(height, (int, float))
-            and not isinstance(height, bool)
-            and isfinite(float(width))
-            and isfinite(float(height))
-            and float(width) > 0
-            and float(height) > 0
+            not isinstance(width, (int, float))
+            or isinstance(width, bool)
+            or not isinstance(height, (int, float))
+            or isinstance(height, bool)
+            or not isfinite(float(width))
+            or not isfinite(float(height))
+            or float(width) <= 0
+            or float(height) <= 0
+            or not isinstance(origin_x, (int, float))
+            or isinstance(origin_x, bool)
+            or not isinstance(origin_y, (int, float))
+            or isinstance(origin_y, bool)
+            or not isfinite(float(origin_x))
+            or not isfinite(float(origin_y))
+            or isinstance(rotation, bool)
+            or not isinstance(rotation, int)
+            or rotation % 90 != 0
+            or str(box_kind) not in {"CROP_BOX", "MEDIA_BOX"}
         ):
-            return ParserPageDimensionsResult("VALID", float(width), float(height))
-        return ParserPageDimensionsResult("INVALID", None, None)
+            return ParserPageDimensionsResult("INVALID", None, None)
+        return ParserPageDimensionsResult(
+            "VALID",
+            float(width),
+            float(height),
+            float(origin_x),
+            float(origin_y),
+            rotation % 360,
+            cast(Literal["CROP_BOX", "MEDIA_BOX"], str(box_kind)),
+        )
     return ParserPageDimensionsResult("ABSENT", None, None)
 
 
+def normalize_odl_pdf_bbox(
+    raw_bbox: tuple[float, float, float, float],
+    page: PdfPageGeometry,
+) -> list[float]:
+    """Convert ODL PDF points to CropBox-local canonical points."""
+    left, bottom, right, top = raw_bbox
+    local = (
+        left - page.origin_x,
+        bottom - page.origin_y,
+        right - page.origin_x,
+        top - page.origin_y,
+    )
+    bbox = normalize_bbox(
+        local,
+        "PDF_BOTTOM_LEFT",
+        page.width,
+        page.height,
+    )
+    return [bbox.left, bbox.bottom, bbox.right, bbox.top]
+
 def parser_bbox(
-    element: RawElement, width: float, height: float
+    element: RawElement, page: PdfPageGeometry
 ) -> list[float] | None:
     if element.raw_bbox is None:
         return None
-    bbox = normalize_bbox(element.raw_bbox, "PDF_BOTTOM_LEFT", width, height)
-    return [bbox.left, bbox.bottom, bbox.right, bbox.top]
+    return normalize_odl_pdf_bbox(element.raw_bbox, page)

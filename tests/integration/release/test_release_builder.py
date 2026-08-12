@@ -3,6 +3,8 @@ import shutil
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from ansim_review.release.attestation import REQUIRED_CHECK_IDS
 from ansim_review.release.builder import build_ansim_release, build_evidence_release
 from ansim_review.release.config import ReleaseConfig
@@ -10,6 +12,10 @@ from ansim_review.release.config import ReleaseConfig
 
 def _workspace(root: Path) -> None:
     repository_root = Path(__file__).parents[3]
+    shutil.copytree(
+        repository_root / "src/evidence_review",
+        root / "src/evidence_review",
+    )
     shutil.copytree(
         repository_root / "src/ansim_review",
         root / "src/ansim_review",
@@ -253,3 +259,37 @@ def test_release_candidate_ignores_generated_python_files(
     second = build_ansim_release(root, tmp_path / "second")
 
     assert first["candidate_hash"] == second["candidate_hash"]
+
+def test_release_preflight_failure_leaves_no_final_output(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    (root / "evidence" / "evidence.sqlite").unlink()
+    output = tmp_path / "release"
+
+    with pytest.raises(FileNotFoundError):
+        build_evidence_release(root, output)
+
+    assert not output.exists()
+
+
+def test_release_stage_failure_leaves_no_final_output_or_stage(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    output = tmp_path / "release"
+
+    def fail_zip(source: Path, target: Path) -> None:
+        raise OSError("injected build failure")
+
+    import ansim_review.release.builder as builder
+
+    monkeypatch.setattr(builder, "_zip_directory", fail_zip)
+    with pytest.raises(OSError, match="injected build failure"):
+        build_evidence_release(root, output)
+
+    assert not output.exists()
+    assert not list(tmp_path.glob(".release.stage-*"))

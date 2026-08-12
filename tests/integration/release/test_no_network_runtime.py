@@ -9,6 +9,10 @@ from ansim_review.release.validator import blocked_network, validate_release_wor
 def _workspace(root: Path) -> None:
     repository_root = Path(__file__).parents[3]
     shutil.copytree(
+        repository_root / "src/evidence_review",
+        root / "src/evidence_review",
+    )
+    shutil.copytree(
         repository_root / "src/ansim_review",
         root / "src/ansim_review",
     )

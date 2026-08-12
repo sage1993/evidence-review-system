@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from math import isfinite
-from typing import Any
+from typing import Any, Literal
 
 from ansim_review.contracts.common import BBox
 from ansim_review.evidence.page_geometry import PageGeometry, validate_bbox_within_page
@@ -31,14 +31,25 @@ class PageDimensions:
     page_number: int
     width: float
     height: float
+    origin_x: float = 0.0
+    origin_y: float = 0.0
+    rotation: int = 0
+    box_kind: Literal["CROP_BOX", "MEDIA_BOX"] = "MEDIA_BOX"
 
     def __post_init__(self) -> None:
         if isinstance(self.page_number, bool) or self.page_number < 1:
             raise ValueError("page_number must be positive")
-        if not isfinite(self.width) or not isfinite(self.height):
+        if not all(
+            isfinite(value)
+            for value in (self.width, self.height, self.origin_x, self.origin_y)
+        ):
             raise ValueError("page dimensions must be finite")
         if self.width <= 0 or self.height <= 0:
             raise ValueError("page dimensions must be positive")
+        if isinstance(self.rotation, bool) or self.rotation not in (0, 90, 180, 270):
+            raise ValueError("rotation must be one of 0, 90, 180, 270")
+        if self.box_kind not in {"CROP_BOX", "MEDIA_BOX"}:
+            raise ValueError("box_kind must be CROP_BOX or MEDIA_BOX")
 
 
 @dataclass(frozen=True, slots=True)

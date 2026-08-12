@@ -5,7 +5,7 @@ CREATE TABLE schema_meta (
     value TEXT NOT NULL
 ) STRICT;
 
-INSERT INTO schema_meta(key, value) VALUES('schema_version', '3');
+INSERT INTO schema_meta(key, value) VALUES('schema_version', '2');
 
 CREATE TABLE documents (
     id TEXT PRIMARY KEY,
@@ -27,10 +27,6 @@ CREATE TABLE pages (
     page_number INTEGER NOT NULL CHECK(page_number > 0),
     width REAL NOT NULL CHECK(width > 0),
     height REAL NOT NULL CHECK(height > 0),
-    origin_x REAL NOT NULL DEFAULT 0,
-    origin_y REAL NOT NULL DEFAULT 0,
-    rotation INTEGER NOT NULL DEFAULT 0 CHECK(rotation IN (0,90,180,270)),
-    box_kind TEXT NOT NULL DEFAULT 'MEDIA_BOX' CHECK(box_kind IN ('CROP_BOX','MEDIA_BOX')),
     UNIQUE(revision_id, page_number)
 ) STRICT;
 

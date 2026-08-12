@@ -127,7 +127,11 @@ def test_valid_v1_database_migrates_copy_on_write(tmp_path: Path) -> None:
     assert payload["format"] == "evidence-review/evidence-migration-report"
     assert payload["logical_snapshot_hash"] == expected_logical_hash
 
-    with EvidenceStore(output) as store:
+    with EvidenceStore(
+        output,
+        schema_resource="schema_v2.sql",
+        require_current=False,
+    ) as store:
         connection = store.require_connection()
         assert detect_schema_version(connection) == 2
         assert compute_logical_snapshot_hash(connection) == expected_logical_hash

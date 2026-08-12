@@ -1,7 +1,7 @@
 import pytest
 
 from ansim_review.contracts.common import BBox
-from ansim_review.parsing.pdf_geometry import normalize_bbox
+from ansim_review.parsing.pdf_geometry import normalize_bbox, project_bbox_for_display
 
 
 def test_top_left_coordinates_become_pdf_bottom_left() -> None:
@@ -41,3 +41,23 @@ def test_bbox_boundary_tolerance_clamps_exactly_half_point() -> None:
         1191.0,
         842.0,
     ) == BBox(0.0, 0.0, 1191.0, 842.0)
+
+@pytest.mark.parametrize(
+    ("rotation", "expected"),
+    [
+        (0, BBox(100, 200, 200, 300)),
+        (90, BBox(400, 100, 500, 200)),
+        (180, BBox(300, 400, 400, 500)),
+        (270, BBox(200, 300, 300, 400)),
+    ],
+)
+def test_canonical_bbox_projects_to_rotated_display(
+    rotation: int,
+    expected: BBox,
+) -> None:
+    assert project_bbox_for_display(
+        BBox(100, 200, 200, 300),
+        500,
+        700,
+        rotation=rotation,
+    ) == expected

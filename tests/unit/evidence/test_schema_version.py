@@ -11,7 +11,7 @@ from ansim_review.evidence.schema_version import (
 )
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
-V2_SCHEMA = Path("src/ansim_review/evidence/schema.sql")
+V2_SCHEMA = Path("src/ansim_review/evidence/schema_v2.sql")
 
 
 def create_v1_database(path: Path) -> sqlite3.Connection:
@@ -38,10 +38,22 @@ def test_exact_v2_shape_reports_version_two(tmp_path: Path) -> None:
     connection = create_v2_database(tmp_path / "v2.sqlite")
     try:
         assert detect_schema_version(connection) == 2
-        require_current_schema(connection)
+        with pytest.raises(SchemaUpgradeRequired, match="schema version 2"):
+            require_current_schema(connection)
     finally:
         connection.close()
 
+
+def test_exact_v3_shape_reports_current_version(tmp_path: Path) -> None:
+    connection = sqlite3.connect(tmp_path / "v3.sqlite")
+    connection.executescript(
+        Path("src/ansim_review/evidence/schema.sql").read_text(encoding="utf-8")
+    )
+    try:
+        assert detect_schema_version(connection) == 3
+        require_current_schema(connection)
+    finally:
+        connection.close()
 
 def test_version_one_requires_explicit_upgrade(tmp_path: Path) -> None:
     connection = create_v1_database(tmp_path / "v1.sqlite")

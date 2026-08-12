@@ -8,6 +8,7 @@ from pathlib import Path
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.formats import CODEX_WORKSPACE_FORMAT
 from ansim_review.packaging.file_selection import iter_bundle_source_files
+from ansim_review.packaging.runtime_packages import runtime_package_roots
 from ansim_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
     resolve_evidence_database,
@@ -105,10 +106,8 @@ def build_codex_bundle(
         newline="\n",
     )
 
-    _copy_tree(
-        workspace_root / "src" / "ansim_review",
-        output_directory / "src" / "ansim_review",
-    )
+    for name, source in runtime_package_roots(workspace_root / "src"):
+        _copy_tree(source, output_directory / "src" / name)
     _copy_file(
         resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG),
         output_directory / "evidence" / "evidence.sqlite",

@@ -6,6 +6,7 @@ import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import isfinite
+from typing import Literal, cast
 
 from ansim_review.contracts.common import BBox
 
@@ -21,16 +22,27 @@ class PageGeometry:
     page_number: int
     width: float
     height: float
+    origin_x: float = 0.0
+    origin_y: float = 0.0
+    rotation: int = 0
+    box_kind: Literal["CROP_BOX", "MEDIA_BOX"] = "MEDIA_BOX"
 
     def __post_init__(self) -> None:
         if not self.page_id or not self.revision_id:
             raise ValueError("page identity must not be empty")
         if isinstance(self.page_number, bool) or self.page_number < 1:
             raise ValueError("page_number must be positive")
-        if not isfinite(self.width) or not isfinite(self.height):
+        if not all(
+            isfinite(value)
+            for value in (self.width, self.height, self.origin_x, self.origin_y)
+        ):
             raise ValueError("page dimensions must be finite")
         if self.width <= 0 or self.height <= 0:
             raise ValueError("page dimensions must be positive")
+        if isinstance(self.rotation, bool) or self.rotation not in (0, 90, 180, 270):
+            raise ValueError("rotation must be one of 0, 90, 180, 270")
+        if self.box_kind not in {"CROP_BOX", "MEDIA_BOX"}:
+            raise ValueError("box_kind must be CROP_BOX or MEDIA_BOX")
 
 
 def load_page_geometry(
@@ -38,14 +50,24 @@ def load_page_geometry(
     page_id: str,
 ) -> PageGeometry:
     """Load one authoritative page record or reject a missing reference."""
-    row = connection.execute(
+    columns = {
+        str(item[1])
+        for item in connection.execute("PRAGMA table_info(pages)").fetchall()
+    }
+    if "origin_x" in columns:
+        query = """
+            SELECT id, revision_id, page_number, width, height,
+                   origin_x, origin_y, rotation, box_kind
+            FROM pages
+            WHERE id = ?
         """
-        SELECT id, revision_id, page_number, width, height
-        FROM pages
-        WHERE id = ?
-        """,
-        (page_id,),
-    ).fetchone()
+    else:
+        query = """
+            SELECT id, revision_id, page_number, width, height
+            FROM pages
+            WHERE id = ?
+        """
+    row = connection.execute(query, (page_id,)).fetchone()
     if row is None:
         raise ValueError(f"PAGE_REFERENCE_NOT_FOUND: {page_id}")
     return PageGeometry(
@@ -54,8 +76,14 @@ def load_page_geometry(
         page_number=int(row[2]),
         width=float(row[3]),
         height=float(row[4]),
+        origin_x=0.0 if len(row) < 9 else float(row[5]),
+        origin_y=0.0 if len(row) < 9 else float(row[6]),
+        rotation=0 if len(row) < 9 else int(row[7]),
+        box_kind=cast(
+            Literal["CROP_BOX", "MEDIA_BOX"],
+            "MEDIA_BOX" if len(row) < 9 else str(row[8]),
+        ),
     )
-
 
 def _bbox_values(value: object) -> tuple[float, float, float, float]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):

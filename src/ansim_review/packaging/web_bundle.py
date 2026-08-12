@@ -13,6 +13,7 @@ from ansim_review.math_engine.formulas import DEFAULT_REGISTRY
 from ansim_review.math_engine.manifest import formula_manifest_payload
 from ansim_review.packaging.file_selection import iter_bundle_source_files
 from ansim_review.packaging.project_instructions import render_project_instructions
+from ansim_review.packaging.runtime_packages import runtime_package_roots
 from ansim_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
     resolve_evidence_database,
@@ -121,10 +122,8 @@ def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
             encoding="utf-8",
             newline="\n",
         )
-        _copy_tree(
-            workspace_root / "src" / "ansim_review",
-            stage / "ansim_review",
-        )
+        for name, source in runtime_package_roots(workspace_root / "src"):
+            _copy_tree(source, stage / name)
         _copy_file(
             resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG),
             stage / "evidence" / "evidence.sqlite",

@@ -129,22 +129,50 @@ def ingest_snapshot(store: EvidenceStore, snapshot: EvidenceSnapshot) -> str:
                 for row in snapshot.revisions
             ),
         )
-        connection.executemany(
-            """
-            INSERT INTO pages(id, revision_id, page_number, width, height)
-            VALUES(?, ?, ?, ?, ?)
-            """,
-            (
+        page_columns = {
+            str(item[1])
+            for item in connection.execute("PRAGMA table_info(pages)").fetchall()
+        }
+        if "origin_x" in page_columns:
+            connection.executemany(
+                """
+                INSERT INTO pages(
+                    id, revision_id, page_number, width, height,
+                    origin_x, origin_y, rotation, box_kind
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
-                    row["id"],
-                    row["revision_id"],
-                    row["page_number"],
-                    row["width"],
-                    row["height"],
-                )
-                for row in snapshot.pages
-            ),
-        )
+                    (
+                        row["id"],
+                        row["revision_id"],
+                        row["page_number"],
+                        row["width"],
+                        row["height"],
+                        row.get("origin_x", 0.0),
+                        row.get("origin_y", 0.0),
+                        row.get("rotation", 0),
+                        row.get("box_kind", "MEDIA_BOX"),
+                    )
+                    for row in snapshot.pages
+                ),
+            )
+        else:
+            connection.executemany(
+                """
+                INSERT INTO pages(id, revision_id, page_number, width, height)
+                VALUES(?, ?, ?, ?, ?)
+                """,
+                (
+                    (
+                        row["id"],
+                        row["revision_id"],
+                        row["page_number"],
+                        row["width"],
+                        row["height"],
+                    )
+                    for row in snapshot.pages
+                ),
+            )
 
         element_rows = []
         for row in snapshot.elements:

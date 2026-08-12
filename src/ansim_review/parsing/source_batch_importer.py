@@ -280,6 +280,10 @@ def _source_records(
                     "page_number": page.page_number,
                     "width": page.width,
                     "height": page.height,
+                    "origin_x": page.origin_x,
+                    "origin_y": page.origin_y,
+                    "rotation": page.rotation,
+                    "box_kind": page.box_kind,
                 }
             )
         for element in contribution.elements:
