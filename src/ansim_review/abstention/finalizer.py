@@ -16,6 +16,7 @@ from ansim_review.confidence.scorer import FactorInput, score_confidence
 from ansim_review.contracts.codecs import (
     decode_calculation_result,
     decode_citation,
+    decode_review_packet,
     decode_rule_result,
 )
 from ansim_review.contracts.common import Citation
@@ -263,12 +264,8 @@ def _finding_codes(track_b_output: object) -> set[str]:
     return codes
 
 
-def finalize_run(run_directory: Path) -> ReviewPacket:
-    """Validate manifest-bound artifacts and exclusively write a final packet."""
-    output_path = run_directory / "final-review-packet.json"
-    if output_path.exists():
-        raise FileExistsError(f"output already exists: {output_path}")
-
+def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
+    """Derive the only valid machine packet from manifest-bound artifacts."""
     manifest_run_id, paths = _verify_manifest(run_directory)
     bundle = _decode_bundle(_json_file(paths["track-a-bundle.json"]))
     if bundle.run_id != manifest_run_id:
@@ -313,6 +310,27 @@ def finalize_run(run_directory: Path) -> ReviewPacket:
         confidence=confidence,
         abstention_reasons=reasons,
     )
+    return packet
+
+
+def verify_finalized_run(run_directory: Path) -> ReviewPacket:
+    """Fail closed unless the stored final packet equals the derived packet."""
+    output_path = run_directory / "final-review-packet.json"
+    if not output_path.is_file():
+        raise ValueError("final review packet is missing")
+    packet = decode_review_packet(_json_file(output_path))
+    expected = expected_final_review_packet(run_directory)
+    if packet != expected:
+        raise ValueError("final review packet does not match manifest-bound artifacts")
+    return packet
+
+
+def finalize_run(run_directory: Path) -> ReviewPacket:
+    """Validate manifest-bound artifacts and exclusively write a final packet."""
+    output_path = run_directory / "final-review-packet.json"
+    if output_path.exists():
+        raise FileExistsError(f"output already exists: {output_path}")
+    packet = expected_final_review_packet(run_directory)
     data = dump_bytes(review_packet_document(packet))
     try:
         with output_path.open("xb") as stream:

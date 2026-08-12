@@ -247,6 +247,30 @@ def test_prepare_completes_interrupted_finalization_from_valid_artifacts(
     assert load_workflow_events(run_directory / "events")[-1].next_state == "READY_FOR_REVIEW"
 
 
+def test_prepare_fails_closed_for_tampered_final_packet(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+    _page_assets(workspace)
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+    track_b = _track_b(run_directory)
+    _append_event(run_directory, "FINALIZING", hashlib.sha256(track_b.read_bytes()).hexdigest())
+    from ansim_review.review_run import submit_track_b
+
+    submit_track_b(workspace, first.run_id, track_b)
+    packet_path = run_directory / "final-review-packet.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    packet["question"] = "변조된 질문"
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False), encoding="utf-8")
+
+    try:
+        prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    except ValueError as error:
+        assert "manifest-bound artifacts" in str(error)
+    else:
+        raise AssertionError("tampered final packet resumed")
+
+
 def test_track_b_retries_after_interruption_before_finalizer_starts(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path / "workspace")
     first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")

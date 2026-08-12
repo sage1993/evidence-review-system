@@ -10,15 +10,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from ansim_review.abstention.finalizer import verify_finalized_run
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
-from ansim_review.contracts.codecs import decode_review_packet
 from ansim_review.contracts.next_action import NextAction, next_action_document
 from ansim_review.contracts.review import FinalizerStatus
 from ansim_review.contracts.run_context import compute_run_id_from_request
 from ansim_review.contracts.workflow import WorkflowState
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.bundle import build_evidence_bundle
+from ansim_review.review_packet.builder import build_review_view_model
+from ansim_review.review_packet.html_renderer import render_review_html
 from ansim_review.review_run import (
     FinalizedReviewRun,
     PreparedReviewRun,
@@ -272,9 +274,15 @@ def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
         return None
     if not packet_path.is_file() or not html_path.is_file():
         return None
-    packet = decode_review_packet(_json(packet_path))
-    if packet.run_id != run_directory.name:
-        raise ValueError("final review packet run_id does not match run directory")
+    packet = verify_finalized_run(run_directory)
+    workspace = run_directory.parent.parent
+    view_model = build_review_view_model(
+        packet_path.read_bytes(),
+        _evidence_database(workspace),
+    )
+    expected_html = render_review_html(view_model, workspace / "page-images")
+    if html_path.read_text(encoding="utf-8") != expected_html:
+        raise ValueError("review HTML does not match the verified final packet")
     return FinalizedReviewRun(
         run_id=run_directory.name,
         run_directory=run_directory,
