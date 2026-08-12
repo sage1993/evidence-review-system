@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
@@ -66,11 +68,12 @@ def _snapshot() -> EvidenceSnapshot:
     )
 
 
-def _store(tmp_path: Path) -> EvidenceStore:
-    store = EvidenceStore(tmp_path / "evidence.sqlite", create=True)
-    ingest_snapshot(store, _snapshot())
-    build_fts_index(store.require_connection())
-    return store
+@contextmanager
+def _store(tmp_path: Path) -> Iterator[EvidenceStore]:
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(store, _snapshot())
+        build_fts_index(store.require_connection())
+        yield store
 
 
 def test_exact_phrase_keeps_precision_while_token_and_recovers_reordered_text(
