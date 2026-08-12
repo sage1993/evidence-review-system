@@ -184,6 +184,30 @@ def _reconcile_page_dimensions(
     return tuple(dimensions)
 
 
+def _validate_source_binding(payload: Mapping[str, Any], context: ParserContext) -> None:
+    if context.source_sha256 is not None:
+        actual_source_sha256 = sha256_file(context.source_path)
+        if actual_source_sha256 != context.source_sha256:
+            raise ValueError(
+                "PARSER_SOURCE_HASH_MISMATCH: "
+                f"expected={context.source_sha256} actual={actual_source_sha256}"
+            )
+
+    declared_name = payload.get("file name")
+    if declared_name is None:
+        return
+    if not isinstance(declared_name, str) or not declared_name.strip():
+        raise ValueError("PARSER_SOURCE_FILENAME_INVALID: parser file name must be non-empty")
+    if Path(declared_name).name == context.source_path.name:
+        return
+    if context.binding_authority == "SOURCE_BATCH_MANIFEST":
+        return
+    raise ValueError(
+        "PARSER_SOURCE_FILENAME_MISMATCH: "
+        "parser file name does not match source PDF basename"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class OpenDataLoaderJsonAdapter:
     """Normalize one OpenDataLoader JSON artifact without document identities."""
@@ -195,15 +219,7 @@ class OpenDataLoaderJsonAdapter:
             unknown = ", ".join(sorted(context.options))
             raise ValueError(f"UNSUPPORTED_PARSER_OPTION: {unknown}")
         payload = read_parser_json(context.parser_artifact_path)
-        declared_name = payload.get("file name")
-        if declared_name is not None:
-            if not isinstance(declared_name, str) or not declared_name.strip():
-                raise ValueError("parser file name must be a non-empty string")
-            if Path(declared_name).name != context.source_path.name:
-                raise ValueError(
-                    "PARSER_SOURCE_MISMATCH: "
-                    "parser file name does not match source PDF"
-                )
+        _validate_source_binding(payload, context)
         raw_elements = load_raw_elements(
             context.parser_artifact_path,
             document_id="PARSER",
