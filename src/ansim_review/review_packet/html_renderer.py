@@ -20,6 +20,9 @@ class _PageAsset:
     pdf_width: float
     pdf_height: float
     rotation: int = 0
+    origin_x: float = 0.0
+    origin_y: float = 0.0
+    box_kind: str = "MEDIA_BOX"
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,11 +143,32 @@ def _verified_page_image(
         or rotation not in {0, 90, 180, 270}
     ):
         raise ValueError("page image rotation is invalid")
+    origin_x_value = metadata.get("origin_x", 0.0)
+    origin_y_value = metadata.get("origin_y", 0.0)
+    if (
+        isinstance(origin_x_value, bool)
+        or isinstance(origin_y_value, bool)
+        or not isinstance(origin_x_value, (int, float))
+        or not isinstance(origin_y_value, (int, float))
+    ):
+        raise ValueError("page image origin is invalid")
+    origin_x, origin_y = float(origin_x_value), float(origin_y_value)
+    if not all(
+        value == value and value not in (float("inf"), float("-inf"))
+        for value in (origin_x, origin_y)
+    ):
+        raise ValueError("page image origin is invalid")
+    box_kind = metadata.get("box_kind", "MEDIA_BOX")
+    if box_kind not in {"CROP_BOX", "MEDIA_BOX"}:
+        raise ValueError("page image box kind is invalid")
     return _PageAsset(
         data_uri="data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii"),
         pdf_width=pdf_width,
         pdf_height=pdf_height,
         rotation=rotation,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        box_kind=box_kind,
     )
 
 
@@ -163,6 +187,16 @@ def _verify_page_geometry(
             f"citation={width}x{height} "
             f"page_image={page_asset.pdf_width}x{page_asset.pdf_height}"
         )
+    expected = (
+        ("page_origin_x", page_asset.origin_x),
+        ("page_origin_y", page_asset.origin_y),
+        ("page_rotation", page_asset.rotation),
+        ("page_box_kind", page_asset.box_kind),
+    )
+    for field, value in expected:
+        provided = citation.get(field)
+        if provided is not None and provided != value:
+            raise ValueError(f"PAGE_RENDER_GEOMETRY_MISMATCH: {field}")
 
 
 def _citation_identity(citation: Mapping[str, object]) -> tuple[str, int, str]:

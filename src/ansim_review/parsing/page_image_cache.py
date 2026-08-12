@@ -5,10 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import mkdtemp
+
+if os.name != "nt":
+    import fcntl
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_page_geometries
@@ -45,6 +51,21 @@ def _paths(root: Path, revision_id: str, page_number: int) -> tuple[Path, Path]:
     stem = f"page-{page_number:04d}"
     directory = root / revision_id
     return directory / f"{stem}.png", directory / f"{stem}.json"
+
+
+@contextmanager
+def _revision_lock(root: Path, revision_id: str) -> Iterator[None]:
+    """Serialize cache creation for one immutable revision."""
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f".{revision_id}.lock"
+    with path.open("a+b") as stream:
+        if os.name != "nt":
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name != "nt":
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 def _load_existing(
@@ -90,56 +111,64 @@ def _render_page(source: Path, page_number: int, destination: Path) -> bytes:
     return destination.read_bytes()
 
 
-def _stage_source(
+def _verify_revision(
     root: Path,
     source: PageImageSource,
     pages: tuple[PdfPageGeometry, ...],
-) -> list[tuple[Path, bytes]]:
+) -> bool:
     if sha256_file(source.source_path) != source.source_hash:
         raise ValueError("page image source hash changed")
-    missing: list[PdfPageGeometry] = []
     for page in pages:
         image_path, metadata_path = _paths(root, source.revision_id, page.page_number)
         if not _load_existing(image_path, metadata_path, source, page):
-            missing.append(page)
-    if not missing:
-        return []
-    staged: list[tuple[Path, bytes]] = []
-    with TemporaryDirectory(prefix=".page-image-cache-") as temporary:
-        temporary_root = Path(temporary)
-        for page in missing:
-            temporary_image = temporary_root / f"page-{page.page_number:04d}.png"
-            image = _render_page(source.source_path, page.page_number, temporary_image)
-            destination_image, destination_metadata = _paths(
-                root,
-                source.revision_id,
-                page.page_number,
-            )
-            staged.append((destination_image, image))
-            staged.append((destination_metadata, dump_bytes(_metadata(source, page, image))))
-    if sha256_file(source.source_path) != source.source_hash:
-        raise ValueError("page image source hash changed during rendering")
-    return staged
+            return False
+    return True
+
+
+def _write_durable(path: Path, data: bytes) -> None:
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
+    pages = read_pdf_page_geometries(source.source_path)
+    with _revision_lock(root, source.revision_id):
+        if _verify_revision(root, source, pages):
+            return ()
+        destination = root / source.revision_id
+        if destination.exists():
+            raise ValueError("page image cache has incomplete artifacts")
+        temporary_root = Path(mkdtemp(prefix=f".{source.revision_id}.tmp-", dir=root))
+        try:
+            for page in pages:
+                temporary_image = temporary_root / f"page-{page.page_number:04d}.png"
+                image = _render_page(source.source_path, page.page_number, temporary_image)
+                _write_durable(
+                    temporary_root / f"page-{page.page_number:04d}.json",
+                    dump_bytes(_metadata(source, page, image)),
+                )
+            if sha256_file(source.source_path) != source.source_hash:
+                raise ValueError("page image source hash changed during rendering")
+            os.rename(temporary_root, destination)
+            directory_descriptor = os.open(root, os.O_RDONLY)
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
+            return tuple(path for path in destination.iterdir() if path.is_file())
+        except Exception:
+            shutil.rmtree(temporary_root, ignore_errors=True)
+            raise
 
 
 def cache_page_images(root: Path, sources: tuple[PageImageSource, ...]) -> tuple[Path, ...]:
     """Render every missing page after all existing caches have been verified."""
-    staged: list[tuple[Path, bytes]] = []
-    for source in sources:
-        staged.extend(_stage_source(root, source, read_pdf_page_geometries(source.source_path)))
     published: list[Path] = []
     try:
-        for path, data in staged:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            except FileExistsError as error:
-                raise ValueError("page image cache changed during publication") from error
-            with os.fdopen(descriptor, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-            published.append(path)
+        for source in sources:
+            published.extend(_cache_source(root, source))
     except Exception:
         rollback_page_image_cache(published)
         raise

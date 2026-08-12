@@ -82,7 +82,7 @@ def _resolve_citation(
     row = connection.execute(
         """SELECT r.evidence_id, r.document_id, r.revision_id, r.page_number,
                   r.bbox_json, r.source_hash, r.title, r.raw_text, r.evidence_type,
-                  p.width, p.height
+                  p.width, p.height, p.origin_x, p.origin_y, p.rotation, p.box_kind
              FROM retrieval_records AS r
              JOIN pages AS p ON p.id = r.page_id
             WHERE r.evidence_id = ?""",
@@ -105,6 +105,10 @@ def _resolve_citation(
         "evidence_type": row[8],
         "page_width": float(row[9]),
         "page_height": float(row[10]),
+        "page_origin_x": float(row[11]),
+        "page_origin_y": float(row[12]),
+        "page_rotation": int(row[13]),
+        "page_box_kind": row[14],
     }
 
 
