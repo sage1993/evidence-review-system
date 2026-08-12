@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-QueryOrigin = Literal["primary", "approved_synonym", "llm"]
+QueryOrigin = Literal["primary", "approved_synonym", "llm", "user"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +61,7 @@ def normalize_query(
     llm_terms: set[str] = set()
     for index, expansion in enumerate(expansions):
         origin = expansion.get("origin")
-        if origin != "llm":
+        if origin not in {"llm", "user"}:
             raise ValueError(f"unsupported expansion origin: {origin}")
         text_value = expansion.get("text")
         if not isinstance(text_value, str):
@@ -73,7 +73,7 @@ def normalize_query(
         if text not in by_text:
             by_text[text] = QueryTerm(text, "llm")
 
-    priority = {"primary": 0, "approved_synonym": 1, "llm": 2}
+    priority = {"primary": 0, "approved_synonym": 1, "user": 2, "llm": 3}
     terms = tuple(
         sorted(
             by_text.values(),

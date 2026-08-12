@@ -229,6 +229,9 @@ def build_parser() -> argparse.ArgumentParser:
     question_prepare.add_argument("--workspace", required=True, type=Path)
     question_prepare.add_argument("--question", required=True)
     question_prepare.add_argument("--expansion", action="append", default=[])
+    question_prepare.add_argument("--calculation-result", action="append", default=[], type=Path)
+    question_prepare.add_argument("--rule-result", action="append", default=[], type=Path)
+    question_prepare.add_argument("--approved-rule-result-id", action="append", default=[])
     question_track_a = question_stages.add_parser(
         "submit-track-a",
         help="validate Track A before issuing the Track B handoff",

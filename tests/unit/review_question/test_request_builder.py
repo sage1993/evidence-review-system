@@ -65,3 +65,52 @@ def test_builder_refuses_a_hit_without_a_traceable_citation() -> None:
 
     with pytest.raises(ValueError, match="traceable citation"):
         build_review_run_request(bundle)
+
+
+def test_explicit_expansion_uses_user_origin_not_model_origin() -> None:
+    from ansim_review.review_question import canonical_query_request
+
+    request = canonical_query_request("주차장", ["별표 2"])
+
+    assert request["expansions"] == [{"text": "별표 2", "origin": "user"}]
+
+
+def test_builder_preserves_supplied_calculation_and_approved_rule_bindings() -> None:
+    from ansim_review.review_question import build_review_run_request
+
+    calculation = {
+        "calculation_result_id": "CALC1",
+        "status": "SUCCESS",
+        "formula_id": "F1",
+        "formula_version": "1.0.0",
+        "inputs": {},
+        "substitution": None,
+        "raw_result": None,
+        "display_result": None,
+        "comparison": None,
+        "formula_manifest_hash": "c" * 64,
+        "result_hash": "d" * 64,
+        "error_codes": [],
+    }
+    rule = {
+        "rule_result_id": "RULE1",
+        "rule_id": "R1",
+        "rule_version": "1.0.0",
+        "status": "SATISFIED",
+        "citations": [],
+        "missing_inputs": [],
+        "calculation_result_ids": ["CALC1"],
+        "reason_codes": [],
+        "result_hash": "e" * 64,
+    }
+
+    request = build_review_run_request(
+        _bundle(),
+        calculations=[calculation],
+        rules=[rule],
+        approved_rule_result_ids=["RULE1"],
+    )
+
+    assert request["calculations"] == [calculation]
+    assert request["rules"] == [rule]
+    assert request["approved_rule_result_ids"] == ["RULE1"]

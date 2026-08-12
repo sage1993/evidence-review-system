@@ -2,19 +2,35 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
 from ansim_review.contracts.next_action import NextAction, next_action_document
+from ansim_review.contracts.review import FinalizerStatus
 from ansim_review.contracts.run_context import compute_run_id_from_request
+from ansim_review.contracts.workflow import WorkflowState
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.bundle import build_evidence_bundle
-from ansim_review.review_run import PreparedReviewRun, prepare_review_run
+from ansim_review.review_run import (
+    FinalizedReviewRun,
+    PreparedReviewRun,
+    SubmittedTrackA,
+    prepare_review_run,
+    submit_track_a,
+    submit_track_b,
+)
+from ansim_review.workflow.events import (
+    append_workflow_event,
+    load_workflow_events,
+    make_workflow_event,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +38,8 @@ class PreparedReviewQuestion:
     """The run and safe handoff produced for one fully deterministic question."""
 
     run_id: str
-    next_action_path: Path
+    status: str
+    next_action_path: Path | None
     resumed: bool
 
 
@@ -57,7 +74,7 @@ def canonical_query_request(question: str, expansions: Sequence[str]) -> dict[st
     for index, term in enumerate(expansions):
         if not isinstance(term, str) or not term.strip():
             raise ValueError(f"expansion[{index}] must be a non-empty string")
-        normalized_expansions.append({"text": term, "origin": "llm"})
+        normalized_expansions.append({"text": term, "origin": "user"})
     return {
         "question": question,
         "expansions": normalized_expansions,
@@ -70,7 +87,13 @@ def canonical_query_request(question: str, expansions: Sequence[str]) -> dict[st
     }
 
 
-def build_review_run_request(bundle: object) -> dict[str, object]:
+def build_review_run_request(
+    bundle: object,
+    *,
+    calculations: Sequence[object] = (),
+    rules: Sequence[object] = (),
+    approved_rule_result_ids: Sequence[str] = (),
+) -> dict[str, object]:
     """Convert retrieval output to the canonical review-run input losslessly."""
     payload = _mapping(bundle, "evidence_bundle")
     query = _mapping(payload.get("query"), "evidence_bundle.query")
@@ -89,15 +112,27 @@ def build_review_run_request(bundle: object) -> dict[str, object]:
         if not isinstance(citation, Mapping) or not isinstance(text, str) or not text:
             raise ValueError("retrieval hit requires a traceable citation and text")
         evidence.append({"citation": dict(citation), "text": text})
+    calculation_documents = [dict(_mapping(item, "calculation_result")) for item in calculations]
+    rule_documents = [dict(_mapping(item, "rule_result")) for item in rules]
+    approved = list(approved_rule_result_ids)
+    if len(approved) != len(set(approved)):
+        raise ValueError("approved_rule_result_ids must be unique")
+    known_rule_ids = {
+        item.get("rule_result_id")
+        for item in rule_documents
+        if isinstance(item.get("rule_result_id"), str)
+    }
+    if set(approved) - known_rule_ids:
+        raise ValueError("approved_rule_result_ids reference unknown rules")
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
         "question": question,
         "inputs": {"snapshot_hash": snapshot_hash},
         "evidence": evidence,
-        "calculations": [],
-        "rules": [],
-        "approved_rule_result_ids": [],
+        "calculations": calculation_documents,
+        "rules": rule_documents,
+        "approved_rule_result_ids": approved,
         "confidence_input": {
             "factors": {
                 name: {"value": "1.0", "source": "retrieval:snapshot_hash"}
@@ -137,6 +172,89 @@ def _track_a_action(run_id: str) -> NextAction:
     )
 
 
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _append_event(
+    run_directory: Path,
+    next_state: WorkflowState,
+    payload_sha256: str,
+    *,
+    finalizer_status: FinalizerStatus | None = None,
+) -> None:
+    events = load_workflow_events(run_directory / "events")
+    if events and events[-1].next_state == next_state:
+        return
+    sequence = len(events) + 1
+    previous = events[-1].next_state if events else None
+    append_workflow_event(
+        run_directory / "events",
+        make_workflow_event(
+            run_id=run_directory.name,
+            sequence=sequence,
+            event_id=f"EVT-{sequence:04d}",
+            kind="TRANSITION",
+            previous_state=previous,
+            next_state=next_state,
+            finalizer_status=finalizer_status,
+            reason_codes=(),
+            resumable=False,
+            payload_sha256=payload_sha256,
+            recorded_at=_now(),
+        ),
+    )
+
+
+def _initialize_events(run_directory: Path) -> None:
+    """Write the ordered journal once, after immutable preparation succeeds."""
+    request_hash = _sha256(run_directory / "review-request.json")
+    bundle_hash = _sha256(run_directory / "track-a-bundle.json")
+    stages: tuple[tuple[WorkflowState, str], ...] = (
+        ("RECEIVED", request_hash),
+        ("CLASSIFYING_INPUTS", request_hash),
+        ("READY_TO_EVALUATE", request_hash),
+        ("RETRIEVING_EVIDENCE", bundle_hash),
+        ("RUNNING_MATH", bundle_hash),
+        ("RUNNING_RULES", bundle_hash),
+        ("WAITING_TRACK_A", bundle_hash),
+    )
+    for state, payload_hash in stages:
+        _append_event(run_directory, state, payload_hash)
+
+
+def _resume_state(run_directory: Path) -> tuple[str, Path | None]:
+    events = load_workflow_events(run_directory / "events")
+    if not events:
+        _initialize_events(run_directory)
+        events = load_workflow_events(run_directory / "events")
+    state = events[-1].next_state
+    if state == "WAITING_TRACK_A":
+        path = run_directory / "next-action-track-a.json"
+    elif state == "WAITING_TRACK_B":
+        path = run_directory / "next-action-track-b.json"
+    elif state == "READY_FOR_REVIEW":
+        packet = _mapping(
+            json.loads((run_directory / "final-review-packet.json").read_text(encoding="utf-8")),
+            "final_review_packet",
+        )
+        status = packet.get("status")
+        if status not in {"READY_FOR_HUMAN_REVIEW", "ABSTAIN"}:
+            raise ValueError("final review packet has an invalid status")
+        return status, None
+    else:
+        raise ValueError(f"review question run cannot resume from {state}")
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return state, path
+
+
 def _prepare_from_document(workspace: Path, document: dict[str, object]) -> PreparedReviewRun:
     with tempfile.NamedTemporaryFile("wb", suffix=".json", delete=False) as stream:
         temporary = Path(stream.name)
@@ -151,12 +269,21 @@ def prepare_review_question(
     workspace: Path,
     question: str,
     expansions: Sequence[str] = (),
+    *,
+    calculations: Sequence[object] = (),
+    rules: Sequence[object] = (),
+    approved_rule_result_ids: Sequence[str] = (),
 ) -> PreparedReviewQuestion:
     """Retrieve evidence and create/resume the immutable Track A handoff."""
     query_request = canonical_query_request(question, expansions)
     with EvidenceStore(_evidence_database(workspace)) as store:
         bundle = build_evidence_bundle(store.require_connection(), query_request)
-    review_request = build_review_run_request(bundle)
+    review_request = build_review_run_request(
+        bundle,
+        calculations=calculations,
+        rules=rules,
+        approved_rule_result_ids=approved_rule_result_ids,
+    )
     run_id = compute_run_id_from_request(review_request)
     run_directory = workspace / "runs" / run_id
     resumed = run_directory.exists()
@@ -167,15 +294,53 @@ def prepare_review_question(
     else:
         _prepare_from_document(workspace, review_request)
     _write_or_identical(run_directory / "evidence-query.json", bundle)
-    _write_or_identical(
-        run_directory / "next-action-track-a.json",
-        next_action_document(_track_a_action(run_id)),
-    )
+    if not resumed:
+        _write_or_identical(
+            run_directory / "next-action-track-a.json",
+            next_action_document(_track_a_action(run_id)),
+        )
+        _initialize_events(run_directory)
+    status, next_action_path = _resume_state(run_directory)
     return PreparedReviewQuestion(
         run_id=run_id,
-        next_action_path=run_directory / "next-action-track-a.json",
+        status=status,
+        next_action_path=next_action_path,
         resumed=resumed,
     )
+
+
+def submit_question_track_a(
+    workspace: Path,
+    run_id: str,
+    track_a_output: Path,
+) -> SubmittedTrackA:
+    """Advance the journal only after Track A's full validation succeeds."""
+    result = submit_track_a(workspace, run_id, track_a_output)
+    _append_event(result.run_directory, "WAITING_TRACK_B", _sha256(track_a_output))
+    return result
+
+
+def submit_question_track_b(
+    workspace: Path,
+    run_id: str,
+    track_b_output: Path,
+    *,
+    publish: bool = False,
+) -> FinalizedReviewRun:
+    """Finalize only from the Track B waiting state and journal the result."""
+    run_directory = workspace / "runs" / run_id
+    state, _action = _resume_state(run_directory)
+    if state != "WAITING_TRACK_B":
+        raise ValueError("review question run is not waiting for Track B")
+    result = submit_track_b(workspace, run_id, track_b_output, publish=publish)
+    _append_event(result.run_directory, "FINALIZING", _sha256(track_b_output))
+    _append_event(
+        result.run_directory,
+        "READY_FOR_REVIEW",
+        _sha256(result.packet_path),
+        finalizer_status=result.packet.status,
+    )
+    return result
 
 
 __all__ = [
@@ -183,4 +348,6 @@ __all__ = [
     "build_review_run_request",
     "canonical_query_request",
     "prepare_review_question",
+    "submit_question_track_a",
+    "submit_question_track_b",
 ]

@@ -34,14 +34,16 @@ from ansim_review.parsing.source_batch_importer import (
 )
 from ansim_review.release.attestation import PROCESS_ATTESTATION, validate_attestation
 from ansim_review.retrieval.bundle import build_evidence_bundle
-from ansim_review.review_question import prepare_review_question
+from ansim_review.review_question import (
+    prepare_review_question,
+    submit_question_track_a,
+    submit_question_track_b,
+)
 from ansim_review.review_run import (
     close_review_run,
     finalize_review_run,
     open_review_run,
     prepare_review_run,
-    submit_track_a,
-    submit_track_b,
     wait_for_review_run,
 )
 from ansim_review.rule_engine.activation import (
@@ -493,9 +495,21 @@ def _review_question_prepare(
     workspace: Path,
     question: str,
     expansions: Sequence[str],
+    calculation_paths: Sequence[Path],
+    rule_paths: Sequence[Path],
+    approved_rule_result_ids: Sequence[str],
 ) -> int:
     try:
-        result = prepare_review_question(workspace, question, expansions)
+        calculations = [json.loads(path.read_text(encoding="utf-8")) for path in calculation_paths]
+        rules = [json.loads(path.read_text(encoding="utf-8")) for path in rule_paths]
+        result = prepare_review_question(
+            workspace,
+            question,
+            expansions,
+            calculations=calculations,
+            rules=rules,
+            approved_rule_result_ids=approved_rule_result_ids,
+        )
     except (
         FileNotFoundError,
         OSError,
@@ -509,9 +523,11 @@ def _review_question_prepare(
             "format": "evidence-review/review-question-status",
             "version": 1,
             "stage": "prepare",
-            "status": "WAITING_TRACK_A",
+            "status": result.status,
             "run_id": result.run_id,
-            "next_action_path": str(result.next_action_path),
+            "next_action_path": (
+                None if result.next_action_path is None else str(result.next_action_path)
+            ),
             "resumed": result.resumed,
         }
     )
@@ -524,7 +540,7 @@ def _review_question_submit_track_a(
     output: Path,
 ) -> int:
     try:
-        result = submit_track_a(workspace, run_id, output)
+        result = submit_question_track_a(workspace, run_id, output)
     except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -549,7 +565,7 @@ def _review_question_submit_track_b(
     publish: bool,
 ) -> int:
     try:
-        result = submit_track_b(workspace, run_id, output, publish=publish)
+        result = submit_question_track_b(workspace, run_id, output, publish=publish)
     except (
         FileExistsError,
         FileNotFoundError,
@@ -695,7 +711,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "query":
         return _query_run(args.db, args.request, args.output)
     if args.command == "review-question" and args.review_question_stage == "prepare":
-        return _review_question_prepare(args.workspace, args.question, args.expansion)
+        return _review_question_prepare(
+            args.workspace,
+            args.question,
+            args.expansion,
+            args.calculation_result,
+            args.rule_result,
+            args.approved_rule_result_id,
+        )
     if args.command == "review-question" and args.review_question_stage == "submit-track-a":
         return _review_question_submit_track_a(
             args.workspace,

@@ -54,13 +54,21 @@ review-run request between these stages.
 evidence-review review-question prepare `
   --workspace F:\evidence-review-workspace `
   --question "질문" `
-  --expansion "명시적 검색 확장어"
+  --expansion "명시적 검색 확장어" `
+  --calculation-result F:\review-case\calculation-result.json `
+  --rule-result F:\review-case\rule-result.json `
+  --approved-rule-result-id RULE-RESULT-ID
 ```
 
 Its stdout contains only status, Run ID, next-action path, and resume status;
 it never prints the question or evidence text. Repeating the exact question and
 expansions resumes the same immutable run. A changed deterministic request
 creates a different Run ID.
+
+`--expansion`은 사용자가 명시한 검색어이며 모델 생성 확장어가 아니다. 계산 또는
+규칙이 필요한 질문은 정식 `CalculationResult`와 `RuleResult` JSON을 위 옵션으로
+제공해야 한다. 런타임은 이를 계산하거나 추정하지 않는다. 승인 Rule ID가 제공된
+규칙 결과에 없거나 중복되면 준비를 중단한다.
 
 After producing `track-a-output.json`, validate it before any Track B work:
 
@@ -74,6 +82,9 @@ evidence-review review-question submit-track-a `
 This gate validates run binding, citations, calculations, rules, and exact
 numeric tokens. A failure leaves the run waiting for Track A and does not
 create a Track B action. Only a successful command returns the Track B action.
+실행 이벤트 저널은 `WAITING_TRACK_A`에서 `WAITING_TRACK_B`, `FINALIZING`,
+`READY_FOR_REVIEW` 순으로만 전이한다. 같은 질문을 다시 준비하면 마지막 유효
+저널 상태와 다음 작업을 반환하며 Track A로 되돌리지 않는다.
 
 Submit the independent Track B output through the same orchestration boundary:
 

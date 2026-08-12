@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -7,6 +8,12 @@ from ansim_review import cli
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.index import build_fts_index
+from ansim_review.review_question import (
+    prepare_review_question,
+    submit_question_track_a,
+    submit_question_track_b,
+)
+from ansim_review.workflow.events import load_workflow_events
 
 
 def _workspace(path: Path) -> Path:
@@ -103,3 +110,163 @@ def test_review_question_prepare_resumes_the_same_immutable_request(
 
     assert second["run_id"] == first["run_id"]
     assert second["resumed"] is True
+
+
+def _track_a(run_directory: Path) -> Path:
+    bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
+    citation_id = bundle["evidence"][0]["citation"]["citation_id"]
+    output = run_directory / "external-track-a.json"
+    output.write_text(
+        json.dumps(
+            {
+                "run_id": bundle["run_id"],
+                "claims": [
+                    {
+                        "claim_id": "CL1",
+                        "text": "주차장은 별표 2에 따른다.",
+                        "citation_ids": [citation_id],
+                        "numeric_tokens": ["2"],
+                        "calculation_result_ids": [],
+                        "rule_references": [],
+                    }
+                ],
+                "citations": [citation_id],
+                "missing_inputs": [],
+                "exceptions": [],
+                "conflicts": [],
+                "explanation": "근거를 정리한다.",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return output
+
+
+def _track_b(run_directory: Path) -> Path:
+    output = run_directory / "external-track-b.json"
+    output.write_text(
+        json.dumps(
+            {
+                "run_id": run_directory.name,
+                "claim_audits": [
+                    {
+                        "claim_id": "CL1",
+                        "disposition": "ACCEPT",
+                        "finding_codes": [],
+                        "notes": "",
+                    }
+                ],
+                "overall_disposition": "ACCEPT",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return output
+
+
+def _page_assets(workspace: Path) -> None:
+    directory = workspace / "page-images" / "REV1"
+    directory.mkdir(parents=True)
+    image = b"\x89PNG\r\n\x1a\nreview-question"
+    (directory / "page-0001.png").write_bytes(image)
+    (directory / "page-0001.json").write_text(
+        json.dumps(
+            {
+                "format": "ansim/page-image",
+                "version": 1,
+                "revision_id": "REV1",
+                "page_number": 1,
+                "source_hash": "a" * 64,
+                "pdf_width": 10.0,
+                "pdf_height": 10.0,
+                "image_sha256": hashlib.sha256(image).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_prepare_after_valid_track_a_resumes_track_b_without_regression(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+    resumed = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+
+    assert resumed.resumed is True
+    assert resumed.status == "WAITING_TRACK_B"
+    assert resumed.next_action_path == run_directory / "next-action-track-b.json"
+    assert (run_directory / "next-action-track-a.json").is_file()
+    assert load_workflow_events(run_directory / "events")[-1].next_state == "WAITING_TRACK_B"
+
+
+def test_prepare_after_finalization_does_not_reopen_track_a(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+    _page_assets(workspace)
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+    submit_question_track_b(workspace, first.run_id, _track_b(run_directory))
+
+    resumed = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+
+    assert resumed.resumed is True
+    assert resumed.status == "READY_FOR_HUMAN_REVIEW"
+    assert resumed.next_action_path is None
+    assert [event.next_state for event in load_workflow_events(run_directory / "events")][-2:] == [
+        "FINALIZING",
+        "READY_FOR_REVIEW",
+    ]
+
+
+def test_invalid_track_b_keeps_the_run_waiting_for_track_b(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / first.run_id
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+    invalid = _track_b(run_directory)
+    payload = json.loads(invalid.read_text(encoding="utf-8"))
+    payload["overall_disposition"] = "REJECT"
+    invalid.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        submit_question_track_b(workspace, first.run_id, invalid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid Track B output was finalized")
+
+    resumed = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    assert resumed.status == "WAITING_TRACK_B"
+    assert not (run_directory / "final-review-packet.json").exists()
+
+
+def test_prepare_rejects_conflicting_immutable_query_artifact(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(workspace, "주차장 설치 기준")
+    query_path = workspace / "runs" / first.run_id / "evidence-query.json"
+    query_path.write_text("{}", encoding="utf-8")
+
+    try:
+        prepare_review_question(workspace, "주차장 설치 기준")
+    except FileExistsError as error:
+        assert "evidence-query.json" in str(error)
+    else:
+        raise AssertionError("conflicting immutable query artifact was accepted")
+
+
+def test_changed_question_creates_a_new_immutable_run(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+
+    first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    second = prepare_review_question(workspace, "별표 2")
+
+    assert first.run_id != second.run_id
+    assert (workspace / "runs" / first.run_id).is_dir()
+    assert (workspace / "runs" / second.run_id).is_dir()
