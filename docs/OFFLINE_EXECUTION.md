@@ -2,7 +2,7 @@
 
 ## 1. Assurance dimensions
 
-Evidence Review System separates application offline behavior, optional OS isolation, and human process attestation.
+Evidence Review System separates application offline behavior, optional OS isolation, and human process attestation. These are **independent assurance dimensions**: passing one never implies another.
 
 ### `APPLICATION_OFFLINE_GUARD`
 
@@ -17,15 +17,24 @@ Allowed local communication includes:
 
 The formal review workflow, metrics, page image cache, Track handoffs, HTML, and human decision records require no external API.
 
+Static process scanning has one narrow exception: `ansim_review/review_packet/browser_launcher.py` may use `subprocess` only to start the protected loopback review-server child process. The exception does not allow HTTP clients, remote network access, `os.system`, or subprocess use in another source path. PDF page rendering is in-process and does not use an external `pdftoppm` process.
+
+Application-only validation records:
+
+```text
+assurance_level: APPLICATION_OFFLINE_GUARD
+cryptographic_network_isolation_verified: false
+```
+
+This is intentionally not a claim that the operating system cryptographically prevented all network traffic.
+
 ### `OS_ISOLATED`
 
-This is a separate operating-system assurance level, for example Windows outbound firewall policy, a networkless container, a network namespace, or an isolated VM. Application validation alone never claims `OS_ISOLATED`.
+This is a separate operating-system assurance level, for example Windows outbound firewall policy, a networkless container, a network namespace, or an isolated VM. Application validation alone never claims `OS_ISOLATED`. `cryptographic_network_isolation_verified` may become true only when the deployment's separate OS/network-isolation evidence actually supports that claim.
 
 ### `PROCESS_ATTESTATION`
 
-Release process attestation is separate from a per-run human review decision. It records that a named reviewer examined a specific release candidate and packet. It is not cryptographic identity proof.
-
-These assurance dimensions are independent. Passing one does not imply the others.
+Release process attestation is separate from a per-run human review decision. It records that a named reviewer examined a specific release candidate and packet. It is not cryptographic identity proof. Current process metadata therefore keeps `cryptographic_identity_verified: false`.
 
 ## 2. Protected loopback review server
 
@@ -122,7 +131,7 @@ Telemetry may be deleted or regenerated from its immutable events without changi
 The application-level guard is not a complete sandbox. It does not prove security against:
 
 - a hostile or modified Python interpreter;
-- native extensions or arbitrary external binaries;
+- a native extension or arbitrary external binary outside the audited runtime boundary;
 - connections opened before guard installation;
 - other users/admin processes;
 - filesystem tampering after validation;
@@ -145,7 +154,7 @@ Resolver policy accepts localhost or literal loopback addresses only. Loopback a
 
 Release/runtime scanning rejects prohibited network/process clients and unsafe dynamic access patterns according to the repository offline policy. Release manifest paths must remain safe relative paths below the workspace; absolute paths, traversal, drive-prefixed paths, and unsafe backslash forms are rejected.
 
-Release ZIP validation reopens final archives without extraction and verifies manifest membership, unique paths, case-fold collision policy, byte sizes, and SHA-256 values. Process attestation cannot override failed release-output validation.
+Final release output validation reads `bundle-manifest.json` and `runtime-manifest.json` from the final archive **without extracting** it. It verifies manifest membership, unique paths, **case-fold collisions**, byte sizes, and SHA-256 values against the final ZIP bytes. Any mismatch produces `RELEASE_OUTPUT_VALIDATION_FAILED`; `PROCESS_ATTESTATION` cannot override that failure.
 
 ## 8. Windows OS isolation example
 
@@ -195,6 +204,6 @@ Do not convert an unexecuted check into PASS. GitHub Actions state is reported i
 
 ## 11. Release process attestation
 
-Release authorization continues to use the strict `evidence-review/human-attestation` process contract. It validates named reviewer metadata, offset-aware review time, exact release candidate hash, exact packet hash, required checklist PASS evidence, and append-only creation.
+Release authorization uses the strict `evidence-review/human-attestation` process contract and a create-only `human-attestation.json`. It validates named reviewer metadata, offset-aware review time, exact **release candidate hash**, exact **packet hash**, required checklist PASS evidence, and append-only creation. A valid process record may carry `REVIEWED_AND_ACCEPTED_FOR_RELEASE` only after all required release gates have passed.
 
-`PROCESS_ATTESTATION` remains process assurance, not cryptographic identity assurance. `cryptographic_identity_verified` remains false in the current design.
+`PROCESS_ATTESTATION` remains process assurance, not cryptographic identity assurance. `cryptographic_identity_verified` remains `false` in the current design.
