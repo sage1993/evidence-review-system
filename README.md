@@ -189,4 +189,6 @@ evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 - [Legacy lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
 - [PDF skills](skills/README.md)
 
+Legacy document lineage를 정리할 때는 `docs/LEGACY_LINEAGE_MIGRATION.md`의 fail-closed 절차를 따르며 CLI 진입점은 `evidence-review evidence migrate-lineage`입니다. 이 작업은 legacy visual CSV를 canonical visual manifest로 변환하지 않습니다.
+
 Issue #87의 Windows 3.11/3.13 수동 E2E 기록은 `docs/acceptance/issue-87/README.md`에 보존합니다. 실행하지 않은 검증은 PASS로 쓰지 않고 `NOT_RUN`으로 기록합니다.
