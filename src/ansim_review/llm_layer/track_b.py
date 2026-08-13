@@ -82,6 +82,19 @@ def validate_track_b_output(value: object, track_a: ValidatedTrackA) -> TrackBAu
     if run_id != track_a.draft.run_id:
         raise ValueError("track_b run_id does not match track_a")
     expected_claim_ids = {claim.claim_id for claim in track_a.draft.claims}
+    if not expected_claim_ids:
+        audits_value = _sequence(payload.get("claim_audits"), "claim_audits")
+        if audits_value:
+            raise ValueError("empty Track A claim set cannot contain claim audits")
+        overall = _string(payload.get("overall_disposition"), "overall_disposition")
+        if overall != "INCOMPLETE":
+            raise ValueError("empty Track A claim set must be INCOMPLETE")
+        return TrackBAudit(
+            run_id=run_id,
+            claim_audits=(),
+            overall_disposition="INCOMPLETE",
+        )
+
     audits: list[ClaimAudit] = []
     seen: set[str] = set()
     for index, item in enumerate(_sequence(payload.get("claim_audits"), "claim_audits")):
