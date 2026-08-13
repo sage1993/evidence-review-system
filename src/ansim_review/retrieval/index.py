@@ -371,3 +371,52 @@ def load_indexed_hit(
         text=row["normalized_text"] or row["raw_text"],
         channel_scores=(channel,),
     )
+
+
+def load_adjacent_element_hits(
+    connection: sqlite3.Connection,
+    seed: RetrievalHit,
+    *,
+    radius: int = 1,
+) -> tuple[RetrievalHit, ...]:
+    """Load separately cited parser-order neighbors from the seed page only."""
+    require_fresh_index(connection)
+    if radius < 1:
+        return ()
+    seed_row = connection.execute(
+        "SELECT page_id, parser_order FROM elements WHERE id = ?",
+        (seed.evidence_id,),
+    ).fetchone()
+    if seed_row is None:
+        return ()
+    page_id = seed_row["page_id"]
+    parser_order = seed_row["parser_order"]
+    rows = connection.execute(
+        """
+        SELECT e.id
+        FROM elements e
+        JOIN retrieval_records rr ON rr.evidence_id = e.id
+        WHERE e.page_id = ?
+          AND e.parser_order BETWEEN ? AND ?
+          AND e.id <> ?
+        ORDER BY ABS(e.parser_order - ?), e.parser_order, e.id
+        """,
+        (
+            page_id,
+            parser_order - radius,
+            parser_order + radius,
+            seed.evidence_id,
+            parser_order,
+        ),
+    ).fetchall()
+    channel = ChannelScore(
+        channel="structural_context",
+        score=Decimal("1"),
+        detail=f"seed:{seed.evidence_id}",
+    )
+    hits: list[RetrievalHit] = []
+    for row in rows:
+        hit = load_indexed_hit(connection, row["id"], channel)
+        if hit is not None:
+            hits.append(hit)
+    return tuple(hits)

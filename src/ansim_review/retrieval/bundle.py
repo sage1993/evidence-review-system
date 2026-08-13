@@ -9,6 +9,7 @@ from typing import cast
 from ansim_review.retrieval.fusion import fuse_hits, fusion_document
 from ansim_review.retrieval.graph import traverse_relations
 from ansim_review.retrieval.index import (
+    load_adjacent_element_hits,
     require_fresh_index,
     search_fts_literal,
     search_fts_phrase,
@@ -248,7 +249,14 @@ def build_evidence_bundle(
         channels.append(
             traverse_relations(connection, seed_ids, graph_depth)
         )
+
+    direct_fused = fuse_hits(tuple(channels))[:limit]
+    channels.extend(
+        load_adjacent_element_hits(connection, seed)
+        for seed in direct_fused
+    )
     fused = fuse_hits(tuple(channels))[:limit]
+
     hit_documents = fusion_document(fused)["hits"]
     if not isinstance(hit_documents, list):
         raise RuntimeError("invalid fusion document")
