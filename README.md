@@ -1,19 +1,24 @@
 # Evidence Review System
 
-Codex Desktop에 PDF와 질문을 주면, PDF 근거를 찾아 검토용 HTML 화면까지 만들어 주는 오프라인 문서 검토 도구입니다.
+Codex Desktop에서 사용자가 제공한 PDF를 로컬 근거 DB로 만들고, **모든 질문을 정식 근거 검토**로 처리한 뒤 비개발자용 Review Workspace를 여는 오프라인 문서 검토 도구입니다.
 
-사용자는 복잡한 JSON이나 명령어를 직접 작성하지 않습니다. 아래 두 단축어만 기억하면 됩니다.
+일반 사용자는 두 단축어만 기억하면 됩니다.
 
-## 1. 준비물과 설치
+```text
+$ERS_PDF 이 PDF 파싱해줘
+$ERS_REVIEW <검토 질문>
+```
 
-필요한 것은 다음 네 가지입니다.
+## 1. 설치
+
+필요 항목:
 
 - Codex Desktop
-- Evidence Review System 폴더(소스 코드 또는 배포 ZIP)
-- 검토할 PDF 파일
-- PDF를 읽을 수 있는 로컬 parser 도구(OpenDataLoader PDF)
+- Evidence Review System 소스 또는 배포 ZIP
+- 검토할 PDF
+- OpenDataLoader PDF 등 지원되는 로컬 parser
 
-배포 ZIP을 받았다면 압축을 풀고 그 폴더를 Codex Desktop에서 엽니다. 소스 코드로 일반 실행 환경을 설치하는 경우에는 PowerShell에서 다음을 한 번 실행합니다.
+소스 설치 예시:
 
 ```powershell
 git clone https://github.com/sage1993/evidence-review-system.git
@@ -23,96 +28,148 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-테스트·정적 검증까지 수행하는 개발 환경에서는 마지막 명령 대신 다음을 사용합니다.
+개발·검증 도구까지 설치하려면:
 
 ```powershell
 python -m pip install -e ".[dev]"
 ```
 
-### Python 의존성과 오프라인 실행
+런타임은 PDF geometry 검증 등에 필요한 로컬 Python 의존성을 사용할 수 있지만 실행 중 외부 검색/API를 요구하지 않습니다. 새 오프라인 환경에 설치할 때는 필요한 wheel을 미리 준비해야 합니다.
 
-- 런타임 Python 패키지로 `pypdf>=5,<6`를 사용합니다. PDF 페이지 수와 페이지 geometry를 원본 PDF에서 검증하는 데 사용됩니다.
-- `.[dev]`에는 런타임 의존성에 더해 `pytest`, `mypy`, `ruff` 같은 개발·검증 도구가 포함됩니다. 일반 실행에 개발 도구는 필요하지 않습니다.
-- 여기서 **오프라인 실행**은 프로그램 실행 중 인터넷 검색이나 외부 API 호출이 필요하지 않다는 의미입니다. 제3자 Python 패키지가 전혀 필요 없다는 의미는 아닙니다.
-- 인터넷이 차단된 환경에 새로 설치할 때는 `pypdf`를 포함한 필요한 wheel 또는 패키지를 미리 준비해야 합니다.
+## 2. PDF 준비 — `$ERS_PDF`
 
-PDF와 생성된 근거 자료는 사용자의 컴퓨터 안에서 처리됩니다.
+PDF를 첨부하거나 경로를 지정한 뒤 다음처럼 요청합니다.
 
-## 2. PDF 파싱하는 방법
-
-Codex Desktop에서 PDF를 첨부하거나 파일 경로를 알려 주고 다음처럼 말합니다.
-
-```plaintext
-$ERS_PDF 이 PDF 파일 파싱해줘
+```text
+$ERS_PDF 이 PDF 파싱해줘
 ```
 
-그러면 Codex가 자동으로 다음 작업을 진행합니다.
+Codex와 ERS는 다음을 준비합니다.
 
-- 원본 PDF를 보존하고 파일 정보와 SHA-256 해시를 기록합니다.
-- PDF의 글자·표·페이지 위치·이미지를 parser로 읽습니다.
-- parser 결과와 PDF가 제대로 연결됐는지 확인합니다.
-- 검색 가능한 근거 데이터베이스를 만듭니다.
+- 원본 PDF 보존과 SHA-256 기록
+- parser artifact 및 source binding 검증
+- parser warnings와 reproducibility 확인
+- source-batch v2 검증
+- 검색 가능한 `evidence.sqlite`
+- revision 단위의 verified PDF page image cache
 
-원본 PDF나 parser 결과를 덮어쓰지 않으며, parser 결과가 없거나 PDF와 맞지 않으면 성공한 것처럼 넘어가지 않고 필요한 조치를 알려 줍니다. 도면처럼 사람의 확인이 필요한 자료는 자동으로 확정하지 않고 확인 대기 상태로 남깁니다.
+원본과 raw parser output은 덮어쓰지 않습니다. parser가 없거나 source hash가 맞지 않으면 성공으로 처리하지 않습니다. 도면처럼 사람 확인이 필요한 자료는 확인 전까지 계산·규칙 입력으로 사용하지 않습니다.
 
-파싱이 끝나면 Codex가 “다음 질문을 해도 되는지”를 알려 줍니다. 준비가 되지 않은 경우에는 먼저 부족한 파일이나 확인 사항을 안내합니다.
+질문 가능한 상태가 되면 `$ERS_REVIEW <질문>`으로 넘어갑니다.
 
-## 3. 질문하는 방법
+## 3. 질문 — `$ERS_REVIEW`
 
-파싱 완료 메시지를 확인한 뒤, 검토하려는 내용을 자연어로 물어봅니다.
+모든 질문은 하나의 정식 파이프라인을 사용합니다. 빠른 조회 모드는 없습니다.
 
-```plaintext
-$ERS_REVIEW 이 사업이 해당 기준을 충족하는지 검토해줘
-```
-
-질문은 구체적으로 쓸수록 좋습니다.
-
-```plaintext
+```text
 $ERS_REVIEW 이 사업의 주차 기준 충족 여부를 근거 페이지와 함께 검토해줘
 ```
 
-Codex는 파싱된 PDF 근거를 검색하고, 필요한 경우 승인된 계산식과 규칙을 실행한 뒤, 검토 답변과 HTML 화면을 함께 준비합니다. 계산값을 대화 중에 임의로 계산하거나 근거가 없는 내용을 채우지 않습니다.
+내부 흐름:
 
-파싱이 먼저 끝나지 않았거나 필요한 근거가 없으면 답변을 억지로 만들지 않고 `$ERS_PDF`를 먼저 실행하거나 추가 자료가 필요한 이유를 알려 줍니다.
+```text
+질문
+→ 로컬 근거 검색
+→ 정식 review request
+→ Track A 작성
+→ Track A 즉시 검증
+→ Track B 독립 감사
+→ Track B 검증
+→ final-review-packet.json
+→ review.html
+→ 보호 브라우저
+→ 사람 결정
+```
 
-## 4. 결과 확인
+사용자는 query JSON, review request, Track A/B 중간 파일을 손으로 작성하지 않습니다. Codex가 runtime이 만든 handoff를 따라 외부 Track 작업을 수행하고, runtime은 각 결과를 deterministic하게 검증합니다.
 
-질문 처리가 끝나면 Codex가 로컬 검토용 `review.html`을 기본 브라우저로 엽니다. 브라우저가 자동으로 열리지 않으면 Codex가 표시한 로컬 주소를 클릭하면 됩니다.
+계산이 필요한 질문은 승인된 Math Engine 결과를, 규칙이 필요한 질문은 승인된 Rule Engine 결과를 사용합니다. 대화 중 임의 계산이나 규칙 판정을 만들어 끼워 넣지 않습니다.
 
-HTML 화면에서는 보통 다음을 확인할 수 있습니다.
+## 4. Review Workspace
 
-- **검토 요약:** 기준 충족, 미충족, 보류 또는 추가 확인 필요 상태
-- **근거:** 어떤 PDF의 몇 페이지에서 나온 내용인지와 원문 인용
-- **계산·규칙:** 사용한 입력값, 공식, 규칙 버전과 결과
-- **주의사항:** 누락 자료, 충돌하는 근거, 사람 확인이 필요한 항목
+정식 검토가 완료되면 `review.html`을 보호된 localhost 주소로 엽니다.
 
-근거 항목을 따라가 원본 PDF의 해당 페이지를 직접 확인하고, 계산에 사용된 입력값과 예외 사항을 검토합니다. 필요하면 HTML 화면을 검토 회의나 내부 확인 자료로 공유할 수 있습니다.
+기본 화면은 비개발자 기준으로 다음 순서입니다.
 
-`READY_FOR_HUMAN_REVIEW`는 “사람이 확인할 준비가 됨”이라는 뜻이지 자동 승인이라는 뜻이 아닙니다. 최종 승인·적합·부적합 판단은 HTML과 원본 PDF를 확인한 사람이 별도로 기록합니다.
+1. **검토 결과** — 한국어 상태와 1문장 결론
+2. **판단 근거** — PDF 원문, 페이지, 인용 좌표(bbox)
+3. **추가 확인** — 누락·충돌·예외 등이 실제로 있을 때만 표시
+4. **검토자 의견** — 결정과 메모
 
-## 잘 안 될 때
+단일 근거 주장에서는 불필요한 항목 네비게이터를 숨깁니다. 규칙·계산이 0건이면 빈 섹션을 만들지 않습니다. run ID, citation/evidence/revision ID, hash, confidence factor/weight 등은 기본 화면에서 빼고 접힌 **감사 정보**에 보존합니다.
 
-- **parser 결과가 없다고 나올 때:** OpenDataLoader PDF parser를 설치·실행할 수 있는지 확인한 뒤 `$ERS_PDF`를 다시 실행합니다.
-- **도면 확인이 필요하다고 나올 때:** 도면의 숫자나 위치를 사람이 원본에서 확인해야 합니다. 확인 전에는 계산에 사용되지 않습니다.
-- **근거가 부족하다고 나올 때:** 질문을 더 구체적으로 쓰거나 기준 PDF와 검토 대상 PDF를 모두 첨부합니다.
-- **HTML이 열리지 않을 때:** Codex가 보여 준 `127.0.0.1` 로컬 주소를 브라우저에서 열고, `review.html`이 생성되었는지 확인합니다.
+`READY_FOR_HUMAN_REVIEW`는 사람이 검토할 준비가 되었다는 뜻이며 자동 승인이나 적합 판정이 아닙니다.
 
-## 개발자용 문서
+## 5. 사람 결정
 
-내부 파서·manifest·SQLite·규칙 엔진을 직접 다뤄야 할 때만 다음 문서를 참고하세요.
+보호 브라우저에서는 일반적으로 사용자가 입력하는 것은 다음 둘뿐입니다.
 
-- [Source Batch v2 및 Parser Registry](docs/SOURCE_BATCH_V2.md)
-- [검토자 작업 절차](docs/REVIEWER_WORKFLOW.md)
-- [Codex 작업 절차](docs/CODEX_WORKFLOW.md)
-- [오프라인 실행 경계](docs/OFFLINE_EXECUTION.md)
-- [PDF 단계별 스킬](skills/README.md)
-- [Legacy document lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
+- 결정
+- 검토 의견
 
-레거시 DB의 lineage를 별도 파일로 마이그레이션해야 할 때만 다음 명령을 사용합니다. 일반 사용자는 실행할 필요가 없습니다.
+화면 결정값:
+
+| 표시 | 내부 값 |
+|---|---|
+| 내용 확인 완료 | `SATISFIED` |
+| 내용에 오류 있음 | `NOT_SATISFIED` |
+| 조건부 확인 | `CONDITIONAL` |
+| 추가 자료 필요 | `ADDITIONAL_REVIEW_REQUIRED` |
+
+검토자 ID는 보호 세션 시작 시 지정할 수 있고, packet hash는 현재 immutable packet에서 자동으로 결합됩니다. 검토 시각은 서버가 timezone이 포함된 ISO-8601 형식으로 생성합니다.
+
+결정 기록은 `human-decisions/` 아래에 **append-only 별도 파일**로 저장됩니다. machine packet과 `review.html`은 수정하지 않습니다. 유효한 결정이 생기면 화면에서 `REVIEW_COMPLETED`를 표시할 수 있습니다.
+
+## 6. 보관용 HTML
+
+`review.html`을 파일로 직접 열면 보호 서버가 없으므로 결정 저장이 되지 않습니다. 이 경우 **결정 JSON 다운로드**로 5필드 envelope를 만들 수 있습니다.
+
+HTML 파일 저장과 결정 기록 저장은 서로 다른 작업입니다. 다운로드한 envelope는 승인된 import 명령으로 현재 packet hash를 다시 검증한 뒤 append-only 기록으로 반영합니다.
 
 ```powershell
-evidence-review evidence migrate-lineage `
-  --source 01_database/evidence.sqlite `
-  --manifest migration/legacy-lineage-manifest.json `
-  --output migrated/evidence.sqlite
+evidence-review review-run import-decision `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --envelope <human-decision-envelope.json>
 ```
+
+## 7. 성능 기록
+
+정식 review run은 각 단계 시간을 `run-metrics-events/`와 파생 `run-metrics.json`에 기록합니다.
+
+- deterministic non-model hard budget: 5초
+- packet/HTML 이후 protected server + browser dispatch hard budget: 2초
+- Track A/B 외부 대기시간은 별도 집계
+- 실패 후 재시도만 retry로 집계
+
+metrics는 성능 관측용이며 Run ID나 packet hash를 바꾸지 않습니다.
+
+실제 성능 수용은 Windows Python 3.11/3.13에서 같은 단순 질문을 3회 실행하고 p50/p95를 기록해 판단합니다.
+
+## 8. 잘 안 될 때
+
+- **parser 결과 없음:** `$ERS_PDF` 단계에서 parser 설치·source binding을 해결합니다.
+- **근거 DB 없음:** `evidence.sqlite`가 만들어질 때까지 질문을 진행하지 않습니다.
+- **도면 확인 필요:** 사람 확인 전에는 계산·규칙 입력으로 사용하지 않습니다.
+- **Track A 검증 실패:** Track B를 시작하지 않고 Track A를 수정합니다.
+- **HTML이 열리지 않음:** packet/HTML 생성 여부와 protected server 상태를 확인합니다.
+- **결정 저장 실패:** reviewer ID, 현재 packet hash, 결정/메모, 보호 서버 상태를 확인합니다.
+- **보관 HTML:** 서버 저장 대신 결정 JSON을 다운로드해 승인 import 경로를 사용합니다.
+
+서버 상태 확인/종료:
+
+```powershell
+evidence-review review-run serve-status --workspace <workspace> --run-id <RUN-ID>
+evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
+```
+
+## 9. 개발자·검토자 문서
+
+- [Codex workflow](docs/CODEX_WORKFLOW.md)
+- [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)
+- [Offline execution boundary](docs/OFFLINE_EXECUTION.md)
+- [Manual acceptance policy](docs/MANUAL_ACCEPTANCE_POLICY.md)
+- [Source Batch v2](docs/SOURCE_BATCH_V2.md)
+- [PDF skills](skills/README.md)
+
+Issue #87의 Windows 3.11/3.13 수동 E2E 기록은 `docs/acceptance/issue-87/README.md`에 보존합니다. 실행하지 않은 검증은 PASS로 쓰지 않고 `NOT_RUN`으로 기록합니다.

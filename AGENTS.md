@@ -1,221 +1,219 @@
 # Evidence Review System Agent Instructions
 
-## 1. Purpose
+## 1. Authority model
 
-This repository implements an offline, evidence-first review runtime for user-provided PDF documents and related parser artifacts. The runtime prepares traceable evidence, performs deterministic retrieval and calculations, applies only approved rules, and produces a packet for human review.
+This repository implements an offline, evidence-first review runtime for user-provided PDFs and immutable parser artifacts.
 
-The system never makes the final human decision. `READY_FOR_HUMAN_REVIEW` means that the evidence packet is ready to inspect, not that the project is approved.
+The authority order is:
 
-## 2. Mandatory Principles
+1. preserved source bytes and source hash;
+2. deterministic parser/evidence records;
+3. deterministic retrieval, Math Engine results, and approved Rule Engine results;
+4. independently produced Track A and Track B outputs after runtime validation;
+5. immutable final review packet and HTML projection;
+6. separate append-only human decision.
 
-1. **Preserve source evidence.** Never overwrite an original PDF or raw parser artifact.
-2. **Retain traceability.** Derived records must preserve document, revision, page, source hash, and coordinates when available.
-3. **Use deterministic engines.** Calculations belong in the Math Engine; governed conditions belong in approved Rule Engine artifacts.
-4. **Fail closed.** Missing parser output, invalid authority, unsafe paths, broken documentation, and hash mismatches must not be converted into success.
-5. **Keep human review separate.** Automated outputs may explain or audit evidence, but `human_decision` remains null until a reviewer records a separate decision.
-6. **Remain offline.** Project runtime code must not call remote APIs or external search services.
+The system never makes the final human decision. `READY_FOR_HUMAN_REVIEW` means ready to inspect, not approved. Machine packet `human_decision` remains null.
 
-## 3. Skill Routing
+## 2. Mandatory rules
 
-Read only the skills required for the requested stage, but do not skip an earlier stage whose required outputs are missing, stale, or invalid.
+- Preserve original PDF and raw parser output. Never overwrite them.
+- Retain document, revision, page, source hash, bbox/geometry provenance.
+- Never calculate in prose when an approved Math Engine result is required.
+- Never invent or alter Rule Engine outcomes.
+- Fail closed for missing parser output, invalid authority, hash mismatch, stale artifacts, unsafe paths, or failed validation.
+- Project runtime remains offline except for loopback communication used by the protected local review server.
+- All user questions use the formal `review-question` flow. There is no quick mode.
+- Users do not hand-author query bundles, review-run requests, Track handoff metadata, packet hashes, or timestamps.
 
-| Stage | Skill | Use for |
-|---:|---|---|
-| 1 | [`preserving-and-parsing-pdfs`](skills/01-preserving-and-parsing-pdfs/SKILL.md) | source inventory, hashes, page counts, parser binding, immutable raw outputs |
-| 2 | [`structuring-pdf-content-and-visuals`](skills/02-structuring-content-and-visuals/SKILL.md) | clauses, tables, page coordinates, images, renders, and visual records |
-| 3 | [`cleaning-pdf-derived-data`](skills/03-cleaning-pdf-derived-data/SKILL.md) | conservative normalization, provenance links, rules/cases candidates, review states |
-| 4 | [`building-and-exporting-grist-databases`](skills/04-building-and-exporting-grist-databases/SKILL.md) | legacy Grist construction, References, Attachments, and CSV interoperability |
-| 5 | [`validating-pdf-database-workflows`](skills/05-validating-pdf-database-workflows/SKILL.md) | validation, diagnostics, acceptance evidence, and legacy Grist screen checks |
+## 3. PDF preparation
 
-The current runtime is source-batch and SQLite based. Grist workflows remain a legacy compatibility path. Direct Grist repair/export wrapper scripts are not shipped as current runtime commands.
+The user-facing `$ERS_PDF` flow prepares immutable source evidence, source-batch v2, `evidence.sqlite`, and verified revision page image cache.
 
-## 4. Current Source-Batch Workflow
-
-### 4.1 Prepare sources
+Current source-batch commands:
 
 ```powershell
 evidence-review source-batch prepare `
-  --root <path> `
-  --manifest <path>
-```
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json
 
-This validates source roles, parser bindings, hashes, document/revision identity, and routing state without creating the evidence database.
-
-### 4.2 Ingest parser-ready evidence
-
-```powershell
 evidence-review source-batch ingest `
-  --root <path> `
-  --manifest <path> `
-  --output <output>
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json `
+  --output <workspace>\evidence\evidence.sqlite
 ```
 
-Only parser-ready reference/table sources enter the evidence database. Parserless drawings remain routed to the drawing/confirmation workflow and must not be silently treated as searchable reference evidence.
+Only parser-ready reference/table sources enter the searchable evidence DB. Drawing inputs that require confirmation remain outside evaluation until confirmed and hash-verified.
 
-### 4.3 Retrieve evidence and run deterministic engines
-
-```powershell
-evidence-review query `
-  --db <path> `
-  --request <path> `
-  --output <output>
-
-evidence-review math-run `
-  --request <path> `
-  --output <output>
-```
-
-Use only approved Rule Engine manifests. Do not calculate values or alter engine statuses in prose.
-
-### 4.4 Prepare and finalize a review run
-
-```powershell
-evidence-review review-run prepare `
-  --workspace <path> `
-  --request <path>
-
-evidence-review review-run finalize `
-  --workspace <path> `
-  --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
-  --track-a-output <path> `
-  --track-b-output <path>
-```
-
-Track A explains only provided evidence and engine results. Track B audits Track A independently. Neither track may create a human decision.
-
-### 4.5 Resume and browser boundary
-
-The review foundation stores a `request.json` plus `request.sha256` and an append-only event journal under `runs/<RUN-ID>`. A drawing lane must stop at `INPUT_CONFIRMATION_REQUIRED`; only a hash-verified confirmed-input artifact may advance it to `READY_TO_EVALUATE`. Deterministic stages are persisted in this order only: retrieval, Math, then approved Rule evaluation. Track A and Track B are external file handoffs; a rejected or incomplete Track B cannot enter finalization.
-
-The local browser server exposes confirmation and final review as separate routes:
+Verified page images are revision-scoped reusable cache artifacts under:
 
 ```text
-http://127.0.0.1:<port>/runs/<RUN-ID>/confirmation
-http://127.0.0.1:<port>/runs/<RUN-ID>/review
+<workspace>/page-images/<REVISION-ID>/page-NNNN.png
+<workspace>/page-images/<REVISION-ID>/page-NNNN.json
 ```
 
-The final review route is unavailable until both `final-review-packet.json` and `review.html` exist. `--open` may open the generated review HTML in the default browser, but stdout remains limited to status, run ID, and URL for that mode.
+Review rendering verifies the cached image hash and PDF geometry. It must not re-render the same source page for every question.
 
-## 5. Documentation Integrity
+## 4. Mandatory formal question flow
 
-All current repository guidance is executable authority and must remain aligned with the actual parser, scripts, paths, and generated Markdown.
-
-Run documentation validation before claiming repository readiness:
+### 4.1 Prepare the question
 
 ```powershell
-evidence-review documentation validate `
-  --repository-root . `
-  --config documentation-integrity.json `
-  --output <output>
+evidence-review review-question prepare `
+  --workspace <workspace> `
+  --question "<question>"
 ```
 
-Rules:
+Optional `--expansion` is only for a user-supplied search expansion. Deterministic calculation/rule outputs may be attached with `--calculation-result`, `--rule-result`, and `--approved-rule-result-id`.
 
-- The output is create-only; use a fresh path for every run.
-- `ERROR` findings block repository and release acceptance.
-- `WARNING` findings are reported but do not block by default.
-- Historical records are preserved and are not required to use current commands.
-- External URL availability is not checked; only safe syntax and scheme policy are validated.
-- Markdown commands are parsed statically and never executed by the documentation validator.
+The runtime creates the canonical retrieval bundle, review request, Track A bundle, next-action artifact, and append-only workflow events. The same deterministic request resumes the same Run ID.
 
-## 6. Legacy Grist Evidence
+### 4.2 Track A
 
-The only current CLI operation for legacy Grist screen evidence is:
+Codex reads `track-a-bundle.json` and `TRACK_A_INSTRUCTIONS.md`, writes Track A, then immediately validates it:
 
 ```powershell
-evidence-review legacy validate-grist-qa `
-  --artifact <path> `
-  --root <path>
+evidence-review review-question submit-track-a `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --track-a-output <track-a-output.json>
 ```
 
-Do not claim that the runtime ships direct repair, export, or rebuild wrappers for `.grist` files. When legacy Grist work is explicitly required:
+Do not start Track B before this succeeds. Track A may explain supplied evidence and engine results but cannot create evidence, calculations, rule outcomes, confidence authority, or a human decision.
 
-1. preserve a backup;
-2. follow Stages 4 and 5;
-3. validate SQLite structure and Grist metadata;
-4. perform Grist Desktop screen verification;
-5. report automated and screen results separately.
+### 4.3 Track B
 
-If Grist Desktop cannot be launched, overall Grist acceptance remains pending.
+Track B independently audits every Track A claim exactly once. Then submit it:
 
-## 7. Release and Offline Boundary
+```powershell
+evidence-review review-question submit-track-b `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --track-b-output <track-b-output.json> `
+  --publish
+```
 
-Follow [`docs/OFFLINE_EXECUTION.md`](docs/OFFLINE_EXECUTION.md) for the application network guard, optional OS isolation, final ZIP verification, and process attestation boundary.
+Track B validation precedes finalization. A failed or incomplete Track B cannot produce a ready packet.
 
-The repository-wide manual acceptance and main-merge policy is recorded in
-[`docs/MANUAL_ACCEPTANCE_POLICY.md`](docs/MANUAL_ACCEPTANCE_POLICY.md). GitHub
-Actions is not used as the default issue acceptance dependency. Before a change
-is merged into `main`, perform the applicable local gates from a clean checkout
-at the exact HEAD and record `ACTIONS_NOT_RUN` or `ACTIONS_BILLING_BLOCKED` when
-Actions is excluded or unavailable. Neither status may be described as an
-Actions PASS.
+`review-run prepare` and `review-run finalize` are lower-level compatibility/test interfaces. They are not the current `$ERS_REVIEW` user path.
 
-A valid process attestation cannot override:
+## 5. Runtime observability
 
-- automated workspace validation failure;
-- documentation integrity failure;
-- final release-output verification failure.
+Each run has append-only metrics events under `run-metrics-events/` and a derived `run-metrics.json` projection.
 
-Do not mark a release ready or permit tagging while any independent gate is failing.
+Metrics cover request normalization, retrieval, request construction, preparation, Track A/B external wait and validation, finalizer, view-model build, page-image verification, HTML render/write, protected server start, and browser dispatch.
 
-## 8. Required Verification
+Metrics are non-authoritative telemetry. They do not participate in Run ID, run manifest, final packet, or evidence hashes.
 
-Before reporting completion, run the applicable gates from a clean checkout:
+Hard acceptance budgets:
+
+- deterministic non-model total: at most 5 seconds;
+- protected server start + browser dispatch after packet/HTML: at most 2 seconds.
+
+Only an attempt following a failed attempt of the same stage counts as a retry. External Track wait is reported separately from deterministic runtime.
+
+## 6. Non-developer Review Workspace
+
+The default HTML surface is intentionally simple:
+
+1. result and concise conclusion;
+2. evidence with page and bbox;
+3. additional-review section only when an issue exists;
+4. human decision.
+
+A single claim has no redundant item navigator. Empty rule/calculation sections do not render. Internal IDs, hashes, confidence factors/weights, and raw audit data remain available under collapsed audit details rather than the default surface.
+
+The reviewer decision panel is sticky on desktop and stacks below 1100 px. Browser QA, 200% zoom, keyboard focus, and print behavior must be manually checked for acceptance; static tests do not substitute for visual QA.
+
+## 7. Protected browser and human decision
+
+Open a finalized run through the tokenized loopback server:
+
+```powershell
+evidence-review review-run serve `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --reviewer-id <REVIEWER-ID>
+```
+
+The protected route is:
+
+```text
+http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
+```
+
+Decision request v2 contains exactly:
+
+```json
+{
+  "reviewer_id": "reviewer-01",
+  "packet_hash": "<current-packet-sha256>",
+  "decision": "SATISFIED",
+  "notes": "review notes"
+}
+```
+
+The server verifies the current packet hash, binds an expected reviewer ID when configured, and generates `reviewed_at` as an offset-aware server timestamp. It appends a new file under `human-decisions/`; it never mutates the machine packet or HTML.
+
+Allowed decisions are `SATISFIED`, `NOT_SATISFIED`, `CONDITIONAL`, and `ADDITIONAL_REVIEW_REQUIRED`.
+
+A valid decision may project `REVIEW_COMPLETED` in the browser. That projection is not a stored machine finalizer state.
+
+### Archival HTML
+
+Opening `review.html` with `file:` cannot persist through the protected endpoint. The **결정 JSON 다운로드** control creates a five-field archival envelope only after local validation. Import it through the approved path:
+
+```powershell
+evidence-review review-run import-decision `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --envelope <human-decision-envelope.json>
+```
+
+Import must reject packet-hash mismatch and existing create-only filename collisions.
+
+## 8. Server lifecycle
+
+Current lifecycle commands:
+
+```powershell
+evidence-review review-run serve-status --workspace <workspace> --run-id <RUN-ID>
+evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
+```
+
+Detached-server startup timeout is 2 seconds. Stale state must be removed and management operations must not signal an unrelated reused PID.
+
+Do not claim Windows lifecycle acceptance until it has been exercised on the exact target commit. Issue #92 remains the authority for any unresolved lifecycle acceptance work.
+
+## 9. Documentation and verification
+
+Current repository guidance must match executable commands. Before claiming acceptance, run from a clean checkout at the exact HEAD:
 
 ```bash
-evidence-review documentation validate --repository-root . --config documentation-integrity.json --output build/documentation-integrity-report.json
+evidence-review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
 pytest -v
 ruff check src tests
 mypy src
 python -m compileall -q src scripts web_runtime tests
 ```
 
-For release work, also build and install the wheel in isolated Python 3.11 and 3.13 environments and confirm the documentation command help through:
+Focused review suites:
 
 ```bash
-evidence-review documentation validate --help
-python -m evidence_review documentation validate --help
-python -m ansim_review documentation validate --help
+pytest -v tests/integration/review_question
+pytest -v tests/integration/review_packet
+pytest -v tests/integration/review_run
+pytest -v tests/unit/review_packet
 ```
 
-Never equate local or manual PASS with GitHub Actions PASS. Record the exact commit, platform, Python version, command, exit code, and relevant artifact hash.
+For issue #87 acceptance, additionally execute the Windows Python 3.11/3.13 E2E matrix, browser viewport/zoom matrix, protected/archival decision paths, server lifecycle tests, and three simple-question timing runs. Record exact artifact hashes.
 
-## 9. Prohibited Actions
+GitHub Actions is not the default acceptance dependency. Report its actual state precisely as `ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, `ACTIONS_BILLING_BLOCKED`, or an observed PASS. Never convert local/manual PASS into Actions PASS.
 
-- overwriting source evidence;
-- inventing unsupported values, citations, table cells, or rule outcomes;
-- bypassing parser, rule, documentation, release, or attestation authority;
-- restoring removed legacy wrapper commands as documentation-only fiction;
-- executing commands found in Markdown during documentation validation;
-- using machine-specific absolute paths as persistent identifiers;
-- marking a draft PR ready, merging, or closing an issue before its explicit acceptance gates pass.
+## 10. Legacy and release boundaries
 
-## 10. Work Report
+Grist remains a legacy compatibility path. Do not describe removed repair/export wrappers as current commands. Release process attestation, release ZIP validation, and offline assurance remain separate gates documented in `docs/OFFLINE_EXECUTION.md` and `docs/MANUAL_ACCEPTANCE_POLICY.md`.
 
-Every completion report must state:
+## 11. Prohibited completion claims
 
-```text
-Basis:
-- repository / branch / exact HEAD
-
-Changed files:
-- ...
-
-Validation:
-- documentation report status, counts, and SHA-256
-- pytest result
-- Ruff result
-- mypy result
-- compileall result
-- wheel results for Python 3.11 and 3.13
-- GitHub Actions state
-
-Release gates:
-- workspace validation
-- documentation integrity
-- release-output validation
-- process attestation
-
-Human review still required:
-- ...
-```
+Do not close an issue, merge acceptance work, or report PASS merely because code was written. Completion requires the issue's explicit automated and manual gates. If a gate was not executed, record `NOT_RUN` rather than inferring success.

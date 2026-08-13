@@ -1,66 +1,89 @@
 ---
 name: ers-pdf
-description: Use when a user invokes $ERS_PDF or asks Codex Desktop to parse a PDF for evidence-backed review.
+description: Use when a user invokes $ERS_PDF or asks Codex Desktop to prepare PDFs for Evidence Review System formal review.
 ---
 
 # ERS PDF Parsing
 
-## Overview
+## 목적
 
-`$ERS_PDF` is the user-facing shortcut for preparing a PDF for Evidence Review System questions. It creates immutable parser evidence and a searchable local evidence database; it does not answer the review question.
+`$ERS_PDF`는 사용자가 제공한 PDF를 Evidence Review System의 정식 질문 파이프라인에서 사용할 수 있도록 준비한다. 이 단계는 규제 결론을 만들지 않는다.
 
-## Required workflow
+## 필수 절차
 
-1. Use only the PDF explicitly attached or named by the user. Do not select repository samples by filename.
-2. Preserve the original PDF under a separate source directory and record its SHA-256, size, page count, and document identity.
-3. If an immutable parser artifact is already supplied, bind and validate it. Otherwise check `opendataloader-pdf --help` and run the parser into a new output directory. If the parser is unavailable, stop and report the missing tool; never claim that a plain text extraction is an ERS parse.
-4. Keep `parser-run.json`, raw JSON, Markdown, images, logs, parser version, configuration, source hash, and page counts together. Never overwrite a source or raw parser run.
-5. Run two-run reproducibility validation and parser warning collection using fresh output paths. A mismatch, missing authority, or parser failure is not success.
-6. Create a source-batch v2 manifest. For every `OPENDATALOADER_JSON` parser artifact, write the SHA-256 of the PDF bytes used to create that parser artifact to `parser.options.source_sha256`. If an existing immutable parser artifact cannot be tied to a parser-time source SHA-256, do not invent one; keep filename mismatch handling fail-closed.
+1. 사용자가 명시적으로 제공하거나 지정한 PDF만 사용한다. 저장소 샘플을 임의로 선택하지 않는다.
+2. 원본 PDF를 별도 source 경로에 보존하고 SHA-256, byte size, page count, document identity를 기록한다.
+3. immutable parser artifact가 있으면 source와 hash binding을 검증한다. 없으면 OpenDataLoader PDF를 새 output directory에 실행한다. parser가 없으면 중단한다.
+4. `parser-run.json`, raw JSON, Markdown, 추출 이미지, 로그, parser version/configuration, source hash를 함께 보존하며 덮어쓰지 않는다.
+5. two-run reproducibility와 parser warning 수집을 fresh output으로 수행한다. mismatch나 parser failure를 성공으로 바꾸지 않는다.
+6. source-batch v2 manifest를 만들고 각 `OPENDATALOADER_JSON` 항목의 `parser.options.source_sha256`에 **그 parser artifact를 실제로 만든 PDF bytes의 SHA-256**을 기록한다. 알 수 없는 값은 추정하지 않는다.
 
 ```json
 {
-  "source_path": "inputs/reference-renamed.pdf",
+  "source_path": "inputs/reference.pdf",
   "role": "REFERENCE_DOCUMENT",
   "parser": {
     "kind": "OPENDATALOADER_JSON",
     "artifact_path": "parser/reference.json",
     "options": {
-      "source_sha256": "<sha256-of-pdf-used-for-this-parser-run>"
+      "source_sha256": "<parser-time-source-sha256>"
     }
   }
 }
 ```
 
-Then run:
+7. source routing과 ingest를 실행한다.
 
 ```powershell
-evidence-review source-batch prepare --root <workspace> --manifest <workspace>\manifests\source-batch.json
-evidence-review source-batch ingest --root <workspace> --manifest <workspace>\manifests\source-batch.json --output <workspace>\evidence\evidence.sqlite
+evidence-review source-batch prepare `
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json
+
+evidence-review source-batch ingest `
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json `
+  --output <workspace>\evidence\evidence.sqlite
 ```
 
-7. Report success only when parser-ready reference/table evidence was ingested, `evidence.sqlite` exists, and the source state is `READY_TO_EVALUATE`. Preserve `PENDING_PARSER_OUTPUT`, `PENDING_DRAWING_INGESTION`, `INPUT_CONFIRMATION_REQUIRED`, `BLOCKED`, and `FAILED` states exactly.
+8. final Review Workspace가 인용 페이지를 다시 렌더하지 않도록, 각 revision의 verified page image cache를 **한 번만** 준비·게시한다. canonical 위치는 다음과 같다.
 
-## Output contract
+```text
+<workspace>/page-images/<REVISION-ID>/page-0001.png
+<workspace>/page-images/<REVISION-ID>/page-0001.json
+...
+```
 
-Give the user a short Korean summary containing:
+page metadata는 source hash, page number, PDF geometry, image SHA-256을 원본과 검증해야 한다. publish는 revision 단위로 원자적이어야 하며 실패한 다중 source 작업이 이미 유효한 공유 cache를 삭제하면 안 된다. Review HTML은 이 cache를 검증해서 사용하며 질문마다 같은 PDF page image를 다시 생성하지 않는다.
 
-- original PDF name and preserved workspace;
-- parser status and any warnings;
-- searchable evidence count or the exact blocking reason;
-- the next command: `$ERS_REVIEW <질문>` only when the evidence database is ready.
+9. 다음 조건을 모두 만족할 때만 질문 준비 완료로 보고한다.
 
-For a drawing-only PDF, explain that it is routed to drawing confirmation and is not searchable reference evidence until the required confirmation is complete.
+- parser-ready reference/table evidence ingest 성공
+- `<workspace>/evidence/evidence.sqlite` 존재
+- 필요한 revision page image cache가 검증 가능
+- source state가 `READY_TO_EVALUATE`
 
-## Safety rules
+`PENDING_PARSER_OUTPUT`, `PENDING_DRAWING_INGESTION`, `INPUT_CONFIRMATION_REQUIRED`, `BLOCKED`, `FAILED`는 그대로 보존한다.
 
-- 원본 PDF와 raw parser output을 덮어쓰지 않는다.
-- Do not infer document role, legal authority, dates, or identity from a filename or title.
-- Do not invent missing text, table cells, coordinates, parser metadata, source hashes, or page references.
-- Do not replace a parser-time `source_sha256` with the hash of a different or merely renamed/re-exported PDF unless the bytes are identical.
-- Do not use unconfirmed drawing candidates as Math or Rule Engine inputs.
-- Do not call the PDF “parsed,” “searchable,” or “ready for questions” when `PENDING_PARSER_OUTPUT`, `BLOCKED`, or `FAILED` remains.
+## 사용자에게 반환할 내용
+
+- 보존된 원본 PDF와 workspace 위치
+- parser/source 상태와 warnings
+- searchable evidence 준비 여부 또는 정확한 blocking reason
+- page image cache 준비 여부
+- 준비가 완료된 경우 다음 입력: `$ERS_REVIEW <질문>`
+
+도면 전용 PDF는 확인되지 않은 값을 reference evidence나 Math/Rule input으로 취급하지 않는다. 필요한 drawing confirmation이 끝날 때까지 질문 평가 준비 완료라고 표현하지 않는다.
+
+## 금지
+
+- 원본 PDF 또는 raw parser output 덮어쓰기
+- filename/title에서 role, authority, date, identity 추정
+- parser-time source hash 대신 다른 PDF hash 사용
+- 누락 text/table/bbox/parser metadata 생성
+- unconfirmed drawing candidate를 계산·규칙 입력으로 사용
+- invalid/missing page image를 정상 cache로 게시
+- Review Workspace를 열 때마다 PDF page image 재렌더
 
 ## Handoff
 
-After a successful parse, wait for the user to invoke `$ERS_REVIEW` with a question. Do not produce a regulatory conclusion during the parsing step.
+PDF 준비가 성공하면 정식 질문은 반드시 `$ERS_REVIEW`로 넘긴다. `$ERS_PDF` 단계에서 Track A/B 또는 규제 결론을 만들지 않는다.

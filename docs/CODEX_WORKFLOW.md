@@ -1,259 +1,244 @@
 # Codex Workflow
 
-Use local evidence only. Project code never invokes a model or API and never replaces deterministic output with prose calculations.
+Use local evidence only. Project Python code does not call a model or remote API. Codex supplies the external Track A/Track B reasoning at deterministic file handoffs; runtime code validates those outputs before the workflow can advance.
 
-Shared status, attachment, Review Packet v2, and next-action rules are governed by `docs/CONTRACT_GOVERNANCE.md`.
+Shared status and contract governance is documented in `docs/CONTRACT_GOVERNANCE.md`.
 
-## 1. Register arbitrary PDF sources
+## 1. Prepare source evidence
 
-Every source PDF must be declared in an `evidence-review/source-batch` manifest. A filename or display title is never used to infer the document type, parser, page identity, or legal meaning. Writers emit source-batch version 2. Version 1 remains read-only compatibility input for the original OpenDataLoader binding.
-
-Check source routing without creating a database:
+Every PDF is registered in a source-batch v2 manifest. Filename and display title are not authority for document role, identity, page identity, or legal meaning.
 
 ```powershell
 evidence-review source-batch prepare `
-  --root F:\evidence-review-workspace `
-  --manifest F:\evidence-review-workspace\manifests\source-batch.json
-```
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json
 
-The prepare result reports each source's parser kind, state, reason codes, and whether it can enter reference ingestion or rule evaluation.
-
-Create the evidence database only after reference sources are parser-ready:
-
-```powershell
 evidence-review source-batch ingest `
-  --root F:\evidence-review-workspace `
-  --manifest F:\evidence-review-workspace\manifests\source-batch.json `
-  --output F:\evidence-review-workspace\evidence\evidence.sqlite
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json `
+  --output <workspace>\evidence\evidence.sqlite
 ```
 
-Routing is role-aware but never filename-derived:
+Only parser-ready reference/table sources enter the searchable evidence DB. Parserless drawings remain in their declared pending/confirmation state and cannot silently become reference evidence or engine inputs.
 
-- a parser-ready reference or case table is `PENDING_REFERENCE_INGESTION` before ingest and `READY_TO_EVALUATE` after successful ingest;
-- a reference or case table with no parser artifact is `PENDING_PARSER_OUTPUT`;
-- a declared but unregistered parser kind is `BLOCKED` with `UNSUPPORTED_PARSER_KIND`;
-- a `CASE_DRAWING` is `PENDING_DRAWING_INGESTION` and enters the drawing flow in section 4;
-- a drawing awaiting reviewer confirmation is `INPUT_CONFIRMATION_REQUIRED`;
-- a supporting image remains supporting evidence and cannot independently authorize rule evaluation;
-- a batch containing no parser-ready reference evidence is rejected with `NO_EVIDENCE_SOURCES` instead of producing an empty database.
+The PDF preparation flow also establishes reusable verified page image cache artifacts under `page-images/<REVISION-ID>/`. Review rendering verifies those cache artifacts instead of rasterizing the same PDF page again for every question.
 
-Parser adapters register stable uppercase kinds in the deterministic parser registry. Adapters return page-relative normalized contributions. Only the importer creates document, revision, and page IDs.
+## 2. One formal review for every question
 
-Visual manifests must explicitly declare `document_id`, `revision_id`, and `page_id`. File and folder names never supply visual identity.
+The current user-facing workflow is `review-question`. Do not use a separate quick retrieval mode and do not ask the user to hand-author intermediate JSON.
 
-Do not create Track output from an empty or fabricated evidence database.
-
-## 2. Start one formal review from a question
-
-For every user question, use the question orchestration command. It retrieves
-local evidence, writes the canonical `evidence-review/review-run-request`, and
-creates the immutable Track A handoff. Do not hand-author a query bundle or a
-review-run request between these stages.
+### 2.1 Prepare
 
 ```powershell
 evidence-review review-question prepare `
-  --workspace F:\evidence-review-workspace `
-  --question "질문" `
-  --expansion "명시적 검색 확장어" `
-  --calculation-result F:\review-case\calculation-result.json `
-  --rule-result F:\review-case\rule-result.json `
-  --approved-rule-result-id RULE-RESULT-ID
+  --workspace <workspace> `
+  --question "<question>"
 ```
 
-Its stdout contains only status, Run ID, next-action path, and resume status;
-it never prints the question or evidence text. Repeating the exact question and
-expansions resumes the same immutable run. A changed deterministic request
-creates a different Run ID.
+Optional inputs:
 
-`--expansion`은 사용자가 명시한 검색어이며 모델 생성 확장어가 아니다. 계산 또는
-규칙이 필요한 질문은 정식 `CalculationResult`와 `RuleResult` JSON을 위 옵션으로
-제공해야 한다. 런타임은 이를 계산하거나 추정하지 않는다. 승인 Rule ID가 제공된
-규칙 결과에 없거나 중복되면 준비를 중단한다.
+```text
+--expansion <explicit-user-search-term>
+--calculation-result <CalculationResult.json>
+--rule-result <RuleResult.json>
+--approved-rule-result-id <rule-result-id>
+```
 
-After producing `track-a-output.json`, validate it before any Track B work:
+`--expansion` is not a model-generated query rewrite. Calculation and RuleResult artifacts must already be authoritative deterministic outputs.
+
+Preparation performs request normalization, local retrieval, canonical review-request construction, immutable run preparation, and Track A handoff creation. It writes an append-only workflow event journal. Repeating an identical deterministic request resumes the same Run ID from its last valid state.
+
+### 2.2 Produce and validate Track A immediately
+
+Read only the run's `track-a-bundle.json` and `TRACK_A_INSTRUCTIONS.md`. Track A explains provided evidence, approved calculation results, and rule results. It cannot create evidence, alter numeric tokens, change rule status, assign a human decision, or bypass citations.
+
+After writing `track-a-output.json`, validate it before doing any Track B work:
 
 ```powershell
 evidence-review review-question submit-track-a `
-  --workspace F:\evidence-review-workspace `
-  --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
-  --track-a-output F:\review-case\track-a-output.json
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --track-a-output <track-a-output.json>
 ```
 
-This gate validates run binding, citations, calculations, rules, and exact
-numeric tokens. A failure leaves the run waiting for Track A and does not
-create a Track B action. Only a successful command returns the Track B action.
-실행 이벤트 저널은 `WAITING_TRACK_A`에서 `WAITING_TRACK_B`, `FINALIZING`,
-`READY_FOR_REVIEW` 순으로만 전이한다. 같은 질문을 다시 준비하면 마지막 유효
-저널 상태와 다음 작업을 반환하며 Track A로 되돌리지 않는다.
+A failed validation keeps the workflow at Track A. Correct Track A and retry. Do not spend a Track B pass auditing a Track A output that has not passed this gate.
 
-Submit the independent Track B output through the same orchestration boundary:
+### 2.3 Produce Track B exactly once over the validated claims
+
+Track B independently audits every validated Track A claim. It may accept/reject claims according to its contract but does not rewrite Track A or make the human decision.
 
 ```powershell
 evidence-review review-question submit-track-b `
-  --workspace F:\evidence-review-workspace `
-  --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
-  --track-b-output F:\review-case\track-b-output.json `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --track-b-output <track-b-output.json> `
   --publish
 ```
 
-Track B claim coverage and run binding are checked before the existing finalizer
-is invoked. This is the preferred user-facing workflow; the lower-level
-`review-run` commands remain available for compatibility and controlled tests.
+The runtime validates Track B before finalization. Finalization creates the run-specific `final-review-packet.json` and `review.html` only after all deterministic and Track gates pass.
 
-## 3. Prepare an immutable run directly
+Lower-level `review-run prepare` / `review-run finalize` remain compatibility and controlled-test interfaces. They are not the normal `$ERS_REVIEW` path.
 
-```powershell
-evidence-review review-run prepare `
-  --workspace F:\evidence-review-workspace `
-  --request F:\review-case\review-request.json
-```
+## 3. Workflow journal and recovery
 
-The command prints the stable Run ID and creates `F:\evidence-review-workspace\runs\<RUN-ID>`. Every attachment used by the run must first be copied under `inputs/original/` and recorded with its original name, stored path, SHA-256, byte size, MIME, and user-confirmed role. External mutable paths are not runtime authority.
+The event journal is the state authority for the formal question flow. It preserves ordered transitions through Track A, Track B, finalization, and ready-for-review states. Immutable artifacts are revalidated on resume. Interrupted or partially written restartable outputs are cleaned only when they can be safely regenerated; differing immutable artifacts fail closed.
 
-Use only these prepared files when producing Track outputs:
+A resume must never silently roll a completed Track A validation back to an earlier stage. Tampered artifacts or mismatching retry input stop the run.
 
-- `track-a-bundle.json`
-- `TRACK_A_INSTRUCTIONS.md`
-- `TRACK_B_INSTRUCTIONS.md`
-- `confidence-input.json`
+## 4. Performance telemetry
 
-Track A may explain supplied evidence, CalculationResult, and RuleResult artifacts. It may not calculate, alter a rule status, assign confidence, abstain, confirm drawing candidates, or select a human decision. Save its JSON as `track-a-output.json`.
-
-Run Track B independently against every Track A claim. Track B may audit but may not rewrite Track A or set confidence, final status, drawing confirmation, or a human decision. Save its JSON as `track-b-output.json`.
-
-## 4. Follow `next-action.json`
-
-Project code does not invoke Track A or Track B. When agent work is required, the workflow writes a deterministic `next-action.json` document.
-
-A Track A action declares its workflow state, action, input bundle, instructions, expected output, resume command, and whether Track A has already passed validation. A Track B action is valid only when:
-
-- `workflow_state` is `WAITING_TRACK_B`;
-- `action` is `PRODUCE_TRACK_B`;
-- `track_a_validated` is `true`;
-- Track A output has already passed deterministic validation.
-
-Do not manually advance workflow state or construct a Track B action before that gate passes.
-
-After the readiness gate, the coordinator writes deterministic engine artifacts in a fixed order: `machine/retrieval.json`, `machine/math.json`, and `machine/rules.json`. Each artifact records the preceding artifact hash as its input binding. A process interruption resumes from the last valid artifact and refuses to continue when any completed artifact differs. The event journal therefore remains the authority for whether a stage has completed.
-
-The frozen next-action v1 namespace remains readable for compatibility with existing runtime packages. It is not a document classification scheme and must not be used to derive a PDF title, role, or document ID.
-
-## 4. Handle drawing evidence without granting machine authority
-
-Case drawings are stored separately from reusable reference-document evidence. A `PENDING_DRAWING_INGESTION` source remains registered in the source batch but is excluded from reference evidence DB records. The drawing backend copies source bytes into case-local immutable storage before quality assessment or candidate creation. After ingest, the external upload path is not runtime authority.
-
-The drawing flow is:
+Each run records create-only timing events under:
 
 ```text
-source-batch CASE_DRAWING registration
-  -> case-local immutable source copy
-  -> quality assessment
-  -> extractor candidate or reviewer-manual annotation
-  -> append-only reviewer confirmation
-  -> confirmed input
-  -> source and confirmation hash revalidation
-  -> Math or Rule Engine binding
+runs/<RUN-ID>/run-metrics-events/
 ```
 
-The confirmation browser view is available at `/runs/<RUN-ID>/<TOKEN>/confirmation` while the run is `INPUT_CONFIRMATION_REQUIRED`. It is not the final review view. The confirmation, final review, packet, packet-hash, decision, and decision-status routes all require the run token. The final review route is served only after `final-review-packet.json` and `review.html` have both been created.
+`run-metrics.json` is a derived projection. Telemetry covers:
 
-Codex may help present candidate evidence or serialize an annotation that the user explicitly created or approved. Codex must not independently:
+- request normalization;
+- retrieval;
+- review-request build;
+- prepare;
+- Track A external wait and validation;
+- Track B external wait and validation;
+- finalizer;
+- view-model build;
+- page-image verification;
+- HTML render/write;
+- protected server start;
+- browser dispatch.
 
-- infer that a detected value is confirmed;
-- convert `UNCONFIRMED`, `REJECTED`, or `CONFLICT` candidates into engine input;
-- calculate scale, length, area, or ratio from image pixels;
-- alter a candidate file after creation;
-- overwrite a confirmation record;
-- bypass source or confirmation hash verification.
+Telemetry is intentionally non-authoritative: it is excluded from Run ID, run manifest, final packet, and evidence hashes.
 
-A manual annotation uses `origin: REVIEWER_MANUAL` and `status: CREATED`. It becomes engine-eligible only after a named reviewer creates an append-only `CREATED`, `EDITED`, or `ACCEPTED` confirmation. The runtime binds only the resulting M0 `ConfirmedInput` object.
+`deterministic_total_ms` excludes Track A/B external wait. `retry_count` counts a new attempt only when the preceding attempt of the same stage failed. Failed stages retain a reason code.
 
-Drawing workflow states follow the M0 contract:
+Acceptance budgets:
 
-- no source: `PENDING_DRAWING_INGESTION`;
-- source present but confirmation incomplete or conflicting: `INPUT_CONFIRMATION_REQUIRED`;
-- rejected but replaceable source: `BLOCKED` with `DRAWING_QUALITY_REJECTED`;
-- source-integrity failure: `FAILED` with `SOURCE_HASH_MISMATCH`;
-- complete hash-verified confirmed inputs: `READY_TO_EVALUATE`.
+- deterministic non-model work: `<= 5000 ms`;
+- protected server start + browser dispatch after packet/HTML: `<= 2000 ms`.
 
-Nonterminal states do not carry reason codes. Detailed drawing-quality and conflict data remain in companion artifacts.
+Actual performance acceptance requires three Windows runs and recorded p50/p95. Do not infer the budget from unit tests alone.
 
-### 4.1 Browser manual annotation workspace
+## 5. Final Review Workspace
 
-The browser workspace is a local projection and reviewer input surface. It is not a calculation engine, rule engine, or identity authority.
+The default Review Workspace is a reviewer surface, not a developer dashboard. Its normal information order is:
 
-The workspace:
+1. 검토 결과 — Korean status and concise conclusion;
+2. 판단 근거 — source quote, page, and bbox with verified page image;
+3. 추가 확인 — rendered only when missing/conflict/exception/abstention items exist;
+4. 검토자 의견 — decision and notes.
 
-- binds only to `127.0.0.1`;
-- uses a run-scoped URL-safe access token;
-- requires exact `Host` and same-origin `Origin` values;
-- does not enable CORS;
-- limits JSON body size and accepts only `application/json` actions;
-- rejects symlink or Windows reparse-point case roots;
-- embeds the verified page image, CSS, and JavaScript without external resources;
-- renders `POINT`, `BBOX`, `LINESTRING`, and `POLYGON` geometry in the declared page coordinate system;
-- leaves all reviewer actions unselected until explicit input.
+Single-claim runs do not show redundant claim navigation. Rule/calculation UI is absent when there are no applicable records. run/citation/evidence/revision IDs, hashes, confidence factor details, and raw audit data stay in collapsed audit details.
 
-The browser may submit only:
+The citation bbox and traceable source location remain visible because they are reviewer evidence, not developer decoration.
 
-- an existing candidate ID for `ACCEPTED`, `REJECTED`, or `EDITED`;
-- a reviewer-selected annotation ID and candidate type for `CREATED`;
-- reviewer identity, offset-aware timestamp, optional confirmed value and unit, and optional replacement geometry.
+## 6. Protected browser handoff
 
-Reviewer identity is preserved in the confirmation document and may contain Unicode. It cannot contain path separators or control characters. The confirmation filename uses a server-derived hash token, so the browser identity string never becomes a path component.
-
-The browser cannot set source hashes, confirmation IDs, output paths, artifact hashes, or a manual candidate ID. The server derives those values and routes persistence through the existing create-only candidate repository and append-only confirmation repository.
-
-Browser pointer handling performs viewport-to-page coordinate transformation only. It does not derive scale, real-world length, area, ratio, threshold results, rule status, or confidence. Calibration remains a separate Math Engine milestone.
-
-A successful browser action does not itself authorize engine execution. The candidate, confirmation, immutable source, and their recorded hashes must be revalidated while building and binding `ConfirmedInput`. Any unconfirmed or conflicting candidate remains unavailable to Math and Rule Engine input binding.
-
-The manual annotation workspace is tracked in Draft PR #54. It is not complete until repository-wide automated verification and actual browser QA at 100%, 200%, and fit-to-page zoom are recorded against an exact commit.
-
-## 5. Finalize and explicitly publish
+Start the finalized review with an expected reviewer when known:
 
 ```powershell
-evidence-review review-run finalize `
-  --workspace F:\evidence-review-workspace `
-  --run-id RUN-XXXXXXXXXXXXXXXXXXXX `
-  --track-a-output F:\review-case\track-a-output.json `
-  --track-b-output F:\review-case\track-b-output.json `
-  --publish
+evidence-review review-run serve `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --reviewer-id <REVIEWER-ID>
 ```
 
-Use `--open` when the default browser should open the generated review HTML. In that mode stdout is a compact status document containing only `status`, `run_id`, and `url`; it does not contain evidence or model output.
-
-Finalization verifies artifact hashes, Track A integrity, the independent Track B audit, confidence factors, and abstention gates. It then writes the run-specific `final-review-packet.json` and `review.html`. `--publish` copies the exact packet to `runs/final-review-packet.json` for the release builder; it does not approve the result or set `human_decision`.
-
-### 5.1 Use the protected browser route or archival HTML deliberately
-
-With `--open`, finalization opens a local, tokenized route in the form:
+Protected URLs use a run-scoped token on loopback:
 
 ```text
 http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
 ```
 
-The token is run-scoped and URL-safe. The companion packet and packet-hash endpoints use the same protected prefix:
+The companion endpoints use the same protected prefix:
 
 ```text
 /runs/<RUN-ID>/<TOKEN>/packet
 /runs/<RUN-ID>/<TOKEN>/packet/hash
+/runs/<RUN-ID>/<TOKEN>/decision
+/runs/<RUN-ID>/<TOKEN>/decision/status
 ```
 
-The local server accepts a reviewer decision only at `POST /runs/<RUN-ID>/<TOKEN>/decision`. Its JSON object has exactly these string fields: `reviewer_id`, `reviewed_at`, `packet_hash`, `decision`, and `notes`. The server validates the packet hash, allowed decision value, reviewer ID, and timezone-aware ISO-8601 timestamp, then creates a separate append-only record under `human-decisions/`. It never changes the packet or `review.html`.
+The final review route is unavailable until both final packet and HTML exist.
 
-The generated `review.html` is also an archival offline artifact. When opened through `file:`, there is no local decision endpoint; submission cannot record a decision. The reviewer can use the separate **Download decision envelope** control, then validate and record that envelope through the protected local workflow or the approved append-only process. It does not authorize an approval by itself.
+The browser decision request v2 has exactly four string fields:
 
-The workspace embeds its verified page assets and no external resources. Its bounded local readiness test generates 20 page assets shared by 100 citations and allows at most 5 seconds for HTML rendering on a Windows CI worker. This is a local rendering budget, not an evidence-validation shortcut: all cited pages, sections, and provenance remain required.
-
-The static CSS contract test covers the 1366x768, 1920x1080, and 3840x2160 desktop viewport matrix. It verifies the declared desktop grid, 1100px stacking threshold, 1440px content cap, and print hooks that govern those ranges. Static checks do not render a browser viewport or establish visual usability; browser QA remains required for actual layout and zoom behavior.
-
-`READY_FOR_HUMAN_REVIEW` means the machine packet is ready for a human to inspect. It is not approval, does not set `human_decision`, and does not replace the separate reviewer decision. `ABSTAIN` preserves its reasons for the reviewer and likewise is not a human decision.
-
-Review Packet v1 remains frozen. A v2 consumer must use the deterministic v1-to-v2 adapter and must not invent resolved evidence, drawing evidence, confirmed inputs, exceptions, or conflicts absent from v1.
-
-```bash smoke
-python -c "from ansim_review.packaging.codex_bundle import CODEX_ROUTING_SECTION; assert 'never decide' in CODEX_ROUTING_SECTION.lower()"
+```json
+{
+  "reviewer_id": "reviewer-01",
+  "packet_hash": "<sha256>",
+  "decision": "SATISFIED",
+  "notes": "review notes"
+}
 ```
 
-For an abstention case, preserve every reason code and hand the packet to a named human reviewer.
+When `--reviewer-id` is configured, the browser receives it as read-only session context and a different submitted reviewer ID is rejected. The status endpoint also supplies the current immutable packet hash. The server rechecks that hash at POST time and generates `reviewed_at` itself as an offset-aware ISO-8601 timestamp.
+
+A successful decision creates a new append-only JSON record under `human-decisions/`. It does not modify `final-review-packet.json`, `review.html`, finalizer status, or evidence. A valid decision may cause the UI to project `REVIEW_COMPLETED`.
+
+Allowed decisions:
+
+- `SATISFIED` — 내용 확인 완료
+- `NOT_SATISFIED` — 내용에 오류 있음
+- `CONDITIONAL` — 조건부 확인
+- `ADDITIONAL_REVIEW_REQUIRED` — 추가 자료 필요
+
+## 7. Archival HTML decision handoff
+
+`review.html` is also a self-contained archival artifact. When opened with `file:`, it cannot call the protected decision endpoint.
+
+The **결정 JSON 다운로드** control validates decision, notes, reviewer ID, and packet hash locally, then creates a five-field envelope containing `reviewed_at: new Date().toISOString()`.
+
+Import the envelope through the approved validator path:
+
+```powershell
+evidence-review review-run import-decision `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --envelope <human-decision-envelope.json>
+```
+
+Import hashes the current run packet again, rejects stale/tampered packet bindings, validates the envelope, and creates a new append-only decision record. HTML file saving is not decision persistence.
+
+## 8. Server lifecycle
+
+Use run-scoped management commands:
+
+```powershell
+evidence-review review-run serve-status --workspace <workspace> --run-id <RUN-ID>
+evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
+```
+
+The detached process uses a 2-second startup timeout. Stale state cleanup and process identity checks protect management operations from acting on an unrelated reused PID.
+
+Windows lifecycle behavior must be manually accepted on the target commit. Do not infer Windows PASS from POSIX process identity tests. Issue #92 remains the lifecycle acceptance authority while it is open/on hold.
+
+## 9. Drawing evidence boundary
+
+Drawing candidates remain separate from reusable reference evidence. A drawing requiring confirmation cannot become Math/Rule input until its immutable source and reviewer confirmation are hash-verified. The final review route must not appear while required drawing confirmation is incomplete.
+
+Browser annotation may transform pointer coordinates into declared page coordinates, but it is not a calculation engine: it cannot infer scale, real-world length, area, ratio, threshold result, rule status, or confidence.
+
+## 10. Acceptance verification
+
+Run from a clean checkout at the exact HEAD:
+
+```bash
+evidence-review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
+pytest -v
+ruff check src tests
+mypy src
+python -m compileall -q src scripts web_runtime tests
+```
+
+Focused suites:
+
+```bash
+pytest -v tests/integration/review_question
+pytest -v tests/integration/review_packet
+pytest -v tests/integration/review_run
+pytest -v tests/unit/review_packet
+```
+
+Issue #87 additionally requires Windows Python 3.11/3.13 E2E, three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 3840×2160, zoom 100% / 200% / fit-to-page, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
+
+Record unexecuted gates as `NOT_RUN`. GitHub Actions must be reported separately as its actual observed state; it is not replaced by local validation.

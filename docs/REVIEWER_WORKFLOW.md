@@ -1,156 +1,173 @@
 # Reviewer Workflow
 
-The machine packet is evidence for review, not a decision. Confirm the source quote, page, bbox or geometry, calculation trace, rule version, confidence factors, exceptions, conflicts, and abstention reasons. Record the human decision only in a separate append-only file.
+The machine packet is evidence for review, not a decision. The reviewer confirms the visible conclusion against source evidence, page/bbox, deterministic calculation/rule results, and any additional-review items. The human decision is always stored separately as an append-only record.
 
-Shared machine/human authority boundaries and version compatibility are governed by `docs/CONTRACT_GOVERNANCE.md`.
+## 1. Confirm source identity
 
-## Confirm source identity first
+Before deciding, confirm that:
 
-Every reviewed PDF must be traceable to a source-batch entry and immutable source SHA-256. A filename or display title is not sufficient proof of identity and must never be interpreted as a document type or legal authority.
+- cited evidence belongs to the registered source and revision;
+- the source SHA-256 is the one bound to the parser/evidence revision;
+- the cited page exists;
+- the displayed bbox/geometry is inside the verified PDF page geometry;
+- the embedded/cached page image hash and source binding are valid;
+- calculation and rule results are the deterministic artifacts referenced by the packet.
 
-Confirm:
+A filename or title is not proof of document identity or authority.
 
-- the source PDF SHA-256 matches the registered source;
-- the document ID was explicitly supplied or deterministically derived from source bytes;
-- the revision ID matches the source hash;
-- the parser artifact belongs to the same registered source;
-- the cited page and geometry exist within the verified page bounds.
+## 2. Understand status domains
 
-## Distinguish the four status domains
+Do not mix machine progress with a human decision.
 
-Do not interpret similarly named values as interchangeable.
+| Domain | Meaning |
+|---|---|
+| Workflow state | processing progress such as `WAITING_TRACK_A`, `WAITING_TRACK_B`, `FINALIZING`, `READY_FOR_REVIEW`, `BLOCKED` |
+| Finalizer status | `READY_FOR_HUMAN_REVIEW` or `ABSTAIN` |
+| Rule status | one approved Rule Engine result |
+| Human decision | separate append-only reviewer record |
+| Display projection | may become `REVIEW_COMPLETED` after a valid human decision |
 
-- **Workflow state** reports processing progress, such as `PENDING_PARSER_OUTPUT`, `WAITING_TRACK_A`, `INPUT_CONFIRMATION_REQUIRED`, `BLOCKED`, or `READY_FOR_REVIEW`.
-- **Finalizer status** is only `READY_FOR_HUMAN_REVIEW` or `ABSTAIN`. `READY_FOR_HUMAN_REVIEW` means that the evidence packet is ready to inspect; it is not an approval. `ABSTAIN` requires its recorded reasons to remain visible for the reviewer.
-- **Rule status** is the result of one approved Rule-as-Code evaluation.
-- **Human decision** is a separate reviewer record and is never stored in the machine packet.
+`READY_FOR_HUMAN_REVIEW` means the packet can be inspected. It is not approval. `ABSTAIN` means the recorded reasons must remain visible and reviewed.
 
-Reason codes explain why a workflow is blocked or failed. They are not workflow states and do not constitute a human decision.
+## 3. Review the non-developer workspace
 
-## Review the finalized run
+The normal screen is intentionally ordered for a reviewer rather than a developer:
 
-Open the run-specific `review.html` created by `review-run finalize`. Confirm that each factual claim is connected to the displayed source identity, revision, page, evidence ID, source hash, and bounding box or drawing geometry. Check all calculation substitutions and registered result hashes rather than reproducing arithmetic in prose.
+1. **검토 결과** — Korean status and one concise conclusion;
+2. **판단 근거** — quote, page, bbox, and verified page image;
+3. **추가 확인** — only when missing/conflict/exception/abstention data exists;
+4. **검토자 의견** — human decision and notes.
 
-When using the localhost browser server, open the confirmation route first:
+For a single claim, no redundant claim list should appear. A rules/calculations section should appear only when records exist. Internal run/citation/evidence/revision IDs, hashes, and confidence internals should remain under collapsed audit details rather than the default surface.
 
-```text
-http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/confirmation
+Do not skip the audit details when a discrepancy needs tracing. Hidden-by-default does not mean discarded.
+
+## 4. Verify evidence and deterministic results
+
+For each claim:
+
+- compare the displayed quote to the verified source page;
+- use the displayed bbox to locate the exact source region;
+- confirm that every numeric token is grounded in evidence or a recorded CalculationResult;
+- inspect RuleResult status, citations, version, and reason data when applicable;
+- inspect missing inputs, conflicts, exceptions, and abstention reasons before deciding.
+
+Do not recalculate a governed value in prose and substitute a different answer for the recorded engine result.
+
+## 5. Protected browser route
+
+The preferred review session is opened with a named reviewer when available:
+
+```powershell
+evidence-review review-run serve `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --reviewer-id <REVIEWER-ID>
 ```
 
-The separate final review route is tokenized:
+The protected review route is tokenized and loopback-only:
 
 ```text
 http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
 ```
 
-The matching packet, packet-hash, decision, and decision-status endpoints retain that same protected prefix: `/runs/<RUN-ID>/<TOKEN>/packet`, `/runs/<RUN-ID>/<TOKEN>/packet/hash`, `/runs/<RUN-ID>/<TOKEN>/decision`, and `/runs/<RUN-ID>/<TOKEN>/decision/status`. After a valid decision record is saved, the browser may project `REVIEW_COMPLETED`, but the machine packet remains unchanged with `human_decision: null`. The final route must remain unavailable until final packet and HTML artifacts exist. Verify that the browser never presents a final review screen while the run is waiting for drawing confirmation or Track A/Track B output.
+The packet, packet-hash, decision, and decision-status endpoints share the protected prefix. The final review route must not be served before `final-review-packet.json` and `review.html` both exist.
 
-`review.html` can also be retained as an offline archival artifact and opened with `file:`. That mode cannot submit to the local decision endpoint. Use its separate **Download decision envelope** control if a handoff is needed; the envelope does not approve the packet and must be recorded through the protected workflow or the approved append-only process.
+When a reviewer ID is supplied at server start, the browser treats it as read-only session context. A POST using a different reviewer ID must be rejected.
 
-Static CSS checks cover the declared desktop and print contracts for 1366x768, 1920x1080, and 3840x2160. They do not replace browser QA: validate the rendered workspace, citation overlays, and zoom behavior in the browser used for review.
+## 6. Record the human decision
 
-Review the matching run-specific `final-review-packet.json` and confirm:
+The reviewer should normally enter only:
 
-- `human_decision` is `null`;
-- the finalizer status is either `READY_FOR_HUMAN_REVIEW` or `ABSTAIN`;
-- every RuleResult has its version, status, citations, and result hash;
-- confidence factors identify their values, weights, contributions, and sources;
-- every applicable abstention reason is preserved.
+- decision;
+- notes.
 
-For a native Review Packet v2, also confirm:
+Allowed decisions:
 
-- the packet format and version match the published Review Packet schema;
-- snapshot, rule-manifest, and formula-manifest hashes are present;
-- every claim resolves to an evidence record;
-- every displayed numeric token resolves to source evidence or a Math Engine result;
-- every confirmed drawing input identifies immutable source bytes, page, geometry, and confirmation record;
-- unconfirmed or conflicting drawing candidates are not present as engine inputs.
+| Value | Display label |
+|---|---|
+| `SATISFIED` | 내용 확인 완료 |
+| `NOT_SATISFIED` | 내용에 오류 있음 |
+| `CONDITIONAL` | 조건부 확인 |
+| `ADDITIONAL_REVIEW_REQUIRED` | 추가 자료 필요 |
 
-A packet with `compatibility_source_version: 1` is a deterministic v1 wrapper. Empty v2-only evidence and drawing collections mean the information did not exist in v1; they must not be treated as proof that the source was reviewed under the native v2 contract.
+The protected browser request contains four fields: `reviewer_id`, `packet_hash`, `decision`, and `notes`. Reviewer ID is supplied from the protected session when configured; packet hash is supplied from the current immutable packet. The server independently revalidates both and creates `reviewed_at` as an offset-aware ISO-8601 server timestamp.
 
-The root `runs/final-review-packet.json` is only the packet explicitly selected with `review-run finalize --publish`. Publication does not constitute reviewer approval and does not create a signature.
-
-## Review drawing geometry and confirmation
-
-Drawing evidence may use `POINT`, `BBOX`, `LINESTRING`, or `POLYGON` geometry. Confirm that the geometry type is appropriate for the source object:
-
-- a dimension endpoint or entrance location may use `POINT`;
-- a text region may use `BBOX`;
-- a dimension or road edge may use `LINESTRING`;
-- a site or building boundary may use `POLYGON`.
-
-Confirm that extractor candidates and reviewer-created annotations are visibly distinguishable. Reviewer-created annotations must retain their own stable annotation ID. Drawing quality values (`PASS`, `REVIEW_REQUIRED`, `REJECTED`) are not finalizer statuses or human decisions.
-
-## Record the human decision separately
-
-Only after completing the review should the named reviewer create the separate append-only decision record. Never edit the machine packet to insert a human decision.
-
-In the protected browser workspace, submit the exact JSON fields `reviewer_id`, `reviewed_at`, `packet_hash`, `decision`, and `notes` to `POST /runs/<RUN-ID>/<TOKEN>/decision`. `reviewed_at` must be an ISO-8601 timestamp with timezone; `packet_hash` must match the displayed machine packet; and `decision` must be one of `SATISFIED`, `NOT_SATISFIED`, `CONDITIONAL`, or `ADDITIONAL_REVIEW_REQUIRED`. A successful request creates a new record in the run's `human-decisions/` directory. It cannot update the machine packet, finalizer status, or rendered HTML.
-
-`REVIEW_COMPLETED` is a display projection derived from a valid separate decision record. It is not a stored machine workflow state.
-
-## Create the release process attestation
-
-Release authorization uses the strict `evidence-review/human-attestation` version 1 contract. The canonical file is:
+A successful request creates a new JSON file under:
 
 ```text
-releases/evidence-review-v1.0/human-attestation.json
+runs/<RUN-ID>/human-decisions/
 ```
 
-The named reviewer must create this file only after examining the exact release candidate. It is append-only and must not overwrite a prior record. The record must contain:
+The write is create-only. The machine packet and HTML remain unchanged, including `human_decision: null` in the machine packet. `REVIEW_COMPLETED` is only a browser/display projection derived from a valid separate decision record.
 
-- `assurance_level: PROCESS_ATTESTATION`;
-- `attestation: REVIEWED_AND_ACCEPTED_FOR_RELEASE`;
-- a non-empty reviewer ID;
-- an ISO-8601 timestamp with timezone;
-- the exact release candidate hash;
-- the exact packet hash;
-- every required manual check with `status: PASS` and a non-empty evidence locator.
+## 7. Archival HTML
 
-Validate the record before release:
+A retained `review.html` opened with `file:` has no protected local server and therefore cannot persist a decision through POST.
 
-```powershell
-evidence-review release validate-attestation `
-  --attestation releases/evidence-review-v1.0/human-attestation.json `
-  --candidate-hash <release-candidate-sha256> `
-  --packet-hash <final-review-packet-sha256>
-```
-
-A successful validation reports:
+Use **결정 JSON 다운로드** only after decision and notes are complete. If reviewer ID is not already known, the archival page asks for it once. The downloaded envelope contains exactly:
 
 ```json
 {
-  "format": "evidence-review/human-attestation-status",
-  "status": "VALID",
-  "assurance_level": "PROCESS_ATTESTATION",
-  "cryptographic_identity_verified": false
+  "reviewer_id": "reviewer-01",
+  "reviewed_at": "2026-08-13T03:00:00.000Z",
+  "packet_hash": "<sha256>",
+  "decision": "SATISFIED",
+  "notes": "review notes"
 }
 ```
 
-This record is a controlled internal process attestation. Possession of the JSON file is **not cryptographic proof of reviewer identity**. The system does not verify a private key, certificate, account session, or handwritten identity. The release manifest therefore always records `cryptographic_identity_verified: false`.
+The timestamp is generated immediately before download using an ISO-8601 offset-bearing browser time. A malformed or incomplete envelope must not be downloaded.
 
-A legacy `ansim/human-acceptance` record may be inspected for migration history, but it **cannot authorize a new release**. Copying a legacy `signature` string into the new record is prohibited. Missing, malformed, hash-mismatched, stale, or legacy-only records keep the release `BLOCKED`.
+Import through the approved path:
 
-### Threat model and operational assumptions
-
-The process attestation is designed to reject stale or mismatched release artifacts, incomplete checklist records, accidental reuse of an older packet, configured reviewer ID mismatch, and legacy acceptance files presented as current authorization.
-
-It does not protect against a malicious reviewer, a stolen or copied JSON file, a compromised filesystem, an operator who supplies a false reviewer ID when no expected reviewer policy is configured, or artifact changes made after validation outside the controlled release process.
-
-Operational use therefore assumes:
-
-- reviewer identity is checked through an external access control or organizational process;
-- only authorized reviewers can create files in the attestation directory;
-- checklist evidence is retained and independently reviewable;
-- the release build and attestation validation run on a trusted host;
-- outputs are not modified after validation and before distribution.
-
-These assumptions explain why the assurance level is `PROCESS_ATTESTATION` and why `cryptographic_identity_verified` remains `false`.
-
-## Ready case smoke check
-
-```bash smoke
-python -c "from ansim_review.review_packet.decision_record import _ALLOWED; assert 'ADDITIONAL_REVIEW_REQUIRED' in _ALLOWED"
+```powershell
+evidence-review review-run import-decision `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --envelope <human-decision-envelope.json>
 ```
 
-A ready packet keeps `human_decision` null until the named reviewer records a separate decision.
+Import recomputes the current packet SHA-256, rejects mismatch, validates the envelope, and creates a new append-only record. Saving or copying the HTML file is not decision persistence.
+
+## 8. Browser and accessibility acceptance
+
+Static CSS/unit tests do not replace reviewer browser QA. On the exact acceptance commit verify:
+
+- 1366×768, 1920×1080, 3840×2160;
+- zoom 100%, 200%, and fit-to-page where applicable;
+- no required horizontal scroll at 200% for the stacked layout;
+- keyboard navigation and visible focus;
+- evidence link focuses the correct page/overlay;
+- print output contains result, evidence, additional review when present, and decision area without developer audit clutter;
+- decision panel remains usable without obscuring evidence.
+
+## 9. Server lifecycle
+
+Run-scoped lifecycle commands are:
+
+```powershell
+evidence-review review-run serve-status --workspace <workspace> --run-id <RUN-ID>
+evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
+```
+
+Acceptance must include normal start, open failure, stale state cleanup, idle server, stop, and protection against unrelated PID signaling. Windows behavior must be tested separately from POSIX behavior.
+
+## 10. Performance evidence
+
+The reviewer acceptance record should include `run-metrics.json` and event files for three simple-question runs. Confirm:
+
+- metrics exist for every run;
+- Track external wait is separate from deterministic time;
+- deterministic total is within the applicable 5-second hard budget;
+- protected server + browser dispatch is within the 2-second hard budget;
+- retries are explained by failed attempts rather than normal resume;
+- p50/p95 are calculated from actual Windows runs, not inferred from unit tests.
+
+## 11. Release attestation remains separate
+
+A review decision for one packet is not a release process attestation. Release authorization uses the `evidence-review/human-attestation` contract and the release validation described in `docs/OFFLINE_EXECUTION.md` and release documentation. `PROCESS_ATTESTATION` is not cryptographic identity proof; `cryptographic_identity_verified` remains false unless a future separate cryptographic mechanism is implemented.
+
+## 12. Acceptance record
+
+Issue #87 acceptance evidence belongs under `docs/acceptance/issue-87/README.md`. Record exact commit, Windows version, Python version, command, exit code, browser/view matrix, timing values, and SHA-256 hashes. Any unexecuted check is `NOT_RUN`; it is not PASS.
