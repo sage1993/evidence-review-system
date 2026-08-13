@@ -6,9 +6,16 @@ SOURCE_ROOT = Path("src/ansim_review")
 LEGACY_FILE = SOURCE_ROOT / "contracts" / "legacy_formats.py"
 LEGACY_READERS = {
     SOURCE_ROOT / "parsing" / "legacy_visual_manifest.py",
+    SOURCE_ROOT / "parsing" / "page_image_cache.py",
     SOURCE_ROOT / "release" / "legacy_acceptance.py",
     SOURCE_ROOT / "review_run.py",
     SOURCE_ROOT / "review_packet" / "html_renderer.py",
+}
+LEGACY_CONSTANTS_BY_READER = {
+    SOURCE_ROOT / "parsing" / "legacy_visual_manifest.py": "LEGACY_VISUAL_STATUS",
+    SOURCE_ROOT / "parsing" / "page_image_cache.py": "LEGACY_PAGE_IMAGE_FORMAT",
+    SOURCE_ROOT / "release" / "legacy_acceptance.py": "LEGACY_HUMAN_ACCEPTANCE_FORMAT",
+    SOURCE_ROOT / "review_packet" / "html_renderer.py": "LEGACY_PAGE_IMAGE_FORMAT",
 }
 TOKENS = (
     '"ansim/',
@@ -53,6 +60,7 @@ def test_legacy_boundaries_are_explicitly_read_only() -> None:
         assert required in text
     for reader in sorted(LEGACY_READERS):
         reader_text = reader.read_text(encoding="utf-8")
+        expected_constant = LEGACY_CONSTANTS_BY_READER.get(reader)
         assert any(token in reader_text for token in TOKENS) or (
-            "LEGACY_VISUAL_STATUS" in reader_text
+            expected_constant is not None and expected_constant in reader_text
         )
