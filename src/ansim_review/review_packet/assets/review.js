@@ -3,6 +3,18 @@
 
   const modelNode = document.getElementById("review-model");
   const reviewModel = modelNode ? JSON.parse(modelNode.textContent || "{}") : {};
+  const STATUS_LABELS = {
+    ABSTAIN: "추가 자료 필요",
+    READY_FOR_HUMAN_REVIEW: "검토 준비 완료",
+    REVIEW_COMPLETED: "검토 완료",
+    INDETERMINATE: "판단 보류",
+    COMPLETE: "근거 연결 완료",
+    MISSING_REQUIRED_INPUT: "필요한 자료가 부족합니다"
+  };
+
+  function statusLabel(status) {
+    return STATUS_LABELS[status] || String(status || "상태 확인 필요").replaceAll("_", " ");
+  }
 
   function formStatus(message) {
     const status = document.querySelector(".form-status");
@@ -24,7 +36,7 @@
     if (!["READY_FOR_HUMAN_REVIEW", "REVIEW_COMPLETED"].includes(status)) return;
     reviewModel.display_status = status;
     document.querySelectorAll("[data-display-status]").forEach((node) => {
-      node.textContent = status;
+      node.textContent = statusLabel(status);
     });
   }
 
@@ -162,7 +174,11 @@
         payload = await response.json();
         applyDisplayStatus(payload.display_status);
       }
-      formStatus(response.ok ? "결정이 별도 기록으로 저장되었습니다." : "결정 엔드포인트가 제출을 거부했습니다.");
+      formStatus(
+        response.ok
+          ? "결정이 별도 기록으로 저장되었습니다."
+          : "결정 엔드포인트가 제출을 거부했습니다."
+      );
     } catch (_) {
       formStatus("보관 HTML에서는 로컬 결정 엔드포인트를 사용할 수 없습니다.");
     }

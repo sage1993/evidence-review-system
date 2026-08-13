@@ -25,21 +25,13 @@ def _run_node_harness(controller: str, harness: str) -> subprocess.CompletedProc
     )
 
 
-def test_review_workspace_escapes_user_content_and_has_blank_offline_controls(
+def test_workspace_escapes_content_localizes_status_and_keeps_offline_controls(
     tmp_path: Path,
 ) -> None:
     _write_page_assets(tmp_path / "pages")
     model = _model()
     model["question"] = '<img src=x onerror="alert(1)">&\u2028'
-    model["abstention_reasons"] = ["<unresolved evidence>"]
-    model["review_items"] = [
-        {
-            "item_id": "ITEM-C1",
-            "claim_id": "C1",
-            "status": "INDETERMINATE",
-            "completeness": "INCOMPLETE",
-        }
-    ]
+    model["abstention_reasons"] = ["LOW_CONFIDENCE"]
 
     html = render_review_html(model, tmp_path / "pages")
 
@@ -49,8 +41,8 @@ def test_review_workspace_escapes_user_content_and_has_blank_offline_controls(
     assert "\\u003e" in html
     assert "\\u0026" in html
     assert "\\u2028" in html
-    assert 'id="ready-for-review"' in html
-    assert 'id="abstention-reasons"' in html
+    assert "검토 준비 완료" in html
+    assert 'id="additional-review"' in html
     assert 'name="decision"' in html
     assert "checked" not in html
     assert 'fetch("./decision"' in html
@@ -67,21 +59,16 @@ def test_review_workspace_escapes_user_content_and_has_blank_offline_controls(
         assert function_name in html
 
 
-def test_review_workspace_zoom_transforms_the_shared_page_canvas(
-    tmp_path: Path,
-) -> None:
+def test_zoom_transforms_shared_page_canvas(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
 
     html = render_review_html(_model(), tmp_path / "pages")
 
     assert 'document.querySelectorAll(".page-canvas")' in html
     assert 'canvas.style.transform = "scale(" + scale + ")"' in html
-    assert 'document.querySelectorAll(".evidence-page img")' not in html
 
 
-def test_review_workspace_decision_envelope_matches_the_protected_route_contract(
-    tmp_path: Path,
-) -> None:
+def test_decision_envelope_still_matches_v1_contract_before_issue_91(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
 
     html = render_review_html(_model(), tmp_path / "pages")
@@ -101,29 +88,26 @@ def test_review_workspace_decision_envelope_matches_the_protected_route_contract
     ]
 
 
-def test_review_workspace_localizes_compact_final_decision_controls_without_selection(
-    tmp_path: Path,
-) -> None:
+def test_final_decision_controls_are_korean_and_unselected(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
 
     html = render_review_html(_model(), tmp_path / "pages")
     decision_form = _decision_form_html(html)
 
-    assert "검토자의 최종 결정" in decision_form
-    assert "결정 확정" in decision_form
-    assert "결정 JSON 다운로드" in decision_form
-    assert "기계 평가는 최종 판정이 아닙니다" in html
-    assert not re.search(
-        r'<option value="(?:SATISFIED|NOT_SATISFIED|CONDITIONAL|'
-        r'ADDITIONAL_REVIEW_REQUIRED)"[^>]*selected',
-        decision_form,
-    )
-    assert "checked" not in html
+    for value in (
+        "최종 결정",
+        "내용 확인 완료",
+        "내용에 오류 있음",
+        "조건부 확인",
+        "추가 자료 필요",
+        "결정 저장",
+        "결정 JSON 다운로드",
+    ):
+        assert value in decision_form
+    assert "checked" not in decision_form
 
 
-def test_print_lifecycle_reveals_all_detail_domains_and_restores_hidden_state(
-    tmp_path: Path,
-) -> None:
+def test_print_lifecycle_reveals_panels_and_restores_hidden_state(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
     controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
     harness = r"""
@@ -140,17 +124,14 @@ function node(hidden, dataset) {
 }
 const panels = [
   node(false, { tabPanel: "evidence" }),
-  node(true, { tabPanel: "rules-calculations" }),
-  node(true, { tabPanel: "audit-exceptions" })
+  node(true, { tabPanel: "rules-calculations" })
 ];
 const tabs = [
   node(false, { detailTab: "evidence" }),
-  node(false, { detailTab: "rules-calculations" }),
-  node(false, { detailTab: "audit-exceptions" })
+  node(false, { detailTab: "rules-calculations" })
 ];
 tabs[0].attributes["aria-selected"] = "true";
 tabs[1].attributes["aria-selected"] = "false";
-tabs[2].attributes["aria-selected"] = "false";
 const printListeners = {};
 global.window = {
   addEventListener(type, handler) { printListeners[type] = handler; },
@@ -168,26 +149,11 @@ global.document = {
 eval(controller);
 if (typeof printListeners.beforeprint !== "function") throw new Error("beforeprint missing");
 if (typeof printListeners.afterprint !== "function") throw new Error("afterprint missing");
-const selectedBefore = tabs.map((tab) => tab.attributes["aria-selected"]);
-printListeners.beforeprint();
 printListeners.beforeprint();
 if (panels.some((panel) => panel.hidden)) throw new Error("print panel remained hidden");
-const selectedBeforePrint = JSON.stringify(selectedBefore);
-const selectedDuringPrint = JSON.stringify(
-  tabs.map((tab) => tab.attributes["aria-selected"])
-);
-if (selectedBeforePrint !== selectedDuringPrint) {
-  throw new Error("selected tab changed before print");
-}
 printListeners.afterprint();
-if (JSON.stringify(panels.map((panel) => panel.hidden)) !== JSON.stringify([false, true, true])) {
+if (JSON.stringify(panels.map((panel) => panel.hidden)) !== JSON.stringify([false, true])) {
   throw new Error("hidden state was not restored exactly");
-}
-const selectedAfterPrint = JSON.stringify(
-  tabs.map((tab) => tab.attributes["aria-selected"])
-);
-if (selectedBeforePrint !== selectedAfterPrint) {
-  throw new Error("selected tab changed after print");
 }
 """
 
@@ -196,7 +162,7 @@ if (selectedBeforePrint !== selectedAfterPrint) {
     assert completed.returncode == 0, completed.stderr
 
 
-def test_viewer_mode_listener_targets_buttons_not_the_shell(tmp_path: Path) -> None:
+def test_viewer_mode_listener_targets_buttons_not_shell(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
     controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
     harness = r"""

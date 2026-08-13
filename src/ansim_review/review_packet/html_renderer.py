@@ -1,5 +1,4 @@
 """Self-contained, print-safe Review Workspace rendering."""
-
 from __future__ import annotations
 
 import base64
@@ -10,6 +9,20 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import cast
+
+from ansim_review.review_packet.presentation import localized_status
+from ansim_review.review_packet.render_audit import (
+    render_audit_details,
+    render_citation_audit,
+    render_item_audit,
+)
+from ansim_review.review_packet.render_decision import render_decision_form
+from ansim_review.review_packet.render_summary import (
+    render_additional_review,
+    render_review_item_navigation,
+    render_status_band,
+    render_summary,
+)
 
 _GEOMETRY_TOLERANCE = 0.5
 
@@ -99,8 +112,9 @@ def _verified_page_image(
     image_path = directory / f"{stem}.png"
     metadata_path = directory / f"{stem}.json"
     if not image_path.is_file() or not metadata_path.is_file():
-        raise FileNotFoundError(f"verified page image missing: {revision_id} page {page_number}")
-
+        raise FileNotFoundError(
+            f"verified page image missing: {revision_id} page {page_number}"
+        )
     metadata = _mapping(
         json.loads(metadata_path.read_text(encoding="utf-8")),
         "page image metadata",
@@ -126,14 +140,12 @@ def _verified_page_image(
         raise ValueError("page image page number mismatch")
     if metadata.get("source_hash") != source_hash:
         raise ValueError("page image source hash mismatch")
-
     image_hash = metadata.get("image_sha256")
     if not isinstance(image_hash, str) or len(image_hash) != 64:
         raise ValueError("page image hash is invalid")
     image_bytes = image_path.read_bytes()
     if hashlib.sha256(image_bytes).hexdigest() != image_hash:
         raise ValueError("page image hash mismatch")
-
     pdf_width = _positive_number(metadata.get("pdf_width"), "pdf_width")
     pdf_height = _positive_number(metadata.get("pdf_height"), "pdf_height")
     rotation = metadata.get("rotation", 0)
@@ -240,7 +252,7 @@ def _citation_render(
     page_asset: _PageAsset,
 ) -> _CitationRender:
     citation = _mapping(value, "citation")
-    revision_id, page_number, source_hash = _citation_identity(citation)
+    _revision_id, page_number, _source_hash = _citation_identity(citation)
     left, bottom, right, top = _bbox(citation.get("bbox", []))
     if left < 0 or bottom < 0 or right > page_asset.pdf_width or top > page_asset.pdf_height:
         raise ValueError("citation bbox is outside the verified page bounds")
@@ -260,7 +272,7 @@ def _citation_render(
         viewport_width, viewport_height = page_asset.pdf_height, page_asset.pdf_width
         rect_x, rect_y = page_asset.pdf_height - top, page_asset.pdf_width - right
         rect_width, rect_height = top - bottom, right - left
-    bbox_text = ",".join(str(item) for item in (left, bottom, right, top))
+    bbox_text = ", ".join(str(item) for item in (left, bottom, right, top))
     citation_id = str(citation.get("citation_id", ""))
     evidence_id = str(citation.get("evidence_id", ""))
     metadata_html = "".join(
@@ -268,25 +280,20 @@ def _citation_render(
             '<article class="citation" ',
             f'data-asset-key="{_text(asset_key)}" ',
             f'data-citation-id="{_text(citation_id)}" ',
-            f'data-evidence-id="{_text(evidence_id)}" ',
-            f'data-bbox="{_text(bbox_text)}">',
+            f'data-evidence-id="{_text(evidence_id)}">',
             f"<h4>{_text(citation.get('title'))}</h4>",
-            '<p class="citation-location"><strong>',
-            f"{_text(citation.get('document_id'))} · page {page_number}</strong></p>",
-            f"<p>개정 {_text(revision_id)}</p>",
+            '<p class="citation-location">페이지 ',
+            str(page_number),
+            "</p>",
             f"<blockquote>{_text(citation.get('quote'))}</blockquote>",
-            '<dl class="provenance">',
-            f"<dt>인용 ID</dt><dd><code>{_text(citation_id)}</code></dd>",
-            f"<dt>근거 ID</dt><dd><code>{_text(evidence_id)}</code></dd>",
-            f"<dt>요소</dt><dd>{_text(citation.get('evidence_type'))}</dd>",
-            f"<dt>좌표</dt><dd><code>{_text(bbox_text)}</code></dd>",
-            f"<dt>형상</dt><dd><code>{_display_value(citation.get('geometry', bbox_text))}"
-            "</code></dd>",
-            f"<dt>원본 SHA-256</dt><dd><code>{_text(source_hash)}</code></dd>",
-            "</dl>",
+            '<p class="bbox-location"><strong>인용 좌표</strong> ',
+            f'<code data-bbox="{_text(bbox_text.replace(" ", ""))}">',
+            _text(bbox_text),
+            "</code></p>",
             '<button class="evidence-link" type="button" ',
             f'data-asset-key="{_text(asset_key)}" ',
-            f'data-evidence-id="{_text(evidence_id)}">인용 위치 보기</button>',
+            f'data-evidence-id="{_text(evidence_id)}">원문 위치 보기</button>',
+            render_citation_audit(citation),
             "</article>",
         )
     )
@@ -297,7 +304,7 @@ def _citation_render(
             f'data-asset-key="{_text(asset_key)}" ',
             f'data-citation-id="{_text(citation_id)}" ',
             f'data-evidence-id="{_text(evidence_id)}" ',
-            'preserveAspectRatio="none" aria-label="citation bbox overlay">',
+            'preserveAspectRatio="none" aria-label="인용 위치">',
             f'<rect x="{rect_x}" y="{rect_y}" width="{rect_width}" ',
             f'height="{rect_height}"></rect>',
             "</svg>",
@@ -311,15 +318,6 @@ def _citation_render(
     )
 
 
-def _table_rows(items: Sequence[object], columns: tuple[str, ...]) -> str:
-    rows: list[str] = []
-    for item in items:
-        row = _mapping(item, "table row")
-        cells = "".join(f"<td>{_display_value(row.get(column))}</td>" for column in columns)
-        rows.append("<tr>" + cells + "</tr>")
-    return "".join(rows) or f'<tr><td colspan="{len(columns)}">연결된 기록 없음</td></tr>'
-
-
 def _string_set(value: object, field: str) -> set[str]:
     values: set[str] = set()
     for index, item in enumerate(_sequence(value, field)):
@@ -327,23 +325,6 @@ def _string_set(value: object, field: str) -> set[str]:
             raise ValueError(f"{field}[{index}] must be a string")
         values.add(item)
     return values
-
-
-def _record_cards(items: Sequence[object], empty_message: str) -> str:
-    cards: list[str] = []
-    for item in items:
-        record = _mapping(item, "record")
-        facts = "".join(
-            f"<dt>{_text(name)}</dt><dd>{_display_value(value)}</dd>"
-            for name, value in record.items()
-        )
-        cards.append(f'<dl class="record-card">{facts}</dl>')
-    return "".join(cards) or f'<p class="empty-state">{_text(empty_message)}</p>'
-
-
-def _value_list(values: Sequence[object], empty_message: str) -> str:
-    entries = "".join(f"<li><code>{_text(value)}</code></li>" for value in values)
-    return f"<ul>{entries}</ul>" if entries else f'<p class="empty-state">{empty_message}</p>'
 
 
 def _review_items(
@@ -356,94 +337,11 @@ def _review_items(
         {
             "item_id": f"ITEM-{claim.get('claim_id', '')}",
             "claim_id": claim.get("claim_id"),
-            "status": "NOT_EVALUATED",
+            "status": "INDETERMINATE",
             "completeness": "UNKNOWN",
         }
         for claim in (_mapping(value, "claim") for value in claims)
     ]
-
-
-def _render_status_band(model: Mapping[str, object]) -> str:
-    display_status = model.get("display_status", model.get("status"))
-    return "".join(
-        (
-            '<header id="review-status" class="status-band">',
-            '<div class="status-copy"><div class="status-line">',
-            f'<span class="status-pill" data-display-status>{_text(display_status)}</span>',
-            f'<code>{_text(model.get("run_id"))}</code></div>',
-            '<h1>근거 검토 화면</h1>',
-            f'<p class="question-context">{_text(model.get("question"))}</p></div>',
-            '<div class="header-actions"><button type="button" data-print>HTML 인쇄</button></div>',
-            '<p class="warning">기계 평가는 최종 판정이 아닙니다.</p>',
-            "</header>",
-        )
-    )
-
-
-def _render_summary(model: Mapping[str, object]) -> str:
-    display_status = model.get("display_status", model.get("status"))
-    summary = _mapping(model.get("summary", {}), "summary")
-    audit = _mapping(model.get("audit", {}), "audit")
-    return "".join(
-        (
-            '<section id="review-summary" aria-labelledby="summary-heading">',
-            '<div class="section-heading"><h2 id="summary-heading">검토 요약</h2>',
-            '<p>서버가 검증한 패킷 지표</p></div>',
-            '<dl class="metrics">',
-            '<div class="metric"><dt>인용 근거</dt>',
-            f'<dd>{_display_value(summary.get("citation_count"))}</dd>',
-            f'<small>인용되지 않은 주장 {_display_value(audit.get("uncited_count"))}</small></div>',
-            '<div class="metric"><dt>승인 규칙</dt>',
-            f'<dd>{_display_value(summary.get("approved_rule_count"))}</dd>',
-            f'<small>누락 입력 {_display_value(summary.get("missing_input_count"))}</small></div>',
-            '<div class="metric"><dt>계산 결과</dt>',
-            f'<dd>{_display_value(summary.get("calculation_count"))}</dd>',
-            f'<small>충돌 {_display_value(summary.get("conflict_count"))}</small></div>',
-            '<div class="metric" id="ready-for-review"><dt>현재 상태</dt>',
-            f'<dd class="status-metric" data-display-status>{_text(display_status)}</dd>',
-            f'<small>신뢰도 {_display_value(summary.get("confidence_score"))} · '
-            f'{_display_value(summary.get("confidence_level"))}</small></div>',
-            "</dl>",
-            "</section>",
-        )
-    )
-
-
-def _render_review_items(items: Sequence[Mapping[str, object]]) -> str:
-    buttons: list[str] = []
-    for index, item in enumerate(items):
-        item_id = _text(item.get("item_id"))
-        buttons.append(
-            "".join(
-                (
-                    '<button class="review-item',
-                    " is-selected" if index == 0 else "",
-                    '" type="button" ',
-                    f'data-item-id="{item_id}" aria-pressed="',
-                    "true" if index == 0 else "false",
-                    '"><span class="item-id">',
-                    item_id,
-                    "</span><span>",
-                    _text(item.get("claim_id")),
-                    "</span><span>",
-                    _text(item.get("status")),
-                    " · ",
-                    _text(item.get("completeness")),
-                    "</span></button>",
-                )
-            )
-        )
-    return "".join(
-        (
-            '<nav id="review-items" aria-label="검토 항목">',
-            '<div class="panel-heading"><h2>검토 항목</h2>',
-            f'<span>{len(items)}개 항목</span></div>',
-            '<div class="review-item-list">',
-            "".join(buttons) or '<p class="empty-state">검토 항목 없음</p>',
-            "</div>",
-            "</nav>",
-        )
-    )
 
 
 def _render_evidence_viewer(
@@ -451,7 +349,7 @@ def _render_evidence_viewer(
     overlays: Mapping[str, Sequence[str]],
 ) -> str:
     pages: list[str] = []
-    for index, ((revision_id, page_number, source_hash), (asset_key, asset)) in enumerate(
+    for index, ((_revision_id, page_number, _source_hash), (asset_key, asset)) in enumerate(
         assets.items()
     ):
         pages.append(
@@ -464,30 +362,30 @@ def _render_evidence_viewer(
                     f'<img alt="검증된 원본 페이지 {page_number}" src="{asset.data_uri}">',
                     '<div class="overlay-layer">',
                     "".join(overlays.get(asset_key, [])),
-                    "</div>",
-                    "</div></div>",
-                    '<figcaption><span><small>개정</small><strong>',
-                    _text(revision_id),
-                    '</strong></span><span><small>페이지</small><strong>',
+                    "</div></div></div>",
+                    '<figcaption>검증된 원본 · 페이지 ',
                     str(page_number),
-                    '</strong></span><span><small>source SHA-256</small><code>',
-                    _text(source_hash),
-                    "</code></span></figcaption></figure>",
+                    "</figcaption></figure>",
                 )
             )
         )
     return "".join(
         (
             '<section id="evidence-viewer" aria-labelledby="evidence-heading">',
-            '<div class="viewer-heading"><div><h2 id="evidence-heading">근거 뷰어</h2>',
-            '<p>검증된 페이지 원본과 인용 좌표</p></div>',
-            '<div class="viewer-controls" aria-label="근거 표시 모드">',
-            '<button type="button" data-viewer-mode="original" aria-pressed="false">원본</button>',
-            '<button type="button" data-viewer-mode="evidence" aria-pressed="false">검출</button>',
-            '<button type="button" data-viewer-mode="compare" aria-pressed="true">비교</button>',
+            '<div class="viewer-heading"><div>',
+            '<span class="section-kicker">2. 판단 근거</span>',
+            '<h2 id="evidence-heading">원문 근거</h2>',
+            '<p>인용문과 PDF 원본 위치를 함께 확인합니다.</p></div>',
+            '<div class="viewer-controls" aria-label="근거 표시 방식">',
+            '<button type="button" data-viewer-mode="original" '
+            'aria-pressed="false">원본</button>',
+            '<button type="button" data-viewer-mode="evidence" '
+            'aria-pressed="false">표시</button>',
+            '<button type="button" data-viewer-mode="compare" '
+            'aria-pressed="true">비교</button>',
             '<label>확대 <input id="evidence-zoom" type="range" min="1" max="2" '
             'step="0.1" value="1"></label></div></div>',
-            "".join(pages) or '<p class="empty-state">검증된 인용 페이지 없음</p>',
+            "".join(pages) or '<p class="empty-state">연결된 원문 페이지가 없습니다.</p>',
             "</section>",
         )
     )
@@ -500,6 +398,55 @@ def _claim_for_item(
     return next((claim for claim in claims if claim.get("claim_id") == claim_id), None)
 
 
+def _related_records(
+    item: Mapping[str, object],
+    records: Sequence[object],
+    *,
+    id_field: str,
+    item_field: str,
+    single_item: bool,
+) -> list[Mapping[str, object]]:
+    ids = _string_set(item.get(item_field, []), f"review_item.{item_field}")
+    if not ids and single_item:
+        return [_mapping(record, id_field) for record in records]
+    return [
+        record
+        for value in records
+        for record in [_mapping(value, id_field)]
+        if str(record.get(id_field, "")) in ids
+    ]
+
+
+def _render_rule_calculation_panel(
+    rules: Sequence[Mapping[str, object]],
+    calculations: Sequence[Mapping[str, object]],
+) -> str:
+    blocks: list[str] = []
+    if rules:
+        rows = "".join(
+            "<li><strong>규칙 판정</strong><span>"
+            + _text(localized_status(rule.get("status")))
+            + "</span></li>"
+            for rule in rules
+        )
+        blocks.append(f'<div class="deterministic-block"><h4>규칙 검토</h4><ul>{rows}</ul></div>')
+    if calculations:
+        rows = "".join(
+            "".join(
+                (
+                    '<li><strong>계산 결과</strong><span>',
+                    _text(calculation.get("display_result")),
+                    "</span><small>",
+                    _text(calculation.get("substitution")),
+                    "</small></li>",
+                )
+            )
+            for calculation in calculations
+        )
+        blocks.append(f'<div class="deterministic-block"><h4>계산</h4><ul>{rows}</ul></div>')
+    return "".join(blocks)
+
+
 def _render_detail_tabs(
     *,
     items: Sequence[Mapping[str, object]],
@@ -507,272 +454,98 @@ def _render_detail_tabs(
     citations: Mapping[str, Sequence[_CitationRender]],
     calculations: Sequence[object],
     rules: Sequence[object],
-    audit: Mapping[str, object],
-    exceptions: Sequence[object],
-    conflicts: Sequence[object],
 ) -> str:
     panels: list[str] = []
-    audit_records = _sequence(audit.get("records", []), "audit.records")
-    global_exceptions = {str(value): value for value in exceptions}
-    global_conflicts = {str(value): value for value in conflicts}
+    show_deterministic = bool(calculations or rules)
     for index, item in enumerate(items):
         claim = _claim_for_item(item, claims)
-        calculation_ids = _string_set(
-            item.get("calculation_ids", []), "review_item.calculation_ids"
+        single_item = len(items) == 1
+        item_calculations = _related_records(
+            item,
+            calculations,
+            id_field="calculation_result_id",
+            item_field="calculation_ids",
+            single_item=single_item,
         )
-        item_calculations = [
-            calculation
-            for calculation in calculations
-            if str(_mapping(calculation, "calculation").get("calculation_result_id", ""))
-            in calculation_ids
-        ]
-        rule_ids = _string_set(item.get("rule_ids", []), "review_item.rule_ids")
-        item_rules = [
-            rule
-            for rule in rules
-            if str(_mapping(rule, "rule").get("rule_id", "")) in rule_ids
-        ]
-        item_id = str(item.get("item_id", ""))
-        audit_ids = _string_set(item.get("audit_ids", []), "review_item.audit_ids")
-        item_audit_records = [
-            record
-            for record in audit_records
-            if (
-                str(_mapping(record, "audit record").get("item_id", "")) == item_id
-                or str(_mapping(record, "audit record").get("audit_id", "")) in audit_ids
-            )
-        ]
-        exception_codes = _string_set(
-            item.get("exception_codes", []), "review_item.exception_codes"
+        item_rules = _related_records(
+            item,
+            rules,
+            id_field="rule_id",
+            item_field="rule_ids",
+            single_item=single_item,
         )
-        conflict_codes = _string_set(
-            item.get("conflict_codes", []), "review_item.conflict_codes"
-        )
-        item_exceptions = [
-            global_exceptions[code]
-            for code in sorted(exception_codes)
-            if code in global_exceptions
-        ]
-        item_conflicts = [
-            global_conflicts[code]
-            for code in sorted(conflict_codes)
-            if code in global_conflicts
-        ]
-
-        claim_html = '<p class="empty-state">연결된 주장 기록 없음</p>'
-        citation_html = '<p class="empty-state">이 항목에 연결된 인용 근거 없음</p>'
+        claim_html = '<p class="empty-state">연결된 설명이 없습니다.</p>'
+        citation_html = '<p class="empty-state">연결된 인용 근거가 없습니다.</p>'
         if claim is not None:
             claim_html = f'<p class="claim-text">{_text(claim.get("text"))}</p>'
-            claim_citations = list(citations.get(str(claim.get("claim_id", "")), []))
-            has_link_hints = "citation_ids" in item or "evidence_ids" in item
-            citation_ids = _string_set(
-                item.get("citation_ids", []), "review_item.citation_ids"
-            )
-            evidence_ids = _string_set(
-                item.get("evidence_ids", []), "review_item.evidence_ids"
-            )
-            linked_citations = (
-                [
-                    citation
-                    for citation in claim_citations
-                    if citation.citation_id in citation_ids
-                    or citation.evidence_id in evidence_ids
-                ]
-                if has_link_hints
-                else claim_citations
-            )
-            if linked_citations:
-                citation_html = "".join(
-                    citation.metadata_html for citation in linked_citations
-                )
+            linked = list(citations.get(str(claim.get("claim_id", "")), []))
+            if linked:
+                citation_html = "".join(item.metadata_html for item in linked)
         evidence_panel_id = f"detail-{index}-evidence"
-        rules_panel_id = f"detail-{index}-rules-calculations"
-        audit_panel_id = f"detail-{index}-audit-exceptions"
-        has_item_audit = bool(item_audit_records or item_exceptions or item_conflicts)
+        deterministic_panel_id = f"detail-{index}-rules-calculations"
         panels.append(
             "".join(
                 (
                     '<article class="detail-panel',
                     " is-selected" if index == 0 else "",
                     f'" data-item-id="{_text(item.get("item_id"))}">',
-                    "<h3>항목 ",
-                    _text(item_id),
-                    '</h3><dl class="item-summary">',
-                    f"<div><dt>주장</dt><dd>{_text(item.get('claim_id'))}</dd></div>",
-                    f"<div><dt>상태</dt><dd>{_text(item.get('status'))}</dd></div>",
-                    f"<div><dt>완결성</dt><dd>{_text(item.get('completeness'))}</dd></div>",
-                    "</dl>",
+                    '<h3 class="detail-title">검토 근거 ',
+                    str(index + 1) if len(items) > 1 else "",
+                    "</h3>",
                     f'<section id="{evidence_panel_id}" role="tabpanel" '
                     'aria-labelledby="detail-tab-evidence" data-tab-panel="evidence">',
-                    "<h4>주장과 인용 근거</h4>",
                     claim_html,
                     citation_html,
                     "</section>",
-                    f'<section id="{rules_panel_id}" role="tabpanel" '
-                    'aria-labelledby="detail-tab-rules-calculations" '
-                    'data-tab-panel="rules-calculations" hidden>',
-                    "<h4>승인 규칙</h4><div class=\"table-scroll\"><table><thead><tr>",
-                    "<th>규칙</th><th>버전</th><th>상태</th></tr></thead><tbody>",
-                    _table_rows(item_rules, ("rule_id", "rule_version", "status")),
-                    "</tbody></table></div>",
-                    "<h4>결정론 계산</h4><div class=\"table-scroll\"><table><thead><tr>",
-                    "<th>ID</th><th>수식</th><th>버전</th><th>대입</th><th>결과</th>",
-                    "<th>비교</th></tr></thead><tbody>",
-                    _table_rows(
-                        item_calculations,
-                        (
-                            "calculation_result_id",
-                            "formula_id",
-                            "formula_version",
-                            "substitution",
-                            "display_result",
-                            "comparison",
-                        ),
-                    ),
-                    "</tbody></table></div></section>",
-                    f'<section id="{audit_panel_id}" role="tabpanel" '
-                    'aria-labelledby="detail-tab-audit-exceptions" '
-                    'data-tab-panel="audit-exceptions" hidden>',
-                    "<h4>연결된 감사 사실</h4>",
-                    _record_cards(item_audit_records, "이 항목에 연결된 감사 기록 없음"),
-                    "<h4>연결된 예외</h4>",
-                    _value_list(item_exceptions, "이 항목에 연결된 예외 기록 없음"),
-                    "<h4>연결된 충돌</h4>",
-                    _value_list(item_conflicts, "이 항목에 연결된 충돌 기록 없음"),
                     (
-                        ""
-                        if has_item_audit
-                        else (
-                            '<p class="empty-state unlinked">'
-                            "이 항목에 연결된 감사·예외 기록 없음</p>"
+                        "".join(
+                            (
+                                f'<section id="{deterministic_panel_id}" role="tabpanel" ',
+                                'aria-labelledby="detail-tab-rules-calculations" ',
+                                'data-tab-panel="rules-calculations" hidden>',
+                                _render_rule_calculation_panel(item_rules, item_calculations),
+                                "</section>",
+                            )
                         )
+                        if show_deterministic
+                        else ""
                     ),
-                    "</section>",
+                    render_item_audit(
+                        item,
+                        rules=item_rules,
+                        calculations=item_calculations,
+                    ),
                     "</article>",
                 )
+            )
+        )
+    tablist = ""
+    if show_deterministic:
+        tablist = "".join(
+            (
+                '<div role="tablist" aria-label="선택 항목 상세">',
+                '<button id="detail-tab-evidence" type="button" role="tab" tabindex="0" ',
+                'aria-selected="true" aria-controls="detail-0-evidence" ',
+                'data-detail-tab="evidence">근거</button>',
+                '<button id="detail-tab-rules-calculations" type="button" role="tab" ',
+                'tabindex="-1" aria-selected="false" ',
+                'aria-controls="detail-0-rules-calculations" ',
+                'data-detail-tab="rules-calculations">규칙·계산</button>',
+                "</div>",
             )
         )
     return "".join(
         (
             '<section id="detail-tabs" aria-labelledby="detail-heading">',
-            '<h2 id="detail-heading" class="visually-hidden">선택 항목 상세</h2>',
-            '<div role="tablist" aria-label="선택 항목 상세">',
-            '<button id="detail-tab-evidence" type="button" role="tab" tabindex="0" '
-            'aria-selected="true" aria-controls="detail-0-evidence" '
-            'data-detail-tab="evidence">근거</button>',
-            '<button id="detail-tab-rules-calculations" type="button" role="tab" '
-            'tabindex="-1" aria-selected="false" '
-            'aria-controls="detail-0-rules-calculations" '
-            'data-detail-tab="rules-calculations">규칙·계산</button>',
-            '<button id="detail-tab-audit-exceptions" type="button" role="tab" '
-            'tabindex="-1" aria-selected="false" '
-            'aria-controls="detail-0-audit-exceptions" '
-            'data-detail-tab="audit-exceptions">감사·예외</button>',
-            "</div>",
-            "".join(panels) or '<p class="empty-state">검토 항목을 선택하세요.</p>',
+            '<h2 id="detail-heading" class="visually-hidden">판단 근거 상세</h2>',
+            tablist,
+            "".join(panels) or '<p class="empty-state">연결된 검토 근거가 없습니다.</p>',
             "</section>",
         )
     )
 
 
-def _render_packet_global_review(model: Mapping[str, object]) -> str:
-    audit = _mapping(model.get("audit", {}), "audit")
-    audit_records = _sequence(audit.get("records", []), "audit.records")
-    exceptions = _sequence(model.get("exceptions", []), "exceptions")
-    conflicts = _sequence(model.get("conflicts", []), "conflicts")
-    abstention_reasons = _sequence(
-        model.get("abstention_reasons", []), "abstention_reasons"
-    )
-    confidence_value = model.get("confidence")
-    confidence = (
-        {} if confidence_value is None else _mapping(confidence_value, "confidence")
-    )
-    confidence_factors = _sequence(
-        confidence.get("factors", []), "confidence.factors"
-    )
-    return "".join(
-        (
-            '<section id="packet-global-review" aria-labelledby="packet-global-heading">',
-            '<div class="global-audit-layout">',
-            '<div class="section-heading"><h2 id="packet-global-heading">패킷 전체 감사 정보</h2>',
-            '<p>특정 항목 소유권을 추론하지 않는 전역 기록</p></div>',
-            '<div class="global-review-grid">',
-            '<div class="global-card"><h3>Track 감사 상태</h3><dl class="compact-facts">',
-            f'<dt>Track A</dt><dd>{_display_value(audit.get("track_a_status"))}</dd>',
-            f'<dt>Track B</dt><dd>{_display_value(audit.get("track_b_status"))}</dd>',
-            "</dl>",
-            _record_cards(audit_records, "패킷 전체 감사 기록 없음"),
-            "</div>",
-            '<div class="global-card"><h3>전역 예외·충돌</h3><h4>예외</h4>',
-            _value_list(exceptions, "전역 예외 없음"),
-            "<h4>충돌</h4>",
-            _value_list(conflicts, "전역 충돌 없음"),
-            "</div>",
-            '<div class="global-card" id="abstention-reasons"><h3>전역 기권 사유</h3>',
-            _value_list(abstention_reasons, "전역 기권 사유 없음"),
-            "</div>",
-            '<div class="global-card"><h3>전역 신뢰도 요인</h3>',
-            '<dl class="compact-facts">',
-            f'<dt>점수</dt><dd>{_display_value(confidence.get("score"))}</dd>',
-            f'<dt>수준</dt><dd>{_display_value(confidence.get("level"))}</dd>',
-            "</dl>",
-            _record_cards(confidence_factors, "전역 신뢰도 요인 없음"),
-            "</div></div></div></section>",
-        )
-    )
-
-
-def _render_decision_form(model: Mapping[str, object]) -> str:
-    decision = _mapping(model.get("decision", {}), "decision")
-    options = _sequence(decision.get("allowed_values", []), "decision.allowed_values")
-    labels = {
-        "SATISFIED": "충족",
-        "NOT_SATISFIED": "미충족",
-        "CONDITIONAL": "조건부",
-        "ADDITIONAL_REVIEW_REQUIRED": "추가 검토",
-    }
-    option_html = "".join(
-        '<label class="decision-option"><input type="radio" name="decision" '
-        f'value="{_text(option)}" required><span><strong>'
-        f'{_text(labels.get(str(option), str(option)))}</strong><code>{_text(option)}</code>'
-        "</span></label>"
-        for option in options
-    )
-    return "".join(
-        (
-            '<section id="decision-form" aria-labelledby="decision-heading">',
-            '<div class="decision-heading"><div><h2 id="decision-heading">검토자의 최종 결정</h2>',
-            "<p>기계 패킷과 분리된 검토자 소유의 추가 전용 기록입니다.</p></div>",
-            '<span class="authority-badge">인간 검토 필요</span></div>',
-            '<form action="./decision" method="post">',
-            '<fieldset class="decision-choices"><legend>결정 선택</legend>',
-            option_html
-            or (
-                '<label class="decision-option"><input type="radio" name="decision" '
-                'value="" required disabled><span><strong>허용된 결정 값 없음</strong>'
-                "</span></label>"
-            ),
-            "</fieldset>",
-            '<div class="decision-fields">',
-            '<label>검토자 ID<input name="reviewer_id" autocomplete="name" required></label>',
-            '<label>검토 시각<input name="reviewed_at" '
-            'placeholder="ISO-8601 시간대 포함" required></label>',
-            '<label class="packet-hash">패킷 SHA-256<input name="packet_sha256" '
-            f'value="{_text(decision.get("packet_sha256"))}" readonly required></label>',
-            "</div>",
-            '<label class="decision-notes">판정 근거 메모<textarea name="notes" rows="3" required '
-            'placeholder="검토자가 확정한 근거와 후속 조치를 기록합니다."></textarea></label>',
-            '<div class="decision-actions"><button class="primary-action" '
-            'type="submit">결정 확정</button>',
-            '<button type="button" data-download-decision>결정 JSON 다운로드</button></div>',
-            '<p class="form-status" aria-live="polite"></p>',
-            "</form></section>",
-        )
-    )
-
-
 def _model_json(model: Mapping[str, object]) -> str:
-    """Serialize the normalized projection safely for the inline controller."""
     encoded = json.dumps(model, ensure_ascii=False, separators=(",", ":"))
     return (
         encoded.replace("&", "\\u0026")
@@ -784,7 +557,7 @@ def _model_json(model: Mapping[str, object]) -> str:
 
 
 def render_review_html(view_model: Mapping[str, object], page_image_root: Path) -> str:
-    """Render an archival Review Workspace without editable machine fields."""
+    """Render the default non-developer Review Workspace."""
     model = _mapping(view_model, "view_model")
     css = (Path(__file__).with_name("assets") / "review.css").read_text(encoding="utf-8")
     script = (Path(__file__).with_name("assets") / "review.js").read_text(encoding="utf-8")
@@ -811,19 +584,16 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
     items = _review_items(model, claims)
     calculations = _sequence(model.get("calculations", []), "calculations")
     rules = _sequence(model.get("rules", []), "rules")
-    audit = _mapping(model.get("audit", {}), "audit")
-    exceptions = _sequence(model.get("exceptions", []), "exceptions")
-    conflicts = _sequence(model.get("conflicts", []), "conflicts")
     return "".join(
         (
             '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
-            f"<title>{_text(model.get('run_id'))} 근거 검토</title><style>{css}</style>",
+            f"<title>근거 검토 · {_text(model.get('question'))}</title><style>{css}</style>",
             '</head><body><div class="app-shell" data-viewer-mode="compare">',
-            _render_status_band(model),
+            render_status_band(model),
             '<main class="review-workspace">',
-            _render_summary(model),
-            _render_review_items(items),
+            render_summary(model),
+            render_review_item_navigation(items),
             _render_evidence_viewer(assets, overlays),
             _render_detail_tabs(
                 items=items,
@@ -831,18 +601,15 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
                 citations=citations,
                 calculations=calculations,
                 rules=rules,
-                audit=audit,
-                exceptions=exceptions,
-                conflicts=conflicts,
             ),
-            _render_packet_global_review(model),
-            _render_decision_form(model),
+            render_additional_review(model),
+            render_decision_form(model),
+            render_audit_details(model),
             "</main>",
             '<footer class="process-strip" aria-label="검토 절차">',
-            '<strong>증거 준비</strong><span>→</span><strong>결정론 엔진</strong><span>→</span>',
-            '<strong>Track A 설명</strong><span>→</span>'
-            '<strong>Track B 감사</strong><span>→</span>',
-            '<strong>인간 최종 판정</strong></footer></div>',
+            '<span>근거 준비</span><span>→</span><span>교차 검증</span>',
+            '<span>→</span><strong>검토자 최종 결정</strong>',
+            "</footer></div>",
             f'<script id="review-model" type="application/json">{_model_json(model)}</script>',
             f"<script>{script}</script>",
             "</body></html>",

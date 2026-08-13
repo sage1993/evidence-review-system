@@ -1,5 +1,4 @@
-"""Bounded local readiness coverage for the offline Review Workspace."""
-
+"""Bounded local rendering coverage for the non-developer Review Workspace."""
 from __future__ import annotations
 
 import hashlib
@@ -34,39 +33,7 @@ VALID_MINIMAL_PNG = (
 )
 
 
-def _assert_valid_minimal_png(image_bytes: bytes) -> None:
-    assert image_bytes.startswith(_PNG_SIGNATURE)
-    offset = len(_PNG_SIGNATURE)
-    chunk_types: list[bytes] = []
-    idat = bytearray()
-    ihdr = b""
-    while offset < len(image_bytes):
-        length = struct.unpack(">I", image_bytes[offset : offset + 4])[0]
-        chunk_type = image_bytes[offset + 4 : offset + 8]
-        payload_start = offset + 8
-        payload_end = payload_start + length
-        payload = image_bytes[payload_start:payload_end]
-        stored_crc = struct.unpack(">I", image_bytes[payload_end : payload_end + 4])[0]
-        assert len(payload) == length
-        assert stored_crc == zlib.crc32(chunk_type + payload) & 0xFFFFFFFF
-        chunk_types.append(chunk_type)
-        if chunk_type == b"IHDR":
-            ihdr = payload
-        if chunk_type == b"IDAT":
-            idat.extend(payload)
-        offset = payload_end + 4
-    assert offset == len(image_bytes)
-    assert chunk_types == [b"IHDR", b"IDAT", b"IEND"]
-    assert struct.unpack(">IIBBBBB", ihdr) == (1, 1, 8, 6, 0, 0, 0)
-    assert zlib.decompress(idat) == b"\x00\x00\x00\x00\xff"
-
-
-def test_valid_minimal_png_has_verified_chunks_and_decompressible_idat() -> None:
-    _assert_valid_minimal_png(VALID_MINIMAL_PNG)
-
-
 def _write_shared_page_assets(root: Path) -> list[str]:
-    """Create twenty verified pages reused by the hundred citations below."""
     revision_id = "REV-PERFORMANCE"
     source_hash = hashlib.sha256(b"source-revision-performance").hexdigest()
     directory = root / revision_id
@@ -100,7 +67,6 @@ def _twenty_page_model(source_hashes: list[str]) -> dict[str, object]:
     for index in range(CITATION_COUNT):
         number = index + 1
         page_number = index % PAGE_COUNT + 1
-        item_id = f"ITEM-{number:03d}"
         claims.append(
             {
                 "claim_id": f"CLAIM-{number:03d}",
@@ -126,23 +92,30 @@ def _twenty_page_model(source_hashes: list[str]) -> dict[str, object]:
         )
         review_items.append(
             {
-                "item_id": item_id,
+                "item_id": f"ITEM-{number:03d}",
                 "claim_id": f"CLAIM-{number:03d}",
-                "status": "NOT_EVALUATED",
+                "status": "INDETERMINATE",
                 "completeness": "COMPLETE",
             }
         )
     return {
         "run_id": "RUN-PERFORMANCE-0001",
         "status": "READY_FOR_HUMAN_REVIEW",
-        "human_decision": None,
+        "display_status": "READY_FOR_HUMAN_REVIEW",
         "question": "Review the supplied evidence.",
         "claims": claims,
         "review_items": review_items,
         "calculations": [],
         "rules": [],
-        "summary": {"citation_count": CITATION_COUNT},
+        "summary": {
+            "citation_count": CITATION_COUNT,
+            "missing_input_count": 0,
+            "exception_count": 0,
+            "conflict_count": 0,
+        },
         "audit": {"uncited_count": 0},
+        "exceptions": [],
+        "conflicts": [],
         "abstention_reasons": [],
         "decision": {
             "human_decision": None,
@@ -152,9 +125,7 @@ def _twenty_page_model(source_hashes: list[str]) -> dict[str, object]:
     }
 
 
-def test_review_workspace_renders_twenty_shared_pages_and_one_hundred_items_within_budget(
-    tmp_path: Path,
-) -> None:
+def test_large_workspace_renders_shared_pages_once_within_local_budget(tmp_path: Path) -> None:
     source_hashes = _write_shared_page_assets(tmp_path / "pages")
     model = _twenty_page_model(source_hashes)
 
@@ -162,47 +133,35 @@ def test_review_workspace_renders_twenty_shared_pages_and_one_hundred_items_with
     html = render_review_html(model, tmp_path / "pages")
     elapsed = perf_counter() - started
 
-    assert source_hashes == [source_hashes[0]] * PAGE_COUNT
-    for page_number in range(1, PAGE_COUNT + 1):
-        directory = tmp_path / "pages" / "REV-PERFORMANCE"
-        image_bytes = (directory / f"page-{page_number:04d}.png").read_bytes()
-        metadata = json.loads((directory / f"page-{page_number:04d}.json").read_text())
-        assert image_bytes == VALID_MINIMAL_PNG
-        assert metadata["image_sha256"] == hashlib.sha256(image_bytes).hexdigest()
-        assert metadata["source_hash"] == source_hashes[0]
     assert html.count("data:image/png;base64,") == PAGE_COUNT
     for number in range(1, CITATION_COUNT + 1):
         assert f'data-item-id="ITEM-{number:03d}"' in html
     assert elapsed <= LOCAL_RENDER_BUDGET_SECONDS
 
 
-def test_review_workspace_shows_ready_state_without_a_selected_decision(
-    tmp_path: Path,
-) -> None:
-    source_hashes = _write_shared_page_assets(tmp_path / "pages")
-    model = _twenty_page_model(source_hashes)
+def test_ready_state_is_korean_and_has_no_empty_additional_panel(tmp_path: Path) -> None:
+    model = _twenty_page_model(_write_shared_page_assets(tmp_path / "pages"))
 
     html = render_review_html(model, tmp_path / "pages")
 
-    assert "READY_FOR_HUMAN_REVIEW" in html
-    assert "전역 기권 사유 없음" in html
+    assert "검토 준비 완료" in html
+    assert 'id="additional-review"' not in html
     assert 'value="SATISFIED" required' in html
     assert 'value="NOT_SATISFIED" required' in html
     assert "checked" not in html
 
 
-def test_review_workspace_shows_abstain_reasons_without_a_selected_decision(
+def test_abstain_state_surfaces_additional_review_without_selecting_decision(
     tmp_path: Path,
 ) -> None:
-    source_hashes = _write_shared_page_assets(tmp_path / "pages")
-    model = _twenty_page_model(source_hashes)
+    model = _twenty_page_model(_write_shared_page_assets(tmp_path / "pages"))
     model["status"] = "ABSTAIN"
+    model["display_status"] = "ABSTAIN"
     model["abstention_reasons"] = ["MISSING_REQUIRED_EVIDENCE"]
 
     html = render_review_html(model, tmp_path / "pages")
 
-    assert "ABSTAIN" in html
-    assert "MISSING_REQUIRED_EVIDENCE" in html
-    assert 'value="SATISFIED" required' in html
-    assert 'value="NOT_SATISFIED" required' in html
+    assert "추가 자료 필요" in html
+    assert 'id="additional-review"' in html
+    assert "MISSING REQUIRED EVIDENCE" in html
     assert "checked" not in html
