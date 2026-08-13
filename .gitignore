@@ -19,6 +19,10 @@ htmlcov/
 # Local virtual environments
 .venv/
 venv/
+.venv-acceptance-*/
+
+# Local acceptance evidence generated during manual verification
+.acceptance/
 
 # Local and agent-generated work products
 tmp/
