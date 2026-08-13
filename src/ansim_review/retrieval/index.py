@@ -10,6 +10,8 @@ from ansim_review.canonical_json import dumps
 from ansim_review.contracts.common import BBox
 from ansim_review.retrieval.models import ChannelScore, RetrievalHit
 
+_GROUP_CHANNELS = frozenset({"fts_entity", "fts_numeric", "fts_concept"})
+
 
 class StaleRetrievalIndexError(RuntimeError):
     """Raised when the FTS index and evidence snapshot hashes differ."""
@@ -213,6 +215,10 @@ def _phrase_match_expression(query: str) -> str:
     return _quoted_literal(_normalized_query(query))
 
 
+def _prefix_match_expression(query: str) -> str:
+    return f"{_quoted_literal(_normalized_query(query))}*"
+
+
 def _token_and_match_expression(query: str) -> str:
     tokens = _normalized_query(query).split(" ")
     return " AND ".join(_quoted_literal(token) for token in tokens)
@@ -308,6 +314,25 @@ def search_fts_token_and(
         query,
         match_expression=_token_and_match_expression(query),
         channel="fts_token_and",
+        limit=limit,
+    )
+
+
+def search_fts_literal(
+    connection: sqlite3.Connection,
+    query: str,
+    *,
+    channel: str,
+    limit: int = 20,
+) -> tuple[RetrievalHit, ...]:
+    """Search one bounded derived term with Korean suffix-tolerant prefix matching."""
+    if channel not in _GROUP_CHANNELS:
+        raise ValueError(f"unsupported grouped FTS channel: {channel}")
+    return _search_fts(
+        connection,
+        query,
+        match_expression=_prefix_match_expression(query),
+        channel=channel,
         limit=limit,
     )
 
