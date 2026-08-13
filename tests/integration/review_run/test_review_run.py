@@ -328,22 +328,13 @@ def test_finalize_open_cli_prints_only_the_protected_review_url(
         assert supplied_run_id == run_id
         return f"http://127.0.0.1:8123/runs/{run_id}/token/review"
 
-    lifecycle: list[str] = []
-
-    def fake_wait(workspace_root: Path, supplied_run_id: str) -> None:
-        assert workspace_root == workspace
-        assert supplied_run_id == run_id
-        lifecycle.append("wait")
-
-    def fake_close(workspace_root: Path, supplied_run_id: str) -> None:
-        assert workspace_root == workspace
-        assert supplied_run_id == run_id
-        lifecycle.append("close")
+    def legacy_wait_or_close(*_args: object) -> None:
+        raise AssertionError("detached review server must not use legacy wait/close hooks")
 
     monkeypatch.setattr(cli, "finalize_review_run", fake_finalize)
     monkeypatch.setattr(cli, "open_review_run", fake_open, raising=False)
-    monkeypatch.setattr(cli, "wait_for_review_run", fake_wait, raising=False)
-    monkeypatch.setattr(cli, "close_review_run", fake_close, raising=False)
+    monkeypatch.setattr(cli, "wait_for_review_run", legacy_wait_or_close, raising=False)
+    monkeypatch.setattr(cli, "close_review_run", legacy_wait_or_close, raising=False)
 
     assert (
         cli.main(
@@ -371,117 +362,6 @@ def test_finalize_open_cli_prints_only_the_protected_review_url(
         "url": f"http://127.0.0.1:8123/runs/{run_id}/token/review",
     }
     assert not document["url"].startswith("file:")
-    assert lifecycle == ["wait", "close"]
-
-
-def test_finalize_open_cli_closes_the_review_server_after_keyboard_interrupt(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    workspace = tmp_path / "workspace"
-    run_id = "RUN-0123456789ABCDEF0123"
-    run_directory = workspace / "runs" / run_id
-
-    monkeypatch.setattr(
-        cli,
-        "finalize_review_run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            run_id=run_id,
-            run_directory=run_directory,
-            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
-            packet_path=run_directory / "final-review-packet.json",
-            review_html=run_directory / "review.html",
-            published_packet=None,
-        ),
-    )
-    monkeypatch.setattr(
-        cli,
-        "open_review_run",
-        lambda *_args, **_kwargs: f"http://127.0.0.1:8123/runs/{run_id}/token/review",
-        raising=False,
-    )
-    closed: list[tuple[Path, str]] = []
-
-    def interrupt(*_args: object) -> None:
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(cli, "wait_for_review_run", interrupt, raising=False)
-    monkeypatch.setattr(
-        cli,
-        "close_review_run",
-        lambda workspace_root, supplied_run_id: closed.append((workspace_root, supplied_run_id)),
-        raising=False,
-    )
-
-    assert (
-        cli._review_run_finalize(
-            workspace,
-            run_id,
-            tmp_path / "track-a.json",
-            tmp_path / "track-b.json",
-            publish=False,
-            open_browser=True,
-        )
-        == 0
-    )
-    assert closed == [(workspace, run_id)]
-
-
-def test_finalize_open_cli_fails_closed_when_session_wait_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    workspace = tmp_path / "workspace"
-    run_id = "RUN-0123456789ABCDEF0123"
-    run_directory = workspace / "runs" / run_id
-    monkeypatch.setattr(
-        cli,
-        "finalize_review_run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            run_id=run_id,
-            run_directory=run_directory,
-            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
-            packet_path=run_directory / "final-review-packet.json",
-            review_html=run_directory / "review.html",
-            published_packet=None,
-        ),
-    )
-    monkeypatch.setattr(
-        cli,
-        "open_review_run",
-        lambda *_args, **_kwargs: f"http://127.0.0.1:8123/runs/{run_id}/token/review",
-        raising=False,
-    )
-    monkeypatch.setattr(
-        cli,
-        "wait_for_review_run",
-        lambda *_args: (_ for _ in ()).throw(RuntimeError("server wait failed")),
-        raising=False,
-    )
-    closed: list[tuple[Path, str]] = []
-    monkeypatch.setattr(
-        cli,
-        "close_review_run",
-        lambda workspace_root, supplied_run_id: closed.append((workspace_root, supplied_run_id)),
-        raising=False,
-    )
-
-    assert (
-        cli._review_run_finalize(
-            workspace,
-            run_id,
-            tmp_path / "track-a.json",
-            tmp_path / "track-b.json",
-            publish=False,
-            open_browser=True,
-        )
-        == 2
-    )
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "server wait failed" in captured.err
-    assert closed == [(workspace, run_id)]
 
 
 def test_finalize_refuses_existing_publication(tmp_path: Path) -> None:
