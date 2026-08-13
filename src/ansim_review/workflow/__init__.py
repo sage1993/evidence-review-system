@@ -1,5 +1,9 @@
 """Resumable review workflow contracts and orchestration helpers."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from ansim_review.workflow.events import (
     WorkflowEvent,
     append_workflow_event,
@@ -22,10 +26,26 @@ from ansim_review.workflow.request import (
     review_request_sha256,
 )
 from ansim_review.workflow.state_machine import validate_transition
-from ansim_review.workflow.versioning import (
-    compute_versioned_run_id,
-    prepare_versioned_review_run,
-)
+
+if TYPE_CHECKING:
+    from ansim_review.workflow.versioning import (
+        compute_versioned_run_id,
+        prepare_versioned_review_run,
+    )
+
+
+def __getattr__(name: str) -> object:
+    """Lazily expose versioning helpers without importing the orchestrator on package load."""
+    if name == "compute_versioned_run_id":
+        from ansim_review.workflow.versioning import compute_versioned_run_id
+
+        return compute_versioned_run_id
+    if name == "prepare_versioned_review_run":
+        from ansim_review.workflow.versioning import prepare_versioned_review_run
+
+        return prepare_versioned_review_run
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "RequestAttachment",
