@@ -151,6 +151,19 @@ def _write_json_or_identical(path: Path, document: object) -> None:
             raise FileExistsError(f"existing artifact differs: {path.name}") from None
 
 
+def _publish_validated_track_a(
+    source: Path,
+    destination: Path,
+    document: object,
+) -> None:
+    """Publish validated Track A without rewriting a same-path source."""
+    if source.resolve() == destination.resolve():
+        if not destination.is_file():
+            raise FileNotFoundError(destination)
+        return
+    _write_json_or_identical(destination, document)
+
+
 def _citation_document(citation: Citation) -> dict[str, object]:
     return {
         "citation_id": citation.citation_id,
@@ -511,7 +524,11 @@ def submit_track_a(
     run_directory = _require_prepared_run(workspace_root, run_id)
     output = validate_track_a_submission(workspace_root, run_id, track_a_output)
     _recover_malformed_track_a_submission(run_directory)
-    _write_json_or_identical(run_directory / "track-a-output.json", output)
+    _publish_validated_track_a(
+        track_a_output,
+        run_directory / "track-a-output.json",
+        output,
+    )
     action_path = run_directory / "next-action-track-b.json"
     _write_json_or_identical(action_path, next_action_document(_track_b_action(run_id)))
     _write_json_or_identical(

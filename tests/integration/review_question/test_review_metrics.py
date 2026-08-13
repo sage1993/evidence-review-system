@@ -181,3 +181,43 @@ def test_metrics_do_not_change_run_id_or_final_packet_hash(tmp_path: Path) -> No
     assert prepared.run_id == finalized.run_id
     assert (run_directory / "review-request.json").read_bytes() == request_before
     assert finalized.packet_path.read_bytes() == packet_before
+
+
+def test_same_path_track_a_records_zero_retry_and_no_fileexistserror(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / prepared.run_id
+
+    external = _track_a(run_directory)
+    document = json.loads(external.read_text(encoding="utf-8"))
+
+    output = run_directory / "track-a-output.json"
+    output.write_text(
+        json.dumps(
+            document,
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    external.unlink()
+
+    original_bytes = output.read_bytes()
+
+    submit_question_track_a(
+        workspace,
+        prepared.run_id,
+        output,
+    )
+
+    metrics = load_run_metrics(run_directory)
+
+    assert output.read_bytes() == original_bytes
+    assert metrics["retry_count"] == 0
+    assert not any(
+        stage["reason_code"] == "FILEEXISTSERROR"
+        for stage in metrics["stages"]
+    )
