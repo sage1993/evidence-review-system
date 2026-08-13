@@ -11,7 +11,10 @@ CHANNEL_WEIGHTS: dict[str, Decimal] = {
     "clause_id": Decimal("0.95"),
     "rule_source": Decimal("0.90"),
     "fts_phrase": Decimal("0.55"),
+    "fts_entity": Decimal("0.40"),
+    "fts_numeric": Decimal("0.20"),
     "fts_token_and": Decimal("0.15"),
+    "fts_concept": Decimal("0.10"),
     "linked_visual_table": Decimal("0.60"),
 }
 
