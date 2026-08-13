@@ -9,6 +9,8 @@ description: Use when a user invokes $ERS_PDF or asks Codex Desktop to prepare P
 
 `$ERS_PDF`는 사용자가 제공한 PDF를 Evidence Review System의 정식 질문 파이프라인에서 사용할 수 있도록 준비한다. 이 단계는 규제 결론을 만들지 않는다.
 
+기본 지원 parser는 `opendataloader-pdf`(OpenDataLoader PDF)이며, parser 실행 자체와 parser artifact 보존은 ERS의 deterministic source binding보다 선행한다.
+
 ## 필수 절차
 
 1. 사용자가 명시적으로 제공하거나 지정한 PDF만 사용한다. 저장소 샘플을 임의로 선택하지 않는다.
