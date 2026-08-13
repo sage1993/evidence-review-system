@@ -1,5 +1,4 @@
 """Launch protected loopback review workspaces for finalized review runs."""
-
 from __future__ import annotations
 
 import hashlib
@@ -27,7 +26,6 @@ _READY_TIMEOUT_SECONDS = 2.0
 
 
 def _readline_with_timeout(stream: TextIO) -> str:
-    """Read child readiness without allowing a broken child to hang the CLI."""
     result: queue.Queue[str] = queue.Queue(maxsize=1)
 
     def read() -> None:
@@ -69,8 +67,6 @@ def _server_key(workspace_root: Path, run_id: str) -> tuple[Path, str]:
 
 @dataclass(slots=True)
 class ReviewWorkspaceServer:
-    """A running protected review server that must be closed by its owner."""
-
     _process: subprocess.Popen[str]
     _run_id: str
     _token: str
@@ -83,7 +79,6 @@ class ReviewWorkspaceServer:
         return self._url
 
     def close(self) -> None:
-        """Stop the serving thread and release the loopback port exactly once."""
         with self._close_lock:
             if self._closed:
                 return
@@ -92,15 +87,24 @@ class ReviewWorkspaceServer:
         self._process.wait(timeout=5)
 
     def wait(self) -> None:
-        """Wait until the server session is closed."""
         self._process.wait()
 
 
-def _start_review_server(workspace_root: Path, run_id: str) -> ReviewWorkspaceServer:
+def _start_review_server(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    reviewer_id: str | None = None,
+) -> ReviewWorkspaceServer:
     validated_run_id = validate_identifier(run_id, "run_id")
+    validated_reviewer_id = (
+        None
+        if reviewer_id is None
+        else validate_identifier(reviewer_id, "reviewer_id")
+    )
     _required_artifacts(workspace_root, validated_run_id)
     token = secrets.token_urlsafe(32)
-    command = (
+    command: tuple[str, ...] = (
         sys.executable,
         "-m",
         "ansim_review.review_packet.server_process",
@@ -111,6 +115,8 @@ def _start_review_server(workspace_root: Path, run_id: str) -> ReviewWorkspaceSe
         "--token",
         token,
     )
+    if validated_reviewer_id is not None:
+        command += ("--reviewer-id", validated_reviewer_id)
     child_python_path = str(Path(__file__).parents[2]) + os.pathsep + os.environ.get(
         "PYTHONPATH", ""
     )
@@ -121,10 +127,7 @@ def _start_review_server(workspace_root: Path, run_id: str) -> ReviewWorkspaceSe
         stderr=subprocess.DEVNULL,
         text=True,
         start_new_session=True,
-        env={
-            **os.environ,
-            "PYTHONPATH": child_python_path,
-        },
+        env={**os.environ, "PYTHONPATH": child_python_path},
     )
     try:
         assert process.stdout is not None
@@ -138,7 +141,6 @@ def _start_review_server(workspace_root: Path, run_id: str) -> ReviewWorkspaceSe
 
 
 def close_open_review_servers() -> None:
-    """Close all retained browser-session servers during orderly shutdown."""
     with _ACTIVE_SERVERS_LOCK:
         active_servers = tuple(_ACTIVE_SERVERS.values())
         _ACTIVE_SERVERS.clear()
@@ -147,7 +149,6 @@ def close_open_review_servers() -> None:
 
 
 def wait_for_open_review_server(workspace_root: Path, run_id: str) -> None:
-    """Keep one retained browser-session server alive until it is closed."""
     with _ACTIVE_SERVERS_LOCK:
         active_server = _ACTIVE_SERVERS.get(_server_key(workspace_root, run_id))
     if active_server is None:
@@ -156,7 +157,6 @@ def wait_for_open_review_server(workspace_root: Path, run_id: str) -> None:
 
 
 def close_open_review_server(workspace_root: Path, run_id: str) -> None:
-    """Close one retained browser-session server without affecting other runs."""
     with _ACTIVE_SERVERS_LOCK:
         active_server = _ACTIVE_SERVERS.pop(_server_key(workspace_root, run_id), None)
     if active_server is not None:
@@ -164,7 +164,6 @@ def close_open_review_server(workspace_root: Path, run_id: str) -> None:
 
 
 def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]:
-    """Return a run-scoped detached server state, removing stale PID records."""
     validated_run_id = validate_identifier(run_id, "run_id")
     path = workspace_root / "runs" / validated_run_id / "review-server.json"
     try:
@@ -186,11 +185,16 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
     if not _matches_server_process(pid, validated_run_id, state.get("token_sha256")):
         path.unlink(missing_ok=True)
         return {"running": False, "run_id": validated_run_id}
-    return {"running": True, "run_id": validated_run_id, "pid": pid, "port": state.get("port")}
+    return {
+        "running": True,
+        "run_id": validated_run_id,
+        "pid": pid,
+        "port": state.get("port"),
+        "reviewer_id": state.get("reviewer_id"),
+    }
 
 
 def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
-    """Defend against PID reuse before a management operation can signal it."""
     if not isinstance(token_hash, str) or len(token_hash) != 64 or os.name == "nt":
         return False
     try:
@@ -212,7 +216,6 @@ def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
 
 
 def stop_review_server(workspace_root: Path, run_id: str) -> None:
-    """Stop only the live PID recorded for this run, then clear its state."""
     status = review_server_status(workspace_root, run_id)
     if not status["running"]:
         return
@@ -227,8 +230,8 @@ def open_protected_review_workspace(
     run_id: str,
     *,
     browser: Callable[[str], bool],
+    reviewer_id: str | None = None,
 ) -> str:
-    """Open one finalized run through a retained, tokenized loopback server."""
     validated_run_id = validate_identifier(run_id, "run_id")
     run_directory = workspace_root / "runs" / validated_run_id
     stale = review_server_status(workspace_root, validated_run_id)
@@ -237,7 +240,11 @@ def open_protected_review_workspace(
 
     server_timer = start_stage()
     try:
-        server = _start_review_server(workspace_root, validated_run_id)
+        server = _start_review_server(
+            workspace_root,
+            validated_run_id,
+            reviewer_id=reviewer_id,
+        )
     except Exception as error:
         append_stage(
             run_directory,

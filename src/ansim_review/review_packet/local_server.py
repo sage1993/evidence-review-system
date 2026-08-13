@@ -1,5 +1,4 @@
 """Protected loopback server for immutable review artifacts and human decisions."""
-
 from __future__ import annotations
 
 import hashlib
@@ -17,15 +16,15 @@ from urllib.parse import unquote, urlsplit
 
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.review_packet.decision_record import (
+    build_human_decision_envelope,
     has_valid_human_decision,
+    validate_human_decision_request,
     write_human_decision,
 )
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
-_REQUIRED_DECISION_FIELDS = frozenset(
-    {"reviewer_id", "reviewed_at", "packet_hash", "decision", "notes"}
-)
+_REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
 _CSP = (
     "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
@@ -67,6 +66,22 @@ def _validated_tokens(run_tokens: Mapping[str, str]) -> dict[str, str]:
         if not isinstance(candidate_token, str) or not _TOKEN_PATTERN.fullmatch(candidate_token):
             raise ValueError("run token must be a 32-128 character URL-safe string")
         validated[run_id] = candidate_token
+    return validated
+
+
+def _validated_reviewer_ids(
+    run_tokens: Mapping[str, str],
+    reviewer_ids: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if reviewer_ids is None:
+        return {}
+    known_runs = set(run_tokens)
+    validated: dict[str, str] = {}
+    for candidate_run_id, candidate_reviewer_id in reviewer_ids.items():
+        run_id = validate_identifier(candidate_run_id, "run_id")
+        if run_id not in known_runs:
+            raise ValueError("reviewer identity references an unknown run")
+        validated[run_id] = validate_identifier(candidate_reviewer_id, "reviewer_id")
     return validated
 
 
@@ -147,10 +162,12 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         self,
         workspace_root: Path,
         run_tokens: Mapping[str, str],
+        reviewer_ids: Mapping[str, str],
         max_body_bytes: int,
     ) -> None:
         self.workspace_root = workspace_root
         self.run_tokens = dict(run_tokens)
+        self.reviewer_ids = dict(reviewer_ids)
         self.max_body_bytes = max_body_bytes
         super().__init__(("127.0.0.1", 0), _ReviewHandler)
         host, port = cast(tuple[str, int], self.server_address)
@@ -159,7 +176,7 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
 
 
 class _ReviewHandler(BaseHTTPRequestHandler):
-    server_version = "evidence-review-local/1"
+    server_version = "evidence-review-local/2"
     sys_version = ""
 
     @property
@@ -281,23 +298,26 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
         if route.endpoint == "decision_status":
-            packet_and_html = self._packet_and_html(route.run_id)
-            if packet_and_html is None:
+            packet_bytes = self._packet_and_html(route.run_id)
+            if packet_bytes is None:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
             self._send_json(
                 HTTPStatus.OK,
-                {"display_status": self._display_status(route.run_id, packet_and_html)},
+                {
+                    "display_status": self._display_status(route.run_id, packet_bytes),
+                    "reviewer_id": self.state.reviewer_ids.get(route.run_id),
+                    "packet_hash": hashlib.sha256(packet_bytes).hexdigest(),
+                },
             )
             return
         if route.endpoint not in {"review", "packet", "packet_hash"}:
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
-        packet_and_html = self._packet_and_html(route.run_id)
-        if packet_and_html is None:
+        packet_bytes = self._packet_and_html(route.run_id)
+        if packet_bytes is None:
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
-        packet_bytes = packet_and_html
         if route.endpoint == "review":
             html = self._artifact(route.run_id, "review.html")
             if html is None:
@@ -334,26 +354,23 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             return None
         return length
 
-    def _decision_payload(self, body: bytes) -> dict[str, str]:
+    def _decision_payload(self, body: bytes, run_id: str) -> dict[str, str]:
         try:
             decoded = json.loads(body.decode("utf-8"), object_pairs_hook=_strict_object)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             raise ValueError("invalid decision JSON") from error
         if not isinstance(decoded, dict) or set(decoded) != _REQUIRED_DECISION_FIELDS:
             raise ValueError("invalid decision JSON")
-        if not all(isinstance(decoded[name], str) for name in _REQUIRED_DECISION_FIELDS):
-            raise ValueError("invalid decision JSON")
         try:
-            reviewer_id = validate_identifier(decoded["reviewer_id"], "reviewer_id")
+            request = validate_human_decision_request(decoded)
         except ValueError as error:
             raise ValueError("invalid decision JSON") from error
-        return {
-            "reviewer_id": reviewer_id,
-            "reviewed_at": cast(str, decoded["reviewed_at"]),
-            "packet_hash": cast(str, decoded["packet_hash"]),
-            "decision": cast(str, decoded["decision"]),
-            "notes": cast(str, decoded["notes"]),
-        }
+        configured = self.state.reviewer_ids.get(run_id)
+        if configured is not None and not secrets.compare_digest(
+            request["reviewer_id"], configured
+        ):
+            raise ValueError("invalid decision JSON")
+        return request
 
     def do_POST(self) -> None:  # noqa: N802
         route = self._route()
@@ -374,22 +391,22 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             self._reject(HTTPStatus.BAD_REQUEST, "INCOMPLETE_BODY")
             return
         try:
-            payload = self._decision_payload(body)
+            payload = self._decision_payload(body, route.run_id)
         except ValueError:
             self._reject(HTTPStatus.BAD_REQUEST, "INVALID_DECISION")
             return
-        packet_and_html = self._packet_and_html(route.run_id)
+        packet_bytes = self._packet_and_html(route.run_id)
         run_directory = self._run_directory(route.run_id)
-        if packet_and_html is None or run_directory is None:
+        if packet_bytes is None or run_directory is None:
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
-        packet_bytes = packet_and_html
         packet_hash = hashlib.sha256(packet_bytes).hexdigest()
         if not secrets.compare_digest(payload["packet_hash"], packet_hash):
             self._reject(HTTPStatus.BAD_REQUEST, "PACKET_HASH_MISMATCH")
             return
         try:
-            output = write_human_decision(run_directory, **payload)
+            envelope = build_human_decision_envelope(payload)
+            output = write_human_decision(run_directory, **envelope)
         except ValueError:
             self._reject(HTTPStatus.BAD_REQUEST, "INVALID_DECISION")
             return
@@ -405,6 +422,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 "filename": output.name,
                 "status": "RECORDED",
                 "display_status": self._display_status(route.run_id, packet_bytes),
+                "reviewed_at": envelope["reviewed_at"],
             },
         )
 
@@ -413,6 +431,7 @@ def create_review_server(
     workspace_root: Path,
     *,
     run_tokens: Mapping[str, str],
+    reviewer_ids: Mapping[str, str] | None = None,
     max_body_bytes: int = 65536,
 ) -> ThreadingHTTPServer:
     """Create a loopback-only server bound to immutable run artifacts."""
@@ -423,7 +442,9 @@ def create_review_server(
     ):
         raise ValueError("max_body_bytes must be positive")
     root = _validated_workspace_root(workspace_root)
-    return _ReviewHTTPServer(root, _validated_tokens(run_tokens), max_body_bytes)
+    tokens = _validated_tokens(run_tokens)
+    reviewers = _validated_reviewer_ids(tokens, reviewer_ids)
+    return _ReviewHTTPServer(root, tokens, reviewers, max_body_bytes)
 
 
 __all__ = ["create_review_server"]

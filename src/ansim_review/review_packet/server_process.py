@@ -1,5 +1,4 @@
 """Detached protected loopback server process entrypoint."""
-
 from __future__ import annotations
 
 import argparse
@@ -16,8 +15,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--token", required=True)
+    parser.add_argument("--reviewer-id")
     args = parser.parse_args(argv)
-    server = create_review_server(Path(args.workspace), run_tokens={args.run_id: args.token})
+    reviewer_ids = None if args.reviewer_id is None else {args.run_id: args.reviewer_id}
+    server = create_review_server(
+        Path(args.workspace),
+        run_tokens={args.run_id: args.token},
+        reviewer_ids=reviewer_ids,
+    )
     state_path = Path(args.workspace) / "runs" / args.run_id / "review-server.json"
     try:
         port = server.server_address[1]
@@ -26,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
             "port": port,
             "run_id": args.run_id,
             "token_sha256": hashlib.sha256(args.token.encode("ascii")).hexdigest(),
+            "reviewer_id": args.reviewer_id,
         }
         with state_path.open("x", encoding="utf-8") as stream:
             json.dump(state, stream, sort_keys=True, separators=(",", ":"))

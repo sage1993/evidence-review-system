@@ -4,10 +4,13 @@ from __future__ import annotations
 import json
 import re
 import stat
-from datetime import datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.identifiers import validate_identifier
 
 _ALLOWED = {
     "SATISFIED",
@@ -18,10 +21,9 @@ _ALLOWED = {
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _REPARSE_POINT_ATTRIBUTE = 0x400
-_DECISION_FIELDS = frozenset(
-    {"reviewer_id", "reviewed_at", "packet_hash", "decision", "notes"}
-)
-_DECISION_RECORD_FIELDS = _DECISION_FIELDS | {"run_id"}
+_REQUEST_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
+_ENVELOPE_FIELDS = _REQUEST_FIELDS | {"reviewed_at"}
+_DECISION_RECORD_FIELDS = _ENVELOPE_FIELDS | {"run_id"}
 
 
 def _timestamp(value: str) -> tuple[str, str]:
@@ -29,9 +31,10 @@ def _timestamp(value: str) -> tuple[str, str]:
         parsed = datetime.fromisoformat(value)
     except ValueError as error:
         raise ValueError("reviewed_at must be ISO-8601") from error
-    if parsed.tzinfo is None:
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("reviewed_at must include a timezone")
-    return parsed.isoformat(), parsed.strftime("%Y%m%dT%H%M%S%z")
+    canonical = parsed.isoformat()
+    return canonical, parsed.strftime("%Y%m%dT%H%M%S%z")
 
 
 def _regular_directory(path: Path, field: str) -> Path:
@@ -48,24 +51,57 @@ def _regular_directory(path: Path, field: str) -> Path:
     return path.resolve(strict=True)
 
 
-def _validated_decision(
-    *,
-    reviewer_id: str,
-    reviewed_at: str,
-    packet_hash: str,
-    decision: str,
-    notes: str,
-) -> tuple[str, str, str, str, str]:
-    if not reviewer_id.strip():
-        raise ValueError("reviewer_id is required")
+def validate_human_decision_request(value: object) -> dict[str, str]:
+    """Validate request-v2: reviewer identity, packet binding, decision and notes only."""
+    if not isinstance(value, Mapping) or set(value) != _REQUEST_FIELDS:
+        raise ValueError("invalid human decision request")
+    if not all(isinstance(value[field], str) for field in _REQUEST_FIELDS):
+        raise ValueError("invalid human decision request")
+    reviewer_id = validate_identifier(cast(str, value["reviewer_id"]), "reviewer_id")
+    packet_hash = cast(str, value["packet_hash"])
+    decision = cast(str, value["decision"])
+    notes = cast(str, value["notes"])
     if not _SHA256.fullmatch(packet_hash):
         raise ValueError("packet_hash must be a lowercase SHA-256 digest")
     if decision not in _ALLOWED:
         raise ValueError(f"unsupported human decision: {decision}")
     if not notes.strip():
         raise ValueError("notes is required")
+    return {
+        "reviewer_id": reviewer_id,
+        "packet_hash": packet_hash,
+        "decision": decision,
+        "notes": notes,
+    }
+
+
+def validate_human_decision_envelope(value: object) -> dict[str, str]:
+    """Validate the archival five-field decision envelope."""
+    if not isinstance(value, Mapping) or set(value) != _ENVELOPE_FIELDS:
+        raise ValueError("invalid human decision envelope")
+    request = validate_human_decision_request(
+        {field: value[field] for field in _REQUEST_FIELDS}
+    )
+    reviewed_at = value.get("reviewed_at")
+    if not isinstance(reviewed_at, str):
+        raise ValueError("reviewed_at must be a string")
     canonical_time, _ = _timestamp(reviewed_at)
-    return reviewer_id, canonical_time, packet_hash, decision, notes
+    return {**request, "reviewed_at": canonical_time}
+
+
+def build_human_decision_envelope(
+    request: object,
+    *,
+    reviewed_at: datetime | None = None,
+) -> dict[str, str]:
+    """Bind a validated request to a server-controlled offset-aware timestamp."""
+    validated = validate_human_decision_request(request)
+    timestamp = reviewed_at or datetime.now(UTC)
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise ValueError("reviewed_at must include a timezone")
+    return validate_human_decision_envelope(
+        {**validated, "reviewed_at": timestamp.isoformat()}
+    )
 
 
 def write_human_decision(
@@ -79,32 +115,40 @@ def write_human_decision(
 ) -> Path:
     """Exclusively create one immutable human decision JSON record."""
     run_directory = _regular_directory(run_directory, "run_directory")
-    reviewer_id, canonical_time, packet_hash, decision, notes = _validated_decision(
-        reviewer_id=reviewer_id,
-        reviewed_at=reviewed_at,
-        packet_hash=packet_hash,
-        decision=decision,
-        notes=notes,
+    envelope = validate_human_decision_envelope(
+        {
+            "reviewer_id": reviewer_id,
+            "reviewed_at": reviewed_at,
+            "packet_hash": packet_hash,
+            "decision": decision,
+            "notes": notes,
+        }
     )
-    _, file_time = _timestamp(canonical_time)
-    safe_reviewer = _SAFE.sub("-", reviewer_id.strip()).strip("-")
+    _, file_time = _timestamp(envelope["reviewed_at"])
+    safe_reviewer = _SAFE.sub("-", envelope["reviewer_id"].strip()).strip("-")
     if not safe_reviewer:
         raise ValueError("reviewer_id has no safe filename characters")
     directory = run_directory / "human-decisions"
     directory.mkdir(parents=True, exist_ok=True)
     directory = _regular_directory(directory, "human-decisions")
     output = directory / f"{file_time}-{safe_reviewer}.json"
-    payload = {
-        "run_id": run_directory.name,
-        "reviewer_id": reviewer_id,
-        "reviewed_at": canonical_time,
-        "packet_hash": packet_hash,
-        "decision": decision,
-        "notes": notes,
-    }
+    payload = {"run_id": run_directory.name, **envelope}
     with output.open("xb") as stream:
         stream.write(dump_bytes(payload))
     return output
+
+
+def import_human_decision_envelope(
+    run_directory: Path,
+    envelope: object,
+    *,
+    expected_packet_hash: str,
+) -> Path:
+    """Approved archival import path; reject stale/tampered packet bindings."""
+    validated = validate_human_decision_envelope(envelope)
+    if validated["packet_hash"] != expected_packet_hash:
+        raise ValueError("packet_hash does not match the immutable packet")
+    return write_human_decision(run_directory, **validated)
 
 
 def has_valid_human_decision(run_directory: Path, packet_hash: str) -> bool:
@@ -139,12 +183,20 @@ def has_valid_human_decision(run_directory: Path, packet_hash: str) -> bool:
                 continue
             if document["run_id"] != run_directory.name:
                 continue
-            if not all(isinstance(document[field], str) for field in _DECISION_FIELDS):
-                continue
-            values = {field: document[field] for field in _DECISION_FIELDS}
-            _, _, candidate_hash, _, _ = _validated_decision(**values)
+            envelope = {field: document[field] for field in _ENVELOPE_FIELDS}
+            validated = validate_human_decision_envelope(envelope)
         except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
             continue
-        if candidate_hash == packet_hash:
+        if validated["packet_hash"] == packet_hash:
             return True
     return False
+
+
+__all__ = [
+    "build_human_decision_envelope",
+    "has_valid_human_decision",
+    "import_human_decision_envelope",
+    "validate_human_decision_envelope",
+    "validate_human_decision_request",
+    "write_human_decision",
+]

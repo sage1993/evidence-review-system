@@ -23,7 +23,7 @@ def _sequence(value: object, field: str) -> Sequence[object]:
 
 
 def render_decision_form(model: Mapping[str, object]) -> str:
-    """Render the existing decision envelope; #91 simplifies the input contract."""
+    """Render only the human decision and notes as ordinary user inputs."""
     decision = _mapping(model.get("decision", {}), "decision")
     options = _sequence(decision.get("allowed_values", []), "decision.allowed_values")
     labels = {
@@ -38,14 +38,17 @@ def render_decision_form(model: Mapping[str, object]) -> str:
         f'{_text(labels.get(str(option), str(option)))}</strong></span></label>'
         for option in options
     )
+    packet_hash = _text(decision.get("packet_sha256"))
     return "".join(
         (
             '<section id="decision-form" aria-labelledby="decision-heading">',
             '<span class="section-kicker">4. 검토자 의견</span>',
             '<div class="decision-heading"><div><h2 id="decision-heading">최종 결정</h2>',
-            '<p>근거를 확인한 뒤 검토자의 판단을 기록합니다.</p></div>',
+            '<p>결정과 검토 의견만 입력하십시오. 검토자 ID·시각·패킷 해시는 ',
+            '보호 세션 또는 저장 시 자동 결합됩니다.</p></div>',
             '<span class="authority-badge">검토자 확정</span></div>',
             '<form action="./decision" method="post">',
+            f'<input type="hidden" name="packet_sha256" value="{packet_hash}">',
             '<fieldset class="decision-choices"><legend>결정 선택</legend>',
             option_html
             or (
@@ -54,18 +57,16 @@ def render_decision_form(model: Mapping[str, object]) -> str:
                 "</span></label>"
             ),
             "</fieldset>",
-            '<div class="decision-fields">',
-            '<label>검토자 ID<input name="reviewer_id" autocomplete="name" required></label>',
-            '<label>검토 시각<input name="reviewed_at" '
-            'placeholder="ISO-8601 시간대 포함" required></label>',
-            '<label class="packet-hash">패킷 SHA-256<input name="packet_sha256" '
-            f'value="{_text(decision.get("packet_sha256"))}" readonly required></label>',
-            "</div>",
-            '<label class="decision-notes">검토 의견<textarea name="notes" rows="4" required '
+            '<label class="decision-notes">검토 의견<textarea name="notes" rows="4" required ',
             'placeholder="판단 근거 또는 후속 확인 사항을 기록합니다."></textarea></label>',
-            '<div class="decision-actions"><button class="primary-action" '
+            '<p class="reviewer-session" data-reviewer-session>',
+            '보호 세션에서는 검토자 ID를 자동 사용합니다. 보관 HTML에서는 ',
+            '결정 JSON 다운로드 시 한 번 확인합니다.</p>',
+            '<div class="decision-actions"><button class="primary-action" ',
             'type="submit">결정 저장</button>',
             '<button type="button" data-download-decision>결정 JSON 다운로드</button></div>',
+            '<p class="decision-storage-note">HTML 파일 저장은 결정 기록 저장이 아닙니다. ',
+            '보관 HTML에서는 결정 JSON을 다운로드한 뒤 승인된 import 경로로 반영하십시오.</p>',
             '<p class="form-status" aria-live="polite"></p>',
             "</form></section>",
         )

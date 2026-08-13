@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "human-decision-request-v2.schema.json",
+  "title": "Human Decision Request v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewer_id", "packet_hash", "decision", "notes"],
+  "properties": {
+    "reviewer_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "packet_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "SATISFIED",
+        "NOT_SATISFIED",
+        "CONDITIONAL",
+        "ADDITIONAL_REVIEW_REQUIRED"
+      ]
+    },
+    "notes": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

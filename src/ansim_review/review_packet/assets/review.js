@@ -11,9 +11,21 @@
     COMPLETE: "근거 연결 완료",
     MISSING_REQUIRED_INPUT: "필요한 자료가 부족합니다"
   };
+  const ALLOWED_DECISIONS = new Set([
+    "SATISFIED",
+    "NOT_SATISFIED",
+    "CONDITIONAL",
+    "ADDITIONAL_REVIEW_REQUIRED"
+  ]);
+  const decisionContext = {
+    reviewer_id: "",
+    packet_hash: reviewModel.decision && reviewModel.decision.packet_sha256
+      ? reviewModel.decision.packet_sha256
+      : ""
+  };
 
   function statusLabel(status) {
-    return STATUS_LABELS[status] || String(status || "상태 확인 필요").replaceAll("_", " ");
+    return STATUS_LABELS[status] || String(status || "상태 확인 필요").replace(/_/g, " ");
   }
 
   function formStatus(message) {
@@ -21,14 +33,59 @@
     if (status) status.textContent = message;
   }
 
-  function decisionEnvelope(form) {
+  function updateReviewerSession() {
+    const node = document.querySelector("[data-reviewer-session]");
+    if (!node) return;
+    node.textContent = decisionContext.reviewer_id
+      ? "검토자: " + decisionContext.reviewer_id + " · 보호 세션에서 확인됨"
+      : "보관 HTML에서는 결정 JSON 다운로드 시 검토자 ID를 한 번 확인합니다.";
+  }
+
+  function validReviewerId(value) {
+    return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
+  }
+
+  function resolveReviewerId() {
+    if (validReviewerId(decisionContext.reviewer_id)) return decisionContext.reviewer_id;
+    const candidate = window.prompt("검토자 ID를 입력하십시오.", "") || "";
+    if (!validReviewerId(candidate)) {
+      formStatus("검토자 ID는 영문·숫자·점·밑줄·하이픈만 사용할 수 있습니다.");
+      return "";
+    }
+    decisionContext.reviewer_id = candidate;
+    updateReviewerSession();
+    return candidate;
+  }
+
+  function decisionRequest(form) {
     const values = new FormData(form);
+    const reviewerId = resolveReviewerId();
     return {
-      reviewer_id: values.get("reviewer_id") || "",
-      reviewed_at: values.get("reviewed_at") || "",
-      packet_hash: values.get("packet_sha256") || "",
+      reviewer_id: reviewerId,
+      packet_hash: decisionContext.packet_hash || values.get("packet_sha256") || "",
       decision: values.get("decision") || "",
       notes: values.get("notes") || ""
+    };
+  }
+
+  function validDecisionRequest(request) {
+    return Boolean(
+      validReviewerId(request.reviewer_id) &&
+      /^[0-9a-f]{64}$/.test(request.packet_hash) &&
+      ALLOWED_DECISIONS.has(request.decision) &&
+      request.notes.trim()
+    );
+  }
+
+  function decisionEnvelope(form) {
+    const request = decisionRequest(form);
+    if (!validDecisionRequest(request)) return null;
+    return {
+      reviewer_id: request.reviewer_id,
+      reviewed_at: new Date().toISOString(),
+      packet_hash: request.packet_hash,
+      decision: request.decision,
+      notes: request.notes
     };
   }
 
@@ -46,8 +103,15 @@
       if (!response.ok) return;
       const payload = await response.json();
       applyDisplayStatus(payload.display_status);
+      if (typeof payload.reviewer_id === "string" && payload.reviewer_id) {
+        decisionContext.reviewer_id = payload.reviewer_id;
+      }
+      if (typeof payload.packet_hash === "string" && payload.packet_hash) {
+        decisionContext.packet_hash = payload.packet_hash;
+      }
+      updateReviewerSession();
     } catch (_) {
-      // The archival page remains usable when the local server is unavailable.
+      updateReviewerSession();
     }
   }
 
@@ -99,16 +163,12 @@
     if (printPanelStates !== null) return;
     const panels = Array.from(document.querySelectorAll(".detail-panel [data-tab-panel]"));
     printPanelStates = panels.map((panel) => ({ panel, hidden: panel.hidden }));
-    panels.forEach((panel) => {
-      panel.hidden = false;
-    });
+    panels.forEach((panel) => { panel.hidden = false; });
   }
 
   function restorePrintPanels() {
     if (printPanelStates === null) return;
-    printPanelStates.forEach((state) => {
-      state.panel.hidden = state.hidden;
-    });
+    printPanelStates.forEach((state) => { state.panel.hidden = state.hidden; });
     printPanelStates = null;
   }
 
@@ -162,40 +222,45 @@
     event.preventDefault();
     const form = event.currentTarget;
     if (!form.reportValidity()) return;
-    formStatus("검토자 결정을 로컬 엔드포인트로 전송하는 중입니다.");
+    const request = decisionRequest(form);
+    if (!validDecisionRequest(request)) {
+      formStatus("결정 저장에 필요한 검토자·패킷·결정·의견 정보를 확인하십시오.");
+      return;
+    }
+    formStatus("검토자 결정을 저장하는 중입니다.");
     try {
       const response = await fetch("./decision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(decisionEnvelope(form))
+        body: JSON.stringify(request)
       });
-      let payload = null;
       if (response.ok) {
-        payload = await response.json();
+        const payload = await response.json();
         applyDisplayStatus(payload.display_status);
+        formStatus("검토자 결정이 별도 append-only 기록으로 저장되었습니다.");
+      } else {
+        formStatus("결정 저장이 거부되었습니다. 입력과 현재 패킷을 확인하십시오.");
       }
-      formStatus(
-        response.ok
-          ? "결정이 별도 기록으로 저장되었습니다."
-          : "결정 엔드포인트가 제출을 거부했습니다."
-      );
     } catch (_) {
-      formStatus("보관 HTML에서는 로컬 결정 엔드포인트를 사용할 수 없습니다.");
+      formStatus("보관 HTML에서는 서버 저장을 사용할 수 없습니다. 결정 JSON을 다운로드하십시오.");
     }
   }
 
   function downloadDecisionEnvelope() {
     const form = document.querySelector("#decision-form form");
     if (!form || !form.reportValidity()) return;
-    const blob = new Blob([JSON.stringify(decisionEnvelope(form), null, 2)], {
-      type: "application/json"
-    });
+    const envelope = decisionEnvelope(form);
+    if (!envelope) {
+      formStatus("유효한 결정 JSON을 만들 수 없습니다. 입력을 확인하십시오.");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "human-decision-envelope.json";
     link.click();
     URL.revokeObjectURL(link.href);
-    formStatus("별도의 결정 JSON을 다운로드했습니다.");
+    formStatus("유효한 5필드 결정 JSON을 다운로드했습니다. HTML 저장과는 별도입니다.");
   }
 
   window.selectReviewItem = selectReviewItem;
@@ -242,6 +307,7 @@
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
   updateTabControls(selectedDetailPanel());
+  updateReviewerSession();
   void refreshDisplayStatus();
 
   void reviewModel;

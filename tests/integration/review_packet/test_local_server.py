@@ -1,125 +1,167 @@
 from __future__ import annotations
 
-import socket
+import hashlib
+import http.client
+import json
 from pathlib import Path
-from urllib.parse import urlsplit
-from urllib.request import urlopen
+from threading import Thread
 
 import pytest
 
-from ansim_review.review_packet import browser_launcher
-from ansim_review.review_packet.browser_launcher import close_open_review_servers
-from ansim_review.review_run import open_review_run
+from ansim_review.review_packet.local_server import create_review_server
 
 RUN_ID = "RUN-0123456789ABCDEF0123"
+TOKEN = "a" * 43
+REVIEWER_ID = "reviewer-01"
 
 
-@pytest.fixture(autouse=True)
-def _close_review_servers() -> None:
-    yield
-    close_open_review_servers()
-
-
-def _artifacts(root: Path) -> tuple[Path, bytes, bytes]:
+def _artifacts(root: Path) -> tuple[Path, bytes]:
     run_directory = root / "runs" / RUN_ID
     run_directory.mkdir(parents=True)
     packet = b'{"human_decision":null,"run_id":"RUN-0123456789ABCDEF0123"}'
-    html = b"<html><body>protected review</body></html>"
     (run_directory / "final-review-packet.json").write_bytes(packet)
-    (run_directory / "review.html").write_bytes(html)
-    return run_directory, packet, html
-
-
-def test_open_review_run_opens_a_tokenized_loopback_route_and_preserves_packet_bytes(
-    tmp_path: Path,
-) -> None:
-    _, packet, html = _artifacts(tmp_path)
-    opened: list[str] = []
-
-    url = open_review_run(tmp_path, RUN_ID, browser=lambda value: opened.append(value) or True)
-
-    assert opened == [url]
-    parsed = urlsplit(url)
-    assert parsed.scheme == "http"
-    assert parsed.hostname == "127.0.0.1"
-    assert parsed.path.startswith(f"/runs/{RUN_ID}/")
-    assert parsed.path.endswith("/review")
-    assert not url.startswith("file:")
-    with urlopen(url, timeout=5) as response:
-        assert response.read() == html
-    with urlopen(url.removesuffix("/review") + "/packet", timeout=5) as response:
-        assert response.read() == packet
-    assert (tmp_path / "runs" / RUN_ID / "final-review-packet.json").read_bytes() == packet
-
-
-@pytest.mark.parametrize("missing", ("review.html", "final-review-packet.json"))
-def test_open_review_run_fails_closed_without_final_artifacts(
-    tmp_path: Path,
-    missing: str,
-) -> None:
-    run_directory, _, _ = _artifacts(tmp_path)
-    (run_directory / missing).unlink()
-    opened: list[str] = []
-
-    with pytest.raises(FileNotFoundError):
-        open_review_run(tmp_path, RUN_ID, browser=lambda value: opened.append(value) or True)
-
-    assert opened == []
-
-
-def test_open_review_run_closes_its_server_when_the_browser_rejects_the_url(
-    tmp_path: Path,
-) -> None:
-    _artifacts(tmp_path)
-    opened: list[str] = []
-
-    with pytest.raises(OSError, match="browser"):
-        open_review_run(tmp_path, RUN_ID, browser=lambda value: opened.append(value) or False)
-
-    assert len(opened) == 1
-    parsed = urlsplit(opened[0])
-    assert parsed.hostname == "127.0.0.1"
-    assert parsed.port is not None
-    with pytest.raises(OSError):
-        socket.create_connection((parsed.hostname, parsed.port), timeout=1)
-
-
-def test_web_runtime_server_reexports_the_packaged_server_implementation() -> None:
-    from ansim_review.review_packet.local_server import (
-        create_review_server as packaged_create_review_server,
+    (run_directory / "review.html").write_text(
+        "<html><body>protected review</body></html>", encoding="utf-8"
     )
-    from web_runtime.review_server import create_review_server as compatibility_create_review_server
-
-    assert compatibility_create_review_server is packaged_create_review_server
+    return run_directory, packet
 
 
-def test_launcher_closes_the_server_when_starting_its_thread_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def _request(
+    server: object,
+    method: str,
+    path: str,
+    *,
+    body: dict[str, str] | None = None,
+) -> tuple[int, dict[str, object]]:
+    address = server.server_address
+    host, port = address[0], address[1]
+    connection = http.client.HTTPConnection(host, port, timeout=5)
+    headers = {"Host": f"{host}:{port}"}
+    payload: bytes | None = None
+    if body is not None:
+        payload = json.dumps(body).encode("utf-8")
+        headers.update(
+            {
+                "Origin": f"http://{host}:{port}",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(payload)),
+            }
+        )
+    connection.request(method, path, body=payload, headers=headers)
+    response = connection.getresponse()
+    document = json.loads(response.read().decode("utf-8"))
+    connection.close()
+    return response.status, document
+
+
+def test_server_supplies_reviewer_hash_and_server_controlled_timestamp(tmp_path: Path) -> None:
+    run_directory, packet = _artifacts(tmp_path)
+    server = create_review_server(
+        tmp_path,
+        run_tokens={RUN_ID: TOKEN},
+        reviewer_ids={RUN_ID: REVIEWER_ID},
+    )
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"/runs/{RUN_ID}/{TOKEN}"
+        status_code, status = _request(server, "GET", base + "/decision/status")
+        packet_hash = hashlib.sha256(packet).hexdigest()
+        assert status_code == 200
+        assert status["reviewer_id"] == REVIEWER_ID
+        assert status["packet_hash"] == packet_hash
+
+        post_code, result = _request(
+            server,
+            "POST",
+            base + "/decision",
+            body={
+                "reviewer_id": REVIEWER_ID,
+                "packet_hash": packet_hash,
+                "decision": "SATISFIED",
+                "notes": "근거 확인 완료",
+            },
+        )
+        assert post_code == 201
+        assert result["display_status"] == "REVIEW_COMPLETED"
+        reviewed_at = result["reviewed_at"]
+        assert isinstance(reviewed_at, str)
+        assert reviewed_at.endswith("+00:00")
+        decisions = tuple((run_directory / "human-decisions").glob("*.json"))
+        assert len(decisions) == 1
+        saved = json.loads(decisions[0].read_text(encoding="utf-8"))
+        assert saved["reviewed_at"] == reviewed_at
+        assert saved["packet_hash"] == packet_hash
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_server_rejects_client_timestamp_extra_field_and_packet_mismatch(tmp_path: Path) -> None:
+    _, packet = _artifacts(tmp_path)
+    server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"/runs/{RUN_ID}/{TOKEN}/decision"
+        valid = {
+            "reviewer_id": REVIEWER_ID,
+            "packet_hash": hashlib.sha256(packet).hexdigest(),
+            "decision": "SATISFIED",
+            "notes": "확인",
+        }
+        invalid_extra = {**valid, "reviewed_at": "2026-08-13T12:00:00+09:00"}
+        code, document = _request(server, "POST", base, body=invalid_extra)
+        assert code == 400 and document["error"] == "INVALID_DECISION"
+
+        code, document = _request(
+            server,
+            "POST",
+            base,
+            body={**valid, "packet_hash": "0" * 64},
+        )
+        assert code == 400 and document["error"] == "PACKET_HASH_MISMATCH"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_configured_reviewer_id_is_readonly_for_post(tmp_path: Path) -> None:
+    _, packet = _artifacts(tmp_path)
+    server = create_review_server(
+        tmp_path,
+        run_tokens={RUN_ID: TOKEN},
+        reviewer_ids={RUN_ID: REVIEWER_ID},
+    )
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        code, document = _request(
+            server,
+            "POST",
+            f"/runs/{RUN_ID}/{TOKEN}/decision",
+            body={
+                "reviewer_id": "different-reviewer",
+                "packet_hash": hashlib.sha256(packet).hexdigest(),
+                "decision": "SATISFIED",
+                "notes": "확인",
+            },
+        )
+        assert code == 400
+        assert document["error"] == "INVALID_DECISION"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_server_rejects_unknown_reviewer_run_binding(tmp_path: Path) -> None:
     _artifacts(tmp_path)
-
-    class FakeServer:
-        closed = False
-
-        def serve_forever(self) -> None:
-            return None
-
-        def server_close(self) -> None:
-            self.closed = True
-
-    class FailingThread:
-        def __init__(self, *, target: object, name: str) -> None:
-            del target, name
-
-        def start(self) -> None:
-            raise RuntimeError("thread start failed")
-
-    server = FakeServer()
-    monkeypatch.setattr(browser_launcher, "create_review_server", lambda *_args, **_kwargs: server)
-    monkeypatch.setattr(browser_launcher, "Thread", FailingThread)
-
-    with pytest.raises(RuntimeError, match="thread start failed"):
-        open_review_run(tmp_path, RUN_ID, browser=lambda _url: True)
-
-    assert server.closed is True
+    with pytest.raises(ValueError, match="unknown run"):
+        create_review_server(
+            tmp_path,
+            run_tokens={RUN_ID: TOKEN},
+            reviewer_ids={"RUN-AAAAAAAAAAAAAAAAAAAA": REVIEWER_ID},
+        )
