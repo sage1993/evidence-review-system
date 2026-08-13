@@ -67,6 +67,43 @@ def test_builder_refuses_a_hit_without_a_traceable_citation() -> None:
         build_review_run_request(bundle)
 
 
+def test_builder_ignores_traceable_empty_context_hits() -> None:
+    from ansim_review.review_question import build_review_run_request
+
+    bundle = _bundle()
+    bundle["hits"] = [
+        {
+            "evidence_id": "CONTEXT",
+            "text": "",
+            "citation": {
+                "citation_id": "CIT-CONTEXT",
+                "document_id": "DOC1",
+                "revision_id": "REV1",
+                "page_number": 5,
+                "evidence_id": "CONTEXT",
+                "bbox": [1, 2, 3, 4],
+                "source_hash": "b" * 64,
+            },
+        },
+        *_bundle()["hits"],
+    ]
+
+    request = build_review_run_request(bundle)
+
+    assert request["evidence"] == [
+        {
+            "citation": {
+                "citation_id": "CIT-E1",
+                "document_id": "DOC1",
+                "revision_id": "REV1",
+                "page_number": 5,
+                "evidence_id": "E1",
+                "bbox": [1, 2, 3, 4],
+                "source_hash": "b" * 64,
+            },
+            "text": "기숙사는 별표 2를 적용한다.",
+        }
+    ]
 def test_explicit_expansion_uses_user_origin_not_model_origin() -> None:
     from ansim_review.review_question import canonical_query_request
 

@@ -119,6 +119,8 @@ def build_review_run_request(
         hit_payload = _mapping(hit, f"evidence_bundle.hits[{index}]")
         citation = hit_payload.get("citation")
         text = hit_payload.get("text")
+        if isinstance(text, str) and not text.strip():
+            continue
         if not isinstance(citation, Mapping) or not isinstance(text, str) or not text:
             raise ValueError("retrieval hit requires a traceable citation and text")
         evidence.append({"citation": dict(citation), "text": text})
