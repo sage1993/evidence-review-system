@@ -80,6 +80,32 @@ def test_protected_server_launcher_is_the_only_subprocess_exception(tmp_path: Pa
     )
 
 
+def test_protected_server_launcher_exception_is_stable_for_package_root(
+    tmp_path: Path,
+) -> None:
+    source = "import subprocess\nsubprocess.Popen(['python'])\n"
+    package_root = tmp_path / "ansim_review"
+    write_source(package_root, "review_packet/browser_launcher.py", source)
+    write_source(package_root, "other_launcher.py", source)
+
+    findings = scan_source_tree(package_root)
+
+    assert findings == (
+        OfflineFinding(
+            path="other_launcher.py",
+            line=1,
+            kind="FORBIDDEN_IMPORT",
+            symbol="subprocess",
+        ),
+        OfflineFinding(
+            path="other_launcher.py",
+            line=2,
+            kind="FORBIDDEN_PROCESS_CALL",
+            symbol="subprocess.Popen",
+        ),
+    )
+
+
 def test_process_exception_does_not_allow_network_clients(tmp_path: Path) -> None:
     write_source(
         tmp_path,
