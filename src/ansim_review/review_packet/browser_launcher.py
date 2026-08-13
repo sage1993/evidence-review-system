@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock, Thread
-from typing import TextIO
+from typing import TextIO, cast
 
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.observability.run_metrics import append_stage, finish_stage, start_stage
@@ -131,7 +131,8 @@ def _start_review_server(
     )
     try:
         assert process.stdout is not None
-        port = int(_readline_with_timeout(process.stdout).strip())
+        stdout = cast(TextIO, process.stdout)
+        port = int(_readline_with_timeout(stdout).strip())
     except (OSError, ValueError, AssertionError):
         process.terminate()
         process.wait(timeout=2)
