@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
+  <rect width="1536" height="1024" fill="#f6f8fb"/>
+  <style>
+    text{font-family:'Noto Sans KR','Malgun Gothic',Arial,sans-serif;fill:#172033}.h1{font-size:28px;font-weight:700}.h2{font-size:19px;font-weight:700}.h3{font-size:16px;font-weight:700}.body{font-size:14px}.small{font-size:12px;fill:#5b6678}.muted{fill:#5b6678}.green{fill:#15803d}.blue{fill:#1769e0}.card{fill:#fff;stroke:#d7dee8;stroke-width:1}.soft{fill:#f8fafc}.line{stroke:#d7dee8;stroke-width:1}.accent{fill:#eef5ff;stroke:#1769e0;stroke-width:1.5}.btn{fill:#fff;stroke:#c9d2df;stroke-width:1}.primary{fill:#1769e0}.pill{fill:#ecfdf3;stroke:#a7f3d0}.warn{fill:#f2f7ff;stroke:#b9d2f7}.audit{fill:#fff;stroke:#d7dee8}</style>
+  <rect x="8" y="8" width="1520" height="1008" rx="12" class="card"/>
+
+  <text x="36" y="55" class="h1">정식 근거 검토</text>
+  <text x="1106" y="50" class="body">검토 상태</text>
+  <rect x="1178" y="29" width="204" height="32" rx="6" class="pill"/><text x="1191" y="50" class="body green">검토 준비 완료</text>
+  <rect x="1400" y="25" width="97" height="39" rx="8" class="btn"/><text x="1431" y="50" class="body">인쇄</text>
+
+  <rect x="36" y="81" width="1464" height="108" rx="10" class="card"/>
+  <line x1="541" y1="98" x2="541" y2="172" class="line"/>
+  <line x1="1157" y1="98" x2="1157" y2="172" class="line"/>
+  <line x1="1295" y1="98" x2="1295" y2="172" class="line"/>
+  <text x="60" y="119" class="small">질문</text>
+  <text x="60" y="154" class="h2">해당 건축물의 용도지역은 제2종 일반주거지역인가?</text>
+  <text x="570" y="119" class="small">결론</text>
+  <text x="570" y="154" class="h2 green">해당 건축물의 용도지역은 제2종 일반주거지역으로 판단됩니다.</text>
+  <text x="1190" y="147" class="body">근거</text><text x="1230" y="154" class="h1">3</text><text x="1257" y="150" class="body">건</text>
+  <text x="1325" y="147" class="body">추가 확인</text><text x="1403" y="154" class="h1 blue">1</text><text x="1430" y="150" class="body">건</text>
+
+  <rect x="36" y="206" width="1464" height="49" rx="9" class="warn"/>
+  <text x="55" y="237" class="h3 blue">추가 확인</text>
+  <text x="159" y="237" class="body muted">지구단위계획구역 내 용도지역 변경 가능성 확인이 필요합니다.</text>
+  <rect x="1360" y="214" width="116" height="33" rx="7" class="btn"/><text x="1387" y="236" class="body">자세히 보기</text>
+
+  <rect x="36" y="273" width="392" height="592" rx="10" class="card"/>
+  <text x="53" y="307" class="h2">판단 근거</text><text x="286" y="305" class="small">문서별 · 관련도순</text>
+  <line x1="36" y1="326" x2="428" y2="326" class="line"/>
+  <rect x="45" y="337" width="374" height="151" rx="9" class="accent"/>
+  <rect x="58" y="351" width="22" height="22" rx="4" fill="#1769e0"/><text x="65" y="367" font-size="13" fill="#fff" font-weight="700">1</text>
+  <text x="99" y="365" class="h3">서울특별시 도시계획조례</text><text x="99" y="391" class="body muted">제51조 제1항 제1호 · p.23</text>
+  <text x="58" y="424" class="body">“도시·군관리계획으로 결정된 용도지역의 종류와</text><text x="58" y="448" class="body">그 지정 기준은 다음 각 호와 같다.”</text>
+  <rect x="58" y="458" width="67" height="23" rx="4" fill="#ecfdf3" stroke="#91dfb2"/><text x="70" y="474" class="small green">직접 근거</text>
+
+  <rect x="45" y="500" width="374" height="144" rx="9" class="card"/>
+  <rect x="58" y="513" width="22" height="22" rx="4" fill="#9aa5b3"/><text x="65" y="529" font-size="13" fill="#fff" font-weight="700">2</text>
+  <text x="99" y="527" class="h3">서울특별시 도시계획조례 시행규칙</text><text x="99" y="553" class="body muted">제10조 제2항 · p.45</text>
+  <text x="58" y="586" class="body">“제2종 일반주거지역의 범위와 건축물의 용도 및</text><text x="58" y="610" class="body">건폐율은 별표 1과 같다.”</text>
+  <rect x="58" y="616" width="67" height="23" rx="4" fill="#eef5ff" stroke="#b9d2f7"/><text x="70" y="632" class="small blue">간접 근거</text>
+
+  <rect x="45" y="656" width="374" height="144" rx="9" class="card"/>
+  <rect x="58" y="669" width="22" height="22" rx="4" fill="#9aa5b3"/><text x="65" y="685" font-size="13" fill="#fff" font-weight="700">3</text>
+  <text x="99" y="683" class="h3">국토의 계획 및 이용에 관한 법률</text><text x="99" y="709" class="body muted">제36조 제1항 · p.102</text>
+  <text x="58" y="742" class="body">“용도지역의 지정은 토지의 이용 및 건축물의</text><text x="58" y="766" class="body">용도·밀도 등을 고려하여 결정하여야 한다.”</text>
+  <rect x="58" y="772" width="67" height="23" rx="4" fill="#f7f3ed" stroke="#dfd5c7"/><text x="70" y="788" class="small">보조 근거</text>
+  <text x="58" y="839" class="small">선택한 근거를 클릭하면 PDF에서 해당 부분이 강조됩니다.</text>
+
+  <rect x="440" y="273" width="703" height="592" rx="10" class="card"/>
+  <text x="457" y="307" class="h2">PDF 원문</text>
+  <rect x="548" y="286" width="98" height="34" rx="7" class="btn"/><text x="566" y="308" class="body">원문 + 강조</text>
+  <text x="790" y="308" class="body">23 / 128</text><text x="965" y="308" class="body">100%</text>
+  <line x1="440" y1="326" x2="1143" y2="326" class="line"/>
+  <rect x="440" y="327" width="120" height="538" fill="#eef1f5"/>
+  <rect x="455" y="347" width="83" height="108" class="card"/><text x="488" y="470" class="small">21</text>
+  <rect x="455" y="468" width="83" height="108" class="card"/><text x="488" y="591" class="small">22</text>
+  <rect x="455" y="589" width="83" height="108" fill="#fff" stroke="#1769e0" stroke-width="2"/><text x="486" y="714" class="small blue">23</text>
+  <rect x="455" y="710" width="83" height="108" class="card"/><text x="488" y="833" class="small">24</text>
+  <rect x="560" y="327" width="583" height="538" fill="#fff"/>
+  <text x="600" y="385" class="body">제51조(용도지역의 종류 및 지정기준) ① 도시·군관리계획으로</text>
+  <rect x="884" y="365" width="225" height="26" fill="#fff3a8"/><text x="893" y="385" class="body">결정된 용도지역의 종류와</text>
+  <rect x="618" y="395" width="430" height="27" fill="#fff3a8"/><text x="626" y="415" class="body">그 지정 기준은 다음 각 호와 같다.</text>
+  <text x="620" y="454" class="body">1. 제1종 전용주거지역</text><text x="620" y="482" class="body">2. 제2종 전용주거지역</text>
+  <text x="620" y="510" class="body">3. 제1종 일반주거지역</text><text x="620" y="538" class="body">4. 제2종 일반주거지역</text>
+  <text x="620" y="566" class="body">5. 제3종 일반주거지역</text><text x="620" y="594" class="body">6. 준주거지역</text>
+  <text x="620" y="622" class="body">7. 상업지역</text><text x="620" y="650" class="body">8. 준공업지역</text>
+  <text x="620" y="678" class="body">9. 공업지역</text><text x="620" y="706" class="body">10. 생산관리지역</text>
+  <text x="620" y="734" class="body">11. 보전관리지역</text><text x="620" y="782" class="body">② 용도지역의 지정기준은 별표 1과 같다.</text>
+  <rect x="592" y="824" width="13" height="13" fill="#fff3a8"/><text x="612" y="835" class="small">선택된 근거</text>
+  <rect x="715" y="824" width="13" height="13" fill="#c9dcff"/><text x="735" y="835" class="small">다른 근거</text>
+
+  <rect x="1158" y="273" width="342" height="592" rx="10" class="card"/>
+  <text x="1176" y="307" class="h2">검토자 의견</text><line x1="1158" y1="326" x2="1500" y2="326" class="line"/>
+  <text x="1177" y="356" class="h3">판정</text>
+  <g class="body"><circle cx="1191" cy="389" r="9" fill="#1769e0"/><circle cx="1191" cy="389" r="3" fill="#fff"/><text x="1210" y="395">검토 결과에 동의</text>
+  <circle cx="1191" cy="435" r="9" fill="#fff" stroke="#b9c4d1"/><text x="1210" y="441">검토 결과에 오류 있음</text>
+  <circle cx="1191" cy="481" r="9" fill="#fff" stroke="#b9c4d1"/><text x="1210" y="487">조건 충족 시 동의</text>
+  <circle cx="1191" cy="527" r="9" fill="#fff" stroke="#b9c4d1"/><text x="1210" y="533">추가 자료 검토 필요</text></g>
+  <text x="1177" y="585" class="h3">검토 의견 <tspan class="small">(선택)</tspan></text>
+  <rect x="1175" y="602" width="307" height="116" rx="7" class="soft" stroke="#cbd5e1"/><text x="1190" y="630" class="small">검토 의견을 입력하세요.</text>
+  <rect x="1175" y="754" width="307" height="50" rx="8" class="primary"/><text x="1277" y="786" font-size="18" fill="#fff" font-weight="700">결정 저장</text>
+  <text x="1194" y="833" class="small">저장 시 검토 기록이 추가되며 수정은 불가합니다.</text>
+
+  <rect x="36" y="900" width="1464" height="57" rx="9" class="audit"/>
+  <text x="58" y="935" class="h2">감사 정보</text><text x="217" y="934" class="small">패킷/런 정보, Track A/B, 근거/수정 이력, 좌표, 해시 등 감사 데이터를 확인할 수 있습니다.</text>
+  <text x="1455" y="935" class="h2">⌄</text>
+  <text x="36" y="995" class="small">Evidence Review System    v1.0.0</text><text x="1100" y="995" class="small">패킷 해시: 7f2a…c9d1    |    생성일: 2026-08-14</text>
+</svg>
