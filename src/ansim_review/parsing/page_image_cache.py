@@ -30,6 +30,7 @@ from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_pag
 from ansim_review.parsing.source_manifest import sha256_file
 
 _RENDER_SCALE = 2.0
+_PAGE_IMAGE_FORMAT = "evidence-review/page-image"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +44,7 @@ class PageImageSource:
 
 def _metadata(source: PageImageSource, page: PdfPageGeometry, image: bytes) -> dict[str, object]:
     return {
-        "format": "ansim/page-image",
+        "format": _PAGE_IMAGE_FORMAT,
         "version": 1,
         "revision_id": source.revision_id,
         "page_number": page.page_number,
