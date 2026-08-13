@@ -53,6 +53,50 @@ def test_scanner_detects_forbidden_capabilities(
     )
 
 
+def test_protected_server_launcher_is_the_only_subprocess_exception(tmp_path: Path) -> None:
+    source = "import subprocess\nsubprocess.Popen(['python'])\n"
+    write_source(
+        tmp_path,
+        "ansim_review/review_packet/browser_launcher.py",
+        source,
+    )
+    write_source(tmp_path, "ansim_review/other_launcher.py", source)
+
+    findings = scan_source_tree(tmp_path)
+
+    assert findings == (
+        OfflineFinding(
+            path="ansim_review/other_launcher.py",
+            line=1,
+            kind="FORBIDDEN_IMPORT",
+            symbol="subprocess",
+        ),
+        OfflineFinding(
+            path="ansim_review/other_launcher.py",
+            line=2,
+            kind="FORBIDDEN_PROCESS_CALL",
+            symbol="subprocess.Popen",
+        ),
+    )
+
+
+def test_process_exception_does_not_allow_network_clients(tmp_path: Path) -> None:
+    write_source(
+        tmp_path,
+        "ansim_review/review_packet/browser_launcher.py",
+        "import requests\n",
+    )
+
+    assert scan_source_tree(tmp_path) == (
+        OfflineFinding(
+            path="ansim_review/review_packet/browser_launcher.py",
+            line=1,
+            kind="FORBIDDEN_IMPORT",
+            symbol="requests",
+        ),
+    )
+
+
 def test_scanner_reports_parse_failures(tmp_path: Path) -> None:
     write_source(tmp_path, "broken.py", "def broken(:\n")
 
