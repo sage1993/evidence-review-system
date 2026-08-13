@@ -6,13 +6,16 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from io import BytesIO
+from math import ceil, floor
 from pathlib import Path
 from tempfile import mkdtemp
+
+import pypdfium2 as pdfium  # type: ignore[import-untyped]
 
 if sys.platform != "win32":
     import fcntl
@@ -25,6 +28,8 @@ else:
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_page_geometries
 from ansim_review.parsing.source_manifest import sha256_file
+
+_RENDER_SCALE = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,27 +103,65 @@ def _load_existing(
     return True
 
 
-def _render_page(source: Path, page_number: int, destination: Path) -> bytes:
-    prefix = destination.with_suffix("")
-    command = (
-        "pdftoppm",
-        "-png",
-        "-cropbox",
-        "-f",
-        str(page_number),
-        "-l",
-        str(page_number),
-        "-singlefile",
-        str(source),
-        str(prefix),
+def _crop_bounds(
+    converter: object,
+    page: PdfPageGeometry,
+    image_width: int,
+    image_height: int,
+) -> tuple[int, int, int, int]:
+    """Map the selected PDF page box into rendered bitmap coordinates."""
+    to_bitmap = getattr(converter, "to_bitmap")
+    right = page.origin_x + page.width
+    top = page.origin_y + page.height
+    points = (
+        to_bitmap(page.origin_x, page.origin_y),
+        to_bitmap(page.origin_x, top),
+        to_bitmap(right, page.origin_y),
+        to_bitmap(right, top),
     )
+    xs = [float(point[0]) for point in points]
+    ys = [float(point[1]) for point in points]
+    left_px = max(0, floor(min(xs)))
+    upper_px = max(0, floor(min(ys)))
+    right_px = min(image_width, ceil(max(xs)))
+    lower_px = min(image_height, ceil(max(ys)))
+    if right_px <= left_px or lower_px <= upper_px:
+        raise ValueError(f"PAGE_RENDER_GEOMETRY_INVALID: page {page.page_number}")
+    return left_px, upper_px, right_px, lower_px
+
+
+def _render_page(source: Path, page: PdfPageGeometry, destination: Path) -> bytes:
+    """Render one page in-process and crop it to the authoritative page geometry."""
     try:
-        completed = subprocess.run(command, check=False, capture_output=True)
-    except OSError as error:
-        raise ValueError("PAGE_RENDERER_UNAVAILABLE: pdftoppm") from error
-    if completed.returncode != 0 or not destination.is_file():
-        raise ValueError(f"PAGE_RENDER_FAILED: page {page_number}")
-    return destination.read_bytes()
+        with pdfium.PdfDocument(source) as document:
+            pdf_page = document[page.page_number - 1]
+            try:
+                bitmap = pdf_page.render(
+                    scale=_RENDER_SCALE,
+                    rev_byteorder=True,
+                    prefer_bgrx=True,
+                    maybe_alpha=True,
+                )
+                try:
+                    image = bitmap.to_pil().copy()
+                    bounds = _crop_bounds(
+                        bitmap.get_posconv(pdf_page),
+                        page,
+                        image.width,
+                        image.height,
+                    )
+                finally:
+                    bitmap.close()
+            finally:
+                pdf_page.close()
+        cropped = image.crop(bounds)
+        output = BytesIO()
+        cropped.save(output, format="PNG", compress_level=6)
+        data = output.getvalue()
+        destination.write_bytes(data)
+        return data
+    except (OSError, IndexError, KeyError, TypeError, ValueError, RuntimeError) as error:
+        raise ValueError(f"PAGE_RENDER_FAILED: page {page.page_number}") from error
 
 
 def _verify_revision(
@@ -154,7 +197,7 @@ def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
         try:
             for page in pages:
                 temporary_image = temporary_root / f"page-{page.page_number:04d}.png"
-                image = _render_page(source.source_path, page.page_number, temporary_image)
+                image = _render_page(source.source_path, page, temporary_image)
                 _write_durable(
                     temporary_root / f"page-{page.page_number:04d}.json",
                     dump_bytes(_metadata(source, page, image)),
