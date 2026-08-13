@@ -27,6 +27,10 @@ from ansim_review.retrieval.structured import (
     retrieve_structured,
 )
 
+_GROUPED_CONTEXT_CHANNELS = frozenset(
+    {"fts_entity", "fts_numeric", "fts_concept"}
+)
+
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(
@@ -204,6 +208,13 @@ def _derived_variant_hits(
     return tuple(channels)
 
 
+def _is_grouped_context_seed(hit: RetrievalHit) -> bool:
+    return any(
+        score.channel in _GROUPED_CONTEXT_CHANNELS
+        for score in hit.channel_scores
+    )
+
+
 def _citation_document(hit: RetrievalHit) -> dict[str, object]:
     citation = hit.citation()
     return {
@@ -254,6 +265,7 @@ def build_evidence_bundle(
     channels.extend(
         load_adjacent_element_hits(connection, seed)
         for seed in direct_fused
+        if _is_grouped_context_seed(seed)
     )
     fused = fuse_hits(tuple(channels))[:limit]
 
