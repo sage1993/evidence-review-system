@@ -4,47 +4,50 @@
 
 **Goal:** Make Korean natural-language formal-review questions retrieve relevant traceable evidence despite spacing/particle/numeric-format differences, and make zero-evidence/zero-claim, missing-input, snapshot-lineage, and Track A retry behavior fail closed and internally consistent.
 
-**Architecture:** Keep the existing offline FTS5 pipeline and add a deterministic Korean query-variant layer with three bounded groups (entity, numeric, concept), then feed those groups into separate weighted retrieval channels so matching across groups raises rank without introducing unrestricted token-OR. Preserve exact citations for every returned/context hit. Downstream, derive confidence from evidence availability, prohibit vacuous Track B acceptance, carry snapshot/missing-input lineage through the legacy review packet compatibly, and make same-path Track A submission idempotent only after successful validation.
+**Architecture:** Keep SQLite FTS5 and add a deterministic Korean query-variant layer with bounded `entity`, `numeric`, and `concept` groups. Each group uses a separate weighted channel so multi-group evidence ranks higher without unrestricted token OR; structural context is returned as separately cited adjacent evidence rather than concatenated uncited text. Downstream changes derive confidence from evidence availability, prohibit vacuous Track B acceptance, carry snapshot/missing-input lineage through the compatible legacy review packet, and accept an already-canonical Track A source path only after successful validation.
 
 **Tech Stack:** Python 3.11/3.13, stdlib `re`/`unicodedata`, SQLite FTS5 (`unicode61`), existing `ansim_review` contracts/retrieval/finalizer/review-packet modules, pytest, Ruff, mypy. No new runtime dependency and no model/API query rewriting.
 
 ## Global Constraints
 
 - Work directly on `main`; do not create a feature branch for this tranche.
-- All user questions stay on the formal Track A → validation → Track B → final packet path; no quick-review mode.
-- Keep the runtime offline; do not add network/model/API calls.
-- Do not replace grouped retrieval with unrestricted token OR.
-- Every returned evidence/context record must retain exact document/revision/page/evidence/bbox/source-hash citation identity.
-- Preserve parser output and evidence source authority; retrieval may add derived query/context metadata only.
-- Legacy review-packet readers remain backward compatible with packets that predate the new optional lineage fields.
-- Track A create-only immutability remains authoritative; never overwrite a differing existing artifact.
-- Windows is the primary acceptance platform. Final integration verification is required on Python 3.11 and 3.13 under #93.
-- GitHub Actions status must be reported separately from manual Windows validation; never call local validation “Actions PASS”.
+- All questions stay on the formal retrieval → Track A → Track A validation → Track B → final packet path; no quick-review mode.
+- Keep runtime execution offline; add no network/model/API calls.
+- Never replace grouped retrieval with unrestricted token OR.
+- Every returned seed/context record retains its own document/revision/page/evidence/bbox/source-hash citation identity.
+- Parser output and evidence source authority remain immutable.
+- Historical legacy review packets that omit the new lineage fields must remain readable.
+- Track A create-only immutability remains authoritative; a differing existing artifact is always an error.
+- Windows is the primary acceptance platform; Python 3.11 and 3.13 final E2E remains under #93.
+- GitHub Actions status is separate from local Windows validation.
 
 ---
 
 ## File Structure
 
-- Create `src/ansim_review/retrieval/korean_variants.py` — deterministic Korean particle stripping, subject/entity combination, numeric formatting variants, and bounded concept variants.
-- Modify `src/ansim_review/retrieval/index.py` — expose a literal FTS helper for named grouped channels and a page-adjacent element loader for structural context.
-- Modify `src/ansim_review/retrieval/fusion.py` — add explicit weights for `fts_entity`, `fts_numeric`, `fts_concept`, and `structural_context`.
-- Modify `src/ansim_review/retrieval/bundle.py` — execute grouped channels, fuse seeds, add cited structural context, and export query-variant trace metadata.
-- Modify `src/ansim_review/review_question.py` — derive confidence input from evidence availability instead of unconditional `1.0` and preserve existing snapshot input.
-- Modify `src/ansim_review/llm_layer/track_b.py` — reject `ACCEPT` when Track A contains no auditable claims.
-- Modify `src/ansim_review/contracts/review.py` — add backward-compatible optional `snapshot_sha256` and `missing_inputs` fields to the legacy `ReviewPacket` dataclass.
-- Modify `src/ansim_review/contracts/codecs.py` — decode the two new fields when present and accept old packets where they are absent.
-- Modify `src/ansim_review/abstention/finalizer.py` — derive snapshot/missing-input lineage from the manifest-bound Track A bundle and emit it in new final packets.
-- Modify `src/ansim_review/review_packet/builder.py` — count packet-level missing inputs and expose snapshot lineage consistently in audit metadata.
-- Modify `src/ansim_review/review_run.py` — accept a validated Track A file already located at the canonical target path without rewriting it; preserve create-only behavior for differing external files.
-- Test `tests/unit/retrieval/test_korean_variants.py` — new deterministic variant contract.
-- Modify/Test `tests/integration/retrieval/test_fts_lexical_channels.py` — grouped channel/fusion contract.
-- Create `tests/integration/retrieval/test_korean_formal_review_retrieval.py` — representative Korean question + facility/1,500㎡ regression and context assertions.
-- Modify/Test `tests/unit/review_question/test_request_builder.py` — zero-evidence confidence regression.
-- Modify/Test `tests/unit/llm_layer/test_track_b_validator.py` — empty-audit/vacuous-ACCEPT regression.
-- Modify/Test `tests/integration/abstention/test_finalizer.py` — snapshot and Track A missing-input packet lineage.
-- Modify/Test `tests/unit/review_packet/test_builder.py` — summary count/snapshot audit projection consistency.
-- Modify/Test `tests/unit/review_question/test_track_a_submission.py` — same-path Track A idempotency and differing-artifact conflict.
-- Modify/Test `tests/integration/review_question/test_review_question_cli.py` — end-to-end representative question contract where practical with deterministic fixtures.
+- Create `src/ansim_review/retrieval/korean_variants.py` — bounded deterministic Korean decomposition only.
+- Modify `src/ansim_review/retrieval/index.py` — named literal grouped channels and adjacent-element lookup.
+- Modify `src/ansim_review/retrieval/fusion.py` — grouped/context weights.
+- Modify `src/ansim_review/retrieval/bundle.py` — grouped retrieval, context expansion, query trace export.
+- Modify `src/ansim_review/review_question.py` — evidence-aware initial confidence.
+- Modify `src/ansim_review/llm_layer/track_b.py` — zero-claim `ACCEPT` prohibition.
+- Modify `src/ansim_review/contracts/review.py` — optional legacy packet snapshot/missing-input fields.
+- Modify `src/ansim_review/contracts/codecs.py` — backward-compatible decoding.
+- Modify `src/ansim_review/abstention/finalizer.py` — manifest-bound lineage derivation.
+- Modify `src/ansim_review/review_packet/builder.py` — packet-level missing-input projection.
+- Modify `src/ansim_review/review_packet/presentation.py` — packet-level missing-input text in 추가 확인.
+- Modify `src/ansim_review/review_run.py` — same-path validated Track A publication.
+- Create `tests/unit/retrieval/test_korean_variants.py`.
+- Modify `tests/integration/retrieval/test_fts_lexical_channels.py`.
+- Create `tests/integration/retrieval/test_korean_formal_review_retrieval.py`.
+- Modify `tests/unit/review_question/test_request_builder.py`.
+- Modify `tests/unit/llm_layer/test_track_b_validator.py`.
+- Modify `tests/integration/abstention/test_finalizer.py`.
+- Modify `tests/unit/review_packet/test_builder.py`.
+- Modify `tests/integration/review_packet/test_html_renderer.py` only for the new missing-input UI assertion.
+- Modify `tests/unit/review_question/test_track_a_submission.py`.
+- Modify `tests/integration/review_question/test_review_metrics.py`.
+- Modify `tests/integration/review_question/test_review_question_cli.py` for the representative question regression.
 
 ---
 
@@ -55,21 +58,19 @@
 - Create: `tests/unit/retrieval/test_korean_variants.py`
 
 **Interfaces:**
-- Consumes: normalized primary question text (`str`).
+- Consumes: primary question `str`.
 - Produces: `GroupedQueryVariants(entity: tuple[str, ...], numeric: tuple[str, ...], concept: tuple[str, ...])` and `derive_korean_query_variants(primary: str) -> GroupedQueryVariants`.
-- Later tasks consume the exact group names `entity`, `numeric`, and `concept`; keep ordering deterministic and deduplicate within each tuple.
 
-- [ ] **Step 1: Write the failing regression for the real question**
+- [ ] **Step 1: Write the RED regression for the real question**
 
 ```python
 from ansim_review.retrieval.korean_variants import derive_korean_query_variants
 
 
-def test_real_question_derives_entity_numeric_and_concept_groups() -> None:
+def test_real_question_derives_bounded_groups() -> None:
     variants = derive_korean_query_variants(
         "청소년 문화의집은 면적이 1500제곱미터 이상이어야 한다."
     )
-
     assert variants.entity == ("청소년 문화의집", "청소년문화의집")
     assert variants.numeric == (
         "1500",
@@ -80,26 +81,19 @@ def test_real_question_derives_entity_numeric_and_concept_groups() -> None:
     assert variants.concept == ("면적", "연면적", "연건축면적", "이상")
 ```
 
-Also add a determinism test that calls the function twice and asserts equality, plus a safety test that an unrelated short question such as `"기준을 확인한다."` does not fabricate numeric variants.
+Add two more tests: repeated calls return exactly equal tuples, and `"기준을 확인한다."` produces no numeric variants.
 
-- [ ] **Step 2: Run the new unit test and verify RED**
-
-Run:
+- [ ] **Step 2: Run RED**
 
 ```powershell
 python -m pytest -v tests/unit/retrieval/test_korean_variants.py
 ```
 
-Expected: collection/import failure because `korean_variants.py` does not exist.
+Expected: import/collection failure because the module is absent.
 
-- [ ] **Step 3: Implement the minimal deterministic parser**
-
-Create these exact public types/functions:
+- [ ] **Step 3: Implement the exact public interface**
 
 ```python
-from __future__ import annotations
-
-import re
 from dataclasses import dataclass
 
 
@@ -114,14 +108,14 @@ def derive_korean_query_variants(primary: str) -> GroupedQueryVariants:
     ...
 ```
 
-Implementation rules:
+Implementation contract:
 
-1. Normalize with the existing `normalize_text()` behavior before token analysis.
-2. Strip terminal punctuation from whitespace tokens.
-3. Strip only this bounded particle/sentence suffix set from Hangul tokens when the remaining stem is at least two characters: `은`, `는`, `이`, `가`, `을`, `를`, `에`, `에서`, `으로`, `로`, `와`, `과`, `도`, `이어야`, `여야`, `한다`.
-4. Detect the first measurement/constraint token (`면적` family, a numeric token, or `이상`/`이하`) and treat the preceding non-empty stripped tokens as the subject/entity phrase. Emit both spaced and whitespace-free entity forms when they differ.
-5. Parse a numeric token with `(?P<number>\d[\d,]*)(?P<unit>제곱미터|㎡)?`; emit comma-free and three-digit-grouped forms, then the same forms with the detected unit when a unit exists.
-6. Use a bounded approved concept map:
+1. Reuse the same NFC/whitespace normalization semantics as `retrieval.query.normalize_text()`.
+2. Remove terminal sentence punctuation before token analysis.
+3. Strip Korean suffixes only when a stem of at least two characters remains. Use this fixed suffix tuple sorted by descending length before matching: `이어야`, `여야`, `에서`, `으로`, `한다`, `은`, `는`, `이`, `가`, `을`, `를`, `에`, `로`, `와`, `과`, `도`.
+4. The entity subject is the non-empty stripped token sequence before the first measurement/constraint token. Emit the spaced phrase first, then its whitespace-free form if different.
+5. Numeric regex: `(?P<number>\d[\d,]*)(?P<unit>제곱미터|㎡)?`. Emit comma-free and grouped forms, followed by the same forms with the detected unit.
+6. Bounded concept map only:
 
 ```python
 _CONCEPT_VARIANTS = {
@@ -133,16 +127,16 @@ _CONCEPT_VARIANTS = {
 }
 ```
 
-7. Never emit arbitrary OR tokens from the full sentence; only these three groups are produced.
-8. Preserve first-occurrence ordering using an ordered-dedup helper rather than a set iteration.
+7. Preserve first-occurrence ordering with an ordered-dedup helper; never use unordered set iteration for output.
+8. Do not emit arbitrary sentence tokens as fallback variants.
 
-- [ ] **Step 4: Run unit tests and verify GREEN**
+- [ ] **Step 4: Run GREEN**
 
 ```powershell
 python -m pytest -v tests/unit/retrieval/test_korean_variants.py tests/unit/retrieval/test_query_normalization.py
 ```
 
-Expected: PASS; existing query normalization behavior remains unchanged.
+Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -153,7 +147,7 @@ git commit -m "feat: derive deterministic Korean query variants (#95)"
 
 ---
 
-### Task 2: Add grouped FTS channels and multi-group fusion
+### Task 2: Grouped FTS channels and multi-group fusion
 
 **Files:**
 - Modify: `src/ansim_review/retrieval/index.py`
@@ -162,56 +156,43 @@ git commit -m "feat: derive deterministic Korean query variants (#95)"
 - Modify: `tests/integration/retrieval/test_fts_lexical_channels.py`
 
 **Interfaces:**
-- Consumes: `derive_korean_query_variants(primary)` from Task 1.
-- Produces: `search_fts_literal(connection, query, *, channel, limit=20) -> tuple[RetrievalHit, ...]` supporting only `fts_entity`, `fts_numeric`, `fts_concept`; bundle query metadata gains `derived_variants` with the three ordered arrays.
-- Existing `fts_phrase` and `fts_token_and` behavior stays intact.
+- Consumes: Task 1 grouped variants.
+- Produces: `search_fts_literal(connection, query, *, channel, limit=20) -> tuple[RetrievalHit, ...]`, limited to `fts_entity`, `fts_numeric`, `fts_concept`.
+- Bundle query metadata gains `derived_variants` with the three ordered arrays.
 
-- [ ] **Step 1: Add failing channel and fusion tests**
+- [ ] **Step 1: Add failing grouped-channel tests**
 
-Extend `test_fts_lexical_channels.py` with evidence records such as:
+Extend the fixture with:
 
 ```python
 facility = "청소년문화의집은 다양한 유형의 청소년수련시설 중 가장 작은 규모의 시설"
 criterion = "청소년수련관은 연건축면적이 1,500제곱미터 이상이어야 한다"
 ```
 
-Add assertions that `build_evidence_bundle()` for the representative question:
+For the real question assert both evidence IDs are retrieved, `facility` has an `fts_entity` channel, `criterion` has `fts_numeric` and `fts_concept`, and:
 
 ```python
-bundle = build_evidence_bundle(
-    store.require_connection(),
-    {
-        "question": "청소년 문화의집은 면적이 1500제곱미터 이상이어야 한다.",
-        "synonym_manifest": {},
-        "expansions": [],
-        "limit": 20,
-    },
-)
-
-assert {hit["evidence_id"] for hit in bundle["hits"]} >= {
-    "E-CULTURE-HOUSE",
-    "E-YOUTH-CENTER-1500",
-}
 assert bundle["query"]["derived_variants"] == {
     "entity": ["청소년 문화의집", "청소년문화의집"],
     "numeric": ["1500", "1,500", "1500제곱미터", "1,500제곱미터"],
     "concept": ["면적", "연면적", "연건축면적", "이상"],
 }
+assert all(
+    score["channel"] != "fts_token_or"
+    for hit in bundle["hits"]
+    for score in hit["channel_scores"]
+)
 ```
 
-Assert at least one culture-house hit contains an `fts_entity` score and the 1,500㎡ criterion contains `fts_numeric` plus `fts_concept`. Add an assertion that no emitted score uses a generic `fts_token_or` channel.
-
-- [ ] **Step 2: Run the focused integration test and verify RED**
+- [ ] **Step 2: Run RED**
 
 ```powershell
 python -m pytest -v tests/integration/retrieval/test_fts_lexical_channels.py
 ```
 
-Expected: representative Korean test fails with no relevant hits / missing `derived_variants`.
+Expected: no relevant Korean grouped hits / no `derived_variants`.
 
-- [ ] **Step 3: Expose a bounded literal-channel helper in `index.py`**
-
-Add:
+- [ ] **Step 3: Add bounded literal FTS helper**
 
 ```python
 _GROUP_CHANNELS = frozenset({"fts_entity", "fts_numeric", "fts_concept"})
@@ -235,11 +216,9 @@ def search_fts_literal(
     )
 ```
 
-Do not expose arbitrary raw FTS expressions.
+Do not expose raw caller-provided FTS expressions.
 
-- [ ] **Step 4: Add explicit fusion weights**
-
-Extend `CHANNEL_WEIGHTS` with:
+- [ ] **Step 4: Add fusion weights**
 
 ```python
 "fts_entity": Decimal("0.40"),
@@ -247,11 +226,11 @@ Extend `CHANNEL_WEIGHTS` with:
 "fts_concept": Decimal("0.10"),
 ```
 
-These weights accumulate only when the same evidence is matched by different groups; multiple variants within one group continue to collapse into one channel score via `RetrievalHit.with_channel()`.
+Because `RetrievalHit.with_channel()` merges duplicate scores by channel, multiple variants in one group do not multiply weight; evidence matching multiple different groups accumulates weight.
 
-- [ ] **Step 5: Wire grouped variants into `build_evidence_bundle()`**
+- [ ] **Step 5: Wire grouped variants into `bundle.py`**
 
-Add a helper with the exact shape:
+Add:
 
 ```python
 def _derived_variant_hits(
@@ -262,19 +241,9 @@ def _derived_variant_hits(
     ...
 ```
 
-For each derived entity/numeric/concept term, call `search_fts_literal()` with the corresponding channel and rewrite `ChannelScore.detail` to `derived:<group>:<term>`. Append these channels after the existing origin channels and before fusion.
+Call `search_fts_literal()` per variant; rewrite score detail to `derived:entity:<term>`, `derived:numeric:<term>`, or `derived:concept:<term>`. Append these channels after existing primary/synonym/user/LLM channels, before fusion. Export `derived_variants` in `bundle["query"]`.
 
-Add to the returned query document:
-
-```python
-"derived_variants": {
-    "entity": list(variants.entity),
-    "numeric": list(variants.numeric),
-    "concept": list(variants.concept),
-},
-```
-
-- [ ] **Step 6: Run retrieval regression suites**
+- [ ] **Step 6: Run regression suites**
 
 ```powershell
 python -m pytest -v `
@@ -285,7 +254,7 @@ python -m pytest -v `
   tests/integration/retrieval/test_hybrid_fusion.py
 ```
 
-Expected: PASS with existing exact-phrase/token-AND ordering tests unchanged.
+Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
@@ -296,7 +265,7 @@ git commit -m "feat: add grouped Korean retrieval channels (#95)"
 
 ---
 
-### Task 3: Add cited structural context for adjacent parser elements
+### Task 3: Separately cited structural context
 
 **Files:**
 - Modify: `src/ansim_review/retrieval/index.py`
@@ -305,36 +274,34 @@ git commit -m "feat: add grouped Korean retrieval channels (#95)"
 - Create: `tests/integration/retrieval/test_korean_formal_review_retrieval.py`
 
 **Interfaces:**
-- Consumes: fused seed `RetrievalHit` records from Task 2.
-- Produces: `load_adjacent_element_hits(connection, seed, *, radius=1) -> tuple[RetrievalHit, ...]`; every context hit has its own evidence ID/bbox/source hash and channel `structural_context`.
-- No context text is concatenated into the seed citation.
+- Consumes: fused seed `RetrievalHit` values.
+- Produces: `load_adjacent_element_hits(connection, seed, *, radius=1) -> tuple[RetrievalHit, ...]` with channel `structural_context`.
+- Context never changes the seed text/citation; each neighbor remains a separate cited hit.
 
-- [ ] **Step 1: Write the failing structural-context fixture**
+- [ ] **Step 1: Create RED fixture with parser order**
 
-Create a deterministic `EvidenceSnapshot` with one page containing parser-ordered elements:
+Use one `EvidenceSnapshot` page with:
 
 ```text
-E-ROW-LABEL       parser_order=10  "청소년수련관"
-E-ROW-CRITERION   parser_order=11  "연건축면적이 1,500제곱미터 이상이어야 하며 ..."
-E-CULTURE-LABEL   parser_order=20  "청소년문화의집"
-E-CULTURE-DESC    parser_order=21  "다양한 유형의 청소년수련시설 중 가장 작은 규모의 시설 ..."
+E-ROW-LABEL       parser_order=10  청소년수련관
+E-ROW-CRITERION   parser_order=11  연건축면적이 1,500제곱미터 이상이어야 하며 ...
+E-CULTURE-LABEL   parser_order=20  청소년문화의집
+E-CULTURE-DESC    parser_order=21  다양한 유형의 청소년수련시설 중 가장 작은 규모의 시설 ...
 ```
 
-Run `build_fts_index()` then the representative question. Assert the exported hits include all four exact evidence IDs (seed or structural context), and for each returned hit `citation` is non-null and points to its own evidence ID.
+After `build_fts_index()`, run the real question and assert the returned cited evidence IDs include all four records. For every hit assert `hit["citation"]["evidence_id"] == hit["evidence_id"]`. Add a second page and assert adjacency never crosses page/revision boundaries.
 
-Also assert structural context never crosses to another page/revision and never returns more than `radius` preceding + `radius` following element per seed.
-
-- [ ] **Step 2: Run the new test and verify RED**
+- [ ] **Step 2: Run RED**
 
 ```powershell
 python -m pytest -v tests/integration/retrieval/test_korean_formal_review_retrieval.py
 ```
 
-Expected: seed matches may exist after Task 2, but adjacent row label/description assertions fail.
+Expected: direct seeds may exist, but row-label/description context is missing.
 
-- [ ] **Step 3: Implement page-local adjacent element loading**
+- [ ] **Step 3: Implement page-local neighbor loading**
 
-In `index.py`, use the seed evidence ID to resolve `elements.page_id` and `elements.parser_order`, then query only the same page and only element rows in `[order-radius, order+radius]`, excluding the seed. Load each neighbor through the existing `retrieval_records` identity and return it with:
+Resolve the seed in `elements` to `page_id` + `parser_order`; query only the same page and only element rows with parser order from `seed_order - radius` through `seed_order + radius`, excluding the seed. Resolve each neighbor from `retrieval_records` and return it with:
 
 ```python
 ChannelScore(
@@ -344,33 +311,23 @@ ChannelScore(
 )
 ```
 
-If the seed is not an `elements` row (for example a table or visual), return `()` rather than guessing a structure.
+If the seed is not an `elements` record, return `()`.
 
-- [ ] **Step 4: Add the context fusion weight and two-pass bundle flow**
-
-Add:
+- [ ] **Step 4: Add low context weight and two-pass fusion**
 
 ```python
 "structural_context": Decimal("0.08"),
 ```
 
-In `build_evidence_bundle()`:
+Bundle flow becomes: direct channels → first fusion/ranking → adjacent contexts for at most the first `limit` seeds → second fusion → final `limit`. Never concatenate neighbor text into the seed citation.
 
-1. fuse lexical/structured/graph channels to obtain ranked seeds;
-2. take at most the first `limit` seeds;
-3. call `load_adjacent_element_hits(..., radius=1)` for each seed;
-4. fuse seeds + context channels again;
-5. truncate to `limit` only after the second fusion.
-
-This makes context separately cited and lower-ranked than direct entity/numeric matches.
-
-- [ ] **Step 5: Run retrieval suites**
+- [ ] **Step 5: Run all retrieval tests**
 
 ```powershell
 python -m pytest -v tests/unit/retrieval tests/integration/retrieval
 ```
 
-Expected: PASS; no bbox/source identity regression.
+Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
@@ -381,20 +338,17 @@ git commit -m "feat: add cited structural retrieval context (#95)"
 
 ---
 
-### Task 4: Make confidence input evidence-aware
+### Task 4: Evidence-aware initial confidence
 
 **Files:**
 - Modify: `src/ansim_review/review_question.py`
 - Modify: `tests/unit/review_question/test_request_builder.py`
 
 **Interfaces:**
-- Consumes: evidence bundle `hits`.
-- Produces: `_confidence_input_for_bundle(bundle: Mapping[str, object]) -> dict[str, object]` used by `build_review_run_request()`.
-- Keep the existing factor names from `FACTOR_WEIGHTS` exactly unchanged.
+- Produces: `_confidence_input_for_bundle(bundle: Mapping[str, object]) -> dict[str, object]`.
+- Factor names remain exactly those in `FACTOR_WEIGHTS`.
 
-- [ ] **Step 1: Write the zero-evidence RED test**
-
-Add:
+- [ ] **Step 1: Add RED tests**
 
 ```python
 def test_builder_does_not_assign_full_confidence_to_zero_evidence() -> None:
@@ -402,37 +356,33 @@ def test_builder_does_not_assign_full_confidence_to_zero_evidence() -> None:
 
     bundle = _bundle()
     bundle["hits"] = []
-
     request = build_review_run_request(bundle)
     factors = request["confidence_input"]["factors"]
 
     assert factors["source completeness"]["value"] == "0.0"
     assert factors["traceability"]["value"] == "0.0"
     assert factors["input completeness"]["value"] == "0.0"
-    assert all(item["source"] == "retrieval:evidence_availability" for item in factors.values())
+    assert all(
+        factor["source"] == "retrieval:evidence_availability"
+        for factor in factors.values()
+    )
 ```
 
-Add a companion test that a non-empty traceable bundle preserves the current nominal `1.0` values until later stages refine confidence.
+Add a companion test that `_bundle()` with a valid traceable hit keeps all initial factor values at `"1.0"`.
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **Step 2: Run RED**
 
 ```powershell
 python -m pytest -v tests/unit/review_question/test_request_builder.py
 ```
 
-Expected: zero-evidence assertion fails because current code sets every factor to `1.0`.
+Expected: zero-evidence factor assertions fail.
 
-- [ ] **Step 3: Implement the minimal evidence-aware mapping**
+- [ ] **Step 3: Implement minimal evidence-aware values**
 
-Use these exact values:
+If `hits == []`, set only `source completeness`, `traceability`, and `input completeness` to `"0.0"`; all other factors stay `"1.0"`. If at least one traceable hit exists, all remain `"1.0"`. Set every source string to `retrieval:evidence_availability`. Do not invent rank/count-based quality scoring in #95.
 
-- if `hits` is empty: `source completeness`, `traceability`, and `input completeness` = `"0.0"`; all other factors = `"1.0"`;
-- if at least one traceable hit exists: retain `"1.0"` for all factors;
-- every factor source for this initial request becomes `retrieval:evidence_availability`.
-
-Do not invent quality scores from rank/count in this issue.
-
-- [ ] **Step 4: Run unit + review-question integration tests**
+- [ ] **Step 4: Run unit + integration**
 
 ```powershell
 python -m pytest -v tests/unit/review_question/test_request_builder.py tests/integration/review_question
@@ -456,13 +406,12 @@ git commit -m "fix: fail confidence closed on zero evidence (#95)"
 - Modify: `tests/unit/llm_layer/test_track_b_validator.py`
 
 **Interfaces:**
-- Consumes: validated Track A draft and Track B JSON.
-- Produces: same `TrackBAudit` type; no schema/version change.
+- Same `TrackBAudit` schema.
 - Empty Track A claim set requires `overall_disposition="INCOMPLETE"`; `ACCEPT` is invalid.
 
-- [ ] **Step 1: Write failing empty-claims tests**
+- [ ] **Step 1: Add RED tests**
 
-Construct a valid `ValidatedTrackA` with `draft.claims == ()` and assert:
+Build a valid `ValidatedTrackA` with `draft.claims == ()`, then:
 
 ```python
 with pytest.raises(ValueError, match="empty Track A claim set must be INCOMPLETE"):
@@ -476,37 +425,34 @@ with pytest.raises(ValueError, match="empty Track A claim set must be INCOMPLETE
     )
 ```
 
-Then assert the same empty audit with `overall_disposition="INCOMPLETE"` returns a `TrackBAudit` whose overall disposition is `INCOMPLETE`.
+Assert the same empty audit with `overall_disposition="INCOMPLETE"` returns a `TrackBAudit` with `INCOMPLETE`.
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **Step 2: Run RED**
 
 ```powershell
 python -m pytest -v tests/unit/llm_layer/test_track_b_validator.py
 ```
 
-Expected: current empty `ACCEPT` test path is accepted and the new assertion fails.
+Expected: current empty `ACCEPT` is accepted.
 
-- [ ] **Step 3: Implement the explicit empty-set rule**
+- [ ] **Step 3: Implement explicit empty-set semantics**
 
-Before `_derive_overall()` normal handling:
+After validating `run_id`, before normal claim-audit iteration:
 
 ```python
 if not expected_claim_ids:
-    if payload.get("claim_audits") not in ([], ()):
+    audits_value = _sequence(payload.get("claim_audits"), "claim_audits")
+    if audits_value:
         raise ValueError("empty Track A claim set cannot contain claim audits")
     overall = _string(payload.get("overall_disposition"), "overall_disposition")
     if overall != "INCOMPLETE":
         raise ValueError("empty Track A claim set must be INCOMPLETE")
-    return TrackBAudit(
-        run_id=run_id,
-        claim_audits=(),
-        overall_disposition="INCOMPLETE",
-    )
+    return TrackBAudit(run_id=run_id, claim_audits=(), overall_disposition="INCOMPLETE")
 ```
 
-Keep non-empty claim coverage rules unchanged.
+Keep non-empty coverage rules unchanged.
 
-- [ ] **Step 4: Run Track A/B unit suites**
+- [ ] **Step 4: Run Track A/B tests**
 
 ```powershell
 python -m pytest -v tests/unit/llm_layer/test_track_a_validator.py tests/unit/llm_layer/test_track_b_validator.py
@@ -523,7 +469,7 @@ git commit -m "fix: reject vacuous Track B acceptance (#95)"
 
 ---
 
-### Task 6: Preserve snapshot and Track A missing-input lineage in final packets
+### Task 6: Preserve snapshot and missing-input lineage in legacy final packets
 
 **Files:**
 - Modify: `src/ansim_review/contracts/review.py`
@@ -532,77 +478,58 @@ git commit -m "fix: reject vacuous Track B acceptance (#95)"
 - Modify: `tests/integration/abstention/test_finalizer.py`
 
 **Interfaces:**
-- Consumes: `TrackABundle.inputs["snapshot_hash"]` and `ValidatedTrackA.draft.missing_inputs`.
-- Produces: legacy `ReviewPacket` gains `snapshot_sha256: str | None = None` and `missing_inputs: tuple[str, ...] = ()`; new packets emit both fields, old packet JSON may omit both and still decode.
-- Do not migrate the whole formal-review finalizer to `ReviewPacketV2` in #95; that would introduce unrelated case/rule/formula-manifest requirements.
+- Legacy `ReviewPacket` gains defaulted `snapshot_sha256: str | None = None` and `missing_inputs: tuple[str, ...] = ()` at the end of the dataclass.
+- New packets emit the fields; old JSON may omit them.
+- Do not migrate this path wholesale to `ReviewPacketV2`; #95 does not introduce case/rule/formula-manifest requirements.
 
-- [ ] **Step 1: Write failing finalizer lineage tests**
+- [ ] **Step 1: Add RED lineage/compatibility tests**
 
-Extend the existing finalizer fixture so the Track A bundle has:
-
-```python
-"inputs": {"snapshot_hash": "a" * 64}
-```
-
-and Track A output has a deterministic missing input such as:
-
-```python
-"missing_inputs": ["청소년문화의집 적용대상 확인"]
-```
-
-Assert `finalize_run()` produces:
+Use a Track A bundle with `inputs={"snapshot_hash": "a" * 64}` and Track A output with `missing_inputs=["청소년문화의집 적용대상 확인"]`. Assert:
 
 ```python
 assert packet.snapshot_sha256 == "a" * 64
 assert packet.missing_inputs == ("청소년문화의집 적용대상 확인",)
 ```
 
-Assert the serialized `final-review-packet.json` contains the same fields.
+Assert serialized `final-review-packet.json` contains both fields. Add an old-packet decode fixture without either field and assert `snapshot_sha256 is None` and `missing_inputs == ()`.
 
-Add a codec compatibility test using an old packet fixture without these fields and assert decode returns `snapshot_sha256 is None` and `missing_inputs == ()`.
-
-- [ ] **Step 2: Run and verify RED**
+- [ ] **Step 2: Run RED**
 
 ```powershell
 python -m pytest -v tests/integration/abstention/test_finalizer.py
 ```
 
-Expected: `ReviewPacket` lacks the fields.
+Expected: `ReviewPacket` has no new fields.
 
-- [ ] **Step 3: Extend the legacy dataclass and decoder compatibly**
+- [ ] **Step 3: Extend dataclass/codec backward compatibly**
 
-Append defaulted fields to `ReviewPacket`:
+Append:
 
 ```python
 snapshot_sha256: str | None = None
 missing_inputs: tuple[str, ...] = ()
 ```
 
-In `decode_review_packet()` add both to the allowed field set, but decode absent values as `None` / `()` so historical packets remain readable. Validate a present snapshot as a 64-character SHA-256 using existing validation helpers or the same strict pattern already used elsewhere.
+Add both keys to `decode_review_packet()` allowed fields. Missing fields decode to defaults. A present snapshot must match lowercase `[0-9a-f]{64}`; reject invalid values.
 
-- [ ] **Step 4: Derive lineage only from manifest-bound data in the finalizer**
+- [ ] **Step 4: Derive both values from manifest-bound artifacts**
 
 In `expected_final_review_packet()`:
 
-1. read `snapshot_hash` from `bundle.inputs`;
-2. require it to be a 64-character lowercase SHA-256 when present; for formal review-question bundles it must be present;
-3. derive `missing_inputs` as sorted unique values from `validated_a.draft.missing_inputs` plus all `bundle.rules[*].missing_inputs`;
-4. use the same derived tuple for `missing_required_input` gate evaluation and the packet field.
+- obtain `snapshot_hash` from `bundle.inputs` and validate it;
+- derive `missing_inputs = tuple(sorted(set(validated_a.draft.missing_inputs) | {item for rule in bundle.rules for item in rule.missing_inputs}))`;
+- use `bool(missing_inputs)` for the `missing_required_input` gate;
+- pass both fields to `ReviewPacket`.
 
-Update `review_packet_document()` to emit:
+In `review_packet_document()` emit `snapshot_sha256` and `missing_inputs`.
 
-```python
-"snapshot_sha256": packet.snapshot_sha256,
-"missing_inputs": list(packet.missing_inputs),
-```
-
-- [ ] **Step 5: Run finalizer and codec-related suites**
+- [ ] **Step 5: Run finalizer/contract suites**
 
 ```powershell
 python -m pytest -v tests/integration/abstention tests/unit/contracts tests/integration/review_run
 ```
 
-Expected: PASS; historical packet fixtures continue to decode.
+Expected: PASS with historical packet compatibility intact.
 
 - [ ] **Step 6: Commit**
 
@@ -613,31 +540,21 @@ git commit -m "fix: preserve formal review packet lineage (#95)"
 
 ---
 
-### Task 7: Make Review Workspace summary match finalizer missing-input state
+### Task 7: Align Review summary and 추가 확인 with packet missing inputs
 
 **Files:**
 - Modify: `src/ansim_review/review_packet/builder.py`
+- Modify: `src/ansim_review/review_packet/presentation.py`
 - Modify: `tests/unit/review_packet/test_builder.py`
-- Modify: `tests/integration/review_packet/test_html_renderer.py` only if the existing summary copy needs an assertion update.
+- Modify: `tests/integration/review_packet/test_html_renderer.py`
 
 **Interfaces:**
-- Consumes: packet-level `missing_inputs` from Task 6.
-- Produces: `model["summary"]["missing_input_count"]` counts the packet-level deduplicated set and `model["metadata"]["snapshot_sha256"]` is the final packet snapshot hash.
+- Produces: top-level view-model `missing_inputs: list[str]`; `_summary(..., missing_inputs, ...)` uses that same set.
+- `additional_review_items()` consumes `model["missing_inputs"]` before rule/reason items.
 
-- [ ] **Step 1: Write the failing projection test**
+- [ ] **Step 1: Add RED builder test**
 
-Using a final packet with:
-
-```json
-{
-  "status": "ABSTAIN",
-  "snapshot_sha256": "aaaaaaaa...",
-  "missing_inputs": ["청소년문화의집 적용대상 확인"],
-  "abstention_reasons": ["MISSING_REQUIRED_INPUT"]
-}
-```
-
-assert:
+For a legacy packet with `status="ABSTAIN"`, `snapshot_sha256="a" * 64`, `missing_inputs=["청소년문화의집 적용대상 확인"]`, and `abstention_reasons=["MISSING_REQUIRED_INPUT"]`, assert:
 
 ```python
 model = build_review_view_model(packet, evidence_db)
@@ -646,20 +563,27 @@ assert model["metadata"]["snapshot_sha256"] == "a" * 64
 assert model["missing_inputs"] == ["청소년문화의집 적용대상 확인"]
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **Step 2: Add RED HTML/presentation assertion**
+
+Render that model and assert both the human missing-input text and the localized hard-gate reason appear in `#additional-review`, while raw snapshot SHA remains only in audit content.
+
+- [ ] **Step 3: Run RED**
 
 ```powershell
-python -m pytest -v tests/unit/review_packet/test_builder.py
+python -m pytest -v tests/unit/review_packet/test_builder.py tests/integration/review_packet/test_html_renderer.py
 ```
 
-Expected: current builder reports `missing_input_count == 0` when rules have no missing inputs.
+Expected: missing-input count/text does not reflect Track A packet-level input.
 
-- [ ] **Step 3: Make packet-level missing inputs authoritative for the projection**
+- [ ] **Step 4: Implement one authoritative missing-input projection**
 
-Add a helper:
+Add:
 
 ```python
-def _packet_missing_inputs(document: Mapping[str, object], rules: Sequence[Mapping[str, object]]) -> list[str]:
+def _packet_missing_inputs(
+    document: Mapping[str, object],
+    rules: Sequence[Mapping[str, object]],
+) -> list[str]:
     explicit = _strings(document.get("missing_inputs", []), "missing_inputs")
     rule_values = [
         value
@@ -669,26 +593,29 @@ def _packet_missing_inputs(document: Mapping[str, object], rules: Sequence[Mappi
     return sorted(set(explicit) | set(rule_values))
 ```
 
-Pass this list into `_summary()` rather than recomputing rule-only missing inputs inside `_summary()`, expose it as `model["missing_inputs"]`, and retain existing v2 behavior by treating absent legacy `missing_inputs` as `[]`.
+Compute it once in `build_review_view_model()`, expose it as `model["missing_inputs"]`, and pass it into `_summary()` for the count. In `presentation.additional_review_items()`, add `model["missing_inputs"]` before rule-specific values and deduplicate with the existing ordered `values` list.
 
-- [ ] **Step 4: Run builder + HTML suites**
+- [ ] **Step 5: Run UI projection suites**
 
 ```powershell
-python -m pytest -v tests/unit/review_packet/test_builder.py tests/integration/review_packet/test_html_renderer.py tests/integration/review_packet/test_review_workspace_ui.py
+python -m pytest -v `
+  tests/unit/review_packet/test_builder.py `
+  tests/integration/review_packet/test_html_renderer.py `
+  tests/integration/review_packet/test_review_workspace_ui.py
 ```
 
-Expected: PASS; default nondeveloper UI still hides raw hashes outside audit disclosure.
+Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```powershell
-git add src/ansim_review/review_packet/builder.py tests/unit/review_packet/test_builder.py tests/integration/review_packet/test_html_renderer.py
+git add src/ansim_review/review_packet/builder.py src/ansim_review/review_packet/presentation.py tests/unit/review_packet/test_builder.py tests/integration/review_packet/test_html_renderer.py
 git commit -m "fix: align review summary with missing inputs (#95)"
 ```
 
 ---
 
-### Task 8: Eliminate normal-path Track A same-file `FILEEXISTSERROR`
+### Task 8: Remove normal same-path Track A `FILEEXISTSERROR`
 
 **Files:**
 - Modify: `src/ansim_review/review_run.py`
@@ -696,36 +623,24 @@ git commit -m "fix: align review summary with missing inputs (#95)"
 - Modify: `tests/integration/review_question/test_review_metrics.py`
 
 **Interfaces:**
-- Consumes: validated Track A source `Path` and canonical destination `runs/<run-id>/track-a-output.json`.
-- Produces: `_publish_validated_track_a(source: Path, destination: Path, document: object) -> None` with explicit same-path and create-only behavior.
+- Produces: `_publish_validated_track_a(source: Path, destination: Path, document: object) -> None`.
+- Same-path source is accepted in place only after `validate_track_a_submission()` succeeds.
 
-- [ ] **Step 1: Reproduce the observed same-path failure**
+- [ ] **Step 1: Reproduce RED**
 
-Add a test that prepares a run, writes a valid but pretty-printed Track A JSON directly to the canonical `run_directory / "track-a-output.json"`, then calls:
+Prepare a run, write valid pretty-printed Track A JSON directly to `prepared.run_directory / "track-a-output.json"`, preserve `original_bytes`, then call `submit_track_a()` using that same path. Assert it succeeds, creates `next-action-track-b.json`, and `track-a-output.json` bytes still equal `original_bytes`.
 
-```python
-result = submit_track_a(
-    workspace,
-    prepared.run_id,
-    prepared.run_directory / "track-a-output.json",
-)
-```
+Add another test where a different external source is submitted while a conflicting canonical target exists; assert `FileExistsError("existing artifact differs: track-a-output.json")` remains.
 
-Assert it returns `SubmittedTrackA`, creates `next-action-track-b.json`, and does not alter the original Track A file bytes.
-
-Add a second test where a different external source is submitted after a conflicting canonical Track A exists; assert `FileExistsError("existing artifact differs: track-a-output.json")` remains.
-
-- [ ] **Step 2: Run and verify RED**
+- [ ] **Step 2: Run RED**
 
 ```powershell
 python -m pytest -v tests/unit/review_question/test_track_a_submission.py
 ```
 
-Expected: same-path pretty JSON reproduces the current `FILEEXISTSERROR` because canonical JSON bytes differ from the already-present source bytes.
+Expected: same-path pretty JSON reproduces `FILEEXISTSERROR`.
 
-- [ ] **Step 3: Implement same-path idempotent publication without overwrite**
-
-Add:
+- [ ] **Step 3: Implement validated same-path publication**
 
 ```python
 def _publish_validated_track_a(
@@ -740,11 +655,11 @@ def _publish_validated_track_a(
     _write_json_or_identical(destination, document)
 ```
 
-Call it only **after** `validate_track_a_submission()` succeeds. This means the canonical same-path file is accepted in place only after structural/numeric validation; no rewrite occurs. Different-path publication retains the existing canonical create-or-identical contract.
+Call this only after Track A structural/numeric validation returns successfully. Do not overwrite any differing existing destination.
 
-- [ ] **Step 4: Add retry metric regression**
+- [ ] **Step 4: Add metric regression**
 
-In `test_review_metrics.py`, execute the normal same-path Track A flow and assert derived metrics show:
+Execute the normal same-path Track A flow and assert:
 
 ```python
 assert metrics["retry_count"] == 0
@@ -754,13 +669,13 @@ assert not any(
 )
 ```
 
-- [ ] **Step 5: Run review-question focused suites**
+- [ ] **Step 5: Run review-question suites**
 
 ```powershell
 python -m pytest -v tests/unit/review_question tests/integration/review_question
 ```
 
-Expected: PASS, including retry count 0 for the valid flow.
+Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
@@ -771,45 +686,50 @@ git commit -m "fix: make validated Track A same-path submission idempotent (#95)
 
 ---
 
-### Task 9: Add the representative formal-review regression across retrieval → packet
+### Task 9: Representative formal-review regression and repository-wide verification
 
 **Files:**
 - Modify: `tests/integration/review_question/test_review_question_cli.py`
-- Reuse: `tests/integration/retrieval/test_korean_formal_review_retrieval.py`
+- Modify: `docs/acceptance/issue-87/README.md` after verification only.
 
 **Interfaces:**
-- Consumes: all Tasks 1–8.
-- Produces: one deterministic integration regression for the exact Korean question proving relevant evidence survives into `review-request.json` / `track-a-bundle.json`, with no manual expansion required.
+- Consumes: Tasks 1–8.
+- Proves: the exact Korean question yields relevant cited evidence without `--expansion`, snapshot lineage survives, zero-evidence confidence fails closed, and the valid same-path flow records retry 0.
 
-- [ ] **Step 1: Add a failing/guarding integration scenario**
+- [ ] **Step 1: Add deterministic CLI regression using the repository’s existing `tmp_path`/CLI helper pattern**
 
-Use a workspace fixture with the four parser-ordered evidence elements from Task 3 and run:
-
-```powershell
-python -m evidence_review review-question prepare `
-  --workspace <fixture-workspace> `
-  --question "청소년 문화의집은 면적이 1500제곱미터 이상이어야 한다."
-```
-
-The test should invoke the CLI programmatically/subprocess using the repository’s existing helper pattern and assert:
+Build the evidence fixture in `tmp_path`, run the existing CLI entry function/subprocess with arguments equivalent to:
 
 ```python
-assert result.returncode == 0
-assert review_request["evidence"]
-texts = [item["text"] for item in review_request["evidence"]]
-assert any("청소년문화의집" in text for text in texts)
-assert any("1,500제곱미터" in text and "청소년수련관" in " ".join(texts) for text in texts)
-assert review_request["inputs"]["snapshot_hash"] == snapshot_hash
-assert all(
-    item["value"] != "1.0"
-    for name, item in zero_evidence_request["confidence_input"]["factors"].items()
-    if name in {"source completeness", "traceability", "input completeness"}
-)
+[
+    "review-question",
+    "prepare",
+    "--workspace",
+    str(workspace),
+    "--question",
+    "청소년 문화의집은 면적이 1500제곱미터 이상이어야 한다.",
+]
 ```
 
-For the positive run, do not assert a machine final truth value; Track A/B remain external and the human owns the final decision.
+Read the generated run’s `evidence-query.json`, `review-request.json`, and `track-a-bundle.json`. Assert:
 
-- [ ] **Step 2: Run the focused formal-review matrix**
+```python
+assert evidence_query["hits"]
+texts = [item["text"] for item in review_request["evidence"]]
+assert any("청소년문화의집" in text for text in texts)
+assert any("1,500제곱미터" in text for text in texts)
+assert any("청소년수련관" in text for text in texts)
+assert review_request["inputs"]["snapshot_hash"] == snapshot_hash
+assert track_a_bundle["inputs"]["snapshot_hash"] == snapshot_hash
+assert evidence_query["query"]["derived_variants"]["entity"] == [
+    "청소년 문화의집",
+    "청소년문화의집",
+]
+```
+
+Do not assert a final machine truth value; Track A/B remain external and the human owns the final decision.
+
+- [ ] **Step 2: Run the full #95 focused matrix**
 
 ```powershell
 python -m pytest -v `
@@ -823,70 +743,41 @@ python -m pytest -v `
   tests/integration/review_packet/test_html_renderer.py
 ```
 
-Expected: PASS.
+Expected: exit 0.
 
-- [ ] **Step 3: Commit the integration regression**
+- [ ] **Step 3: Commit representative regression**
 
 ```powershell
-git add tests/integration/review_question/test_review_question_cli.py tests/integration/retrieval/test_korean_formal_review_retrieval.py
-git commit -m "test: cover Korean formal review retrieval regression (#95)"
+git add tests/integration/review_question/test_review_question_cli.py
+git commit -m "test: cover Korean formal review regression (#95)"
 ```
 
----
-
-### Task 10: Repository-wide verification and #95 evidence record
-
-**Files:**
-- Modify: `docs/acceptance/issue-87/README.md` only to append #95 implementation/verification status and exact HEAD; do not mark #93/#87 complete.
-- No production code changes unless a failing gate exposes a real regression, in which case return to the owning task and use systematic-debugging before changing code.
-
-**Interfaces:**
-- Consumes: exact final `main` HEAD after Tasks 1–9.
-- Produces: fresh local verification evidence; no claim about GitHub Actions unless an actual workflow run is observed.
-
-- [ ] **Step 1: Record exact repository state**
+- [ ] **Step 4: Record exact repository state before global verification**
 
 ```powershell
 git rev-parse HEAD
-git status --short
 git rev-parse origin/main
+git status --short
 ```
 
-Expected: HEAD == origin/main and worktree clean before acceptance commands.
+Expected: local HEAD equals `origin/main` and `git status --short` is empty after pushing/syncing the commits.
 
-- [ ] **Step 2: Run focused #95 tests on Python 3.11**
+- [ ] **Step 5: Python 3.11 full/static gates**
 
 ```powershell
 $py311 = ".\.venv-acceptance-311\Scripts\python.exe"
-
-& $py311 -m pytest -v `
-  tests\unit\retrieval `
-  tests\integration\retrieval `
-  tests\unit\review_question `
-  tests\integration\review_question `
-  tests\unit\llm_layer\test_track_b_validator.py `
-  tests\integration\abstention\test_finalizer.py `
-  tests\unit\review_packet\test_builder.py
-```
-
-Expected: exit 0.
-
-- [ ] **Step 3: Run repository-wide Python 3.11 gates**
-
-```powershell
 & $py311 -m pytest -v
 & $py311 -m ruff check src tests
 & $py311 -m mypy src
 & $py311 -m compileall -q src scripts web_runtime tests
 ```
 
-Expected: every command exit 0. Record exact passed/skipped counts rather than assuming the previous `1237 passed, 1 skipped` total remains unchanged.
+Expected: every command exit 0. Record the actual pytest passed/skipped totals from this HEAD; do not reuse the older `1237 passed, 1 skipped` count.
 
-- [ ] **Step 4: Run the same full/static gates on Python 3.13**
+- [ ] **Step 6: Python 3.13 full/static gates**
 
 ```powershell
 $py313 = ".\.venv-acceptance-313\Scripts\python.exe"
-
 & $py313 -m pytest -v
 & $py313 -m ruff check src tests
 & $py313 -m mypy src
@@ -895,50 +786,30 @@ $py313 = ".\.venv-acceptance-313\Scripts\python.exe"
 
 Expected: every command exit 0.
 
-- [ ] **Step 5: Run fresh documentation integrity**
-
-Use fresh output paths so a pre-existing report cannot cause an output collision:
+- [ ] **Step 7: Fresh documentation-integrity gate**
 
 ```powershell
 New-Item -ItemType Directory -Force .acceptance\issue-95 | Out-Null
 Remove-Item .acceptance\issue-95\documentation-integrity.json -ErrorAction SilentlyContinue
-
 .\.venv-acceptance-311\Scripts\evidence-review.exe documentation validate `
   --repository-root . `
   --config documentation-integrity.json `
   --output .acceptance\issue-95\documentation-integrity.json
 ```
 
-Expected: `Documentation integrity: PASS`, errors 0. Warnings may remain and must be recorded exactly.
+Expected: `Documentation integrity: PASS` and errors 0. Record warnings exactly.
 
-- [ ] **Step 6: Update the #87 acceptance log without closing integration gates**
+- [ ] **Step 8: Update acceptance record using only observed values**
 
-Append:
+Append a `### Issue #95 — Korean retrieval / formal-review invariants` subsection to `docs/acceptance/issue-87/README.md` containing the exact final HEAD and exact outputs from Steps 2, 5, 6, and 7. State explicitly that protected-browser QA and three-run p50/p95 remain under #93/#90 and are not claimed by #95. Record GitHub Actions only if an actual workflow status is observed.
 
-```markdown
-### Issue #95 — Korean retrieval / formal-review invariants
-
-- Exact HEAD: `<actual SHA>`
-- Focused tests: `<actual result>`
-- Python 3.11 full pytest: `<actual result>`
-- Python 3.13 full pytest: `<actual result>`
-- Ruff: `<actual result>`
-- mypy: `<actual result>`
-- compileall: `<actual result>`
-- documentation integrity: `<actual result>`
-- Real Windows protected-browser / 3-run p50/p95 acceptance: remains under #93/#90; not claimed here.
-- GitHub Actions: record actual observed state only.
-```
-
-Replace angle-bracket values with the actual results from Steps 1–5; do not commit placeholders.
-
-- [ ] **Step 7: Commit acceptance evidence**
+- [ ] **Step 9: Commit acceptance record**
 
 ```powershell
 git add docs/acceptance/issue-87/README.md
 git commit -m "docs: record issue 95 verification evidence"
 ```
 
-- [ ] **Step 8: Verification-before-completion gate**
+- [ ] **Step 10: Verification-before-completion**
 
-Invoke `superpowers:verification-before-completion`, re-check the exact final HEAD and fresh command outputs, then comment on #95 with the actual results. Close #95 as `completed` only if all #95 acceptance criteria are evidenced. Keep #90, #89, #92, #94, #93, and #87 open unless their own remaining manual acceptance criteria have independently passed.
+Invoke `superpowers:verification-before-completion`. Re-check the final exact HEAD and the fresh verification outputs. Comment on #95 with those observed results and close #95 as `completed` only if every #95 acceptance item is evidenced. Keep #90, #89, #92, #94, #93, and #87 open unless their own remaining acceptance criteria independently pass.
