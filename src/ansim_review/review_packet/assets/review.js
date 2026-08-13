@@ -11,6 +11,11 @@
     COMPLETE: "근거 연결 완료",
     MISSING_REQUIRED_INPUT: "필요한 자료가 부족합니다"
   };
+  const VIEWER_LABELS = {
+    original: "원문",
+    evidence: "근거 강조",
+    compare: "원문 + 강조"
+  };
   const ALLOWED_DECISIONS = new Set([
     "SATISFIED",
     "NOT_SATISFIED",
@@ -26,6 +31,92 @@
 
   function statusLabel(status) {
     return STATUS_LABELS[status] || String(status || "상태 확인 필요").replace(/_/g, " ");
+  }
+
+  function applyReviewerLayout() {
+    const style = document.createElement("style");
+    style.id = "reviewer-layout-refinement";
+    style.textContent = [
+      ".review-workspace{grid-template-columns:minmax(320px,360px) minmax(0,1fr) minmax(320px,360px);grid-template-areas:'summary summary summary' 'items items items' 'additional additional additional' 'detail viewer decision' 'audit audit audit';align-items:start}",
+      "#review-summary{grid-area:summary}#review-items{grid-area:items}#additional-review{grid-area:additional}#detail-tabs{grid-area:detail;max-height:min(70vh,760px);overflow:auto}#evidence-viewer{grid-area:viewer}#decision-form{grid-area:decision;position:sticky;top:16px}#packet-global-review{grid-area:audit}",
+      ".status-band{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:12px 16px}.status-copy h1{margin:0;font-size:clamp(20px,1.7vw,26px)}.result-card{display:block;padding:14px 18px}.result-label{margin:0 0 3px;color:var(--muted);font-size:13px;font-weight:700}.result-question{margin:0 0 10px;font-weight:600;overflow-wrap:anywhere}.result-main h2{margin:0;font-size:clamp(20px,1.8vw,26px);line-height:1.4;overflow-wrap:anywhere}.result-meta{margin:10px 0 0;color:var(--muted);font-size:14px;font-weight:600}",
+      ".page-stage{max-height:min(70vh,760px);overflow:auto}.citation:hover,.citation.is-selected{border-color:var(--accent);background:var(--accent-soft)}.bbox-location,.citation-audit,.item-audit{display:none!important}#evidence-zoom{min-height:44px}.field-error{margin:0;color:var(--danger);font-size:13px}[aria-invalid='true']{border-color:var(--danger)}",
+      "@media(max-width:1100px){.review-workspace{grid-template-columns:minmax(0,1fr);grid-template-areas:'summary' 'items' 'additional' 'detail' 'viewer' 'decision' 'audit'}#detail-tabs{max-height:none}.page-stage{min-height:320px;max-height:min(60vh,640px);overflow:auto}#decision-form{position:static}}",
+      "@media(max-width:600px){.app-shell{width:calc(100% - 16px);margin:8px auto}.status-band{grid-template-columns:minmax(0,1fr)}.viewer-heading{display:grid}.viewer-controls{justify-content:flex-start}}",
+      "@media print{#detail-tabs,.page-stage{max-height:none!important;overflow:visible!important}#decision-form{position:static!important}}"
+    ].join("\n");
+    document.head.appendChild(style);
+  }
+
+  function evidenceIndex() {
+    const result = new Map();
+    (reviewModel.claims || []).forEach((claim) => {
+      (claim.citations || []).forEach((citation) => {
+        result.set(String(citation.evidence_id || ""), citation);
+      });
+    });
+    return result;
+  }
+
+  function enhanceReviewerSurface() {
+    document.querySelectorAll(".section-kicker").forEach((node) => {
+      node.textContent = String(node.textContent || "").replace(/^\d+\.\s*/, "");
+    });
+    document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
+      const label = VIEWER_LABELS[button.dataset.viewerMode];
+      if (label) button.textContent = label;
+    });
+    const index = evidenceIndex();
+    document.querySelectorAll(".citation").forEach((card) => {
+      const citation = index.get(String(card.dataset.evidenceId || "")) || {};
+      const heading = card.querySelector("h4");
+      const location = card.querySelector(".citation-location");
+      const documentName = typeof citation.document_name === "string" && citation.document_name.trim()
+        ? citation.document_name.trim()
+        : "문서명 확인 필요";
+      if (heading) heading.textContent = documentName;
+      if (location) {
+        const clause = typeof citation.title === "string" && citation.title.trim()
+          ? citation.title.trim()
+          : "조항 확인 필요";
+        location.textContent = clause + " · p." + String(citation.page_number || "-");
+      }
+      const bbox = card.querySelector(".bbox-location");
+      if (bbox) {
+        bbox.hidden = true;
+        bbox.setAttribute("aria-hidden", "true");
+      }
+      card.tabIndex = 0;
+      card.addEventListener("click", (event) => {
+        if (event.target && event.target.closest && event.target.closest("button,summary,a,input,textarea")) return;
+        const panel = card.closest(".detail-panel");
+        if (panel) focusEvidence(panel.dataset.itemId, card.dataset.evidenceId);
+      });
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        const panel = card.closest(".detail-panel");
+        if (panel) focusEvidence(panel.dataset.itemId, card.dataset.evidenceId);
+      });
+    });
+  }
+
+  function enrichAuditDisclosure() {
+    const pre = document.querySelector("#packet-global-review pre");
+    if (!pre) return;
+    let raw = {};
+    try {
+      raw = JSON.parse(pre.textContent || "{}");
+    } catch (_) {
+      raw = {};
+    }
+    raw.citations = [];
+    (reviewModel.claims || []).forEach((claim) => {
+      (claim.citations || []).forEach((citation) => raw.citations.push(citation));
+    });
+    raw.review_items = reviewModel.review_items || [];
+    raw.raw_status = reviewModel.status || null;
+    pre.textContent = JSON.stringify(raw, null, 2);
   }
 
   function formStatus(message) {
@@ -355,10 +446,12 @@
     input.addEventListener("change", syncNotesRequirement);
   });
   const notes = document.getElementById("review-notes");
-  if (notes) notes.addEventListener("input", () => validateNotes(
-    document.querySelector('input[name="decision"]:checked')?.value || "",
-    notes.value
-  ));
+  if (notes) {
+    notes.addEventListener("input", () => {
+      const selected = document.querySelector('input[name="decision"]:checked');
+      validateNotes(selected ? selected.value : "", notes.value);
+    });
+  }
   const zoom = document.getElementById("evidence-zoom");
   if (zoom) zoom.addEventListener("input", () => setEvidenceZoom(zoom.value));
   const form = document.querySelector("#decision-form form");
@@ -369,6 +462,10 @@
   if (printButton) printButton.addEventListener("click", () => window.print());
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
+
+  applyReviewerLayout();
+  enhanceReviewerSurface();
+  enrichAuditDisclosure();
   updateTabControls(selectedDetailPanel());
   syncNotesRequirement();
   setProtectedMode(false);
