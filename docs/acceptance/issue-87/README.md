@@ -335,3 +335,71 @@ Additionally verify that reading/writing metrics did not change the Run ID or fi
 Current decision: **NOT_RUN / DO NOT CLOSE #93**.
 
 To change this to PASS, attach the exact command outputs and hashes for all required Windows/Python/browser/timing gates. If any required gate fails or remains unexecuted, keep the issue open and record the exact blocker rather than weakening the acceptance criterion.
+
+### Issue #95 — Korean retrieval / formal-review invariants
+
+Scoped result: **PASS — manual Windows verification**
+
+This subsection records Issue #95 only. It does not close or satisfy the remaining
+browser, protected-server, lifecycle, timing, or full Issue #87/#93 acceptance gates.
+
+Verification code HEAD:
+
+`4996d941506ac03900148a9563641fb9bfb78c43`
+
+Repository state before verification:
+
+- local HEAD matched `origin/main`
+- tracked working tree was clean
+- GitHub Actions were not used as evidence for this result
+
+#### Issue #95 focused matrix
+
+Windows / Python 3.11:
+
+- 86 passed in 14.63 s
+- exit code 0
+
+Covered retrieval, review-question, Track B validation, abstention/finalization,
+review-packet builder, and HTML renderer regression suites.
+
+#### Repository-wide gates
+
+| Gate | Python 3.11 | Python 3.13 |
+|---|---|---|
+| Full pytest | 1259 passed, 1 skipped in 168.85 s; exit 0 | 1259 passed, 1 skipped in 168.64 s; exit 0 |
+| Ruff | PASS; exit 0 | PASS; exit 0 |
+| mypy | PASS, 189 source files; exit 0 | PASS, 189 source files; exit 0 |
+| compileall | PASS; exit 0 | PASS; exit 0 |
+
+The v1 review-packet compatibility regression was also verified on both supported
+Python versions with 67 passed and exit code 0 before repository-wide validation.
+
+#### Documentation integrity
+
+Executed with the Python 3.11 acceptance environment:
+
+- status: PASS
+- documents: 37
+- current: 26
+- historical: 9
+- generated: 2
+- errors: 0
+- warnings: 102
+- exit code: 0
+- report: `.acceptance/issue-95/documentation-integrity.json`
+
+Warnings were retained as warnings and were not reclassified as errors.
+
+#### Scope boundaries
+
+Issue #95 does **not** claim completion of:
+
+- protected-browser manual QA and browser UX acceptance;
+- Windows protected-server lifecycle acceptance;
+- three-run performance timing or p50/p95;
+- Issue #87 or Issue #93 overall acceptance;
+- GitHub Actions PASS.
+
+Those remaining acceptance items continue under their respective issues, including
+#89, #90, #92, and #93.
