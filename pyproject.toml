@@ -9,6 +9,8 @@ description = "Evidence-first review runtime for arbitrary user-provided documen
 requires-python = ">=3.11"
 dependencies = [
   "pypdf>=5,<6",
+  "pypdfium2>=5.12,<6",
+  "Pillow>=12,<13",
 ]
 
 [project.optional-dependencies]
