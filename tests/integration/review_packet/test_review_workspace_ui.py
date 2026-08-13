@@ -115,7 +115,11 @@ const tabs = [node(false, {detailTab: "evidence"}), node(false, {detailTab: "rul
 tabs[0].attributes["aria-selected"] = "true";
 tabs[1].attributes["aria-selected"] = "false";
 const printListeners = {};
-global.window = { addEventListener(type, handler) { printListeners[type] = handler; }, print() {}, prompt() { return ""; } };
+global.window = {
+  addEventListener(type, handler) { printListeners[type] = handler; },
+  print() {},
+  prompt() { return ""; }
+};
 global.document = {
   getElementById() { return null; }, querySelector() { return null; },
   querySelectorAll(selector) {
@@ -141,7 +145,12 @@ def test_viewer_mode_listener_targets_buttons_not_shell(tmp_path: Path) -> None:
     controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
     harness = r"""
 function node(dataset) {
-  return { dataset, listeners: {}, addEventListener(type, handler) { this.listeners[type] = handler; }, setAttribute() {} };
+  return {
+    dataset,
+    listeners: {},
+    addEventListener(type, handler) { this.listeners[type] = handler; },
+    setAttribute() {}
+  };
 }
 const shell = node({viewerMode: "compare"});
 const button = node({viewerMode: "compare"});
