@@ -10,6 +10,8 @@ from ansim_review.review_packet.presentation import (
     localized_status,
 )
 
+_NO_ANSWER_FALLBACK = "질문에 대한 결론이 제공되지 않았습니다."
+
 
 def _text(value: object) -> str:
     return "" if value is None else escape(str(value), quote=True)
@@ -17,6 +19,19 @@ def _text(value: object) -> str:
 
 def _mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _reviewer_conclusion(model: Mapping[str, object]) -> str:
+    explicit = conclusion_text(model)
+    if explicit != _NO_ANSWER_FALLBACK:
+        return explicit
+    claims = model.get("claims")
+    if isinstance(claims, Sequence) and not isinstance(claims, (str, bytes, bytearray)) and len(claims) == 1:
+        claim = _mapping(claims[0])
+        text = claim.get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    return explicit
 
 
 def render_status_band(model: Mapping[str, object]) -> str:
@@ -48,7 +63,7 @@ def render_summary(model: Mapping[str, object]) -> str:
             f'<p class="result-question">{_text(model.get("question"))}</p>',
             '<p class="result-label">결론</p>',
             '<h2 id="summary-heading">',
-            _text(conclusion_text(model)),
+            _text(_reviewer_conclusion(model)),
             '</h2>',
             '<p class="result-meta">근거 ',
             _text(citation_count),
