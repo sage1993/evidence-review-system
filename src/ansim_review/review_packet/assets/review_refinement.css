@@ -1,0 +1,6 @@
+.review-workspace {
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr) minmax(320px, 360px);
+}
+#evidence-zoom {
+  min-height: 44px;
+}
