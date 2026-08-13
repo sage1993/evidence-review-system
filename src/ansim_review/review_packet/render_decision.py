@@ -27,10 +27,10 @@ def render_decision_form(model: Mapping[str, object]) -> str:
     decision = _mapping(model.get("decision", {}), "decision")
     options = _sequence(decision.get("allowed_values", []), "decision.allowed_values")
     labels = {
-        "SATISFIED": "내용 확인 완료",
-        "NOT_SATISFIED": "내용에 오류 있음",
-        "CONDITIONAL": "조건부 확인",
-        "ADDITIONAL_REVIEW_REQUIRED": "추가 자료 필요",
+        "SATISFIED": "검토 결과에 동의",
+        "NOT_SATISFIED": "검토 결과에 오류 있음",
+        "CONDITIONAL": "조건 충족 시 동의",
+        "ADDITIONAL_REVIEW_REQUIRED": "추가 자료 검토 필요",
     }
     option_html = "".join(
         '<label class="decision-option"><input type="radio" name="decision" '
@@ -42,33 +42,37 @@ def render_decision_form(model: Mapping[str, object]) -> str:
     return "".join(
         (
             '<section id="decision-form" aria-labelledby="decision-heading">',
-            '<span class="section-kicker">4. 검토자 의견</span>',
+            '<span class="section-kicker">검토자 의견</span>',
             '<div class="decision-heading"><div><h2 id="decision-heading">최종 결정</h2>',
-            '<p>결정과 검토 의견만 입력하십시오. 검토자 ID·시각·패킷 해시는 ',
-            '보호 세션 또는 저장 시 자동 결합됩니다.</p></div>',
+            '<p data-protected-only hidden>검토 결과를 선택하고 필요한 의견을 입력하십시오.</p>',
+            '<p data-archive-only>검토 결과를 선택하고 필요한 의견을 입력하십시오. ',
+            '보관 HTML에서는 결정 JSON을 별도로 저장할 수 있습니다.</p></div>',
             '<span class="authority-badge">검토자 확정</span></div>',
-            '<form action="./decision" method="post">',
+            '<form action="./decision" method="post" novalidate>',
             f'<input type="hidden" name="packet_sha256" value="{packet_hash}">',
             '<fieldset class="decision-choices"><legend>결정 선택</legend>',
             option_html
             or (
                 '<label class="decision-option"><input type="radio" name="decision" '
                 'value="" required disabled><span><strong>허용된 결정 값 없음</strong>'
-                "</span></label>"
+                '</span></label>'
             ),
-            "</fieldset>",
-            '<label class="decision-notes">검토 의견<textarea name="notes" rows="4" required ',
-            'placeholder="판단 근거 또는 후속 확인 사항을 기록합니다."></textarea></label>',
-            '<p class="reviewer-session" data-reviewer-session>',
-            '보호 세션에서는 검토자 ID를 자동 사용합니다. 보관 HTML에서는 ',
-            '결정 JSON 다운로드 시 한 번 확인합니다.</p>',
+            '</fieldset>',
+            '<label class="decision-notes" for="review-notes">검토 의견</label>',
+            '<textarea id="review-notes" name="notes" rows="4" ',
+            'aria-describedby="notes-help notes-error" ',
+            'placeholder="오류, 조건 또는 추가 확인이 필요한 내용을 기록합니다."></textarea>',
+            '<p id="notes-help" class="form-help">검토 결과에 동의하는 경우 의견은 선택사항입니다. ',
+            '그 외 판정에서는 의견을 입력해야 합니다.</p>',
+            '<p id="notes-error" class="field-error" hidden>이 판정에는 검토 의견이 필요합니다.</p>',
+            '<p class="reviewer-session" data-reviewer-session></p>',
             '<div class="decision-actions"><button class="primary-action" ',
             'type="submit">결정 저장</button>',
-            '<button type="button" data-download-decision>결정 JSON 다운로드</button></div>',
-            '<p class="decision-storage-note">HTML 파일 저장은 결정 기록 저장이 아닙니다. ',
-            '보관 HTML에서는 결정 JSON을 다운로드한 뒤 승인된 import 경로로 반영하십시오.</p>',
+            '<button type="button" data-download-decision data-archive-only>결정 JSON 다운로드</button></div>',
+            '<p class="decision-storage-note" data-archive-only>보관 HTML의 결정 JSON은 ',
+            '승인된 import 경로를 통해 정식 결정 기록으로 반영합니다.</p>',
             '<p class="form-status" aria-live="polite"></p>',
-            "</form></section>",
+            '</form></section>',
         )
     )
 
