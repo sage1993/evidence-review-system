@@ -139,21 +139,34 @@ def normalize_odl_pdf_bbox(
     raw_bbox: tuple[float, float, float, float],
     page: PdfPageGeometry,
 ) -> list[float]:
-    """Convert ODL PDF points to CropBox-local canonical points."""
-    left, bottom, right, top = raw_bbox
-    local = (
-        left - page.origin_x,
-        bottom - page.origin_y,
-        right - page.origin_x,
-        top - page.origin_y,
+    """Convert ODL PDF points to the visible CropBox-local page intersection."""
+    left, bottom, right, top = (float(value) for value in raw_bbox)
+    if not all(isfinite(value) for value in (left, bottom, right, top)):
+        raise ValueError("bbox values must be finite")
+    if left > right or bottom > top:
+        raise ValueError("bbox coordinates are inverted")
+
+    local_left = left - page.origin_x
+    local_bottom = bottom - page.origin_y
+    local_right = right - page.origin_x
+    local_top = top - page.origin_y
+    visible = (
+        max(local_left, 0.0),
+        max(local_bottom, 0.0),
+        min(local_right, page.width),
+        min(local_top, page.height),
     )
+    if visible[2] <= visible[0] or visible[3] <= visible[1]:
+        raise ValueError("bbox is outside page bounds")
+
     bbox = normalize_bbox(
-        local,
+        visible,
         "PDF_BOTTOM_LEFT",
         page.width,
         page.height,
     )
     return [bbox.left, bbox.bottom, bbox.right, bbox.top]
+
 
 def parser_bbox(
     element: RawElement, page: PdfPageGeometry
