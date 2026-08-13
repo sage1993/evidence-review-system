@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -89,3 +90,49 @@ def test_valid_track_a_creates_only_track_b_handoff(tmp_path: Path) -> None:
 
     assert result.next_action_path.name == "next-action-track-b.json"
     assert (prepared.run_directory / "track-a-output.json").read_bytes() == output.read_bytes()
+
+
+def test_valid_same_path_track_a_preserves_original_bytes_and_creates_handoff(
+    tmp_path: Path,
+) -> None:
+    from ansim_review.review_run import submit_track_a
+
+    prepared = _prepared(tmp_path)
+    output = prepared.run_directory / "track-a-output.json"
+    output.write_text(
+        json.dumps(
+            _track_a(prepared.run_id, numeric_tokens=["40%"]),
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    original_bytes = output.read_bytes()
+
+    result = submit_track_a(tmp_path / "workspace", prepared.run_id, output)
+
+    assert result.next_action_path == prepared.run_directory / "next-action-track-b.json"
+    assert result.next_action_path.is_file()
+    assert output.read_bytes() == original_bytes
+
+
+def test_external_track_a_does_not_overwrite_conflicting_canonical_target(
+    tmp_path: Path,
+) -> None:
+    from ansim_review.review_run import submit_track_a
+
+    prepared = _prepared(tmp_path)
+    target = prepared.run_directory / "track-a-output.json"
+    target.write_bytes(b"{}\n")
+    external = tmp_path / "track-a-external.json"
+    external.write_bytes(dump_bytes(_track_a(prepared.run_id, numeric_tokens=["40%"])))
+
+    with pytest.raises(
+        FileExistsError,
+        match=r"existing artifact differs: track-a-output\.json",
+    ):
+        submit_track_a(tmp_path / "workspace", prepared.run_id, external)
+
+    assert target.read_bytes() == b"{}\n"
+    assert not (prepared.run_directory / "next-action-track-b.json").exists()
