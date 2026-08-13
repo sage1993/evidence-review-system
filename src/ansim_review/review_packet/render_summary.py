@@ -26,7 +26,11 @@ def _reviewer_conclusion(model: Mapping[str, object]) -> str:
     if explicit != _NO_ANSWER_FALLBACK:
         return explicit
     claims = model.get("claims")
-    if isinstance(claims, Sequence) and not isinstance(claims, (str, bytes, bytearray)) and len(claims) == 1:
+    if (
+        isinstance(claims, Sequence)
+        and not isinstance(claims, (str, bytes, bytearray))
+        and len(claims) == 1
+    ):
         claim = _mapping(claims[0])
         text = claim.get("text")
         if isinstance(text, str) and text.strip():
