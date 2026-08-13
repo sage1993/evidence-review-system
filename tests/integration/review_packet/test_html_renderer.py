@@ -325,3 +325,42 @@ def test_workspace_is_offline_responsive_accessible_and_print_safe(tmp_path: Pat
     ):
         assert value in html
     assert "https://" not in html and "http://" not in html
+
+
+def test_packet_missing_input_is_visible_but_snapshot_stays_in_audit(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    model = _model()
+    model["status"] = "ABSTAIN"
+    model["display_status"] = "ABSTAIN"
+    model["missing_inputs"] = ["청소년문화의집 적용대상 확인"]
+    model["abstention_reasons"] = ["MISSING_REQUIRED_INPUT"]
+
+    metadata = model["metadata"]
+    summary = model["summary"]
+    assert isinstance(metadata, dict) and isinstance(summary, dict)
+    metadata["snapshot_sha256"] = "a" * 64
+    summary["missing_input_count"] = 1
+
+    html = render_review_html(model, tmp_path / "pages")
+    additional_match = re.search(
+        r'<section id="additional-review".*?</section>',
+        html,
+        re.DOTALL,
+    )
+    audit_match = re.search(
+        r'<details id="packet-global-review".*?</details>',
+        html,
+        re.DOTALL,
+    )
+
+    assert additional_match is not None
+    assert audit_match is not None
+    additional = additional_match.group(0)
+    audit = audit_match.group(0)
+
+    assert "청소년문화의집 적용대상 확인" in additional
+    assert "필요한 입력 자료가 없습니다." in additional
+    assert "a" * 64 not in additional
+    assert "a" * 64 in audit
