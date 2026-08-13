@@ -377,3 +377,201 @@ def test_changed_question_creates_a_new_immutable_run(tmp_path: Path) -> None:
     assert first.run_id != second.run_id
     assert (workspace / "runs" / first.run_id).is_dir()
     assert (workspace / "runs" / second.run_id).is_dir()
+
+
+def _korean_element(
+    evidence_id: str,
+    *,
+    parser_order: int,
+    text: str,
+    payload_hash_char: str,
+) -> dict[str, object]:
+    return {
+        "id": evidence_id,
+        "revision_id": "REV-KR",
+        "page_id": "REV-KR-P1",
+        "page_number": 1,
+        "element_type": "table_cell",
+        "raw_json": {"text": text},
+        "raw_text": text,
+        "normalized_text": text,
+        "raw_payload_hash": payload_hash_char * 64,
+        "bbox": [10.0, float(parser_order), 500.0, float(parser_order + 1)],
+        "parser_order": parser_order,
+    }
+
+
+def _korean_workspace(path: Path) -> tuple[Path, str]:
+    (path / "evidence").mkdir(parents=True)
+
+    snapshot = EvidenceSnapshot(
+        documents=(
+            {"id": "DOC-KR", "title": "청소년수련시설 기준"},
+        ),
+        revisions=(
+            {
+                "id": "REV-KR",
+                "document_id": "DOC-KR",
+                "source_hash": "c" * 64,
+                "byte_size": 100,
+                "page_count": 1,
+            },
+        ),
+        pages=(
+            {
+                "id": "REV-KR-P1",
+                "revision_id": "REV-KR",
+                "page_number": 1,
+                "width": 595.0,
+                "height": 842.0,
+            },
+        ),
+        elements=(
+            _korean_element(
+                "E-YOUTH-CENTER-LABEL",
+                parser_order=10,
+                text="청소년수련관",
+                payload_hash_char="d",
+            ),
+            _korean_element(
+                "E-YOUTH-CENTER-1500",
+                parser_order=11,
+                text="연건축면적이 1,500제곱미터 이상이어야 하며 관련 기준을 따른다.",
+                payload_hash_char="e",
+            ),
+            _korean_element(
+                "E-CULTURE-HOUSE",
+                parser_order=20,
+                text="청소년문화의집",
+                payload_hash_char="f",
+            ),
+            _korean_element(
+                "E-CULTURE-DESC",
+                parser_order=21,
+                text="청소년수련시설 중 가장 작은 규모의 시설이다.",
+                payload_hash_char="1",
+            ),
+        ),
+    )
+
+    with EvidenceStore(
+        path / "evidence" / "evidence.sqlite",
+        create=True,
+    ) as store:
+        snapshot_hash = ingest_snapshot(store, snapshot)
+        build_fts_index(store.require_connection())
+
+    return path, snapshot_hash
+
+
+def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    workspace, snapshot_hash = _korean_workspace(tmp_path / "workspace")
+
+    question = (
+        "청소년 문화의집은 면적이 "
+        "1500제곱미터 이상이어야 한다."
+    )
+
+    arguments = [
+        "review-question",
+        "prepare",
+        "--workspace",
+        str(workspace),
+        "--question",
+        question,
+    ]
+
+    assert cli.main(arguments) == 0
+
+    first = json.loads(capsys.readouterr().out)
+
+    run_directory = workspace / "runs" / first["run_id"]
+
+    evidence_query_path = run_directory / "evidence-query.json"
+    review_request_path = run_directory / "review-request.json"
+    track_a_bundle_path = run_directory / "track-a-bundle.json"
+
+    evidence_query = json.loads(
+        evidence_query_path.read_text(encoding="utf-8")
+    )
+    review_request = json.loads(
+        review_request_path.read_text(encoding="utf-8")
+    )
+    track_a_bundle = json.loads(
+        track_a_bundle_path.read_text(encoding="utf-8")
+    )
+
+    assert evidence_query["hits"]
+
+    evidence_ids = {
+        item["evidence_id"]
+        for item in evidence_query["hits"]
+    }
+
+    assert "E-YOUTH-CENTER-1500" in evidence_ids
+    assert "E-CULTURE-HOUSE" in evidence_ids
+
+    texts = [
+        item["text"]
+        for item in review_request["evidence"]
+    ]
+
+    assert any(
+        "청소년문화의집" in text
+        for text in texts
+    )
+    assert any(
+        "1,500제곱미터" in text
+        for text in texts
+    )
+    assert any(
+        "청소년수련관" in text
+        for text in texts
+    )
+
+    assert (
+        review_request["inputs"]["snapshot_hash"]
+        == snapshot_hash
+    )
+    assert (
+        track_a_bundle["inputs"]["snapshot_hash"]
+        == snapshot_hash
+    )
+
+    assert (
+        evidence_query["query"]["derived_variants"]["entity"]
+        == [
+            "청소년 문화의집",
+            "청소년문화의집",
+        ]
+    )
+
+    artifacts_before = {
+        item.name: item.read_bytes()
+        for item in (
+            evidence_query_path,
+            review_request_path,
+            track_a_bundle_path,
+        )
+    }
+
+    assert cli.main(arguments) == 0
+
+    second = json.loads(capsys.readouterr().out)
+
+    assert second["run_id"] == first["run_id"]
+    assert second["resumed"] is True
+
+    artifacts_after = {
+        item.name: item.read_bytes()
+        for item in (
+            evidence_query_path,
+            review_request_path,
+            track_a_bundle_path,
+        )
+    }
+
+    assert artifacts_after == artifacts_before
