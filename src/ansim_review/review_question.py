@@ -134,6 +134,7 @@ def build_review_run_request(
     }
     if set(approved) - known_rule_ids:
         raise ValueError("approved_rule_result_ids reference unknown rules")
+    confidence_value = "1.0" if evidence else "0.0"
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
@@ -145,7 +146,10 @@ def build_review_run_request(
         "approved_rule_result_ids": approved,
         "confidence_input": {
             "factors": {
-                name: {"value": "1.0", "source": "retrieval:snapshot_hash"}
+                name: {
+                    "value": confidence_value,
+                    "source": "retrieval:evidence_availability",
+                }
                 for name in FACTOR_WEIGHTS
             }
         },
@@ -315,7 +319,7 @@ def _recover_incomplete_finalization(run_directory: Path, track_b_output: Path) 
         if existing_track_b is not None and existing_track_b != dump_bytes(
             _json(track_b_output)
         ):
-            raise FileExistsError("existing Track B artifact differs from retry input")
+            raise FileExistsError("existing Track B artifact differs from retry input") from None
     for name in (
         "track-b-output.json",
         "run-manifest.json",
