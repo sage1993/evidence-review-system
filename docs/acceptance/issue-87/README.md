@@ -43,7 +43,7 @@ In particular, Windows and POSIX process identity verification are different ope
 
 ## Issue #92 implementation evidence
 
-The implementation change was developed from starting HEAD `67d27db9553c44342901c493bdbe6f29f0d4f6be`; the final commit SHA must be recorded after the verified commit. This subsection records only executed evidence and does not close #92 or #93.
+The implementation change was developed from starting HEAD `67d27db9553c44342901c493bdbe6f29f0d4f6be` and verified/pushed as implementation commit `ff758ddc4935d857a69a96adcc64a018d1f7c56d`. This subsection records only executed evidence and does not close #92 or #93.
 
 | Evidence | Python 3.11 | Python 3.13 |
 |---|---:|---:|
