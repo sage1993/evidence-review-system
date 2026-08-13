@@ -266,6 +266,7 @@ def _summary(
     citations: Sequence[Mapping[str, object]],
     calculations: Sequence[Mapping[str, object]],
     rules: Sequence[Mapping[str, object]],
+    packet_missing_inputs: Sequence[str],
     confidence: Mapping[str, object] | None,
     exceptions: Sequence[str],
     conflicts: Sequence[str],
@@ -284,6 +285,7 @@ def _summary(
         for rule in rules
         for value in _strings(rule.get("missing_inputs", []), "missing_inputs")
     }
+    missing_inputs.update(packet_missing_inputs)
     return {
         "citation_count": len(resolved_citation_ids),
         "approved_rule_count": len(rules),
@@ -304,6 +306,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
     status = _status(document)
     packet_sha256 = _packet_sha256(packet_bytes)
     rule_documents = _rules(document)
+    packet_missing_inputs = _strings(document.get("missing_inputs", []), "missing_inputs")
     provided_citations = _v2_citations(document)
     claims: list[dict[str, object]] = []
     resolved_citations: dict[str, dict[str, object]] = {}
@@ -392,11 +395,13 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         "exceptions": exceptions,
         "conflicts": conflicts,
         "abstention_reasons": reasons,
+        "missing_inputs": packet_missing_inputs,
         "metadata": metadata,
         "summary": _summary(
             list(resolved_citations.values()),
             calculations,
             rule_documents,
+            packet_missing_inputs,
             confidence,
             exceptions,
             conflicts,

@@ -78,6 +78,11 @@ def additional_review_items(model: Mapping[str, object]) -> tuple[str, ...]:
     """Return only present missing/conflict/exception/abstention items."""
     values: list[str] = []
 
+    for item in _sequence(model.get("missing_inputs")):
+        human = _human_issue(item)
+        if human and human not in values:
+            values.append(human)
+
     for rule_value in _sequence(model.get("rules")):
         rule = _mapping(rule_value)
         for item in _sequence(rule.get("missing_inputs")):
