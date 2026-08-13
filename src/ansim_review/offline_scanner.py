@@ -33,12 +33,12 @@ def _is_forbidden_import(module: str, policy: OfflinePolicy) -> bool:
 
 
 def _is_allowed_subprocess(
-    relative_path: str,
+    policy_path: str,
     symbol: str,
     policy: OfflinePolicy,
 ) -> bool:
     return (
-        relative_path in policy.allowed_subprocess_paths
+        policy_path in policy.allowed_subprocess_paths
         and (symbol == "subprocess" or symbol.startswith("subprocess."))
     )
 
@@ -72,6 +72,7 @@ def _literal_string_argument(node: ast.Call) -> str | None:
 def _scan_tree(
     tree: ast.AST,
     relative_path: str,
+    policy_path: str,
     policy: OfflinePolicy,
 ) -> set[OfflineFinding]:
     findings: set[OfflineFinding] = set()
@@ -84,7 +85,7 @@ def _scan_tree(
                 local = alias.asname or alias.name.split(".", maxsplit=1)[0]
                 module_aliases[local] = alias.name
                 if _is_forbidden_import(alias.name, policy) and not _is_allowed_subprocess(
-                    relative_path,
+                    policy_path,
                     alias.name,
                     policy,
                 ):
@@ -114,7 +115,7 @@ def _scan_tree(
                 if (
                     reported
                     and _is_forbidden_import(full_name, policy)
-                    and not _is_allowed_subprocess(relative_path, full_name, policy)
+                    and not _is_allowed_subprocess(policy_path, full_name, policy)
                 ):
                     findings.add(
                         OfflineFinding(
@@ -132,7 +133,7 @@ def _scan_tree(
         if (
             symbol in policy.forbidden_process_calls
             and symbol is not None
-            and not _is_allowed_subprocess(relative_path, symbol, policy)
+            and not _is_allowed_subprocess(policy_path, symbol, policy)
         ):
             findings.add(
                 OfflineFinding(
@@ -148,7 +149,7 @@ def _scan_tree(
         if (
             dynamic_module is not None
             and _is_forbidden_import(dynamic_module, policy)
-            and not _is_allowed_subprocess(relative_path, dynamic_module, policy)
+            and not _is_allowed_subprocess(policy_path, dynamic_module, policy)
         ):
             findings.add(
                 OfflineFinding(
@@ -159,6 +160,15 @@ def _scan_tree(
                 )
             )
     return findings
+
+
+def _policy_path(resolved_root: Path, relative_path: str) -> str:
+    """Normalize supported scan roots to one canonical package-relative policy path."""
+    if relative_path.startswith("ansim_review/"):
+        return relative_path
+    if resolved_root.name == "ansim_review":
+        return f"ansim_review/{relative_path}"
+    return relative_path
 
 
 def scan_source_tree(
@@ -194,5 +204,12 @@ def scan_source_tree(
                 )
             )
             continue
-        findings.update(_scan_tree(tree, relative_path, selected_policy))
+        findings.update(
+            _scan_tree(
+                tree,
+                relative_path,
+                _policy_path(resolved_root, relative_path),
+                selected_policy,
+            )
+        )
     return tuple(sorted(findings))
