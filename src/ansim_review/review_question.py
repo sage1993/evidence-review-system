@@ -319,7 +319,7 @@ def _recover_incomplete_finalization(run_directory: Path, track_b_output: Path) 
         if existing_track_b is not None and existing_track_b != dump_bytes(
             _json(track_b_output)
         ):
-            raise FileExistsError("existing Track B artifact differs from retry input") from None
+            raise FileExistsError("existing Track B artifact differs from retry input")
     for name in (
         "track-b-output.json",
         "run-manifest.json",
