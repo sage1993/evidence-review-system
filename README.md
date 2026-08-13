@@ -18,6 +18,16 @@ $ERS_REVIEW <검토 질문>
 - 검토할 PDF
 - OpenDataLoader PDF 등 지원되는 로컬 parser
 
+런타임 Python 의존성:
+
+```text
+pypdf>=5,<6
+pypdfium2>=5.12,<6
+Pillow>=12,<13
+```
+
+`pypdfium2`/Pillow는 PDF page image를 프로세스 내부에서 생성하는 데 사용합니다. 별도 `pdftoppm` 실행 파일은 런타임 요구사항이 아닙니다. 새 오프라인 환경에 설치할 때는 위 Python wheel과 그에 필요한 native extension wheel을 미리 준비하고 manifest/hash를 함께 보존해야 합니다.
+
 소스 설치 예시:
 
 ```powershell
@@ -34,7 +44,7 @@ python -m pip install -e .
 python -m pip install -e ".[dev]"
 ```
 
-런타임은 PDF geometry 검증 등에 필요한 로컬 Python 의존성을 사용할 수 있지만 실행 중 외부 검색/API를 요구하지 않습니다. 새 오프라인 환경에 설치할 때는 필요한 wheel을 미리 준비해야 합니다.
+런타임은 실행 중 외부 검색/API를 요구하지 않습니다. 애플리케이션 수준 오프라인 가드와 OS 수준 네트워크 격리는 서로 다른 보증 수준이며 자세한 내용은 `docs/OFFLINE_EXECUTION.md`를 따릅니다.
 
 ## 2. PDF 준비 — `$ERS_PDF`
 
@@ -146,7 +156,13 @@ metrics는 성능 관측용이며 Run ID나 packet hash를 바꾸지 않습니�
 
 실제 성능 수용은 Windows Python 3.11/3.13에서 같은 단순 질문을 3회 실행하고 p50/p95를 기록해 판단합니다.
 
-## 8. 잘 안 될 때
+## 8. Release assurance 경계
+
+개별 review decision과 release authorization은 별도입니다. Release authorization은 `evidence-review/human-attestation` 형식의 `human-attestation.json`을 사용하며, exact release candidate hash와 packet hash를 append-only process evidence로 결합합니다. 승인 상태 `REVIEWED_AND_ACCEPTED_FOR_RELEASE`는 이 process attestation 계약 안에서만 의미가 있습니다.
+
+현재 설계에서 `cryptographic_identity_verified`는 `false`입니다. 사람 이름이나 JSON 파일만으로 검토자 신원을 암호학적으로 증명하지 않습니다. Release output은 `bundle-manifest.json`과 `runtime-manifest.json`을 포함한 final ZIP 자체를 **without extracting** 검증하고, case-fold collisions, byte size, SHA-256를 재검증합니다. 이 검증 실패는 `RELEASE_OUTPUT_VALIDATION_FAILED`로 차단되며 사람 attestation으로 우회할 수 없습니다.
+
+## 9. 잘 안 될 때
 
 - **parser 결과 없음:** `$ERS_PDF` 단계에서 parser 설치·source binding을 해결합니다.
 - **근거 DB 없음:** `evidence.sqlite`가 만들어질 때까지 질문을 진행하지 않습니다.
@@ -163,13 +179,14 @@ evidence-review review-run serve-status --workspace <workspace> --run-id <RUN-ID
 evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 ```
 
-## 9. 개발자·검토자 문서
+## 10. 개발자·검토자 문서
 
 - [Codex workflow](docs/CODEX_WORKFLOW.md)
 - [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)
 - [Offline execution boundary](docs/OFFLINE_EXECUTION.md)
 - [Manual acceptance policy](docs/MANUAL_ACCEPTANCE_POLICY.md)
 - [Source Batch v2](docs/SOURCE_BATCH_V2.md)
+- [Legacy lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
 - [PDF skills](skills/README.md)
 
 Issue #87의 Windows 3.11/3.13 수동 E2E 기록은 `docs/acceptance/issue-87/README.md`에 보존합니다. 실행하지 않은 검증은 PASS로 쓰지 않고 `NOT_RUN`으로 기록합니다.
