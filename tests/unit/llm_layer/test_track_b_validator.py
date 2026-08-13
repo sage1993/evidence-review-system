@@ -67,6 +67,27 @@ def _track_a():
     return validate_track_a_output(output, bundle)
 
 
+def _empty_track_a():
+    bundle = build_track_a_bundle(
+        run_id="RUN-EMPTY0123456789ABCDE",
+        question="근거가 없는 질문",
+        inputs={},
+        evidence=(),
+        rules=(),
+        calculations=(),
+    )
+    output = {
+        "run_id": bundle.run_id,
+        "claims": [],
+        "citations": [],
+        "missing_inputs": ["근거 자료"],
+        "exceptions": [],
+        "conflicts": [],
+        "explanation": "근거가 없어 주장하지 않는다.",
+    }
+    return validate_track_a_output(output, bundle)
+
+
 def test_track_b_rejects_unaudited_track_a_claim() -> None:
     payload = {
         "run_id": "RUN-0123456789ABCDEF0123",
@@ -114,3 +135,33 @@ def test_track_b_accepts_complete_independent_audit() -> None:
     audit = validate_track_b_output(payload, _track_a())
     assert audit.overall_disposition == "INCOMPLETE"
     assert tuple(item.claim_id for item in audit.claim_audits) == ("CL1", "CL2")
+
+
+def test_track_b_rejects_accept_for_empty_track_a_claim_set() -> None:
+    track_a = _empty_track_a()
+
+    with pytest.raises(ValueError, match="empty Track A claim set must be INCOMPLETE"):
+        validate_track_b_output(
+            {
+                "run_id": track_a.draft.run_id,
+                "claim_audits": [],
+                "overall_disposition": "ACCEPT",
+            },
+            track_a,
+        )
+
+
+def test_track_b_accepts_incomplete_for_empty_track_a_claim_set() -> None:
+    track_a = _empty_track_a()
+
+    audit = validate_track_b_output(
+        {
+            "run_id": track_a.draft.run_id,
+            "claim_audits": [],
+            "overall_disposition": "INCOMPLETE",
+        },
+        track_a,
+    )
+
+    assert audit.claim_audits == ()
+    assert audit.overall_disposition == "INCOMPLETE"
