@@ -332,6 +332,11 @@ def decode_review_packet(value: object) -> ReviewPacket:
         snapshot_sha256 = _expect_string(snapshot_value, "snapshot_sha256")
         if not _SHA256_PATTERN.fullmatch(snapshot_sha256):
             raise ValueError("snapshot_sha256 must be a lowercase SHA-256 digest")
+    serialized_lineage_fields = tuple(
+        name
+        for name in ("snapshot_sha256", "missing_inputs")
+        if name in payload
+    )
     return ReviewPacket(
         run_id=_expect_string(payload.get("run_id"), "run_id"),
         status=cast(FinalizerStatus, status),
@@ -346,4 +351,5 @@ def decode_review_packet(value: object) -> ReviewPacket:
         ),
         snapshot_sha256=snapshot_sha256,
         missing_inputs=_expect_string_tuple(payload.get("missing_inputs", []), "missing_inputs"),
+        _serialized_lineage_fields=serialized_lineage_fields,
     )

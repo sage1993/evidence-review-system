@@ -229,7 +229,7 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
 
 def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
     """Return the canonical final machine packet with a null human decision."""
-    return {
+    document: dict[str, object] = {
         "run_id": packet.run_id,
         "status": packet.status,
         "human_decision": None,
@@ -251,9 +251,12 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
             else _confidence_document(packet.confidence)
         ),
         "abstention_reasons": list(packet.abstention_reasons),
-        "snapshot_sha256": packet.snapshot_sha256,
-        "missing_inputs": list(packet.missing_inputs),
     }
+    if "snapshot_sha256" in packet._serialized_lineage_fields:
+        document["snapshot_sha256"] = packet.snapshot_sha256
+    if "missing_inputs" in packet._serialized_lineage_fields:
+        document["missing_inputs"] = list(packet.missing_inputs)
+    return document
 
 
 def _finding_codes(track_b_output: object) -> set[str]:

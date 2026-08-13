@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from ansim_review.contracts.engines import CalculationResult, RuleResult
@@ -96,3 +96,8 @@ class ReviewPacket:
     abstention_reasons: tuple[str, ...]
     snapshot_sha256: str | None = None
     missing_inputs: tuple[str, ...] = ()
+    _serialized_lineage_fields: tuple[str, ...] = field(
+        default=("snapshot_sha256", "missing_inputs"),
+        compare=False,
+        repr=False,
+    )
