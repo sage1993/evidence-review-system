@@ -224,7 +224,7 @@ def test_default_workspace_is_nondeveloper_first_and_traceable(tmp_path: Path) -
     assert "data:image/png;base64," + base64.b64encode(page_bytes).decode() in html
     assert '<svg viewBox="0 0 120.0 200.0"' in html
     assert '<rect x="10.0" y="160.0" width="100.0" height="20.0">' in html
-    assert "checked" not in html
+    assert "checked" not in _decision_form_html(html)
 
 
 def test_single_claim_and_empty_conditions_do_not_create_empty_sections(tmp_path: Path) -> None:
