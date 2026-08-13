@@ -1,4 +1,15 @@
 @media (max-width: 1100px) {
+  .review-workspace {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "summary"
+      "items"
+      "additional"
+      "detail"
+      "viewer"
+      "decision"
+      "audit";
+  }
   .page-stage {
     max-height: min(60vh, 640px);
     overflow: auto;
