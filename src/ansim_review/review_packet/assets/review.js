@@ -33,12 +33,21 @@
     if (status) status.textContent = message;
   }
 
+  function setProtectedMode(protectedMode) {
+    document.querySelectorAll("[data-protected-only]").forEach((node) => {
+      node.hidden = !protectedMode;
+    });
+    document.querySelectorAll("[data-archive-only]").forEach((node) => {
+      node.hidden = protectedMode;
+    });
+  }
+
   function updateReviewerSession() {
     const node = document.querySelector("[data-reviewer-session]");
     if (!node) return;
     node.textContent = decisionContext.reviewer_id
-      ? "검토자: " + decisionContext.reviewer_id + " · 보호 세션에서 확인됨"
-      : "보관 HTML에서는 결정 JSON 다운로드 시 검토자 ID를 한 번 확인합니다.";
+      ? "검토자: " + decisionContext.reviewer_id
+      : "보관 HTML에서는 저장 시 검토자 ID를 확인합니다.";
   }
 
   function validReviewerId(value) {
@@ -57,6 +66,36 @@
     return candidate;
   }
 
+  function notesRequired(decision) {
+    return Boolean(decision && decision !== "SATISFIED");
+  }
+
+  function syncNotesRequirement() {
+    const selected = document.querySelector('input[name="decision"]:checked');
+    const notes = document.getElementById("review-notes");
+    if (!notes) return;
+    const required = notesRequired(selected ? selected.value : "");
+    notes.required = required;
+    notes.setAttribute("aria-required", required ? "true" : "false");
+    if (!required) {
+      notes.removeAttribute("aria-invalid");
+      const error = document.getElementById("notes-error");
+      if (error) error.hidden = true;
+    }
+  }
+
+  function validateNotes(decision, notesValue) {
+    const notes = document.getElementById("review-notes");
+    const error = document.getElementById("notes-error");
+    const invalid = notesRequired(decision) && !String(notesValue || "").trim();
+    if (notes) {
+      if (invalid) notes.setAttribute("aria-invalid", "true");
+      else notes.removeAttribute("aria-invalid");
+    }
+    if (error) error.hidden = !invalid;
+    return !invalid;
+  }
+
   function decisionRequest(form) {
     const values = new FormData(form);
     const reviewerId = resolveReviewerId();
@@ -73,13 +112,13 @@
       validReviewerId(request.reviewer_id) &&
       /^[0-9a-f]{64}$/.test(request.packet_hash) &&
       ALLOWED_DECISIONS.has(request.decision) &&
-      request.notes.trim()
+      (!notesRequired(request.decision) || request.notes.trim())
     );
   }
 
   function decisionEnvelope(form) {
     const request = decisionRequest(form);
-    if (!validDecisionRequest(request)) return null;
+    if (!validateNotes(request.decision, request.notes) || !validDecisionRequest(request)) return null;
     return {
       reviewer_id: request.reviewer_id,
       reviewed_at: new Date().toISOString(),
@@ -100,7 +139,10 @@
   async function refreshDisplayStatus() {
     try {
       const response = await fetch("./decision/status");
-      if (!response.ok) return;
+      if (!response.ok) {
+        setProtectedMode(false);
+        return;
+      }
       const payload = await response.json();
       applyDisplayStatus(payload.display_status);
       if (typeof payload.reviewer_id === "string" && payload.reviewer_id) {
@@ -109,8 +151,10 @@
       if (typeof payload.packet_hash === "string" && payload.packet_hash) {
         decisionContext.packet_hash = payload.packet_hash;
       }
+      setProtectedMode(true);
       updateReviewerSession();
     } catch (_) {
+      setProtectedMode(false);
       updateReviewerSession();
     }
   }
@@ -183,6 +227,9 @@
         return panel && panel.dataset.itemId === itemId && node.dataset.evidenceId === evidenceId;
       });
       assetKey = citation ? citation.dataset.assetKey : "";
+      document.querySelectorAll(".citation").forEach((node) => {
+        node.classList.toggle("is-selected", node === citation);
+      });
     }
     if (!assetKey) return;
     document.querySelectorAll(".evidence-page").forEach((page) => {
@@ -197,10 +244,7 @@
     const page = Array.from(document.querySelectorAll(".evidence-page")).find(
       (node) => node.dataset.assetKey === assetKey
     );
-    if (page) {
-      page.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      page.focus({ preventScroll: true });
-    }
+    if (page) page.focus({ preventScroll: true });
   }
 
   function setEvidenceMode(mode) {
@@ -221,10 +265,15 @@
   async function submitDecision(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    if (!form.reportValidity()) return;
+    const selected = form.querySelector('input[name="decision"]:checked');
+    const notes = form.querySelector('[name="notes"]');
+    const decision = selected ? selected.value : "";
+    const notesValue = notes ? notes.value : "";
+    syncNotesRequirement();
+    if (!form.reportValidity() || !validateNotes(decision, notesValue)) return;
     const request = decisionRequest(form);
     if (!validDecisionRequest(request)) {
-      formStatus("결정 저장에 필요한 검토자·패킷·결정·의견 정보를 확인하십시오.");
+      formStatus("결정 저장에 필요한 정보를 확인하십시오.");
       return;
     }
     formStatus("검토자 결정을 저장하는 중입니다.");
@@ -237,9 +286,9 @@
       if (response.ok) {
         const payload = await response.json();
         applyDisplayStatus(payload.display_status);
-        formStatus("검토자 결정이 별도 append-only 기록으로 저장되었습니다.");
+        formStatus("검토자 결정이 저장되었습니다.");
       } else {
-        formStatus("결정 저장이 거부되었습니다. 입력과 현재 패킷을 확인하십시오.");
+        formStatus("결정 저장이 거부되었습니다. 입력과 현재 검토 자료를 확인하십시오.");
       }
     } catch (_) {
       formStatus("보관 HTML에서는 서버 저장을 사용할 수 없습니다. 결정 JSON을 다운로드하십시오.");
@@ -248,7 +297,13 @@
 
   function downloadDecisionEnvelope() {
     const form = document.querySelector("#decision-form form");
-    if (!form || !form.reportValidity()) return;
+    if (!form) return;
+    const selected = form.querySelector('input[name="decision"]:checked');
+    const notes = form.querySelector('[name="notes"]');
+    const decision = selected ? selected.value : "";
+    const notesValue = notes ? notes.value : "";
+    syncNotesRequirement();
+    if (!form.reportValidity() || !validateNotes(decision, notesValue)) return;
     const envelope = decisionEnvelope(form);
     if (!envelope) {
       formStatus("유효한 결정 JSON을 만들 수 없습니다. 입력을 확인하십시오.");
@@ -260,7 +315,7 @@
     link.download = "human-decision-envelope.json";
     link.click();
     URL.revokeObjectURL(link.href);
-    formStatus("유효한 5필드 결정 JSON을 다운로드했습니다. HTML 저장과는 별도입니다.");
+    formStatus("결정 JSON을 다운로드했습니다.");
   }
 
   window.selectReviewItem = selectReviewItem;
@@ -296,6 +351,14 @@
   document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
     button.addEventListener("click", () => setEvidenceMode(button.dataset.viewerMode));
   });
+  document.querySelectorAll('input[name="decision"]').forEach((input) => {
+    input.addEventListener("change", syncNotesRequirement);
+  });
+  const notes = document.getElementById("review-notes");
+  if (notes) notes.addEventListener("input", () => validateNotes(
+    document.querySelector('input[name="decision"]:checked')?.value || "",
+    notes.value
+  ));
   const zoom = document.getElementById("evidence-zoom");
   if (zoom) zoom.addEventListener("input", () => setEvidenceZoom(zoom.value));
   const form = document.querySelector("#decision-form form");
@@ -307,6 +370,8 @@
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
   updateTabControls(selectedDetailPanel());
+  syncNotesRequirement();
+  setProtectedMode(false);
   updateReviewerSession();
   void refreshDisplayStatus();
 
