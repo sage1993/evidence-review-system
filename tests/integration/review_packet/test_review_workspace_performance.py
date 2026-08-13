@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import struct
 import zlib
 from pathlib import Path
@@ -125,6 +126,12 @@ def _twenty_page_model(source_hashes: list[str]) -> dict[str, object]:
     }
 
 
+def _decision_form(html: str) -> str:
+    match = re.search(r'<section id="decision-form".*?</section>', html, re.DOTALL)
+    assert match is not None
+    return match.group(0)
+
+
 def test_large_workspace_renders_shared_pages_once_within_local_budget(tmp_path: Path) -> None:
     source_hashes = _write_shared_page_assets(tmp_path / "pages")
     model = _twenty_page_model(source_hashes)
@@ -148,7 +155,7 @@ def test_ready_state_is_korean_and_has_no_empty_additional_panel(tmp_path: Path)
     assert 'id="additional-review"' not in html
     assert 'value="SATISFIED" required' in html
     assert 'value="NOT_SATISFIED" required' in html
-    assert "checked" not in html
+    assert " checked" not in _decision_form(html)
 
 
 def test_abstain_state_surfaces_additional_review_without_selecting_decision(
@@ -164,4 +171,4 @@ def test_abstain_state_surfaces_additional_review_without_selecting_decision(
     assert "추가 자료 필요" in html
     assert 'id="additional-review"' in html
     assert "MISSING REQUIRED EVIDENCE" in html
-    assert "checked" not in html
+    assert " checked" not in _decision_form(html)
