@@ -26,6 +26,7 @@ else:
     )
 
 from ansim_review.canonical_json import dump_bytes
+from ansim_review.contracts.legacy_formats import LEGACY_PAGE_IMAGE_FORMAT
 from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_page_geometries
 from ansim_review.parsing.source_manifest import sha256_file
 
@@ -99,7 +100,10 @@ def _load_existing(
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("page image cache metadata is invalid") from error
     image = image_path.read_bytes()
-    if metadata != _metadata(source, page, image):
+    expected = _metadata(source, page, image)
+    if metadata.get("format") == LEGACY_PAGE_IMAGE_FORMAT:
+        expected["format"] = LEGACY_PAGE_IMAGE_FORMAT
+    if metadata != expected:
         raise ValueError("page image cache binding does not match source page")
     return True
 
