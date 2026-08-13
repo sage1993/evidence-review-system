@@ -279,7 +279,11 @@ def test_internal_ids_hashes_and_confidence_weights_are_collapsed(tmp_path: Path
     for value in ("RUN-1", "traceability", "rule_coverage", "0.15", "AUDIT1"):
         assert value in audit
     assert citation is not None
-    detail = re.search(r'<details class="citation-audit">.*?</details>', citation.group(0), re.DOTALL)
+    detail = re.search(
+        r'<details class="citation-audit">.*?</details>',
+        citation.group(0),
+        re.DOTALL,
+    )
     assert detail is not None
     for value in ("CIT-E1", "E1", "REV1", "a" * 64):
         assert value in detail.group(0)
