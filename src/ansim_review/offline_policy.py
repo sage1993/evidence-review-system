@@ -22,6 +22,7 @@ class OfflinePolicy:
     forbidden_import_names: frozenset[str]
     forbidden_process_calls: frozenset[str]
     forbidden_socket_capabilities: frozenset[str]
+    allowed_subprocess_paths: frozenset[str] = frozenset()
 
 
 def default_offline_policy() -> OfflinePolicy:
@@ -40,10 +41,17 @@ def default_offline_policy() -> OfflinePolicy:
             }
         ),
         forbidden_import_names=frozenset({"urllib.request"}),
-        forbidden_socket_capabilities=frozenset({
-            "dns_resolution", "connect", "connect_ex", "send", "sendall",
-            "sendmsg", "sendto",
-        }),
+        forbidden_socket_capabilities=frozenset(
+            {
+                "dns_resolution",
+                "connect",
+                "connect_ex",
+                "send",
+                "sendall",
+                "sendmsg",
+                "sendto",
+            }
+        ),
         forbidden_process_calls=frozenset(
             {
                 "asyncio.create_subprocess_exec",
@@ -56,6 +64,9 @@ def default_offline_policy() -> OfflinePolicy:
                 "subprocess.check_output",
                 "subprocess.run",
             }
+        ),
+        allowed_subprocess_paths=frozenset(
+            {"ansim_review/review_packet/browser_launcher.py"}
         ),
     )
 
