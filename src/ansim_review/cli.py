@@ -44,6 +44,7 @@ from ansim_review.review_run import (
     open_review_run,
     prepare_review_run,
     review_run_server_status,
+    serve_review_run,
     stop_review_run_server,
 )
 from ansim_review.rule_engine.activation import (
@@ -727,6 +728,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             publish=args.publish,
             open_browser=args.open,
         )
+    if args.command == "review-run" and args.review_stage == "serve":
+        try:
+            url = serve_review_run(
+                args.workspace,
+                args.run_id,
+                reviewer_id=args.reviewer_id,
+                idle_timeout_seconds=args.idle_timeout_seconds,
+            )
+            _write_stdout(
+                {
+                    "run_id": args.run_id,
+                    "url": url,
+                    "detached": args.detach,
+                    "idle_timeout_seconds": args.idle_timeout_seconds,
+                }
+            )
+            return 0
+        except (OSError, RuntimeError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return 2
     if args.command == "review-run" and args.review_stage == "serve-status":
         try:
             _write_stdout(review_run_server_status(args.workspace, args.run_id))

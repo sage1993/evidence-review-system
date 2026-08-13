@@ -40,6 +40,7 @@ from ansim_review.review_packet.browser_launcher import (
     close_open_review_server,
     open_protected_review_workspace,
     review_server_status,
+    serve_review_server,
     stop_review_server,
     wait_for_open_review_server,
 )
@@ -47,6 +48,7 @@ from ansim_review.review_packet.builder import build_review_view_model
 from ansim_review.review_packet.external_launcher import open_external_url
 from ansim_review.review_packet.html_renderer import write_review_html
 from ansim_review.review_packet.page_image_verifier import verify_review_page_images
+from ansim_review.review_packet.server_runtime import DEFAULT_IDLE_TIMEOUT_SECONDS
 
 _RUN_ID = re.compile(r"^RUN-[0-9A-F]{20}$")
 _REQUEST_FIELDS = {
@@ -761,6 +763,21 @@ def close_review_run(workspace_root: Path, run_id: str) -> None:
 
 def review_run_server_status(workspace_root: Path, run_id: str) -> dict[str, object]:
     return review_server_status(workspace_root, run_id)
+
+
+def serve_review_run(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    reviewer_id: str | None = None,
+    idle_timeout_seconds: float = DEFAULT_IDLE_TIMEOUT_SECONDS,
+) -> str:
+    return serve_review_server(
+        workspace_root,
+        run_id,
+        reviewer_id=reviewer_id,
+        idle_timeout_seconds=idle_timeout_seconds,
+    )
 
 
 def stop_review_run_server(workspace_root: Path, run_id: str) -> None:

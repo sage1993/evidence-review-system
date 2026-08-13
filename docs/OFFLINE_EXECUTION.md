@@ -68,7 +68,9 @@ Local loopback traffic is permitted by `APPLICATION_OFFLINE_GUARD`; permitting i
 evidence-review review-run serve `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --reviewer-id <REVIEWER-ID>
+  --reviewer-id <REVIEWER-ID> `
+  --detach `
+  --idle-timeout-seconds 5
 
 evidence-review review-run serve-status `
   --workspace <workspace> `
@@ -79,9 +81,11 @@ evidence-review review-run serve-stop `
   --run-id <RUN-ID>
 ```
 
+The default idle timeout is 1800 seconds (30 minutes), measured from the last valid protected activity with `time.monotonic()`. Rejected or malformed requests do not refresh it.
+
 The run-scoped state file is management metadata, not review authority. Stale state must be removed. PID reuse protection must prevent `serve-stop` from signaling an unrelated process.
 
-Windows and POSIX process identity mechanisms differ. Acceptance must test Windows explicitly on the exact target commit; an unexecuted Windows lifecycle check is `NOT_RUN`, not a PASS inferred from POSIX behavior. Issue #92 remains the lifecycle authority while unresolved.
+Windows and POSIX process identity mechanisms differ. Windows liveness uses a non-destructive process query before command-line/token identity validation. Acceptance must still test Windows explicitly on the exact target commit; an unexecuted Windows lifecycle check is `NOT_RUN`, not a PASS inferred from POSIX behavior. Issue #92 remains the lifecycle authority for this lifecycle contract.
 
 ## 4. Human decision boundary
 

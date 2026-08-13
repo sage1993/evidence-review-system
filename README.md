@@ -175,6 +175,16 @@ metrics는 성능 관측용이며 Run ID나 packet hash를 바꾸지 않습니�
 서버 상태 확인/종료:
 
 ```powershell
+evidence-review review-run serve `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --detach `
+  --idle-timeout-seconds 5
+```
+
+Detached protected server defaults to a 1800-second monotonic idle timeout. Valid protected requests refresh activity; rejected requests do not.
+
+```powershell
 evidence-review review-run serve-status --workspace <workspace> --run-id <RUN-ID>
 evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 ```

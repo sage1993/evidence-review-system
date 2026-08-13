@@ -1,6 +1,7 @@
 """Launch protected loopback review workspaces for finalized review runs."""
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
@@ -19,11 +20,46 @@ from typing import TextIO, cast
 
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.observability.run_metrics import append_stage, finish_stage, start_stage
+from ansim_review.review_packet.server_runtime import (
+    DEFAULT_IDLE_TIMEOUT_SECONDS,
+    validate_idle_timeout,
+)
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
 _ACTIVE_SERVERS_LOCK = Lock()
 _READY_TIMEOUT_SECONDS = 2.0
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_STILL_ACTIVE = 259
+
+
+def _process_is_alive(pid: int) -> bool:
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return True
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        open_process = kernel32.OpenProcess
+        open_process.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
+        open_process.restype = ctypes.c_void_p
+        handle = open_process(_PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            get_exit_code = kernel32.GetExitCodeProcess
+            get_exit_code.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+            get_exit_code.restype = ctypes.c_int
+            return bool(get_exit_code(handle, ctypes.byref(exit_code))) and (
+                exit_code.value == _STILL_ACTIVE
+            )
+        finally:
+            kernel32.CloseHandle(handle)
+    except (AttributeError, OSError):
+        return False
 
 
 def _readline_with_timeout(stream: TextIO) -> str:
@@ -96,8 +132,10 @@ def _start_review_server(
     run_id: str,
     *,
     reviewer_id: str | None = None,
+    idle_timeout_seconds: float = DEFAULT_IDLE_TIMEOUT_SECONDS,
 ) -> ReviewWorkspaceServer:
     validated_run_id = validate_identifier(run_id, "run_id")
+    validated_idle_timeout = validate_idle_timeout(idle_timeout_seconds)
     validated_reviewer_id = (
         None
         if reviewer_id is None
@@ -115,11 +153,18 @@ def _start_review_server(
         validated_run_id,
         "--token",
         token,
+        "--idle-timeout-seconds",
+        str(validated_idle_timeout),
     )
     if validated_reviewer_id is not None:
         command += ("--reviewer-id", validated_reviewer_id)
     child_python_path = str(Path(__file__).parents[2]) + os.pathsep + os.environ.get(
         "PYTHONPATH", ""
+    )
+    creationflags = (
+        getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        if os.name == "nt"
+        else 0
     )
     process = subprocess.Popen(
         command,
@@ -128,6 +173,7 @@ def _start_review_server(
         stderr=subprocess.DEVNULL,
         text=True,
         start_new_session=True,
+        creationflags=creationflags,
         env={**os.environ, "PYTHONPATH": child_python_path},
     )
     try:
@@ -179,9 +225,7 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
     if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1:
         path.unlink(missing_ok=True)
         return {"running": False, "run_id": validated_run_id}
-    try:
-        os.kill(pid, 0)
-    except OSError:
+    if not _process_is_alive(pid):
         path.unlink(missing_ok=True)
         return {"running": False, "run_id": validated_run_id}
     if not _matches_server_process(pid, validated_run_id, state.get("token_sha256")):
@@ -243,13 +287,49 @@ def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
     )
 
 def stop_review_server(workspace_root: Path, run_id: str) -> None:
-    status = review_server_status(workspace_root, run_id)
+    validated_run_id = validate_identifier(run_id, "run_id")
+    state_path = workspace_root / "runs" / validated_run_id / "review-server.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return
+    status = review_server_status(workspace_root, validated_run_id)
     if not status["running"]:
         return
     pid = status["pid"]
     assert isinstance(pid, int)
     os.kill(pid, signal.SIGTERM)
-    (workspace_root / "runs" / run_id / "review-server.json").unlink(missing_ok=True)
+    try:
+        current = json.loads(state_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return
+    if (
+        isinstance(state, dict)
+        and isinstance(current, dict)
+        and current.get("pid") == pid
+        and current.get("token_sha256") == state.get("token_sha256")
+    ):
+        state_path.unlink(missing_ok=True)
+
+
+def serve_review_server(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    reviewer_id: str | None = None,
+    idle_timeout_seconds: float = DEFAULT_IDLE_TIMEOUT_SECONDS,
+) -> str:
+    validated_run_id = validate_identifier(run_id, "run_id")
+    stale = review_server_status(workspace_root, validated_run_id)
+    if stale["running"]:
+        raise RuntimeError("protected review server is already running")
+    server = _start_review_server(
+        workspace_root,
+        validated_run_id,
+        reviewer_id=reviewer_id,
+        idle_timeout_seconds=idle_timeout_seconds,
+    )
+    return server.url
 
 
 def open_protected_review_workspace(
@@ -320,6 +400,7 @@ __all__ = [
     "close_open_review_servers",
     "open_protected_review_workspace",
     "review_server_status",
+    "serve_review_server",
     "stop_review_server",
     "wait_for_open_review_server",
 ]

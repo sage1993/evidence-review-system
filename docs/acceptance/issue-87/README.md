@@ -19,7 +19,7 @@ Related prerequisite work:
 
 - #88 formal question pipeline
 - #94 verified PDF page-image cache
-- #92 detached protected-server lifecycle; implementation is substantially improved but acceptance remains on hold
+- #92 detached protected-server idle timeout; implementation verified by focused tests and Windows 3.11/3.13 smoke, with the remaining full acceptance gates tracked below
 
 ## 2. Implementation baseline before this acceptance document
 
@@ -40,6 +40,24 @@ Related prerequisite work:
 Issue #92 remains on hold. The current detached-server lifecycle includes startup timeout, `serve-status`, `serve-stop`, stale-state cleanup, and process identity checks, but **Windows lifecycle behavior has not been manually accepted on the target commit**.
 
 In particular, Windows and POSIX process identity verification are different operational paths. Do not mark server lifecycle PASS until Windows `serve-status` / `serve-stop` / stale state / unrelated-PID protection are exercised on the exact acceptance HEAD.
+
+## Issue #92 implementation evidence
+
+The implementation change was developed from starting HEAD `67d27db9553c44342901c493bdbe6f29f0d4f6be`; the final commit SHA must be recorded after the verified commit. This subsection records only executed evidence and does not close #92 or #93.
+
+| Evidence | Python 3.11 | Python 3.13 |
+|---|---:|---:|
+| Version | 3.11.9 | 3.13.14 |
+| Configured idle timeout | 2.0 s | 2.0 s |
+| Protected URL handoff | 778.18 ms | 755.10 ms |
+| Valid protected GET | HTTP 200 | HTTP 200 |
+| Wrong-token request | HTTP 403 | HTTP 403 |
+| Idle exit / `serve-status` | stopped | stopped |
+| State cleanup | observed | observed |
+| Old URL invalidation | connection failed | connection failed |
+| Explicit `serve-stop` | stopped and cleaned | stopped and cleaned |
+
+Focused Python 3.13 regression suite: **33 passed**. Full pytest: **1268 passed, 7 skipped** on both Python 3.11 (`175.03s`) and Python 3.13 (`175.09s`). Ruff: **PASS**. mypy: **PASS** (`190` source files). compileall: **PASS**. Documentation integrity: **PASS**, `errors=0`, `warnings=105`. GitHub Actions: **ACTIONS_NOT_RUN**. Browser viewport/zoom, three-run timing, exact final-HEAD clean-checkout attestation, and Issue #87/#93 overall acceptance remain separate gates.
 
 ## 4. GitHub Actions state
 
