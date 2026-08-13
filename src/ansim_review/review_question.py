@@ -134,7 +134,11 @@ def build_review_run_request(
     }
     if set(approved) - known_rule_ids:
         raise ValueError("approved_rule_result_ids reference unknown rules")
-    confidence_value = "1.0" if evidence else "0.0"
+    evidence_dependent_factors = {
+        "source completeness",
+        "traceability",
+        "input completeness",
+    }
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
@@ -147,7 +151,11 @@ def build_review_run_request(
         "confidence_input": {
             "factors": {
                 name: {
-                    "value": confidence_value,
+                    "value": (
+                        "0.0"
+                        if not evidence and name in evidence_dependent_factors
+                        else "1.0"
+                    ),
                     "source": "retrieval:evidence_availability",
                 }
                 for name in FACTOR_WEIGHTS
