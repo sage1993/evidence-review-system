@@ -215,3 +215,25 @@ def test_explicit_stop_terminates_verified_server_and_cleans_state(tmp_path: Pat
         if process.poll() is None:
             process.terminate()
             process.wait(timeout=5)
+
+
+def test_unrelated_live_pid_state_is_removed_without_signaling_process(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    state_path = workspace / "runs" / RUN_ID / "review-server.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "port": 12345,
+                "run_id": RUN_ID,
+                "token_sha256": hashlib.sha256(TOKEN.encode("ascii")).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert review_server_status(workspace, RUN_ID) == {
+        "running": False,
+        "run_id": RUN_ID,
+    }
+    assert not state_path.exists()
