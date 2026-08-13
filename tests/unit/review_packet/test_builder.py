@@ -152,6 +152,21 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert model["decision"]["human_decision"] is None
 
 
+def test_view_model_projects_packet_missing_inputs_into_summary(tmp_path: Path) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _packet()
+    packet["snapshot_sha256"] = "a" * 64
+    packet["missing_inputs"] = ["청소년문화의집 적용대상 확인"]
+    packet["abstention_reasons"] = ["MISSING_REQUIRED_INPUT"]
+
+    model = build_review_view_model(packet, database)
+
+    assert model["summary"]["missing_input_count"] == 1
+    assert model["metadata"]["snapshot_sha256"] == "a" * 64
+    assert model["missing_inputs"] == ["청소년문화의집 적용대상 확인"]
+
+
 def test_view_model_requires_explicit_v1_migration(tmp_path: Path) -> None:
     database = tmp_path / "evidence-v1.sqlite"
     connection = sqlite3.connect(database)
