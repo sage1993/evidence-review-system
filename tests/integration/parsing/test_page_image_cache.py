@@ -22,7 +22,7 @@ def test_page_image_cache_writes_and_reuses_verified_pngs(tmp_path: Path) -> Non
     metadata = cache_root / "REV-1" / "page-0001.json"
     payload = json.loads(metadata.read_text(encoding="utf-8"))
     assert payload == {
-        "format": "ansim/page-image",
+        "format": "evidence-review/page-image",
         "version": 1,
         "revision_id": "REV-1",
         "page_number": 1,
