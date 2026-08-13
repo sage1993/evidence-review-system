@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import secrets
 import signal
 import stat
@@ -196,25 +197,50 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
 
 
 def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
-    if not isinstance(token_hash, str) or len(token_hash) != 64 or os.name == "nt":
+    if not isinstance(token_hash, str) or len(token_hash) != 64:
         return False
-    try:
-        arguments = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
-    except OSError:
-        return False
-    decoded = [item.decode("utf-8") for item in arguments if item]
-    if "ansim_review.review_packet.server_process" not in decoded:
-        return False
-    try:
-        token = decoded[decoded.index("--token") + 1]
-        actual_run_id = decoded[decoded.index("--run-id") + 1]
-    except (ValueError, IndexError):
-        return False
+    if os.name == "nt":
+        try:
+            command_line = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine",
+                ],
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=1,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if not command_line or "ansim_review.review_packet.server_process" not in command_line:
+            return False
+        run_match = re.search(r"(?:^|\s)--run-id\s+([^\s\"]+)", command_line)
+        token_match = re.search(r"(?:^|\s)--token\s+([^\s\"]+)", command_line)
+        if run_match is None or token_match is None:
+            return False
+        actual_run_id = run_match.group(1)
+        token = token_match.group(1)
+    else:
+        try:
+            arguments = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        except OSError:
+            return False
+        decoded = [item.decode("utf-8") for item in arguments if item]
+        if "ansim_review.review_packet.server_process" not in decoded:
+            return False
+        try:
+            token = decoded[decoded.index("--token") + 1]
+            actual_run_id = decoded[decoded.index("--run-id") + 1]
+        except (ValueError, IndexError):
+            return False
     return (
         actual_run_id == run_id
         and hashlib.sha256(token.encode("ascii")).hexdigest() == token_hash
     )
-
 
 def stop_review_server(workspace_root: Path, run_id: str) -> None:
     status = review_server_status(workspace_root, run_id)
