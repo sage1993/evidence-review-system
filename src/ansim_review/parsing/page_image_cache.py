@@ -156,6 +156,8 @@ def _render_page(source: Path, page: PdfPageGeometry, destination: Path) -> byte
             finally:
                 pdf_page.close()
         cropped = image.crop(bounds)
+        if cropped.mode == "RGBX":
+            cropped = cropped.convert("RGB")
         output = BytesIO()
         cropped.save(output, format="PNG", compress_level=6)
         data = output.getvalue()
