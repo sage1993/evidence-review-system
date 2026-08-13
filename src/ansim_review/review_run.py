@@ -35,6 +35,7 @@ from ansim_review.llm_layer.track_a import (
 )
 from ansim_review.llm_layer.track_b import validate_track_b_output
 from ansim_review.llm_layer.validators import validate_track_a_integrity
+from ansim_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from ansim_review.review_packet.browser_launcher import (
     close_open_review_server,
     open_protected_review_workspace,
@@ -45,6 +46,7 @@ from ansim_review.review_packet.browser_launcher import (
 from ansim_review.review_packet.builder import build_review_view_model
 from ansim_review.review_packet.external_launcher import open_external_url
 from ansim_review.review_packet.html_renderer import write_review_html
+from ansim_review.review_packet.page_image_verifier import verify_review_page_images
 
 _RUN_ID = re.compile(r"^RUN-[0-9A-F]{20}$")
 _REQUEST_FIELDS = {
@@ -535,9 +537,11 @@ def submit_track_b(
     track_b_output: Path,
     *,
     publish: bool = False,
+    prevalidated: bool = False,
 ) -> FinalizedReviewRun:
     """Reject incomplete Track B output before the existing finalizer can run."""
-    validate_track_b_submission(workspace_root, run_id, track_b_output)
+    if not prevalidated:
+        validate_track_b_submission(workspace_root, run_id, track_b_output)
     run_directory = _require_prepared_run(workspace_root, run_id)
     track_a_path = run_directory / "track-a-output.json"
     return finalize_review_run(
@@ -579,6 +583,22 @@ def _evidence_database(workspace_root: Path) -> Path:
     if legacy.is_file():
         return legacy
     raise FileNotFoundError(generic)
+
+
+def _record_stage_failure(run_directory: Path, name: str, timer: object, error: Exception) -> None:
+    from ansim_review.observability.run_metrics import StageTimer
+
+    if not isinstance(timer, StageTimer):
+        raise TypeError("invalid stage timer")
+    append_stage(
+        run_directory,
+        finish_stage(
+            name,
+            timer,
+            status="FAILED",
+            reason_code=type(error).__name__.upper(),
+        ),
+    )
 
 
 def finalize_review_run(
@@ -633,14 +653,52 @@ def finalize_review_run(
             manifest_path,
             {"run_id": run_id, "artifacts": artifacts},
         )
-        packet = finalize_run(run_directory)
+
+        finalizer_timer = start_stage()
+        try:
+            packet = finalize_run(run_directory)
+        except Exception as error:
+            _record_stage_failure(run_directory, "finalizer", finalizer_timer, error)
+            raise
+        append_stage(run_directory, finish_stage("finalizer", finalizer_timer))
+
         evidence_db = _evidence_database(workspace_root)
-        view_model = build_review_view_model(packet_path.read_bytes(), evidence_db)
-        write_review_html(
-            view_model,
-            workspace_root / "page-images",
-            html_path,
+        view_model_timer = start_stage()
+        try:
+            view_model = build_review_view_model(packet_path.read_bytes(), evidence_db)
+        except Exception as error:
+            _record_stage_failure(run_directory, "view-model-build", view_model_timer, error)
+            raise
+        append_stage(run_directory, finish_stage("view-model-build", view_model_timer))
+
+        page_image_timer = start_stage()
+        try:
+            verify_review_page_images(view_model, workspace_root / "page-images")
+        except Exception as error:
+            _record_stage_failure(
+                run_directory,
+                "page-image-verification",
+                page_image_timer,
+                error,
+            )
+            raise
+        append_stage(
+            run_directory,
+            finish_stage("page-image-verification", page_image_timer),
         )
+
+        html_timer = start_stage()
+        try:
+            write_review_html(
+                view_model,
+                workspace_root / "page-images",
+                html_path,
+            )
+        except Exception as error:
+            _record_stage_failure(run_directory, "html-render-write", html_timer, error)
+            raise
+        append_stage(run_directory, finish_stage("html-render-write", html_timer))
+
         published_path: Path | None = None
         if publish:
             with published.open("xb") as stream:

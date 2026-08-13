@@ -18,6 +18,7 @@ from threading import Lock, Thread
 from typing import TextIO
 
 from ansim_review.contracts.identifiers import validate_identifier
+from ansim_review.observability.run_metrics import append_stage, finish_stage, start_stage
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
@@ -228,20 +229,49 @@ def open_protected_review_workspace(
     browser: Callable[[str], bool],
 ) -> str:
     """Open one finalized run through a retained, tokenized loopback server."""
-    stale = review_server_status(workspace_root, run_id)
+    validated_run_id = validate_identifier(run_id, "run_id")
+    run_directory = workspace_root / "runs" / validated_run_id
+    stale = review_server_status(workspace_root, validated_run_id)
     if stale["running"]:
         raise RuntimeError("protected review server is already running")
-    server = _start_review_server(workspace_root, run_id)
+
+    server_timer = start_stage()
+    try:
+        server = _start_review_server(workspace_root, validated_run_id)
+    except Exception as error:
+        append_stage(
+            run_directory,
+            finish_stage(
+                "protected-server-start",
+                server_timer,
+                status="FAILED",
+                reason_code=type(error).__name__.upper(),
+            ),
+        )
+        raise
+    append_stage(run_directory, finish_stage("protected-server-start", server_timer))
+
+    browser_timer = start_stage()
     try:
         if not browser(server.url):
             raise OSError("browser did not open protected review URL")
     except Exception as error:
         server.close()
+        append_stage(
+            run_directory,
+            finish_stage(
+                "browser-dispatch",
+                browser_timer,
+                status="FAILED",
+                reason_code=type(error).__name__.upper(),
+            ),
+        )
         if isinstance(error, OSError):
             raise
         raise OSError("browser failed to open protected review URL") from error
+    append_stage(run_directory, finish_stage("browser-dispatch", browser_timer))
 
-    key = _server_key(workspace_root, run_id)
+    key = _server_key(workspace_root, validated_run_id)
     with _ACTIVE_SERVERS_LOCK:
         previous = _ACTIVE_SERVERS.get(key)
         _ACTIVE_SERVERS[key] = server

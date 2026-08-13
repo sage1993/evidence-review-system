@@ -18,6 +18,12 @@ from ansim_review.contracts.review import FinalizerStatus
 from ansim_review.contracts.run_context import compute_run_id_from_request
 from ansim_review.contracts.workflow import WorkflowState
 from ansim_review.evidence.store import EvidenceStore
+from ansim_review.observability.run_metrics import (
+    append_stage,
+    finish_stage,
+    record_external_wait,
+    start_stage,
+)
 from ansim_review.retrieval.bundle import build_evidence_bundle
 from ansim_review.review_packet.builder import build_review_view_model
 from ansim_review.review_packet.html_renderer import render_review_html
@@ -339,25 +345,46 @@ def prepare_review_question(
     approved_rule_result_ids: Sequence[str] = (),
 ) -> PreparedReviewQuestion:
     """Retrieve evidence and create/resume the immutable Track A handoff."""
+    normalization_timer = start_stage()
     query_request = canonical_query_request(question, expansions)
+    normalization_metric = finish_stage("request-normalization", normalization_timer)
+
+    retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
         bundle = build_evidence_bundle(store.require_connection(), query_request)
+    retrieval_metric = finish_stage("retrieval", retrieval_timer)
+
+    request_timer = start_stage()
     review_request = build_review_run_request(
         bundle,
         calculations=calculations,
         rules=rules,
         approved_rule_result_ids=approved_rule_result_ids,
     )
+    request_metric = finish_stage("review-request-build", request_timer)
+
     run_id = compute_run_id_from_request(review_request)
     run_directory = workspace / "runs" / run_id
     resumed = run_directory.exists()
+    prepare_timer = start_stage()
     if resumed:
         existing = run_directory / "review-request.json"
         if not existing.is_file() or existing.read_bytes() != dump_bytes(review_request):
             raise ValueError("existing immutable review run differs from question request")
+        prepare_metric = finish_stage("prepare", prepare_timer, status="SKIPPED")
     else:
         _prepare_from_document(workspace, review_request)
+        prepare_metric = finish_stage("prepare", prepare_timer)
     _write_or_identical(run_directory / "evidence-query.json", bundle)
+
+    for metric in (
+        normalization_metric,
+        retrieval_metric,
+        request_metric,
+        prepare_metric,
+    ):
+        append_stage(run_directory, metric)
+
     if not resumed:
         _write_or_identical(
             run_directory / "next-action-track-a.json",
@@ -379,7 +406,27 @@ def submit_question_track_a(
     track_a_output: Path,
 ) -> SubmittedTrackA:
     """Advance the journal only after Track A's full validation succeeds."""
-    result = submit_track_a(workspace, run_id, track_a_output)
+    run_directory = workspace / "runs" / run_id
+    record_external_wait(
+        run_directory,
+        "track-a-external-wait",
+        after_stage="prepare",
+    )
+    timer = start_stage()
+    try:
+        result = submit_track_a(workspace, run_id, track_a_output)
+    except Exception as error:
+        append_stage(
+            run_directory,
+            finish_stage(
+                "track-a-validation",
+                timer,
+                status="FAILED",
+                reason_code=type(error).__name__.upper(),
+            ),
+        )
+        raise
+    append_stage(run_directory, finish_stage("track-a-validation", timer))
     _append_event(result.run_directory, "WAITING_TRACK_B", _sha256(track_a_output))
     return result
 
@@ -401,11 +448,31 @@ def submit_question_track_b(
         return finalized
     if state not in {"WAITING_TRACK_B", "FINALIZING"}:
         raise ValueError("review question run is not waiting for Track B")
-    if state == "WAITING_TRACK_B":
+
+    record_external_wait(
+        run_directory,
+        "track-b-external-wait",
+        after_stage="track-a-validation",
+    )
+    validation_timer = start_stage()
+    try:
         validate_track_b_submission(workspace, run_id, track_b_output)
+    except Exception as error:
+        append_stage(
+            run_directory,
+            finish_stage(
+                "track-b-validation",
+                validation_timer,
+                status="FAILED",
+                reason_code=type(error).__name__.upper(),
+            ),
+        )
+        raise
+    append_stage(run_directory, finish_stage("track-b-validation", validation_timer))
+
+    if state == "WAITING_TRACK_B":
         _append_event(run_directory, "FINALIZING", _sha256(track_b_output))
     else:
-        validate_track_b_submission(workspace, run_id, track_b_output)
         try:
             finalized = _existing_finalized_run(run_directory)
         except ValueError:
@@ -419,7 +486,13 @@ def submit_question_track_b(
             )
             return finalized
         _recover_incomplete_finalization(run_directory, track_b_output)
-    result = submit_track_b(workspace, run_id, track_b_output, publish=publish)
+    result = submit_track_b(
+        workspace,
+        run_id,
+        track_b_output,
+        publish=publish,
+        prevalidated=True,
+    )
     _append_event(
         result.run_directory,
         "READY_FOR_REVIEW",
