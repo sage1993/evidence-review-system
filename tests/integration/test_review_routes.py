@@ -73,7 +73,6 @@ def _raw_request(base: str, request: bytes) -> bytes:
 def _decision(packet: bytes, **changes: object) -> bytes:
     payload: dict[str, object] = {
         "reviewer_id": "kim.sh",
-        "reviewed_at": "2026-08-01T15:30:00+09:00",
         "packet_hash": hashlib.sha256(packet).hexdigest(),
         "decision": "SATISFIED",
         "notes": "reviewed locally",
@@ -281,6 +280,20 @@ def test_decision_rejects_duplicate_or_unknown_json_without_writing(
     assert not (run_dir / "human-decisions").exists()
 
 
+def test_decision_rejects_client_controlled_timestamp(tmp_path: Path) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        with pytest.raises(HTTPError) as error:
+            _request(
+                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                method="POST",
+                body=_decision(packet, reviewed_at="2026-08-01T15:30:00+09:00"),
+                headers={"Content-Type": "application/json", "Origin": base},
+            )
+        assert error.value.code == 400
+    assert not (run_dir / "human-decisions").exists()
+
+
 def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_path: Path) -> None:
     run_dir, packet = _review_artifacts(tmp_path)
     with _server(tmp_path, max_body_bytes=8) as (_, base):
@@ -355,10 +368,10 @@ def test_decision_appends_record_without_mutating_packet_or_html(tmp_path: Path)
     decision_path = run_dir / "human-decisions" / created["filename"]
     assert created["status"] == "RECORDED"
     assert decision_path.is_file()
-    assert (
-        json.loads(decision_path.read_text(encoding="utf-8"))["packet_hash"]
-        == hashlib.sha256(packet).hexdigest()
-    )
+    decision = json.loads(decision_path.read_text(encoding="utf-8"))
+    assert decision["packet_hash"] == hashlib.sha256(packet).hexdigest()
+    assert decision["reviewer_id"] == "kim.sh"
+    assert decision["reviewed_at"].endswith("+00:00")
     assert (run_dir / "final-review-packet.json").read_bytes() == packet
     assert (run_dir / "review.html").read_bytes() == html_before
 
@@ -368,6 +381,7 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
 ) -> None:
     run_dir, packet = _review_artifacts(tmp_path)
     html_before = (run_dir / "review.html").read_bytes()
+    packet_hash = hashlib.sha256(packet).hexdigest()
     decision_directory = run_dir / "human-decisions"
     decision_directory.mkdir()
     (decision_directory / "foreign.json").write_text(
@@ -386,7 +400,11 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
     with _server(tmp_path) as (_, base):
         assert json.loads(
             _request(f"{base}/runs/RUN-001/{TOKEN}/decision/status")
-        ) == {"display_status": "READY_FOR_HUMAN_REVIEW"}
+        ) == {
+            "display_status": "READY_FOR_HUMAN_REVIEW",
+            "reviewer_id": None,
+            "packet_hash": packet_hash,
+        }
         response = _request(
             f"{base}/runs/RUN-001/{TOKEN}/decision",
             method="POST",
@@ -396,6 +414,10 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
         assert json.loads(response)["display_status"] == "REVIEW_COMPLETED"
         assert json.loads(
             _request(f"{base}/runs/RUN-001/{TOKEN}/decision/status")
-        ) == {"display_status": "REVIEW_COMPLETED"}
+        ) == {
+            "display_status": "REVIEW_COMPLETED",
+            "reviewer_id": None,
+            "packet_hash": packet_hash,
+        }
     assert (run_dir / "final-review-packet.json").read_bytes() == packet
     assert (run_dir / "review.html").read_bytes() == html_before
