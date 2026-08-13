@@ -307,6 +307,8 @@ def decode_review_packet(value: object) -> ReviewPacket:
         "rules",
         "confidence",
         "abstention_reasons",
+        "snapshot_sha256",
+        "missing_inputs",
     }
     _reject_unknown(payload, allowed, "review_packet")
     status = _expect_literal(
@@ -322,6 +324,14 @@ def decode_review_packet(value: object) -> ReviewPacket:
     )
     confidence_value = payload.get("confidence")
     confidence = None if confidence_value is None else decode_confidence_result(confidence_value)
+    snapshot_value = payload.get("snapshot_sha256")
+    snapshot_sha256: str | None
+    if snapshot_value is None:
+        snapshot_sha256 = None
+    else:
+        snapshot_sha256 = _expect_string(snapshot_value, "snapshot_sha256")
+        if not _SHA256_PATTERN.fullmatch(snapshot_sha256):
+            raise ValueError("snapshot_sha256 must be a lowercase SHA-256 digest")
     return ReviewPacket(
         run_id=_expect_string(payload.get("run_id"), "run_id"),
         status=cast(FinalizerStatus, status),
@@ -334,4 +344,6 @@ def decode_review_packet(value: object) -> ReviewPacket:
         abstention_reasons=_expect_string_tuple(
             payload.get("abstention_reasons"), "abstention_reasons"
         ),
+        snapshot_sha256=snapshot_sha256,
+        missing_inputs=_expect_string_tuple(payload.get("missing_inputs", []), "missing_inputs"),
     )

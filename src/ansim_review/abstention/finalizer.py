@@ -251,6 +251,8 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
             else _confidence_document(packet.confidence)
         ),
         "abstention_reasons": list(packet.abstention_reasons),
+        "snapshot_sha256": packet.snapshot_sha256,
+        "missing_inputs": list(packet.missing_inputs),
     }
 
 
@@ -279,12 +281,25 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         _decode_confidence_inputs(_json_file(paths["confidence-input.json"]))
     )
 
+    snapshot_value = bundle.inputs.get("snapshot_hash")
+    snapshot_sha256: str | None
+    if snapshot_value is None:
+        snapshot_sha256 = None
+    else:
+        snapshot_sha256 = _string(snapshot_value, "snapshot_hash")
+        if not _SHA256.fullmatch(snapshot_sha256):
+            raise ValueError("snapshot_hash must be a lowercase SHA-256 digest")
+    missing_inputs = tuple(
+        sorted(
+            set(validated_a.draft.missing_inputs)
+            | {item for result in bundle.rules for item in result.missing_inputs}
+        )
+    )
     finding_codes = _finding_codes(track_b_output)
     approved = set(bundle.approved_rule_result_ids)
     context = AbstentionContext(
         confidence_score=confidence.score,
-        missing_required_input=bool(validated_a.draft.missing_inputs)
-        or any(result.missing_inputs for result in bundle.rules),
+        missing_required_input=bool(missing_inputs),
         uncited_or_unresolved_claim=audit.overall_disposition == "INCOMPLETE"
         or bool({"CITATION_MISMATCH", "UNSUPPORTED_CLAIM", "MISSING_EXCEPTION"} & finding_codes),
         unapproved_rule=any(result.rule_result_id not in approved for result in bundle.rules),
@@ -309,6 +324,8 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         rules=bundle.rules,
         confidence=confidence,
         abstention_reasons=reasons,
+        snapshot_sha256=snapshot_sha256,
+        missing_inputs=missing_inputs,
     )
     return packet
 

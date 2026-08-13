@@ -94,3 +94,5 @@ class ReviewPacket:
     rules: tuple[RuleResult, ...]
     confidence: ConfidenceResult | None
     abstention_reasons: tuple[str, ...]
+    snapshot_sha256: str | None = None
+    missing_inputs: tuple[str, ...] = ()
