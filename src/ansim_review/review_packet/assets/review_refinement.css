@@ -10,9 +10,65 @@
 }
 #review-summary { grid-area: summary; }
 #review-items { grid-area: items; }
-#detail-tabs { grid-area: detail; }
+#detail-tabs {
+  grid-area: detail;
+  max-height: min(70vh, 760px);
+  overflow: auto;
+}
 #evidence-viewer { grid-area: viewer; }
 #additional-review { grid-area: additional; }
-#decision-form { grid-area: decision; }
+#decision-form {
+  grid-area: decision;
+  position: sticky;
+  top: 16px;
+}
 #packet-global-review { grid-area: audit; }
-#evidence-zoom { min-height: 44px; }
+
+.status-band {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 12px 16px;
+}
+.status-copy h1 {
+  margin: 0;
+  font-size: clamp(20px, 1.7vw, 26px);
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.result-card {
+  display: block;
+  padding: 14px 18px;
+}
+.result-label {
+  margin: 0 0 3px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.result-question {
+  margin: 0 0 10px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.result-main h2 {
+  margin: 0;
+  font-size: clamp(20px, 1.8vw, 26px);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.result-meta {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+.page-stage {
+  max-height: min(70vh, 760px);
+  overflow: auto;
+}
+#evidence-zoom {
+  min-height: 44px;
+}
