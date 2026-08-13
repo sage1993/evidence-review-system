@@ -90,7 +90,9 @@ def make_stage(
         raise ValueError("duration_ms must be a non-negative integer")
     if status not in {"COMPLETED", "FAILED", "SKIPPED"}:
         raise ValueError("unsupported stage status")
-    if reason_code is not None and (not isinstance(reason_code, str) or not reason_code):
+    if reason_code is not None and (
+        not isinstance(reason_code, str) or not reason_code
+    ):
         raise ValueError("reason_code must be null or a non-empty string")
     return CompletedStage(
         name=name,
@@ -127,6 +129,18 @@ def _event_documents(run_directory: Path) -> list[dict[str, object]]:
         )
     )
     return documents
+
+
+def _duration_ms(item: dict[str, object]) -> int:
+    value = item.get("duration_ms")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("run metrics duration_ms is invalid")
+    return value
+
+
+def has_stage(run_directory: Path, name: str) -> bool:
+    """Return whether any immutable event exists for one named stage."""
+    return any(item.get("name") == name for item in _event_documents(run_directory))
 
 
 def append_stage(run_directory: Path, stage: CompletedStage) -> Path:
@@ -189,12 +203,12 @@ def record_external_wait(
 def load_run_metrics(run_directory: Path) -> dict[str, object]:
     stages = _event_documents(run_directory)
     deterministic_total_ms = sum(
-        int(item.get("duration_ms", 0))
+        _duration_ms(item)
         for item in stages
         if not bool(item.get("external_wait", False))
     )
     external_wait_total_ms = sum(
-        int(item.get("duration_ms", 0))
+        _duration_ms(item)
         for item in stages
         if bool(item.get("external_wait", False))
     )
@@ -202,7 +216,11 @@ def load_run_metrics(run_directory: Path) -> dict[str, object]:
     for item in stages:
         name = item.get("name")
         attempt = item.get("attempt")
-        if isinstance(name, str) and isinstance(attempt, int) and not isinstance(attempt, bool):
+        if (
+            isinstance(name, str)
+            and isinstance(attempt, int)
+            and not isinstance(attempt, bool)
+        ):
             max_attempt_by_name[name] = max(max_attempt_by_name.get(name, 0), attempt)
     retry_count = sum(max(0, attempt - 1) for attempt in max_attempt_by_name.values())
     public_stages = [
@@ -248,18 +266,24 @@ def assert_hard_budgets(
         raise ValueError("metrics deterministic_total_ms is invalid")
     if deterministic > deterministic_budget_ms:
         raise RuntimeError(
-            f"deterministic review budget exceeded: {deterministic}ms > {deterministic_budget_ms}ms"
+            "deterministic review budget exceeded: "
+            f"{deterministic}ms > {deterministic_budget_ms}ms"
         )
     stages = metrics.get("stages")
     if not isinstance(stages, list):
         raise ValueError("metrics stages is invalid")
-    handoff = sum(
-        int(item.get("duration_ms", 0))
-        for item in stages
-        if isinstance(item, dict)
-        and item.get("name") in _BROWSER_HANDOFF_STAGES
-        and item.get("status") == "COMPLETED"
-    )
+    handoff = 0
+    for item in stages:
+        if not isinstance(item, dict):
+            raise ValueError("metrics stage is invalid")
+        if (
+            item.get("name") in _BROWSER_HANDOFF_STAGES
+            and item.get("status") == "COMPLETED"
+        ):
+            duration = item.get("duration_ms")
+            if isinstance(duration, bool) or not isinstance(duration, int) or duration < 0:
+                raise ValueError("metrics stage duration_ms is invalid")
+            handoff += duration
     if handoff > browser_handoff_budget_ms:
         raise RuntimeError(
             f"browser handoff budget exceeded: {handoff}ms > {browser_handoff_budget_ms}ms"
@@ -272,6 +296,7 @@ __all__ = [
     "append_stage",
     "assert_hard_budgets",
     "finish_stage",
+    "has_stage",
     "load_run_metrics",
     "make_stage",
     "record_external_wait",
