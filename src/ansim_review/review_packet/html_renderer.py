@@ -10,6 +10,7 @@ from html import escape
 from pathlib import Path
 from typing import cast
 
+from ansim_review.contracts.legacy_formats import LEGACY_PAGE_IMAGE_FORMAT
 from ansim_review.review_packet.presentation import localized_status
 from ansim_review.review_packet.render_audit import (
     render_audit_details,
@@ -25,6 +26,7 @@ from ansim_review.review_packet.render_summary import (
 )
 
 _GEOMETRY_TOLERANCE = 0.5
+_PAGE_IMAGE_FORMAT = "evidence-review/page-image"
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +134,10 @@ def _verified_page_image(
     optional = {"origin_x", "origin_y", "rotation", "box_kind"}
     if not required.issubset(metadata) or set(metadata) - required - optional:
         raise ValueError("page image metadata fields are invalid")
-    if metadata.get("format") != "ansim/page-image" or metadata.get("version") != 1:
+    if (
+        metadata.get("format") not in {_PAGE_IMAGE_FORMAT, LEGACY_PAGE_IMAGE_FORMAT}
+        or metadata.get("version") != 1
+    ):
         raise ValueError("unsupported page image metadata")
     if metadata.get("revision_id") != revision_id:
         raise ValueError("page image revision mismatch")
