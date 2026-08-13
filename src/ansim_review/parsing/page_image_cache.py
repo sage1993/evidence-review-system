@@ -7,13 +7,14 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import mkdtemp
 
-if os.name != "nt":
+if sys.platform != "win32":
     import fcntl
 else:
     from ansim_review.workflow.windows_lock import (
@@ -64,14 +65,14 @@ def _revision_lock(root: Path, revision_id: str) -> Iterator[None]:
     root.mkdir(parents=True, exist_ok=True)
     path = root / f".{revision_id}.lock"
     with path.open("a+b") as stream:
-        if os.name == "nt":
+        if sys.platform == "win32":
             acquire_exclusive_file_lock(stream)
         else:
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
         try:
             yield
         finally:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 release_file_lock(stream)
             else:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
@@ -161,7 +162,7 @@ def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
             if sha256_file(source.source_path) != source.source_hash:
                 raise ValueError("page image source hash changed during rendering")
             os.rename(temporary_root, destination)
-            if os.name != "nt":
+            if sys.platform != "win32":
                 directory_descriptor = os.open(root, os.O_RDONLY)
                 try:
                     os.fsync(directory_descriptor)
