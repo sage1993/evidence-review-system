@@ -134,6 +134,32 @@ def test_builder_does_not_assign_full_confidence_to_zero_evidence() -> None:
     )
 
 
+def test_zero_evidence_only_reduces_evidence_dependent_factors() -> None:
+    from ansim_review.review_question import build_review_run_request
+
+    bundle = _bundle()
+    bundle["hits"] = []
+
+    request = build_review_run_request(bundle)
+    factors = request["confidence_input"]["factors"]
+    unaffected = {
+        "parse quality",
+        "human review status",
+        "rule coverage",
+        "calculation validity",
+        "Track B agreement",
+        "source freshness",
+        "unresolved conflict factor",
+    }
+
+    assert {name for name, factor in factors.items() if factor["value"] == "0.0"} == {
+        "source completeness",
+        "traceability",
+        "input completeness",
+    }
+    assert all(factors[name]["value"] == "1.0" for name in unaffected)
+
+
 def test_builder_keeps_full_initial_confidence_for_traceable_evidence() -> None:
     from ansim_review.review_question import build_review_run_request
 
