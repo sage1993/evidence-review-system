@@ -30,10 +30,11 @@ def render_status_band(model: Mapping[str, object]) -> str:
             _text(status),
             "</span></div>",
             '<h1>검토 결과</h1>',
-            f'<p class="question-context">{_text(model.get("question"))}</p>',
+            f'<p class="question-context">질문 {_text(model.get("question"))}</p>',
             "</div>",
             '<div class="header-actions"><button type="button" data-print>인쇄</button></div>',
-            '<p class="warning">기계 검토 결과이며, 최종 판정은 검토자가 확정합니다.</p>',
+            '<p class="warning">기계 평가는 최종 판정이 아닙니다. '
+            "최종 판정은 검토자가 확정합니다.</p>",
             "</header>",
         )
     )
@@ -55,7 +56,7 @@ def render_summary(model: Mapping[str, object]) -> str:
             '<section id="review-summary" class="result-card" aria-labelledby="summary-heading">',
             '<div class="result-main">',
             '<span class="section-kicker">1. 검토 결과</span>',
-            f'<p class="result-question"><strong>질문</strong> {_text(model.get("question"))}</p>',
+            f'<p class="result-question">질문 {_text(model.get("question"))}</p>',
             '<h2 id="summary-heading" data-display-status>',
             _text(status),
             "</h2>",
