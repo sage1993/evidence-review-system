@@ -17,6 +17,12 @@ from ansim_review.retrieval.index import (
 def _snapshot() -> EvidenceSnapshot:
     exact = "이면도로 차량 진출입 기준"
     reordered = "차량 진출입 안전 검토 이면도로 기준"
+    culture_house = (
+        "청소년문화의집은 다양한 유형의 청소년수련시설 중 가장 작은 규모의 시설"
+    )
+    youth_center_criterion = (
+        "청소년수련관은 연건축면적이 1,500제곱미터 이상이어야 한다"
+    )
     return EvidenceSnapshot(
         documents=({"id": "LAW1", "title": "검색 기준"},),
         revisions=(
@@ -63,6 +69,32 @@ def _snapshot() -> EvidenceSnapshot:
                 "raw_payload_hash": "c" * 64,
                 "bbox": [10.0, 60.0, 240.0, 90.0],
                 "parser_order": 1,
+            },
+            {
+                "id": "E-CULTURE-HOUSE",
+                "revision_id": "LAW1-REV1",
+                "page_id": "LAW1-P1",
+                "page_number": 1,
+                "element_type": "table_cell",
+                "raw_json": {"text": culture_house},
+                "raw_text": culture_house,
+                "normalized_text": culture_house,
+                "raw_payload_hash": "d" * 64,
+                "bbox": [10.0, 100.0, 500.0, 130.0],
+                "parser_order": 2,
+            },
+            {
+                "id": "E-YOUTH-CENTER-1500",
+                "revision_id": "LAW1-REV1",
+                "page_id": "LAW1-P1",
+                "page_number": 1,
+                "element_type": "table_cell",
+                "raw_json": {"text": youth_center_criterion},
+                "raw_text": youth_center_criterion,
+                "normalized_text": youth_center_criterion,
+                "raw_payload_hash": "e" * 64,
+                "bbox": [10.0, 140.0, 500.0, 170.0],
+                "parser_order": 3,
             },
         ),
     )
@@ -140,3 +172,40 @@ def test_bundle_preserves_all_query_origins_without_duplicate_channel_weight(
     assert "primary:" in token_detail
     assert "approved_synonym:" in token_detail
     assert "llm:" in token_detail
+
+
+def test_grouped_korean_variants_recover_entity_and_numeric_evidence(
+    tmp_path: Path,
+) -> None:
+    with _store(tmp_path) as store:
+        bundle = build_evidence_bundle(
+            store.require_connection(),
+            {
+                "question": "청소년 문화의집은 면적이 1500제곱미터 이상이어야 한다.",
+                "synonym_manifest": {},
+                "expansions": [],
+                "limit": 20,
+            },
+        )
+
+    hits = {hit["evidence_id"]: hit for hit in bundle["hits"]}
+    assert {"E-CULTURE-HOUSE", "E-YOUTH-CENTER-1500"} <= set(hits)
+    assert bundle["query"]["derived_variants"] == {
+        "entity": ["청소년 문화의집", "청소년문화의집"],
+        "numeric": ["1500", "1,500", "1500제곱미터", "1,500제곱미터"],
+        "concept": ["면적", "연면적", "연건축면적", "이상"],
+    }
+
+    culture_channels = {
+        item["channel"] for item in hits["E-CULTURE-HOUSE"]["channel_scores"]
+    }
+    criterion_channels = {
+        item["channel"] for item in hits["E-YOUTH-CENTER-1500"]["channel_scores"]
+    }
+    assert "fts_entity" in culture_channels
+    assert {"fts_numeric", "fts_concept"} <= criterion_channels
+    assert all(
+        item["channel"] != "fts_token_or"
+        for hit in hits.values()
+        for item in hit["channel_scores"]
+    )
