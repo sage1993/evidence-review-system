@@ -32,6 +32,17 @@ def _is_forbidden_import(module: str, policy: OfflinePolicy) -> bool:
     return root in policy.forbidden_import_roots or module in policy.forbidden_import_names
 
 
+def _is_allowed_subprocess(
+    relative_path: str,
+    symbol: str,
+    policy: OfflinePolicy,
+) -> bool:
+    return (
+        relative_path in policy.allowed_subprocess_paths
+        and (symbol == "subprocess" or symbol.startswith("subprocess."))
+    )
+
+
 def _attribute_name(
     node: ast.expr,
     module_aliases: dict[str, str],
@@ -72,7 +83,11 @@ def _scan_tree(
             for alias in node.names:
                 local = alias.asname or alias.name.split(".", maxsplit=1)[0]
                 module_aliases[local] = alias.name
-                if _is_forbidden_import(alias.name, policy):
+                if _is_forbidden_import(alias.name, policy) and not _is_allowed_subprocess(
+                    relative_path,
+                    alias.name,
+                    policy,
+                ):
                     findings.add(
                         OfflineFinding(
                             path=relative_path,
@@ -96,7 +111,11 @@ def _scan_tree(
                     if full_name in policy.forbidden_import_names
                     else imported_module
                 )
-                if reported and _is_forbidden_import(full_name, policy):
+                if (
+                    reported
+                    and _is_forbidden_import(full_name, policy)
+                    and not _is_allowed_subprocess(relative_path, full_name, policy)
+                ):
                     findings.add(
                         OfflineFinding(
                             path=relative_path,
@@ -110,7 +129,11 @@ def _scan_tree(
         if not isinstance(node, ast.Call):
             continue
         symbol = _attribute_name(node.func, module_aliases, symbol_aliases)
-        if symbol in policy.forbidden_process_calls:
+        if (
+            symbol in policy.forbidden_process_calls
+            and symbol is not None
+            and not _is_allowed_subprocess(relative_path, symbol, policy)
+        ):
             findings.add(
                 OfflineFinding(
                     path=relative_path,
@@ -122,8 +145,10 @@ def _scan_tree(
         if symbol not in {"__import__", "importlib.import_module"}:
             continue
         dynamic_module = _literal_string_argument(node)
-        if dynamic_module is not None and _is_forbidden_import(
-            dynamic_module, policy
+        if (
+            dynamic_module is not None
+            and _is_forbidden_import(dynamic_module, policy)
+            and not _is_allowed_subprocess(relative_path, dynamic_module, policy)
         ):
             findings.add(
                 OfflineFinding(
