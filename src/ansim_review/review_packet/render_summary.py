@@ -24,18 +24,12 @@ def render_status_band(model: Mapping[str, object]) -> str:
     return "".join(
         (
             '<header id="review-status" class="status-band">',
-            '<div class="status-copy">',
-            '<span class="eyebrow">정식 근거 검토</span>',
-            '<div class="status-line"><span class="status-pill" data-display-status>',
+            '<div class="status-copy"><h1>정식 근거 검토</h1></div>',
+            '<div class="header-actions"><span class="status-pill" data-display-status>',
             _text(status),
-            "</span></div>",
-            '<h1>검토 결과</h1>',
-            f'<p class="question-context">질문 {_text(model.get("question"))}</p>',
-            "</div>",
-            '<div class="header-actions"><button type="button" data-print>인쇄</button></div>',
-            '<p class="warning">기계 평가는 최종 판정이 아닙니다. '
-            "최종 판정은 검토자가 확정합니다.</p>",
-            "</header>",
+            '</span><button type="button" data-print>인쇄</button></div>',
+            '<p class="warning">기계 평가는 최종 판정이 아닙니다. 최종 판정은 검토자가 확정합니다.</p>',
+            '</header>',
         )
     )
 
@@ -44,36 +38,28 @@ def render_summary(model: Mapping[str, object]) -> str:
     summary = _mapping(model.get("summary"))
     status = localized_status(model.get("display_status", model.get("status")))
     citation_count = summary.get("citation_count", 0)
-    missing = summary.get("missing_input_count", 0)
-    conflicts = summary.get("conflict_count", 0)
-    exceptions = summary.get("exception_count", 0)
-    additional_count = 0
-    for value in (missing, conflicts, exceptions):
-        if isinstance(value, int) and not isinstance(value, bool):
-            additional_count += value
+    additional_count = len(additional_review_items(model))
     return "".join(
         (
             '<section id="review-summary" class="result-card" aria-labelledby="summary-heading">',
             '<div class="result-main">',
-            '<span class="section-kicker">1. 검토 결과</span>',
-            f'<p class="result-question">질문 {_text(model.get("question"))}</p>',
-            '<h2 id="summary-heading" data-display-status>',
-            _text(status),
-            "</h2>",
-            f'<p class="result-conclusion">{_text(conclusion_text(model))}</p>',
-            "</div>",
-            '<dl class="result-facts">',
-            '<div><dt>연결 근거</dt><dd>',
+            '<span class="section-kicker">검토 결과</span>',
+            '<p class="result-label">질문</p>',
+            f'<p class="result-question">{_text(model.get("question"))}</p>',
+            '<p class="result-label">결론</p>',
+            '<h2 id="summary-heading">',
+            _text(conclusion_text(model)),
+            '</h2>',
+            '<p class="result-meta">근거 ',
             _text(citation_count),
-            "건</dd></div>",
-            '<div><dt>추가 확인</dt><dd>',
+            '건 · 추가 확인 ',
             _text(additional_count),
-            "건</dd></div>",
-            "</dl>",
+            '건</p>',
+            '</div>',
             '<span id="ready-for-review" class="visually-hidden">',
             _text(status),
-            "</span>",
-            "</section>",
+            '</span>',
+            '</section>',
         )
     )
 
@@ -107,10 +93,10 @@ def render_review_item_navigation(items: Sequence[Mapping[str, object]]) -> str:
             '<nav id="review-items" aria-label="검토 항목 선택">',
             '<div class="panel-heading"><h2>검토 항목</h2><span>',
             str(len(items)),
-            "건</span></div>",
+            '건</span></div>',
             '<div class="review-item-list">',
-            "".join(buttons),
-            "</div></nav>",
+            ''.join(buttons),
+            '</div></nav>',
         )
     )
 
@@ -123,11 +109,11 @@ def render_additional_review(model: Mapping[str, object]) -> str:
     return "".join(
         (
             '<section id="additional-review" aria-labelledby="additional-heading">',
-            '<span class="section-kicker">3. 추가 확인</span>',
+            '<span class="section-kicker">추가 확인</span>',
             '<h2 id="additional-heading">확인이 필요한 사항</h2>',
             '<p>아래 항목을 확인한 뒤 최종 결정을 기록하십시오.</p>',
             f'<ul class="attention-list">{entries}</ul>',
-            "</section>",
+            '</section>',
         )
     )
 
