@@ -166,8 +166,26 @@ The reviewer acceptance record should include `run-metrics.json` and event files
 
 ## 11. Release attestation remains separate
 
-A review decision for one packet is not a release process attestation. Release authorization uses the `evidence-review/human-attestation` contract and the release validation described in `docs/OFFLINE_EXECUTION.md` and release documentation. `PROCESS_ATTESTATION` is not cryptographic identity proof; `cryptographic_identity_verified` remains false unless a future separate cryptographic mechanism is implemented.
+A review decision for one packet is not a release process attestation and **cannot authorize a new release**. Release authorization uses the `evidence-review/human-attestation` contract and a create-only `human-attestation.json`. A completed release process may record `REVIEWED_AND_ACCEPTED_FOR_RELEASE` only after the exact release candidate hash, packet hash, and required automated/manual evidence have been verified.
 
-## 12. Acceptance record
+`PROCESS_ATTESTATION` is process evidence and is **not cryptographic proof of reviewer identity**. `cryptographic_identity_verified` therefore remains `false` in the current design. The legacy `ansim/human-acceptance` format is read-only compatibility evidence and cannot authorize a new release.
+
+### Threat model and operational assumptions
+
+The process attestation prevents accidental reuse of **stale or mismatched release artifacts** by binding exact hashes, but it does not defend against a **malicious reviewer**, a **stolen or copied JSON file**, or compromised host/account credentials. Those threats require **external access control** and, if needed, a future independent cryptographic identity mechanism.
+
+## 12. Executable smoke checks
+
+These checks only verify that the documented local CLI surfaces exist; they do not constitute review acceptance.
+
+```bash smoke
+python -m ansim_review --help
+```
+
+```bash smoke
+python -m ansim_review review-run --help
+```
+
+## 13. Acceptance record
 
 Issue #87 acceptance evidence belongs under `docs/acceptance/issue-87/README.md`. Record exact commit, Windows version, Python version, command, exit code, browser/view matrix, timing values, and SHA-256 hashes. Any unexecuted check is `NOT_RUN`; it is not PASS.
