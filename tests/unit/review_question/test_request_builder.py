@@ -114,3 +114,34 @@ def test_builder_preserves_supplied_calculation_and_approved_rule_bindings() -> 
     assert request["calculations"] == [calculation]
     assert request["rules"] == [rule]
     assert request["approved_rule_result_ids"] == ["RULE1"]
+
+
+def test_builder_does_not_assign_full_confidence_to_zero_evidence() -> None:
+    from ansim_review.review_question import build_review_run_request
+
+    bundle = _bundle()
+    bundle["hits"] = []
+
+    request = build_review_run_request(bundle)
+    factors = request["confidence_input"]["factors"]
+
+    assert factors["source completeness"]["value"] == "0.0"
+    assert factors["traceability"]["value"] == "0.0"
+    assert factors["input completeness"]["value"] == "0.0"
+    assert all(
+        factor["source"] == "retrieval:evidence_availability"
+        for factor in factors.values()
+    )
+
+
+def test_builder_keeps_full_initial_confidence_for_traceable_evidence() -> None:
+    from ansim_review.review_question import build_review_run_request
+
+    request = build_review_run_request(_bundle())
+    factors = request["confidence_input"]["factors"]
+
+    assert all(factor["value"] == "1.0" for factor in factors.values())
+    assert all(
+        factor["source"] == "retrieval:evidence_availability"
+        for factor in factors.values()
+    )
