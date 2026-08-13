@@ -138,13 +138,21 @@ def _duration_ms(item: dict[str, object]) -> int:
     return value
 
 
+def _finished_at(item: dict[str, object]) -> datetime:
+    value = item.get("finished_at")
+    if not isinstance(value, str):
+        raise ValueError("run metrics finished_at is invalid")
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("run metrics finished_at must be offset-aware")
+    return parsed
+
+
 def has_stage(run_directory: Path, name: str) -> bool:
-    """Return whether any immutable event exists for one named stage."""
     return any(item.get("name") == name for item in _event_documents(run_directory))
 
 
 def append_stage(run_directory: Path, stage: CompletedStage) -> Path:
-    """Append one immutable stage event and refresh the derived snapshot."""
     run_id = run_directory.name
     attempts = sum(
         1 for item in _event_documents(run_directory) if item.get("name") == stage.name
@@ -176,16 +184,16 @@ def record_external_wait(
     *,
     after_stage: str,
 ) -> Path:
-    """Record wall-clock time spent outside the deterministic process boundary."""
+    """Measure only time outside deterministic work since the latest completed boundary."""
     documents = _event_documents(run_directory)
-    previous = [item for item in documents if item.get("name") == after_stage]
+    if not any(item.get("name") == after_stage for item in documents):
+        raise ValueError(f"external wait requires prior stage: {after_stage}")
+    deterministic = [
+        item for item in documents if not bool(item.get("external_wait", False))
+    ]
     finished_at = utc_now()
-    if previous:
-        raw_started = previous[-1].get("finished_at")
-        if not isinstance(raw_started, str):
-            raise ValueError("previous stage is missing finished_at")
-        started_at = datetime.fromisoformat(raw_started)
-    else:
+    started_at = max((_finished_at(item) for item in deterministic), default=finished_at)
+    if started_at > finished_at:
         started_at = finished_at
     duration_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
     return append_stage(
@@ -200,6 +208,20 @@ def record_external_wait(
     )
 
 
+def _retry_count(stages: list[dict[str, object]]) -> int:
+    previous_by_name: dict[str, str] = {}
+    retries = 0
+    for item in stages:
+        name = item.get("name")
+        status = item.get("status")
+        if not isinstance(name, str) or not isinstance(status, str):
+            continue
+        if previous_by_name.get(name) == "FAILED":
+            retries += 1
+        previous_by_name[name] = status
+    return retries
+
+
 def load_run_metrics(run_directory: Path) -> dict[str, object]:
     stages = _event_documents(run_directory)
     deterministic_total_ms = sum(
@@ -212,17 +234,6 @@ def load_run_metrics(run_directory: Path) -> dict[str, object]:
         for item in stages
         if bool(item.get("external_wait", False))
     )
-    max_attempt_by_name: dict[str, int] = {}
-    for item in stages:
-        name = item.get("name")
-        attempt = item.get("attempt")
-        if (
-            isinstance(name, str)
-            and isinstance(attempt, int)
-            and not isinstance(attempt, bool)
-        ):
-            max_attempt_by_name[name] = max(max_attempt_by_name.get(name, 0), attempt)
-    retry_count = sum(max(0, attempt - 1) for attempt in max_attempt_by_name.values())
     public_stages = [
         {
             "name": item.get("name"),
@@ -242,12 +253,11 @@ def load_run_metrics(run_directory: Path) -> dict[str, object]:
         "stages": public_stages,
         "deterministic_total_ms": deterministic_total_ms,
         "external_wait_total_ms": external_wait_total_ms,
-        "retry_count": retry_count,
+        "retry_count": _retry_count(stages),
     }
 
 
 def write_metrics_snapshot(run_directory: Path) -> Path:
-    """Atomically refresh the non-authoritative JSON projection of event files."""
     destination = run_directory / "run-metrics.json"
     temporary = run_directory / f".run-metrics-{os.getpid()}-{uuid4().hex}.tmp"
     temporary.write_bytes(dump_bytes(load_run_metrics(run_directory)))
