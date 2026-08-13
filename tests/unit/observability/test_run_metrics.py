@@ -62,7 +62,10 @@ def test_normal_resume_is_not_counted_as_retry(tmp_path: Path) -> None:
     assert load_run_metrics(run)["retry_count"] == 0
 
 
-def test_external_wait_restarts_after_latest_failed_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_external_wait_restarts_after_latest_failed_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     run = tmp_path / "runs" / "RUN-0123456789ABCDEF0123"
     run.mkdir(parents=True)
     append_stage(run, make_stage("prepare", _at(0), _at(1), duration_ms=1000))
