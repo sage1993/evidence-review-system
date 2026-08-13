@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -9,6 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 from ansim_review import cli
+from ansim_review.cli_parser import build_parser
+from ansim_review.review_packet.server_runtime import idle_timeout_argument
 
 
 def test_review_run_prepare_cli_routes_and_outputs_status(
@@ -215,3 +218,71 @@ def test_review_run_help_commands(
         text=True,
     )
     assert expected in completed.stdout
+
+
+def test_review_run_serve_cli_returns_detached_url_and_timeout(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    run_id = "RUN-0123456789ABCDEF0123"
+    calls: dict[str, object] = {}
+
+    def fake_serve(workspace_root, supplied_run_id, *, reviewer_id, idle_timeout_seconds):
+        calls.update(
+            {
+                "workspace": workspace_root,
+                "run_id": supplied_run_id,
+                "reviewer_id": reviewer_id,
+                "idle_timeout_seconds": idle_timeout_seconds,
+            }
+        )
+        return f"http://127.0.0.1:8123/runs/{run_id}/token/review"
+
+    monkeypatch.setattr(cli, "serve_review_run", fake_serve)
+
+    assert cli.main(
+        [
+            "review-run",
+            "serve",
+            "--workspace",
+            str(tmp_path),
+            "--run-id",
+            run_id,
+            "--reviewer-id",
+            "reviewer-01",
+            "--detach",
+            "--idle-timeout-seconds",
+            "5",
+        ]
+    ) == 0
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["url"].startswith("http://127.0.0.1:")
+    assert document["detached"] is True
+    assert document["idle_timeout_seconds"] == 5.0
+    assert calls == {
+        "workspace": tmp_path,
+        "run_id": run_id,
+        "reviewer_id": "reviewer-01",
+        "idle_timeout_seconds": 5.0,
+    }
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "NaN", "Infinity", "not-a-number"])
+def test_idle_timeout_argument_rejects_non_positive_or_non_finite_values(value: str) -> None:
+    with pytest.raises(argparse.ArgumentTypeError):
+        idle_timeout_argument(value)
+
+
+def test_review_run_serve_parser_uses_thirty_minute_default() -> None:
+    args = build_parser().parse_args(
+        [
+            "review-run",
+            "serve",
+            "--workspace",
+            "workspace",
+            "--run-id",
+            "RUN-0123456789ABCDEF0123",
+            "--detach",
+        ]
+    )
+    assert args.idle_timeout_seconds == 1800.0

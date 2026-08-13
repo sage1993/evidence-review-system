@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from ansim_review.review_packet.server_runtime import idle_timeout_argument
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -214,6 +216,13 @@ def build_parser() -> argparse.ArgumentParser:
     review_serve.add_argument("--workspace", required=True, type=Path)
     review_serve.add_argument("--run-id", required=True)
     review_serve.add_argument("--reviewer-id")
+    review_serve.add_argument("--detach", action="store_true")
+    review_serve.add_argument(
+        "--idle-timeout-seconds",
+        type=idle_timeout_argument,
+        default=1800.0,
+        help="terminate a detached server after this many seconds without valid activity",
+    )
     review_serve_status = review_stages.add_parser("serve-status")
     review_serve_status.add_argument("--workspace", required=True, type=Path)
     review_serve_status.add_argument("--run-id", required=True)

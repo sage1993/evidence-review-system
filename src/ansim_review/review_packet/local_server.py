@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import secrets
 import stat
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Event, Lock, Thread
 from typing import Any, Literal, cast
 from urllib.parse import unquote, urlsplit
 
@@ -164,15 +167,43 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         run_tokens: Mapping[str, str],
         reviewer_ids: Mapping[str, str],
         max_body_bytes: int,
+        idle_timeout_seconds: float | None,
     ) -> None:
         self.workspace_root = workspace_root
         self.run_tokens = dict(run_tokens)
         self.reviewer_ids = dict(reviewer_ids)
         self.max_body_bytes = max_body_bytes
+        self.idle_timeout_seconds = idle_timeout_seconds
+        self._activity_lock = Lock()
+        self._activity_event = Event()
+        self._last_activity = time.monotonic()
+        self._shutdown_started = False
         super().__init__(("127.0.0.1", 0), _ReviewHandler)
         host, port = cast(tuple[str, int], self.server_address)
         self.expected_host = f"{host}:{port}"
         self.origin = f"http://{self.expected_host}"
+
+    def mark_activity(self) -> bool:
+        with self._activity_lock:
+            if self._shutdown_started:
+                return False
+            self._last_activity = time.monotonic()
+            self._activity_event.set()
+            return True
+
+    def begin_shutdown(self) -> bool:
+        with self._activity_lock:
+            if self._shutdown_started:
+                return False
+            self._shutdown_started = True
+            self._activity_event.set()
+            return True
+
+    def idle_expired(self) -> bool:
+        with self._activity_lock:
+            if self.idle_timeout_seconds is None or self._shutdown_started:
+                return False
+            return time.monotonic() - self._last_activity >= self.idle_timeout_seconds
 
 
 class _ReviewHandler(BaseHTTPRequestHandler):
@@ -283,6 +314,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         route = self._route()
         if route is None or not self._authorized(route, require_origin=False):
             return
+        self.state.mark_activity()
         if route.endpoint == "confirmation":
             artifact = self._artifact(route.run_id, "machine", "drawing-confirmation.json")
             if artifact is None:
@@ -416,6 +448,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         except OSError:
             self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
             return
+        self.state.mark_activity()
         self._send_json(
             HTTPStatus.CREATED,
             {
@@ -433,7 +466,8 @@ def create_review_server(
     run_tokens: Mapping[str, str],
     reviewer_ids: Mapping[str, str] | None = None,
     max_body_bytes: int = 65536,
-) -> ThreadingHTTPServer:
+    idle_timeout_seconds: float | None = None,
+) -> _ReviewHTTPServer:
     """Create a loopback-only server bound to immutable run artifacts."""
     if (
         isinstance(max_body_bytes, bool)
@@ -441,10 +475,52 @@ def create_review_server(
         or max_body_bytes < 1
     ):
         raise ValueError("max_body_bytes must be positive")
+    if idle_timeout_seconds is not None and (
+        isinstance(idle_timeout_seconds, bool)
+        or not isinstance(idle_timeout_seconds, (int, float))
+        or not math.isfinite(idle_timeout_seconds)
+        or idle_timeout_seconds <= 0
+    ):
+        raise ValueError("idle_timeout_seconds must be finite and positive")
     root = _validated_workspace_root(workspace_root)
     tokens = _validated_tokens(run_tokens)
     reviewers = _validated_reviewer_ids(tokens, reviewer_ids)
-    return _ReviewHTTPServer(root, tokens, reviewers, max_body_bytes)
+    return _ReviewHTTPServer(
+        root,
+        tokens,
+        reviewers,
+        max_body_bytes,
+        None if idle_timeout_seconds is None else float(idle_timeout_seconds),
+    )
 
 
-__all__ = ["create_review_server"]
+def serve_with_idle_timeout(server: ThreadingHTTPServer) -> None:
+    """Serve until explicitly stopped or the configured idle deadline expires."""
+    typed_server = cast(_ReviewHTTPServer, server)
+    monitor_stop = Event()
+
+    def supervise() -> None:
+        while typed_server.idle_timeout_seconds is not None:
+            with typed_server._activity_lock:
+                remaining = max(
+                    0.0,
+                    typed_server.idle_timeout_seconds
+                    - (time.monotonic() - typed_server._last_activity),
+                )
+            if monitor_stop.wait(min(remaining, 0.5)):
+                return
+            if typed_server.idle_expired() and typed_server.begin_shutdown():
+                typed_server.shutdown()
+                return
+
+    monitor = Thread(target=supervise, daemon=True)
+    monitor.start()
+    try:
+        typed_server.serve_forever(poll_interval=0.1)
+    finally:
+        monitor_stop.set()
+        typed_server._activity_event.set()
+        monitor.join(timeout=1)
+
+
+__all__ = ["create_review_server", "serve_with_idle_timeout"]

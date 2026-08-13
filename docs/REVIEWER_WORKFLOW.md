@@ -62,8 +62,12 @@ The preferred review session is opened with a named reviewer when available:
 evidence-review review-run serve `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --reviewer-id <REVIEWER-ID>
+  --reviewer-id <REVIEWER-ID> `
+  --detach `
+  --idle-timeout-seconds 5
 ```
+
+The detached server defaults to a 1800-second monotonic idle timeout. Valid protected activity extends the deadline; rejected requests do not.
 
 The protected review route is tokenized and loopback-only:
 

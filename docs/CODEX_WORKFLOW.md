@@ -140,8 +140,12 @@ Start the finalized review with an expected reviewer when known:
 evidence-review review-run serve `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --reviewer-id <REVIEWER-ID>
+  --reviewer-id <REVIEWER-ID> `
+  --detach `
+  --idle-timeout-seconds 5
 ```
+
+The detached server defaults to a 1800-second monotonic idle timeout. Only valid tokenized protected requests refresh the deadline.
 
 Protected URLs use a run-scoped token on loopback:
 
@@ -210,7 +214,7 @@ evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 
 The detached process uses a 2-second startup timeout. Stale state cleanup and process identity checks protect management operations from acting on an unrelated reused PID.
 
-Windows lifecycle behavior must be manually accepted on the target commit. Do not infer Windows PASS from POSIX process identity tests. Issue #92 remains the lifecycle acceptance authority while it is open/on hold.
+Windows lifecycle behavior must be manually accepted on the target commit. Do not infer Windows PASS from POSIX process identity tests. Issue #92 remains the lifecycle acceptance authority for this lifecycle contract.
 
 ## 9. Drawing evidence boundary
 

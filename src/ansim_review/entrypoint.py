@@ -14,7 +14,10 @@ from ansim_review.canonical_json import dump_bytes
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.documentation_integrity.cli import run_documentation_validation
 from ansim_review.network_guard import install_network_guard
-from ansim_review.review_packet.browser_launcher import open_protected_review_workspace
+from ansim_review.review_packet.browser_launcher import (
+    open_protected_review_workspace,
+    serve_review_server,
+)
 from ansim_review.review_packet.decision_record import import_human_decision_envelope
 from ansim_review.review_packet.external_launcher import open_external_url
 from ansim_review.rule_engine.activation import (
@@ -114,28 +117,38 @@ def _review_serve(args: argparse.Namespace) -> int:
     run_id = cast(str, args.run_id)
     reviewer_id = cast(str | None, args.reviewer_id)
     try:
-        url = open_protected_review_workspace(
-            workspace,
-            run_id,
-            browser=open_external_url,
-            reviewer_id=reviewer_id,
-        )
+        if args.detach:
+            url = serve_review_server(
+                workspace,
+                run_id,
+                reviewer_id=reviewer_id,
+                idle_timeout_seconds=args.idle_timeout_seconds,
+            )
+            status = "DETACHED"
+        else:
+            url = open_protected_review_workspace(
+                workspace,
+                run_id,
+                browser=open_external_url,
+                reviewer_id=reviewer_id,
+            )
+            status = "OPENED"
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2
-    sys.stdout.buffer.write(
-        dump_bytes(
-            {
-                "format": "evidence-review/review-run-cli-status",
-                "version": 1,
-                "stage": "serve",
-                "status": "OPENED",
-                "run_id": run_id,
-                "reviewer_id": reviewer_id,
-                "url": url,
-            }
-        )
-    )
+    payload = {
+        "format": "evidence-review/review-run-cli-status",
+        "version": 1,
+        "stage": "serve",
+        "status": status,
+        "run_id": run_id,
+        "reviewer_id": reviewer_id,
+        "url": url,
+    }
+    if args.detach:
+        payload["detached"] = True
+        payload["idle_timeout_seconds"] = args.idle_timeout_seconds
+    sys.stdout.buffer.write(dump_bytes(payload))
     return 0
 
 

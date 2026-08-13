@@ -79,8 +79,12 @@ Track B 검증을 통과하면 기존 finalizer가 `final-review-packet.json`과
 evidence-review review-run serve `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --reviewer-id <REVIEWER-ID>
+  --reviewer-id <REVIEWER-ID> `
+  --detach `
+  --idle-timeout-seconds 5
 ```
+
+Detached protected review servers default to a 1800-second monotonic idle timeout. Use a finite positive override only for an explicit acceptance window; valid protected requests refresh activity and rejected requests do not.
 
 보호 URL은 `127.0.0.1`의 run-scoped token 경로다. packet/HTML 생성 이후 브라우저 handoff가 실패하면 완료로 보고하지 않는다.
 
