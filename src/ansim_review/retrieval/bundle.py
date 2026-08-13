@@ -10,9 +10,11 @@ from ansim_review.retrieval.fusion import fuse_hits, fusion_document
 from ansim_review.retrieval.graph import traverse_relations
 from ansim_review.retrieval.index import (
     require_fresh_index,
+    search_fts_literal,
     search_fts_phrase,
     search_fts_token_and,
 )
+from ansim_review.retrieval.korean_variants import derive_korean_query_variants
 from ansim_review.retrieval.models import (
     ChannelScore,
     CitationUnavailableError,
@@ -172,6 +174,35 @@ def _origin_hits(
     return tuple(channels)
 
 
+def _derived_variant_hits(
+    connection: sqlite3.Connection,
+    primary: str,
+    limit: int,
+) -> tuple[tuple[RetrievalHit, ...], ...]:
+    variants = derive_korean_query_variants(primary)
+    channels: list[tuple[RetrievalHit, ...]] = []
+    for group, terms in (
+        ("entity", variants.entity),
+        ("numeric", variants.numeric),
+        ("concept", variants.concept),
+    ):
+        for term in terms:
+            hits = search_fts_literal(
+                connection,
+                term,
+                channel=f"fts_{group}",
+                limit=limit,
+            )
+            channels.append(
+                _trace_hits(
+                    hits,
+                    origin=f"derived:{group}",
+                    term=term,
+                )
+            )
+    return tuple(channels)
+
+
 def _citation_document(hit: RetrievalHit) -> dict[str, object]:
     citation = hit.citation()
     return {
@@ -204,9 +235,11 @@ def build_evidence_bundle(
         graph_depth,
         limit,
     ) = _normalize_request(request_payload)
+    variants = derive_korean_query_variants(query.primary)
     channels: list[Sequence[RetrievalHit]] = list(
         _origin_hits(connection, query, limit)
     )
+    channels.extend(_derived_variant_hits(connection, query.primary, limit))
     if filters:
         channels.append(retrieve_structured(connection, filters, limit))
     if clause_ids:
@@ -235,6 +268,11 @@ def build_evidence_bundle(
                 {"text": term.text, "origin": term.origin}
                 for term in query.terms
             ],
+            "derived_variants": {
+                "entity": list(variants.entity),
+                "numeric": list(variants.numeric),
+                "concept": list(variants.concept),
+            },
         },
         "hits": hit_documents,
     }
