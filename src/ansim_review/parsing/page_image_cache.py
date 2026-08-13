@@ -14,6 +14,7 @@ from io import BytesIO
 from math import ceil, floor
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import Protocol
 
 import pypdfium2 as pdfium  # type: ignore[import-untyped]
 
@@ -32,6 +33,10 @@ from ansim_review.parsing.source_manifest import sha256_file
 
 _RENDER_SCALE = 2.0
 _PAGE_IMAGE_FORMAT = "evidence-review/page-image"
+
+
+class _BitmapConverter(Protocol):
+    def to_bitmap(self, pos_x: float, pos_y: float) -> tuple[int, int]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,20 +114,19 @@ def _load_existing(
 
 
 def _crop_bounds(
-    converter: object,
+    converter: _BitmapConverter,
     page: PdfPageGeometry,
     image_width: int,
     image_height: int,
 ) -> tuple[int, int, int, int]:
     """Map the selected PDF page box into rendered bitmap coordinates."""
-    to_bitmap = getattr(converter, "to_bitmap")
     right = page.origin_x + page.width
     top = page.origin_y + page.height
     points = (
-        to_bitmap(page.origin_x, page.origin_y),
-        to_bitmap(page.origin_x, top),
-        to_bitmap(right, page.origin_y),
-        to_bitmap(right, top),
+        converter.to_bitmap(page.origin_x, page.origin_y),
+        converter.to_bitmap(page.origin_x, top),
+        converter.to_bitmap(right, page.origin_y),
+        converter.to_bitmap(right, top),
     )
     xs = [float(point[0]) for point in points]
     ys = [float(point[1]) for point in points]
