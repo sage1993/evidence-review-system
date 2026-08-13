@@ -9,6 +9,7 @@ import pytest
 from ansim_review.abstention.finalizer import finalize_run
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
+from ansim_review.contracts.codecs import decode_review_packet
 from ansim_review.contracts.common import BBox, Citation
 from ansim_review.contracts.engines import CalculationResult, RuleResult
 from ansim_review.llm_layer.track_a import (
@@ -20,7 +21,13 @@ from ansim_review.llm_layer.track_a import (
 RUN_ID = "RUN-0123456789ABCDEF0123"
 
 
-def _write_run(tmp_path: Path, disposition: str = "ACCEPT") -> Path:
+def _write_run(
+    tmp_path: Path,
+    disposition: str = "ACCEPT",
+    *,
+    snapshot_hash: str | None = None,
+    missing_inputs: tuple[str, ...] = (),
+) -> Path:
     run_dir = tmp_path / RUN_ID
     run_dir.mkdir(parents=True)
     citation = Citation(
@@ -43,10 +50,13 @@ def _write_run(tmp_path: Path, disposition: str = "ACCEPT") -> Path:
         calculation_result_ids=("CALC1",),
         result_hash="c" * 64,
     )
+    inputs = {"frontage": "30", "perimeter": "320"}
+    if snapshot_hash is not None:
+        inputs["snapshot_hash"] = snapshot_hash
     bundle = build_track_a_bundle(
         run_id=RUN_ID,
         question="접면 기준 충족 여부",
-        inputs={"frontage": "30", "perimeter": "320"},
+        inputs=inputs,
         evidence=(EvidenceExcerpt(citation, "접면 비율은 9.375%이다."),),
         rules=(rule,),
         calculations=(calculation,),
@@ -69,7 +79,7 @@ def _write_run(tmp_path: Path, disposition: str = "ACCEPT") -> Path:
             ],
         }],
         "citations": ["C1"],
-        "missing_inputs": [],
+        "missing_inputs": list(missing_inputs),
         "exceptions": [],
         "conflicts": [],
         "explanation": "근거를 정리한다.",
@@ -120,6 +130,56 @@ def test_complete_run_yields_ready_packet_without_human_decision(tmp_path: Path)
         (run_dir / "final-review-packet.json").read_text(encoding="utf-8")
     )
     assert output["human_decision"] is None
+
+
+def test_final_packet_preserves_snapshot_and_missing_input_lineage(tmp_path: Path) -> None:
+    run_dir = _write_run(
+        tmp_path,
+        snapshot_hash="d" * 64,
+        missing_inputs=("청소년문화의집 적용대상 확인",),
+    )
+
+    packet = finalize_run(run_dir)
+
+    assert packet.snapshot_sha256 == "d" * 64
+    assert packet.missing_inputs == ("청소년문화의집 적용대상 확인",)
+    assert "MISSING_REQUIRED_INPUT" in packet.abstention_reasons
+    output = json.loads(
+        (run_dir / "final-review-packet.json").read_text(encoding="utf-8")
+    )
+    assert output["snapshot_sha256"] == "d" * 64
+    assert output["missing_inputs"] == ["청소년문화의집 적용대상 확인"]
+
+
+def test_legacy_packet_decode_defaults_lineage_fields(tmp_path: Path) -> None:
+    run_dir = _write_run(tmp_path)
+    finalize_run(run_dir)
+    document = json.loads(
+        (run_dir / "final-review-packet.json").read_text(encoding="utf-8")
+    )
+    document.pop("snapshot_sha256", None)
+    document.pop("missing_inputs", None)
+
+    packet = decode_review_packet(document)
+
+    assert packet.snapshot_sha256 is None
+    assert packet.missing_inputs == ()
+
+
+def test_review_packet_rejects_invalid_snapshot_sha256(tmp_path: Path) -> None:
+    run_dir = _write_run(tmp_path)
+    finalize_run(run_dir)
+    document = json.loads(
+        (run_dir / "final-review-packet.json").read_text(encoding="utf-8")
+    )
+    document["snapshot_sha256"] = "NOT-A-SHA256"
+    document["missing_inputs"] = []
+
+    with pytest.raises(
+        ValueError,
+        match="snapshot_sha256 must be a lowercase SHA-256 digest",
+    ):
+        decode_review_packet(document)
 
 
 def test_track_b_rejection_yields_abstain(tmp_path: Path) -> None:
