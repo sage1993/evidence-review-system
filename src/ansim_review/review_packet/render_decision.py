@@ -84,8 +84,8 @@ def render_decision_form(model: Mapping[str, object]) -> str:
             '<p class="decision-storage-note">',
             icon_svg("lock", size=14),
             ' 저장 시 검토 기록이 추가되며, 수정은 불가능합니다.</p>',
-            '<p class="form-status" aria-live="polite"></p>',
             '</div>',
+            '<p class="form-status" aria-live="polite"></p>',
             '</form></section>',
         )
     )
