@@ -25,14 +25,20 @@ from ansim_review.review_packet.decision_record import (
     validate_human_decision_request,
     write_human_decision,
 )
+from ansim_review.review_packet.page_image_verifier import read_verified_page_image
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
 _CSP = (
-    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
+    "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
     "frame-ancestors 'none'; form-action 'self'"
+)
+_EMBEDDED_PAGE_IMAGE = re.compile(
+    r'(<img\b[^>]*\bdata-page-image-source="[^"]+"[^>]*\bsrc=")'
+    r'data:image/png;base64,[^"]*(")'
 )
 
 
@@ -40,9 +46,18 @@ _CSP = (
 class _Route:
     run_id: str
     endpoint: Literal[
-        "confirmation", "review", "packet", "packet_hash", "decision", "decision_status"
+        "confirmation",
+        "review",
+        "packet",
+        "packet_hash",
+        "decision",
+        "decision_status",
+        "page_image",
     ]
     token: str | None = None
+    revision_id: str | None = None
+    page_number: int | None = None
+    source_hash: str | None = None
 
 
 def _is_reparse_point(status: object) -> bool:
@@ -108,20 +123,36 @@ def _route_path(path: str) -> _Route | None:
         run_id = validate_identifier(parts[1], "run_id")
     except ValueError:
         return None
+    token = parts[2]
+    if not _TOKEN_PATTERN.fullmatch(token):
+        return None
     if len(parts) == 4 and parts[3] in {"confirmation", "review", "packet", "decision"}:
-        token = parts[2]
-        if not _TOKEN_PATTERN.fullmatch(token):
-            return None
         endpoint = cast(Literal["confirmation", "review", "packet", "decision"], parts[3])
         return _Route(run_id=run_id, token=token, endpoint=endpoint)
     if len(parts) == 5 and parts[3:] in (["packet", "hash"], ["decision", "status"]):
-        token = parts[2]
-        if not _TOKEN_PATTERN.fullmatch(token):
-            return None
         return _Route(
             run_id=run_id,
             token=token,
             endpoint="packet_hash" if parts[3:] == ["packet", "hash"] else "decision_status",
+        )
+    if len(parts) == 7 and parts[3] == "page-images":
+        revision_id = parts[4]
+        if not revision_id or revision_id in {".", ".."}:
+            return None
+        try:
+            page_number = int(parts[5])
+        except ValueError:
+            return None
+        source_hash = parts[6]
+        if page_number < 1 or not _SHA256_PATTERN.fullmatch(source_hash):
+            return None
+        return _Route(
+            run_id=run_id,
+            token=token,
+            endpoint="page_image",
+            revision_id=revision_id,
+            page_number=page_number,
+            source_hash=source_hash,
         )
     return None
 
@@ -157,6 +188,24 @@ def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError("invalid JSON object")
         result[key] = value
     return result
+
+
+def _protected_review_html(html_bytes: bytes) -> bytes:
+    """Derive a protected presentation without mutating archival review.html."""
+    try:
+        html = html_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("review HTML must be UTF-8") from error
+    marker = '<div class="app-shell"'
+    if marker not in html:
+        raise ValueError("review HTML app shell missing")
+    html = html.replace(
+        marker,
+        '<div class="app-shell" data-protected-presentation="true"',
+        1,
+    )
+    html = _EMBEDDED_PAGE_IMAGE.sub(r"\1\2", html)
+    return html.encode("utf-8")
 
 
 class _ReviewHTTPServer(ThreadingHTTPServer):
@@ -321,11 +370,30 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             return "REVIEW_COMPLETED"
         return machine_status
 
+    def _send_page_image(self, route: _Route) -> None:
+        if route.revision_id is None or route.page_number is None or route.source_hash is None:
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        try:
+            verified = read_verified_page_image(
+                self.state.workspace_root / "page-images",
+                route.revision_id,
+                route.page_number,
+                route.source_hash,
+            )
+        except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        self._send_bytes(HTTPStatus.OK, verified.image_bytes, "image/png")
+
     def do_GET(self) -> None:  # noqa: N802
         route = self._route()
         if route is None or not self._authorized(route, require_origin=False):
             return
         self.state.mark_activity()
+        if route.endpoint == "page_image":
+            self._send_page_image(route)
+            return
         if route.endpoint == "confirmation":
             artifact = self._artifact(route.run_id, "machine", "drawing-confirmation.json")
             if artifact is None:
@@ -378,9 +446,11 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
             try:
-                self._send_bytes(HTTPStatus.OK, html.read_bytes(), "text/html; charset=utf-8")
-            except OSError:
+                protected = _protected_review_html(html.read_bytes())
+            except (OSError, ValueError):
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+                return
+            self._send_bytes(HTTPStatus.OK, protected, "text/html; charset=utf-8")
             return
         if route.endpoint == "packet":
             self._send_bytes(HTTPStatus.OK, packet_bytes, "application/json; charset=utf-8")
