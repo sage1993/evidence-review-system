@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from ansim_review import cli
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
@@ -88,6 +89,50 @@ def test_review_question_prepare_hides_question_and_evidence_from_stdout(
     assert "주차장 설치 기준" not in json.dumps(document, ensure_ascii=False)
     action = json.loads(Path(document["next_action_path"]).read_text(encoding="utf-8"))
     assert action["action"] == "PRODUCE_TRACK_A"
+
+
+def test_review_question_submit_track_b_open_returns_review_html_and_protected_url(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_id = "RUN-0123456789ABCDEF0123"
+    html_path = workspace / "runs" / run_id / "review.html"
+
+    def fake_submit(*_args, **_kwargs):
+        return SimpleNamespace(
+            run_id=run_id,
+            review_html=html_path,
+            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
+            published_packet=None,
+        )
+
+    def fake_open(_workspace: Path, _run_id: str) -> str:
+        return f"http://127.0.0.1:8123/runs/{run_id}/token/review"
+
+    monkeypatch.setattr(cli, "submit_question_track_b", fake_submit)
+    monkeypatch.setattr(cli, "open_review_run", fake_open)
+
+    exit_code = cli.main(
+        [
+            "review-question",
+            "submit-track-b",
+            "--workspace",
+            str(workspace),
+            "--run-id",
+            run_id,
+            "--track-b-output",
+            str(tmp_path / "track-b.json"),
+            "--open",
+        ]
+    )
+
+    assert exit_code == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["review_html"] == str(html_path)
+    assert document["display_status"] == "OPENED"
+    assert document["url"].startswith("http://127.0.0.1:")
 
 
 def test_review_question_prepare_resumes_the_same_immutable_request(

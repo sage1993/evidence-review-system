@@ -218,3 +218,83 @@ def test_detail_activation_does_not_change_protected_mode_or_inject_layout(
 
     assert "setProtectedMode" not in detail_activation
     assert "applyReviewerLayout" not in detail_activation
+
+
+def test_review_item_click_focuses_first_citation_on_its_pdf_page(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
+    harness = r"""
+function classList() {
+  const values = new Set();
+  return {
+    add(value) { values.add(value); },
+    toggle(value, enabled) { if (enabled) values.add(value); else values.delete(value); },
+    contains(value) { return values.has(value); }
+  };
+}
+function node(dataset) {
+  return {
+    dataset: dataset || {},
+    classList: classList(),
+    listeners: {},
+    attributes: {},
+    addEventListener(type, handler) { this.listeners[type] = handler; },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    querySelector() { return null; },
+    closest(selector) { return selector === ".detail-panel" ? this.panel || null : null; },
+    scrollIntoView() {},
+    focus() {}
+  };
+}
+const item1 = node({itemId: "ITEM-1", evidenceId: "EV-1", assetKey: "REV1-P1"});
+item1.classList.add("review-item");
+const item2 = node({itemId: "ITEM-2", evidenceId: "EV-2", assetKey: "REV1-P2"});
+item2.classList.add("review-item");
+const panel1 = node({itemId: "ITEM-1"});
+const panel2 = node({itemId: "ITEM-2"});
+panel1.classList.add("detail-panel");
+panel2.classList.add("detail-panel");
+const citation1 = node({evidenceId: "EV-1", assetKey: "REV1-P1"});
+const citation2 = node({evidenceId: "EV-2", assetKey: "REV1-P2"});
+citation1.panel = panel1;
+citation2.panel = panel2;
+const page1 = node({assetKey: "REV1-P1"});
+const page2 = node({assetKey: "REV1-P2"});
+page1.classList.add("evidence-page");
+page2.classList.add("evidence-page");
+page1.classList.add("is-active");
+const overlay1 = node({evidenceId: "EV-1"});
+const overlay2 = node({evidenceId: "EV-2"});
+const allNodes = [item1, item2, panel1, panel2];
+global.window = { addEventListener() {}, prompt() { return ""; } };
+global.document = {
+  head: { appendChild() {} },
+  createElement() { return {}; },
+  getElementById() { return null; },
+  querySelector(selector) {
+    if (selector === ".detail-panel.is-selected") {
+      return [panel1, panel2].find((panel) => panel.classList.contains("is-selected")) || null;
+    }
+    if (selector === '[data-detail-tab][aria-selected="true"]') return null;
+    if (selector === '.evidence-page[data-asset-key="REV1-P2"]') return page2;
+    if (selector === '.evidence-page[data-asset-key="REV1-P1"]') return page1;
+    return null;
+  },
+  querySelectorAll(selector) {
+    if (selector === ".review-item, .detail-panel") return allNodes;
+    if (selector === ".review-item") return [item1, item2];
+    if (selector === ".detail-panel") return [panel1, panel2];
+    if (selector === ".citation") return [citation1, citation2];
+    if (selector === ".evidence-page") return [page1, page2];
+    if (selector === ".citation-overlay") return [overlay1, overlay2];
+    return [];
+  }
+};
+eval(controller);
+item2.listeners.click();
+if (!page2.classList.contains("is-active")) throw new Error("page 2 not activated");
+if (!overlay2.classList.contains("is-focused")) throw new Error("bbox not focused");
+if (!item2.classList.contains("is-selected")) throw new Error("rail item not selected");
+"""
+    completed = _run_node_harness(controller, harness)
+    assert completed.returncode == 0, completed.stderr

@@ -290,6 +290,24 @@ def test_submit_track_b_finalizes_a_prevalidated_track_a(tmp_path: Path) -> None
     assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
 
 
+def test_submit_track_b_accepts_valid_run_local_track_b_without_rewriting(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_run(tmp_path / "workspace", _write_request(tmp_path / "request.json"))
+    track_a, _external_b = _write_tracks(tmp_path / "tracks", prepared.run_id)
+    submit_track_a(workspace, prepared.run_id, track_a)
+
+    run_local_b = prepared.run_directory / "track-b-output.json"
+    original = dump_bytes(_track_b(prepared.run_id))
+    run_local_b.write_bytes(original)
+
+    result = submit_track_b(workspace, prepared.run_id, run_local_b)
+
+    assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
+    assert run_local_b.read_bytes() == original
+
+
 def test_finalize_open_cli_prints_only_the_protected_review_url(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

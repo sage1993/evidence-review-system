@@ -96,6 +96,19 @@ def _snapshot() -> EvidenceSnapshot:
                 "bbox": [10.0, 140.0, 500.0, 170.0],
                 "parser_order": 3,
             },
+            {
+                "id": "E-PARKING-LINE",
+                "revision_id": "LAW1-REV1",
+                "page_id": "LAW1-P1",
+                "page_number": 1,
+                "element_type": "clause",
+                "raw_json": {"text": "\uc8fc\ucc28 \uad6c\ud68d\uc120 \ud06c\uae30\ub294 \uae30\uc900\uc5d0 \ub9de\ucdb0\uc57c \ud55c\ub2e4."},
+                "raw_text": "\uc8fc\ucc28 \uad6c\ud68d\uc120 \ud06c\uae30\ub294 \uae30\uc900\uc5d0 \ub9de\ucdb0\uc57c \ud55c\ub2e4.",
+                "normalized_text": "\uc8fc\ucc28 \uad6c\ud68d\uc120 \ud06c\uae30\ub294 \uae30\uc900\uc5d0 \ub9de\ucdb0\uc57c \ud55c\ub2e4.",
+                "raw_payload_hash": "f" * 64,
+                "bbox": [10.0, 180.0, 500.0, 210.0],
+                "parser_order": 4,
+            },
         ),
     )
 
@@ -209,3 +222,19 @@ def test_grouped_korean_variants_recover_entity_and_numeric_evidence(
         for hit in hits.values()
         for item in hit["channel_scores"]
     )
+
+
+def test_reported_korean_compound_present_in_authority_is_retrievable(tmp_path: Path) -> None:
+    with _store(tmp_path) as store:
+        connection = store.require_connection()
+        row = connection.execute(
+            "SELECT evidence_id, normalized_text FROM retrieval_records "
+            "WHERE evidence_id = 'E-PARKING-LINE'"
+        ).fetchone()
+        assert row is not None
+
+        hits = search_fts_phrase(connection, "\uc8fc\ucc28\uad6c\ud68d\uc120")
+        token_hits = search_fts_token_and(connection, "\uc8fc\ucc28\uad6c\ud68d\uc120")
+
+    assert "\uc8fc\ucc28" in row["normalized_text"]
+    assert {hit.evidence_id for hit in (*hits, *token_hits)} == {"E-PARKING-LINE"}
