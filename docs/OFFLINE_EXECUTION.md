@@ -187,35 +187,29 @@ docker run --rm --network none \
 
 Retain the exact container command as OS-isolation evidence when claiming that assurance level.
 
-## 9. Runtime provenance diagnostics
+## 10. Runtime provenance diagnostics
 
-Run the dependency-safe diagnostic surface with the exact interpreter that will run the
-review. It is intentionally stdlib-only and executes before business imports:
+Run the dependency-safe diagnostic surface with the exact supported interpreter that will run the review. It is intentionally stdlib-only and executes before business imports:
 
 ```powershell
 $Workspace = "C:\evidence-review-workspace"
-py -3.11 -m evidence_review doctor --repository-root .
-py -3.11 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
-
 py -3.13 -m evidence_review doctor --repository-root .
 py -3.13 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
 ```
 
-`SOURCE_MISMATCH` blocks business commands until the intended checkout is active. Use
-an interpreter-pinned editable install to remediate it:
+`SOURCE_MISMATCH` blocks business commands until the intended checkout is active. Use an interpreter-pinned editable install to remediate it:
 
 ```powershell
-py -3.11 -m pip install -e ".[dev]"
 py -3.13 -m pip install -e ".[dev]"
 ```
 
-`DEPENDENCY_MISSING` is a structured diagnostic, not a traceback. Record the JSON
-output before changing the environment.
-## 10. Issue #87 acceptance checks
+`DEPENDENCY_MISSING` is a structured diagnostic, not a traceback. Record the JSON output before changing the environment.
+
+## 11. Current release acceptance checks
 
 From a clean Windows checkout at the exact acceptance HEAD, record:
 
-- Python 3.11 and 3.13 runs;
+- Python 3.13 version and runtime provenance;
 - documentation integrity result;
 - pytest, Ruff, mypy, compileall;
 - focused formal-review suites;
@@ -228,9 +222,9 @@ From a clean Windows checkout at the exact acceptance HEAD, record:
 - three simple-question metrics runs and p50/p95;
 - final packet, HTML, metrics, and decision-record hashes.
 
-Do not convert an unexecuted check into PASS. GitHub Actions state is reported independently as actually observed.
+Unsupported Python versions are not release gates. Do not convert an unexecuted check into PASS. GitHub Actions state is reported independently as actually observed.
 
-## 11. Release process attestation
+## 12. Release process attestation
 
 Release authorization uses the strict `evidence-review/human-attestation` process contract and a create-only `human-attestation.json`. It validates named reviewer metadata, offset-aware review time, exact **release candidate hash**, exact **packet hash**, required checklist PASS evidence, and append-only creation. A valid process record may carry `REVIEWED_AND_ACCEPTED_FOR_RELEASE` only after all required release gates have passed.
 
