@@ -53,6 +53,14 @@ class _CitationRender:
     citation: Mapping[str, object]
 
 
+@dataclass(frozen=True, slots=True)
+class _ViewerDocument:
+    document_id: str
+    document_name: str
+    revision_id: str
+    pages: tuple[tuple[str, int, _PageAsset], ...]
+
+
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise ValueError(f"{field} must be an object")
@@ -253,11 +261,69 @@ def _page_assets(
     return assets
 
 
+def _viewer_documents(
+    claims: Sequence[object],
+    assets: Mapping[tuple[str, int, str], tuple[str, _PageAsset]],
+) -> tuple[_ViewerDocument, ...]:
+    order: list[tuple[str, str]] = []
+    explicit_names: dict[tuple[str, str], str] = {}
+    display_names: dict[tuple[str, str], str] = {}
+    pages: dict[tuple[str, str], list[tuple[str, int, _PageAsset]]] = {}
+    seen_pages: dict[tuple[str, str], set[str]] = {}
+    asset_owner: dict[str, tuple[str, str]] = {}
+
+    for claim_value in claims:
+        claim = _mapping(claim_value, "claim")
+        for citation_value in _sequence(claim.get("citations", []), "citations"):
+            citation = _mapping(citation_value, "citation")
+            revision_id = str(citation.get("revision_id", ""))
+            document_id = str(citation.get("document_id", "")) or revision_id
+            if not revision_id or not document_id:
+                raise ValueError("citation document/revision identity is required")
+            key = (document_id, revision_id)
+            explicit_name = str(citation.get("document_name", "")).strip()
+            fallback_name = document_id or revision_id
+            if key not in pages:
+                order.append(key)
+                pages[key] = []
+                seen_pages[key] = set()
+                display_names[key] = explicit_name or fallback_name
+                if explicit_name:
+                    explicit_names[key] = explicit_name
+            elif explicit_name:
+                previous = explicit_names.get(key)
+                if previous is not None and previous != explicit_name:
+                    raise ValueError("conflicting document names for one document revision")
+                explicit_names[key] = explicit_name
+                display_names[key] = explicit_name
+
+            identity = _citation_identity(citation)
+            asset_key, asset = assets[identity]
+            previous_owner = asset_owner.get(asset_key)
+            if previous_owner is not None and previous_owner != key:
+                raise ValueError("page asset is referenced by multiple document identities")
+            asset_owner[asset_key] = key
+            if asset_key not in seen_pages[key]:
+                pages[key].append((asset_key, identity[1], asset))
+                seen_pages[key].add(asset_key)
+
+    return tuple(
+        _ViewerDocument(
+            document_id=document_id,
+            document_name=display_names[(document_id, revision_id)],
+            revision_id=revision_id,
+            pages=tuple(pages[(document_id, revision_id)]),
+        )
+        for document_id, revision_id in order
+    )
+
+
 def _citation_render(
     value: object,
     *,
     asset_key: str,
     page_asset: _PageAsset,
+    source_id: str,
 ) -> _CitationRender:
     citation = _mapping(value, "citation")
     _revision_id, page_number, _source_hash = _citation_identity(citation)
@@ -287,8 +353,9 @@ def _citation_render(
         (
             '<article class="citation" ',
             f'data-asset-key="{_text(asset_key)}" ',
+            f'data-source-id="{_text(source_id)}" ',
             f'data-citation-id="{_text(citation_id)}" ',
-            f'data-evidence-id="{_text(evidence_id)}" tabindex="0" ',  # noqa: E501
+            f'data-evidence-id="{_text(evidence_id)}" tabindex="0" ',
             'role="button" aria-label="근거 선택">',
             f'<p class="citation-document">{_text(citation.get("document_name"))}</p>',
             f"<h4>{_text(citation.get('title'))}</h4>",
@@ -302,9 +369,10 @@ def _citation_render(
             "</code></p>",
             '<button class="evidence-link" type="button" ',
             f'data-asset-key="{_text(asset_key)}" ',
+            f'data-source-id="{_text(source_id)}" ',
             f'data-evidence-id="{_text(evidence_id)}">',
             icon_svg("search", size=14),
-            " 원문 위치 보기</button>",  # noqa: E501
+            " 원문 위치 보기</button>",
             render_citation_audit(citation),
             "</article>",
         )
@@ -315,7 +383,7 @@ def _citation_render(
             'class="citation-overlay" ',
             f'data-asset-key="{_text(asset_key)}" ',
             f'data-citation-id="{_text(citation_id)}" ',
-            f'data-evidence-id="{_text(evidence_id)}" ',  # noqa: E501
+            f'data-evidence-id="{_text(evidence_id)}" ',
             'preserveAspectRatio="none" aria-label="인용 위치">',
             f'<rect x="{rect_x}" y="{rect_y}" width="{rect_width}" ',
             f'height="{rect_height}"></rect>',
@@ -394,22 +462,14 @@ def _render_evidence_list(
                         f'aria-pressed="{"true" if card_index == 1 else "false"}">',
                         f'<span class="evidence-index">{card_index}</span>',
                         '<span class="evidence-card-body">',
-                        "".join(
-                            (
-                                '<span class="evidence-title">',
-                                _text(citation.get("document_name", "판단 근거")),
-                                "</span>",
-                            )
-                        ),
-                        "".join(
-                            (
-                                '<span class="evidence-meta">',
-                                _text(citation.get("title")),
-                                " · p.",
-                                _text(page_number),
-                                "</span>",
-                            )
-                        ),
+                        '<span class="evidence-title">',
+                        _text(citation.get("document_name", "판단 근거")),
+                        "</span>",
+                        '<span class="evidence-meta">',
+                        _text(citation.get("title")),
+                        " · p.",
+                        _text(page_number),
+                        "</span>",
                         f'<span class="evidence-quote">{_text(citation.get("quote"))}</span>',
                         type_html,
                         "</span>",
@@ -422,12 +482,7 @@ def _render_evidence_list(
         (
             '<nav id="review-items" aria-labelledby="evidence-list-heading">',
             '<div class="panel-heading"><h2 id="evidence-list-heading">판단 근거</h2>',
-            "".join(
-                (
-                    '<button class="evidence-sort" type="button">문서별 · 관련도순 ',
-                    '<span aria-hidden="true">↕</span></button></div>',
-                )
-            ),
+            '<span class="evidence-sort-label">문서별 · 관련도순</span></div>',
             '<div class="review-item-list">',
             "".join(cards) or '<p class="empty-state">결과에 연결된 판단 근거가 없습니다.</p>',
             "</div>",
@@ -440,57 +495,101 @@ def _render_evidence_list(
 
 
 def _render_evidence_viewer(
-    assets: Mapping[tuple[str, int, str], tuple[str, _PageAsset]],
+    documents: Sequence[_ViewerDocument],
     overlays: Mapping[str, Sequence[str]],
-    *,
-    page_total: int,
 ) -> str:
     pages: list[str] = []
     thumbnails: list[str] = []
-    for index, ((_revision_id, page_number, _source_hash), (asset_key, asset)) in enumerate(
-        assets.items()
-    ):  # noqa: E501
-        active = index == 0
-        thumbnails.append(
-            "".join(
-                (
-                    f'<button class="page-thumb{" is-active" if active else ""}" type="button" data-page-select="{_text(asset_key)}" aria-label="페이지 {page_number}">',  # noqa: E501
-                    f'<img class="page-thumb-image" data-page-image-for="{_text(asset_key)}" alt="" aria-hidden="true">',  # noqa: E501
-                    f"<span>{page_number}</span></button>",
+    source_options: list[str] = []
+    source_by_asset: dict[str, str] = {}
+
+    for document_index, document in enumerate(documents):
+        source_id = f"source-{document_index + 1}"
+        source_options.append(
+            f'<option value="{source_id}"{" selected" if document_index == 0 else ""}>'
+            f'{_text(document.document_name)}</option>'
+        )
+        source_count = len(document.pages)
+        for page_index, (asset_key, page_number, asset) in enumerate(document.pages):
+            source_by_asset[asset_key] = source_id
+            active = document_index == 0 and page_index == 0
+            hidden = "" if document_index == 0 else " hidden"
+            common = (
+                f'data-source-id="{source_id}" '
+                f'data-original-page="{page_number}" '
+                f'data-source-position="{page_index + 1}" '
+                f'data-source-count="{source_count}"'
+            )
+            thumbnails.append(
+                "".join(
+                    (
+                        f'<button class="page-thumb{" is-active" if active else ""}" type="button" ',
+                        f'data-page-select="{_text(asset_key)}" {common}{hidden} ',
+                        f'aria-label="{_text(document.document_name)} 원문 페이지 {page_number}">',
+                        f'<img class="page-thumb-image" data-page-image-for="{_text(asset_key)}" alt="" aria-hidden="true">',
+                        f"<span>{page_number}</span></button>",
+                    )
                 )
             )
-        )
-        pages.append(
-            "".join(
-                (
-                    '<figure class="evidence-page',
-                    " is-active" if active else "",
-                    f'" id="evidence-{asset_key}" data-asset-key="{asset_key}" tabindex="-1">',
-                    '<div class="page-stage"><div class="page-canvas">',
-                    f'<img data-page-image-source="{_text(asset_key)}" ',
-                    f'alt="검증된 원본 페이지 {page_number}" ',
-                    f'src="{asset.data_uri}">',
-                    '<div class="overlay-layer">',
-                    "".join(overlays.get(asset_key, [])),
-                    "</div></div></div>",
-                    f"<figcaption>검증된 원본 · 페이지 {page_number}</figcaption></figure>",
+            pages.append(
+                "".join(
+                    (
+                        '<figure class="evidence-page',
+                        " is-active" if active else "",
+                        f'" id="evidence-{asset_key}" data-asset-key="{asset_key}" ',
+                        f'{common}{hidden} tabindex="-1">',
+                        '<div class="page-stage"><div class="page-canvas">',
+                        f'<img data-page-image-source="{_text(asset_key)}" ',
+                        f'alt="{_text(document.document_name)} 검증된 원본 페이지 {page_number}" ',
+                        f'src="{asset.data_uri}">',
+                        '<div class="overlay-layer">',
+                        "".join(overlays.get(asset_key, [])),
+                        "</div></div></div>",
+                        f"<figcaption>{_text(document.document_name)} · 원문 p.{page_number}</figcaption>",
+                        "</figure>",
+                    )
                 )
             )
+
+    first_document = documents[0] if documents else None
+    first_page = first_document.pages[0] if first_document and first_document.pages else None
+    current_original = first_page[1] if first_page else 1
+    current_count = len(first_document.pages) if first_document else 0
+    if len(documents) > 1:
+        source_control = "".join(
+            (
+                '<label class="pdf-source-control">원본 문서 ',
+                '<select class="pdf-source-select" data-source-select aria-label="원본 문서 선택">',
+                "".join(source_options),
+                "</select></label>",
+            )
         )
-    current_page = next(iter(assets.keys()), ("", 1, ""))[1]
+    elif first_document is not None:
+        source_control = (
+            '<span class="pdf-source-label" data-source-label>'
+            f'{_text(first_document.document_name)}</span>'
+        )
+    else:
+        source_control = '<span class="pdf-source-label" data-source-label>원본 문서 없음</span>'
+
     return "".join(
         (
             '<section id="evidence-viewer" aria-labelledby="pdf-heading">',
             '<span class="section-kicker visually-hidden">2. 판단 근거</span>',
             '<div class="viewer-toolbar">',
-            '<button class="pdf-source-select" type="button">PDF 원문 <span>(원문 + 강조)</span>',
-            icon_svg("chevron-down", size=14),
-            "</button>",
-            '<div class="pdf-page-controls"><button type="button" data-page-prev aria-label="이전 페이지">',  # noqa: E501
+            source_control,
+            '<div class="viewer-mode-controls" role="group" aria-label="근거 표시 방식">',
+            '<button type="button" data-viewer-mode="original" aria-pressed="false">원문</button>',
+            '<button type="button" data-viewer-mode="evidence" aria-pressed="false">근거 강조</button>',
+            '<button type="button" data-viewer-mode="compare" aria-pressed="true">원문 + 강조</button>',
+            '</div>',
+            '<div class="pdf-page-controls"><button type="button" data-page-prev aria-label="이전 근거 페이지">',
             icon_svg("chevron-left", size=15),
             "</button>",
-            f"<span><strong data-current-page>{current_page}</strong> / {page_total}</span>",
-            '<button type="button" data-page-next aria-label="다음 페이지">',
+            '<span>근거 페이지 <strong data-current-source-position>1</strong> / ',
+            f'<span data-current-source-count>{current_count}</span> · 원문 p.',
+            f'<strong data-current-original-page>{current_original}</strong></span>',
+            '<button type="button" data-page-next aria-label="다음 근거 페이지">',
             icon_svg("chevron-right", size=15),
             "</button></div>",
             '<div class="pdf-zoom-controls"><button type="button" data-zoom-out aria-label="축소">',
@@ -502,12 +601,12 @@ def _render_evidence_viewer(
             icon_svg("maximize", size=15),
             "</button></div>",
             "</div>",
-            '<div class="viewer-body"><aside class="thumbnail-rail" aria-label="PDF 페이지 미리보기">',  # noqa: E501
+            '<div class="viewer-body"><aside class="thumbnail-rail" aria-label="인용된 원본 페이지 미리보기">',
             "".join(thumbnails) or '<p class="empty-state">페이지 없음</p>',
             '</aside><div class="page-viewport">',
             "".join(pages) or '<p class="empty-state">검증된 원본 페이지가 없습니다.</p>',
             "</div></div>",
-            '<p class="viewer-footnote">※ PDF 문서는 정부 기관의 원본을 제공합니다.</p>',
+            '<p class="viewer-footnote">검토에 사용된 원본 문서의 검증된 페이지 이미지를 표시합니다.</p>',
             "</section>",
         )
     )
@@ -696,19 +795,12 @@ def _render_process_footer(model: Mapping[str, object]) -> str:
             '<div class="product-identity"><strong>Evidence Review System</strong>',
             f"<span>v{_text(_package_version())}</span></div>",
             '<div class="footer-meta">',
-            "".join(
-                (
-                    '<span>생성일 <time data-created-at="',
-                    _text(created_at),
-                    '">',
-                    _text(created_at),
-                    "</time></span>",
-                )
-            ),
-            (
-                '<span>\uAE30\uACC4 \uD3C9\uAC00\uB294 \uCD5C\uC885 '
-                '\uD310\uC815\uC774 \uC544\uB2D9\uB2C8\uB2E4.</span>'
-            ),
+            '<span>생성일 <time data-created-at="',
+            _text(created_at),
+            '">',
+            _text(created_at),
+            "</time></span>",
+            '<span>\uAE30\uACC4 \uD3C9\uAC00\uB294 \uCD5C\uC885 \uD310\uC815\uC774 \uC544\uB2D9\uB2C8\uB2E4.</span>',
             "</div></footer>",
         )
     )
@@ -724,14 +816,12 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
     script = (assets_path / "review.js").read_text(encoding="utf-8")
     claims = _sequence(model.get("claims", []), "claims")
     assets = _page_assets(claims, page_image_root)
-    metadata = _mapping(model.get("metadata") or {}, "metadata")
-    page_numbers = [identity[1] for identity in assets]
-    metadata_total = metadata.get("document_page_count")
-    page_total = (
-        metadata_total
-        if isinstance(metadata_total, int) and metadata_total > 0
-        else max(page_numbers, default=1)
-    )
+    documents = _viewer_documents(claims, assets)
+    source_by_asset = {
+        asset_key: f"source-{document_index + 1}"
+        for document_index, document in enumerate(documents)
+        for asset_key, _page_number_value, _asset in document.pages
+    }
     citations: dict[str, list[_CitationRender]] = {}
     overlays: dict[str, list[str]] = {}
     claim_mappings: list[Mapping[str, object]] = []
@@ -747,6 +837,7 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
                 citation,
                 asset_key=asset_key,
                 page_asset=asset,
+                source_id=source_by_asset[asset_key],
             )
             citations[claim_id].append(rendered)
             overlays.setdefault(asset_key, []).append(rendered.overlay_html)
@@ -764,7 +855,7 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
             render_summary(model),
             render_additional_review(model),
             _render_evidence_list(items, claim_mappings, citations),
-            _render_evidence_viewer(assets, overlays, page_total=page_total),
+            _render_evidence_viewer(documents, overlays),
             _render_detail_tabs(
                 items=items,
                 claims=claim_mappings,
