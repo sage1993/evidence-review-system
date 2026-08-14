@@ -118,7 +118,7 @@ def test_archive_stays_embedded_but_protected_review_is_lazy(tmp_path: Path) -> 
     run, _ = _run(tmp_path, image_bytes)
     archive = (run / "review.html").read_bytes()
     assert b"data:image/png;base64," in archive
-    assert b'data-page-src="./page-images/REV1/3/' + SOURCE_HASH.encode() + b'"' in archive
+    assert b"data-page-src=" not in archive
 
     server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -150,7 +150,7 @@ def test_archive_stays_embedded_but_protected_review_is_lazy(tmp_path: Path) -> 
 
 def test_protected_page_image_route_rejects_wrong_identity_and_tampering(tmp_path: Path) -> None:
     image_bytes = b"\x89PNG\r\n\x1a\nverified"
-    run, _ = _run(tmp_path, image_bytes)
+    _run(tmp_path, image_bytes)
     server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
