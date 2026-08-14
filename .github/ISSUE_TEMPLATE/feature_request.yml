@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a focused improvement to Evidence Review System
+title: "feature: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep proposals compatible with the evidence-first, offline, fail-closed architecture. Do not include proprietary or customer material.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete user/developer problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Provenance / security / offline implications
+      description: Explain effects on source authority, validation, networking, human decisions, or release integrity.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable behavior and validation needed to consider the work complete.
+    validations:
+      required: true
