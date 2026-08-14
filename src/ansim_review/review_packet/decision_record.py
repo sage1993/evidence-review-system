@@ -5,6 +5,7 @@ import json
 import re
 import stat
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -26,6 +27,19 @@ _ENVELOPE_FIELDS = _REQUEST_FIELDS | {"reviewed_at"}
 _DECISION_RECORD_FIELDS = _ENVELOPE_FIELDS | {"run_id"}
 
 
+@dataclass(frozen=True, slots=True)
+class HumanDecisionRecord:
+    """One validated append-only human decision bound to a review packet."""
+
+    run_id: str
+    reviewer_id: str
+    reviewed_at: str
+    packet_hash: str
+    decision: str
+    notes: str
+    path: Path
+
+
 def _timestamp(value: str) -> tuple[str, str]:
     try:
         parsed = datetime.fromisoformat(value)
@@ -34,7 +48,7 @@ def _timestamp(value: str) -> tuple[str, str]:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("reviewed_at must include a timezone")
     canonical = parsed.isoformat()
-    return canonical, parsed.strftime("%Y%m%dT%H%M%S%z")
+    return canonical, parsed.strftime("%Y%m%dT%H%M%S%f%z")
 
 
 def _regular_directory(path: Path, field: str) -> Path:
@@ -151,51 +165,92 @@ def import_human_decision_envelope(
     return write_human_decision(run_directory, **validated)
 
 
-def has_valid_human_decision(run_directory: Path, packet_hash: str) -> bool:
-    """Return whether a valid append-only decision matches the packet hash."""
+def _read_decision_record(
+    candidate: Path,
+    *,
+    run_id: str,
+    packet_hash: str,
+) -> HumanDecisionRecord | None:
+    try:
+        status = candidate.lstat()
+        if (
+            stat.S_ISLNK(status.st_mode)
+            or not stat.S_ISREG(status.st_mode)
+            or getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE
+            or candidate.suffix != ".json"
+        ):
+            return None
+        document = json.loads(candidate.read_text(encoding="utf-8"))
+        if not isinstance(document, dict) or set(document) != _DECISION_RECORD_FIELDS:
+            return None
+        if document["run_id"] != run_id:
+            return None
+        envelope = {field: document[field] for field in _ENVELOPE_FIELDS}
+        validated = validate_human_decision_envelope(envelope)
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if validated["packet_hash"] != packet_hash:
+        return None
+    return HumanDecisionRecord(
+        run_id=run_id,
+        reviewer_id=validated["reviewer_id"],
+        reviewed_at=validated["reviewed_at"],
+        packet_hash=validated["packet_hash"],
+        decision=validated["decision"],
+        notes=validated["notes"],
+        path=candidate,
+    )
+
+
+def load_latest_valid_human_decision(
+    run_directory: Path,
+    packet_hash: str,
+) -> HumanDecisionRecord | None:
+    """Return the latest valid append-only decision bound to *packet_hash*."""
     try:
         run_directory = _regular_directory(run_directory, "run_directory")
     except ValueError:
-        return False
+        return None
     if not _SHA256.fullmatch(packet_hash):
-        return False
+        return None
     directory = run_directory / "human-decisions"
     try:
         directory = _regular_directory(directory, "human-decisions")
-    except ValueError:
-        return False
-    try:
         candidates = tuple(directory.iterdir())
-    except OSError:
-        return False
-    for candidate in candidates:
-        try:
-            status = candidate.lstat()
-            if (
-                stat.S_ISLNK(status.st_mode)
-                or not stat.S_ISREG(status.st_mode)
-                or getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE
-                or candidate.suffix != ".json"
-            ):
-                continue
-            document = json.loads(candidate.read_text(encoding="utf-8"))
-            if not isinstance(document, dict) or set(document) != _DECISION_RECORD_FIELDS:
-                continue
-            if document["run_id"] != run_directory.name:
-                continue
-            envelope = {field: document[field] for field in _ENVELOPE_FIELDS}
-            validated = validate_human_decision_envelope(envelope)
-        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
-            continue
-        if validated["packet_hash"] == packet_hash:
-            return True
-    return False
+    except (OSError, ValueError):
+        return None
+
+    records = [
+        record
+        for candidate in candidates
+        if (
+            record := _read_decision_record(
+                candidate,
+                run_id=run_directory.name,
+                packet_hash=packet_hash,
+            )
+        )
+        is not None
+    ]
+    if not records:
+        return None
+    return max(
+        records,
+        key=lambda record: (datetime.fromisoformat(record.reviewed_at), record.path.name),
+    )
+
+
+def has_valid_human_decision(run_directory: Path, packet_hash: str) -> bool:
+    """Return whether a valid append-only decision matches the packet hash."""
+    return load_latest_valid_human_decision(run_directory, packet_hash) is not None
 
 
 __all__ = [
+    "HumanDecisionRecord",
     "build_human_decision_envelope",
     "has_valid_human_decision",
     "import_human_decision_envelope",
+    "load_latest_valid_human_decision",
     "validate_human_decision_envelope",
     "validate_human_decision_request",
     "write_human_decision",
