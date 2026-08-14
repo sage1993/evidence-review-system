@@ -5,7 +5,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from ansim_review import cli
+import pytest
+
+from ansim_review import cli, review_question
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.index import build_fts_index
@@ -15,6 +17,7 @@ from ansim_review.review_question import (
     submit_question_track_a,
     submit_question_track_b,
 )
+from ansim_review.review_run import TrackBContractError
 from ansim_review.workflow.events import load_workflow_events
 
 
@@ -376,6 +379,42 @@ def test_track_b_retries_after_interruption_before_finalizer_starts(tmp_path: Pa
     assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
     assert load_workflow_events(run_directory / "events")[-1].next_state == "READY_FOR_REVIEW"
 
+
+def test_finalizing_retry_rejects_different_track_b_before_finalizer(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(
+        workspace,
+        "\uc8fc\ucc28\uc7a5\uc740 \ubcc4\ud45c 2\uc5d0 \ub530\ub978\ub2e4",
+    )
+    run_directory = workspace / "runs" / first.run_id
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+
+    original = _track_b(run_directory)
+    original_hash = hashlib.sha256(original.read_bytes()).hexdigest()
+    _append_event(run_directory, "FINALIZING", original_hash)
+
+    changed = run_directory / "different-track-b.json"
+    payload = json.loads(original.read_text(encoding="utf-8"))
+    payload["claim_audits"][0]["notes"] = "different retry"
+    changed.write_text(json.dumps(payload), encoding="utf-8")
+
+    called = False
+
+    def fail_if_called(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("finalizer must not run for a retry hash mismatch")
+
+    monkeypatch.setattr(review_question, "submit_track_b", fail_if_called)
+
+    with pytest.raises(TrackBContractError) as caught:
+        submit_question_track_b(workspace, first.run_id, changed)
+
+    assert caught.value.reason_code == "TRACK_B_RETRY_MISMATCH"
+    assert called is False
 
 def test_invalid_track_b_keeps_the_run_waiting_for_track_b(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path / "workspace")

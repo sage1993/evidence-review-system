@@ -12,6 +12,7 @@ from ansim_review.canonical_json import dump_bytes
 from ansim_review.confidence.policy import FACTOR_WEIGHTS
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.review_run import (
+    TrackBContractError,
     finalize_review_run,
     prepare_review_run,
     submit_track_a,
@@ -306,6 +307,36 @@ def test_submit_track_b_accepts_valid_run_local_track_b_without_rewriting(
 
     assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
     assert run_local_b.read_bytes() == original
+
+def test_external_track_b_reuses_identical_run_local_validated_input(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_run(workspace, _write_request(tmp_path / "request.json"))
+    track_a, track_b = _write_tracks(tmp_path / "tracks", prepared.run_id)
+    submit_track_a(workspace, prepared.run_id, track_a)
+
+    canonical = prepared.run_directory / "track-b-output.json"
+    canonical.write_bytes(dump_bytes(_track_b(prepared.run_id)))
+
+    result = submit_track_b(workspace, prepared.run_id, track_b)
+
+    assert result.packet.status == "READY_FOR_HUMAN_REVIEW"
+
+
+def test_external_track_b_rejects_different_existing_run_local_input(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_run(workspace, _write_request(tmp_path / "request.json"))
+    track_a, track_b = _write_tracks(tmp_path / "tracks", prepared.run_id)
+    submit_track_a(workspace, prepared.run_id, track_a)
+
+    canonical = prepared.run_directory / "track-b-output.json"
+    different = _track_b(prepared.run_id)
+    different["overall_disposition"] = "REJECT"
+    canonical.write_bytes(dump_bytes(different))
+
+    with pytest.raises(TrackBContractError) as caught:
+        submit_track_b(workspace, prepared.run_id, track_b)
+
+    assert caught.value.reason_code == "TRACK_B_INPUT_MISMATCH"
 
 
 def test_finalize_open_cli_prints_only_the_protected_review_url(

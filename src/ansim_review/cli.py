@@ -40,6 +40,7 @@ from ansim_review.review_question import (
     submit_question_track_b,
 )
 from ansim_review.review_run import (
+    TrackBContractError,
     finalize_review_run,
     open_review_run,
     prepare_review_run,
@@ -567,6 +568,18 @@ def _review_question_submit_track_b(
 ) -> int:
     try:
         result = submit_question_track_b(workspace, run_id, output, publish=publish)
+    except TrackBContractError as error:
+        _write_stdout(
+            {
+                "format": "evidence-review/review-question-status",
+                "version": 1,
+                "stage": "submit-track-b",
+                "status": "FAILED",
+                "reason_code": error.reason_code,
+                "run_id": run_id,
+            }
+        )
+        return 2
     except (
         FileExistsError,
         FileNotFoundError,
