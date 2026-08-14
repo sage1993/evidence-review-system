@@ -193,3 +193,17 @@ python -m ansim_review review-run --help
 ## 13. Acceptance record
 
 Issue #87 acceptance evidence belongs under `docs/acceptance/issue-87/README.md`. Record exact commit, Windows version, Python version, command, exit code, browser/view matrix, timing values, and SHA-256 hashes. Any unexecuted check is `NOT_RUN`; it is not PASS.
+
+## Protected formal-review handoff
+
+After Track B validation and finalization, open the protected loopback review workspace with the interpreter-pinned command:
+
+```powershell
+py -3.13 -m evidence_review review-question submit-track-b `
+  --workspace $Workspace `
+  --run-id $RunId `
+  --track-b-output $TrackB `
+  --open
+```
+
+Successful finalization always returns `review_html`. `display_status=OPENED` means the protected URL was dispatched; `display_status=OPEN_FAILED` means finalization succeeded but browser display failed, so inspect `display_error` and open `review_html` through the protected route. The command does not wait for the server's full idle lifetime.

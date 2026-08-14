@@ -565,6 +565,7 @@ def _review_question_submit_track_b(
     output: Path,
     *,
     publish: bool,
+    open_browser: bool,
 ) -> int:
     try:
         result = submit_question_track_b(workspace, run_id, output, publish=publish)
@@ -590,17 +591,27 @@ def _review_question_submit_track_b(
     ) as error:
         print(str(error), file=sys.stderr)
         return 2
-    _write_stdout(
-        {
-            "format": "evidence-review/review-question-status",
-            "version": 1,
-            "stage": "submit-track-b",
-            "status": result.packet.status,
-            "run_id": result.run_id,
-        }
-    )
-    return 0
 
+    document: dict[str, object] = {
+        "format": "evidence-review/review-question-status",
+        "version": 1,
+        "stage": "submit-track-b",
+        "status": result.packet.status,
+        "run_id": result.run_id,
+        "review_html": str(result.review_html),
+    }
+    if open_browser:
+        try:
+            url = open_review_run(workspace, result.run_id)
+        except (OSError, RuntimeError, ValueError) as error:
+            document["display_status"] = "OPEN_FAILED"
+            document["display_error"] = str(error)
+        else:
+            document["display_status"] = "OPENED"
+            document["url"] = url
+
+    _write_stdout(document)
+    return 0
 
 def _review_run_finalize(
     workspace: Path,
@@ -729,6 +740,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.run_id,
             args.track_b_output,
             publish=args.publish,
+            open_browser=args.open,
         )
     if args.command == "review-run" and args.review_stage == "prepare":
         return _review_run_prepare(args.workspace, args.request)

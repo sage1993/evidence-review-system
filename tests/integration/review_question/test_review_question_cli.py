@@ -659,3 +659,50 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
     }
 
     assert artifacts_after == artifacts_before
+
+def test_review_question_submit_track_b_open_preserves_finalization_on_display_failure(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_id = "RUN-0123456789ABCDEF0123"
+    html_path = workspace / "runs" / run_id / "review.html"
+
+    monkeypatch.setattr(
+        cli,
+        "submit_question_track_b",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            run_id=run_id,
+            review_html=html_path,
+            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
+            published_packet=None,
+        ),
+    )
+
+    def fail_open(*_args, **_kwargs):
+        raise RuntimeError("browser dispatch failed")
+
+    monkeypatch.setattr(cli, "open_review_run", fail_open)
+
+    exit_code = cli.main(
+        [
+            "review-question",
+            "submit-track-b",
+            "--workspace",
+            str(workspace),
+            "--run-id",
+            run_id,
+            "--track-b-output",
+            str(tmp_path / "track-b.json"),
+            "--open",
+        ]
+    )
+
+    assert exit_code == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["status"] == "READY_FOR_HUMAN_REVIEW"
+    assert document["review_html"] == str(html_path)
+    assert document["display_status"] == "OPEN_FAILED"
+    assert "browser dispatch failed" in document["display_error"]
+    assert "url" not in document
