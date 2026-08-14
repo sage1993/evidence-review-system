@@ -47,9 +47,17 @@ The PR stays Draft until the full exact-HEAD release gate is complete.
 
 The implementation order is fixed to reduce rewrite and merge-conflict risk.
 
-### Phase A — Active-tree cleanup (#106)
+### Phase A — Python 3.13 policy and active-tree cleanup (#106)
 
-Remove or relocate material that does not belong in the active public source tree.
+The public repository has one official Python support target:
+
+```text
+Python >=3.13,<3.14
+```
+
+Python 3.11 support is intentionally ended in this PR. Current documentation, scripts, CI/workflows if present, wheel smoke, E2E instructions, and release gates must not require 3.11 compatibility or dual 3.11/3.13 execution. Historical documents may mention past 3.11 validation only when clearly historical and not presented as a current support requirement.
+
+Then remove or relocate material that does not belong in the active public source tree.
 
 Cleanup policy:
 
@@ -200,12 +208,15 @@ No remote image/CDN/network dependency is introduced.
 
 The project should expose one documented validation sequence for contributors. A new wrapper command is not required if the existing commands are sufficient; YAGNI applies.
 
-Required exact-HEAD validation for the integrated PR:
+The official exact-HEAD validation environment is **Python 3.13 only**.
+
+Required integrated-PR validation:
 
 ```text
+Python 3.13
 pytest -v
 ruff check src tests web_runtime
-mypy <canonical source tree>
+mypy src/evidence_review
 python -m compileall -q src scripts web_runtime tests
 documentation integrity
 wheel build
@@ -215,18 +226,19 @@ formal-review E2E
 real-browser Review Workspace acceptance
 ```
 
-Where the supported Python policy still includes both 3.11 and 3.13 at implementation time, wheel/smoke/E2E coverage must match that policy. If the repository separately changes its Python support policy, that change must be explicit and reflected consistently in `pyproject.toml`, documentation, tests, and release notes rather than being an incidental consequence of this PR.
+Python 3.11 failures are not release blockers because Python 3.11 is no longer supported. A future Python version is added to the support matrix only through an explicit support-expansion change with dependency, wheel, and E2E verification.
 
 GitHub Actions availability is not itself the release truth. If Actions are unavailable or blocked, the repository’s documented reproducible manual validation policy remains an accepted evidence path, with exact HEAD/interpreter/OS/command/result recorded.
 
 ### Phase H — v0.2.0 release preparation
 
-This work is release-minor, not patch-level, because it changes repository structure, namespace/CLI internals, public collaboration contracts, Review Workspace behavior, runtime validation, and performance behavior.
+This work is release-minor, not patch-level, because it changes repository structure, namespace/CLI internals, public collaboration contracts, Review Workspace behavior, runtime validation, Python support policy, and performance behavior.
 
-Set package version to:
+Set package metadata to:
 
-```text
-0.2.0
+```toml
+version = "0.2.0"
+requires-python = ">=3.13,<3.14"
 ```
 
 Target tag/release:
@@ -292,7 +304,7 @@ Do not create directories merely to match this diagram. A directory exists only 
 Preferred logical commits:
 
 ```text
-1. chore: remove historical acceptance and Grist-only artifacts
+1. chore: set Python 3.13 policy and remove historical/Grist-only artifacts
 2. refactor: migrate implementation to evidence_review namespace
 3. refactor: consolidate canonical CLI dispatch
 4. docs: add public contribution and security documentation
@@ -329,6 +341,7 @@ The PR remains Draft while implementation is in progress. Individual issues rema
 
 The PR checklist covers:
 
+- Python 3.13 support-policy cleanup;
 - repository cleanup;
 - namespace consolidation;
 - CLI consolidation;
@@ -351,8 +364,8 @@ Before changing repository visibility, verify at the merged exact HEAD:
 1. no secrets, credentials, private URLs, proprietary PDFs, customer/user data, generated evidence DBs, or sensitive acceptance artifacts exist in the current tree;
 2. Git history has already been sanitized to the intended standard and no newly introduced sensitive content exists;
 3. the chosen open-source license is present and intentional;
-4. README/CONTRIBUTING/SECURITY describe the actual supported behavior;
-5. a clean clone can install and run the documented validation path;
+4. README/CONTRIBUTING/SECURITY describe the actual supported behavior and Python 3.13 policy;
+5. a clean Python 3.13 clone can install and run the documented validation path;
 6. v0.2.0 release artifacts are built from the same accepted code line and hashes are published;
 7. the release notes state compatibility/deprecation behavior for `ansim_review` names if any remain.
 
@@ -365,6 +378,7 @@ This integrated PR does not:
 - add unrelated product features;
 - redesign the evidence/review state machine;
 - change parser algorithms except where import/namespace relocation requires mechanical updates;
+- preserve Python 3.11 compatibility;
 - weaken fail-closed source/rule/page/release verification;
 - introduce a frontend framework;
 - introduce remote runtime services;
@@ -377,13 +391,14 @@ The project is ready for public collaboration when all of the following are true
 
 - #105 through #110 are satisfied by the integrated PR;
 - active source tree contains only current runtime/product/developer material or clearly scoped fixtures/examples;
+- Python support metadata and validation policy are `>=3.13,<3.14` / Python 3.13 only;
 - `evidence_review` is the canonical implementation namespace;
 - one canonical CLI dispatcher exists;
 - public contribution/security/license/release documentation is present and accurate;
 - manifest/path self-test fails closed;
 - Review Workspace provenance and persisted decision state are truthful;
 - protected review no longer eagerly embeds all page images;
-- all declared validation gates pass at exact HEAD;
+- all declared Python 3.13 validation gates pass at exact HEAD;
 - wheel/runtime release artifacts are reproducible and hash-published;
 - `v0.2.0` release is created from the accepted merged code;
 - repository can then be switched from private to public as an explicit final owner action.
