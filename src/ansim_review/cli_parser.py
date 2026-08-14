@@ -78,22 +78,6 @@ def build_parser() -> argparse.ArgumentParser:
     warning_collect.add_argument("--queue-output", required=True, type=Path)
     warning_collect.add_argument("--previous-queue", type=Path)
 
-    legacy = subparsers.add_parser(
-        "legacy", help="inspect read-only legacy artifacts without canonical promotion"
-    )
-    legacy_stages = legacy.add_subparsers(dest="legacy_stage", required=True)
-    legacy_visuals = legacy_stages.add_parser(
-        "inspect-visual-manifest", help="inspect a legacy Grist visual CSV as non-canonical data"
-    )
-    legacy_visuals.add_argument("--manifest", required=True, type=Path)
-    legacy_visuals.add_argument("--root", type=Path)
-    legacy_visuals.add_argument("--output", required=True, type=Path)
-    legacy_grist_qa = legacy_stages.add_parser(
-        "validate-grist-qa", help="validate a manual Grist Desktop QA artifact"
-    )
-    legacy_grist_qa.add_argument("--artifact", required=True, type=Path)
-    legacy_grist_qa.add_argument("--root", required=True, type=Path)
-
     release = subparsers.add_parser("release", help="validate release authorization artifacts")
     release_stages = release.add_subparsers(dest="release_stage", required=True)
     release_attestation = release_stages.add_parser(
