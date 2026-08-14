@@ -14,6 +14,7 @@ $ERS_REVIEW <검토 질문>
 필요 항목:
 
 - Codex Desktop
+- Python 3.13 (`>=3.13,<3.14`)
 - Evidence Review System 소스 또는 배포 ZIP
 - 검토할 PDF
 - OpenDataLoader PDF 등 지원되는 로컬 parser
@@ -33,7 +34,7 @@ Pillow>=12,<13
 ```powershell
 git clone https://github.com/sage1993/evidence-review-system.git
 Set-Location evidence-review-system
-python -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
 ```
@@ -154,7 +155,7 @@ evidence-review review-run import-decision `
 
 metrics는 성능 관측용이며 Run ID나 packet hash를 바꾸지 않습니다.
 
-실제 성능 수용은 Windows Python 3.11/3.13에서 같은 단순 질문을 3회 실행하고 p50/p95를 기록해 판단합니다.
+실제 성능 수용은 Windows Python 3.13에서 같은 단순 질문을 3회 실행하고 p50/p95를 기록해 판단합니다.
 
 ## 8. Release assurance 경계
 
@@ -201,4 +202,4 @@ evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 
 Legacy document lineage를 정리할 때는 `docs/LEGACY_LINEAGE_MIGRATION.md`의 fail-closed 절차를 따르며 CLI 진입점은 `evidence-review evidence migrate-lineage`입니다. 이 작업은 legacy visual CSV를 canonical visual manifest로 변환하지 않습니다.
 
-Issue #87의 Windows 3.11/3.13 수동 E2E 기록은 `docs/acceptance/issue-87/README.md`에 보존합니다. 실행하지 않은 검증은 PASS로 쓰지 않고 `NOT_RUN`으로 기록합니다.
+현재 지원·검증 기준은 Python 3.13 단일 버전입니다. 실행하지 않은 검증은 PASS로 쓰지 않고 `NOT_RUN`으로 기록합니다.
