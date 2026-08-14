@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 
 def _run(repo: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     environment = dict(os.environ)
@@ -19,6 +21,26 @@ def _run(repo: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         check=False,
     )
+
+
+
+def test_acceptance_fixture_page_images_contain_visible_content(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[2]
+    workspace = tmp_path / "acceptance-workspace"
+    builder = repo / "scripts" / "build_issues_98_101_acceptance_workspace.py"
+
+    seeded = _run(repo, str(builder), "seed", "--workspace", str(workspace))
+    assert seeded.returncode == 0, seeded.stderr
+
+    for page_number in (1, 2):
+        image_path = (
+            workspace
+            / "page-images"
+            / "REV-ACCEPT"
+            / f"page-{page_number:04d}.png"
+        )
+        with Image.open(image_path) as image:
+            assert any(channel_min < 255 for channel_min, _ in image.getextrema())
 
 
 def test_acceptance_fixture_stays_on_public_review_question_contract(

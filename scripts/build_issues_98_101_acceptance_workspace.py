@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ansim_review.canonical_json import dump_bytes
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
@@ -112,7 +112,23 @@ def _seed(workspace: Path) -> None:
         metadata_path = image_directory / f"page-{page_number:04d}.json"
         if image_path.exists() or metadata_path.exists():
             raise FileExistsError("acceptance fixture refuses to overwrite page assets")
-        Image.new("RGB", (595, 842), "white").save(image_path, format="PNG")
+        image = Image.new("RGB", (595, 842), "white")
+        canvas = ImageDraw.Draw(image)
+        canvas.rectangle((24, 24, 571, 818), outline=(45, 55, 72), width=2)
+        canvas.text((42, 48), "Evidence Review Acceptance", fill=(20, 28, 40))
+        canvas.text((42, 72), f"Verified source page {page_number}", fill=(80, 90, 105))
+        for line_y in (230, 270, 310, 350, 390):
+            canvas.line((52, line_y, 543, line_y), fill=(145, 153, 166), width=2)
+        if page_number == 1:
+            citation_top, citation_bottom = 842 - 140, 842 - 80
+        else:
+            citation_top, citation_bottom = 842 - 180, 842 - 120
+        canvas.rectangle(
+            (50, citation_top, 530, citation_bottom),
+            outline=(22, 104, 190),
+            width=3,
+        )
+        image.save(image_path, format="PNG")
         image_bytes = image_path.read_bytes()
         metadata = {
             "format": "ansim/page-image",
