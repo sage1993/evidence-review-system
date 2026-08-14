@@ -266,6 +266,29 @@
     printPanelStates = null;
   }
 
+  function isProtectedPresentation() {
+    return Boolean(document.querySelector('[data-protected-presentation="true"]'));
+  }
+
+  function ensurePageImageLoaded(page) {
+    if (!isProtectedPresentation() || !page) return;
+    const image = page.querySelector("img[data-page-image-source]");
+    if (!image || image.getAttribute("src")) return;
+    const source = image.dataset.pageSrc || "";
+    if (source) image.setAttribute("src", source);
+  }
+
+  function prefetchAdjacentPages(page) {
+    if (!isProtectedPresentation() || !page) return;
+    const sourceId = page.dataset.sourceId || "";
+    const pages = Array.from(document.querySelectorAll('.evidence-page[data-source-id="' + sourceId + '"]'));
+    const activeIndex = pages.indexOf(page);
+    if (activeIndex < 0) return;
+    pages.forEach((candidate, index) => {
+      if (Math.abs(index - activeIndex) <= 1) ensurePageImageLoaded(candidate);
+    });
+  }
+
   function activeSourceId() {
     const active = document.querySelector(".evidence-page.is-active");
     if (active && active.dataset.sourceId) return active.dataset.sourceId;
@@ -315,6 +338,8 @@
     if (position) position.textContent = page.dataset.sourcePosition || "1";
     if (count) count.textContent = page.dataset.sourceCount || "1";
     if (original) original.textContent = page.dataset.originalPage || "";
+    ensurePageImageLoaded(page);
+    prefetchAdjacentPages(page);
   }
 
   function movePage(delta) {
@@ -387,6 +412,7 @@
       const label = VIEWER_LABELS[button.dataset.viewerMode];
       if (label) button.textContent = label;
     });
+    if (isProtectedPresentation()) return;
     const pageImages = new Map(
       Array.from(document.querySelectorAll("[data-page-image-source]")).map((image) => [
         image.dataset.pageImageSource,
@@ -477,6 +503,8 @@
   window.refreshDisplayStatus = refreshDisplayStatus;
   window.renderPersistedDecision = renderPersistedDecision;
   window.beginAdditionalDecision = beginAdditionalDecision;
+  window.ensurePageImageLoaded = ensurePageImageLoaded;
+  window.prefetchAdjacentPages = prefetchAdjacentPages;
   window.downloadDecisionEnvelope = downloadDecisionEnvelope;
 
   document.querySelectorAll('.evidence-link, .citation[role="button"]').forEach((node) => {
