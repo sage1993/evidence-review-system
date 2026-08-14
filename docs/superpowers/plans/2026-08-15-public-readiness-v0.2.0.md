@@ -59,7 +59,6 @@ skills/
 src/
   evidence_review/         # canonical implementation
   ansim_review/            # minimal compatibility shim only, if retained
-  web_runtime/             # if already packaged from current layout, preserve existing root layout instead
 tests/
 web_runtime/
 pyproject.toml
@@ -67,7 +66,7 @@ documentation-integrity.json
 parser-reproducibility.json
 ```
 
-Do not create a directory merely to match this diagram. Preserve current root `web_runtime/` unless an existing packaging contract requires another layout.
+Do not create a directory merely to match this diagram. Keep the current root `web_runtime/` layout.
 
 ---
 
@@ -92,10 +91,10 @@ Do not create a directory merely to match this diagram. Preserve current root `w
 - Keep temporarily until current-reference audit completes: `docs/acceptance/issue-52/README.md`
 - Delete: `scripts/build_issues_98_101_acceptance_workspace.py`
 - Delete: `scripts/verify_issue_6_manual.ps1`
-- Delete if no current product call remains: `docs/GRIST_DESKTOP_QA.md`
-- Delete if no current product call remains: `scripts/export_grist_csv.py`
-- Delete if no current product call remains: `scripts/rebuild_visuals_and_grist.py`
-- Delete if no current product call remains: `scripts/repair_grist_document.py`
+- Delete after current-call audit: `docs/GRIST_DESKTOP_QA.md`
+- Delete after current-call audit: `scripts/export_grist_csv.py`
+- Delete after current-call audit: `scripts/rebuild_visuals_and_grist.py`
+- Delete after current-call audit: `scripts/repair_grist_document.py`
 - Delete after ERS skill parity check: `skills/01-preserving-and-parsing-pdfs/**`
 - Delete after ERS skill parity check: `skills/02-structuring-content-and-visuals/**`
 - Delete after ERS skill parity check: `skills/03-cleaning-pdf-derived-data/**`
@@ -120,8 +119,6 @@ assert ruff_target_version == "py313"
 Add a repository-content test or documentation-integrity rule that rejects current-support text matching active Python 3.11 commands such as `py -3.11` outside explicitly historical material.
 
 - [ ] **Step 2: Run the policy tests and confirm RED**
-
-Run:
 
 ```bash
 py -3.13 -m pytest tests/integration/packaging tests/unit/documentation_integrity -k "python or metadata or documentation" -v
@@ -148,13 +145,11 @@ Do not leave `src/ansim_review` in the final mypy file list after Task 2. During
 
 - [ ] **Step 4: Inventory every cleanup candidate before deletion**
 
-Run:
-
 ```bash
 git grep -n "docs/acceptance/\|GRIST_DESKTOP_QA\|export_grist_csv\|rebuild_visuals_and_grist\|repair_grist_document\|build_issues_98_101\|verify_issue_6_manual\|01-preserving-and-parsing-pdfs\|02-structuring-content-and-visuals\|03-cleaning-pdf-derived-data\|04-building-and-exporting-grist-databases\|05-validating-pdf-database-workflows" -- .
 ```
 
-Classify each match as one of:
+Classify each match as:
 
 ```text
 current runtime dependency
@@ -178,8 +173,6 @@ Before deleting each numbered skill, compare its current-user instructions to `s
 Search all references to issue-52 acceptance. If the parser reproducibility contract depends only on reusable rules contained there, move those reusable rules into `docs/PARSER_REPRODUCIBILITY.md` or the canonical parser reproducibility configuration, update links, then delete `docs/acceptance/issue-52/`. If an executable current contract still requires the file itself, keep only that file and document why in `documentation-integrity.json`.
 
 - [ ] **Step 8: Remove Python 3.11 from current docs/scripts/tests**
-
-Run:
 
 ```bash
 git grep -n -E "3\.11|py -3\.11|Python 3\.11|python3\.11" -- README.md AGENTS.md docs scripts tests pyproject.toml
@@ -218,6 +211,7 @@ git commit -m "chore: set Python 3.13 policy and remove historical artifacts"
 - Move: `src/ansim_review/retrieval/**` -> `src/evidence_review/retrieval/**`
 - Move: `src/ansim_review/review_packet/**` -> `src/evidence_review/review_packet/**`
 - Move: `src/ansim_review/rule_engine/**` -> `src/evidence_review/rule_engine/**`
+- Move: `src/ansim_review/release/**` -> `src/evidence_review/release/**`
 - Move: all remaining implementation modules under `src/ansim_review/` -> `src/evidence_review/`
 - Preserve/refactor existing: `src/evidence_review/__init__.py`, `src/evidence_review/__main__.py`, `src/evidence_review/cli.py`, `src/evidence_review/diagnostics.py`
 - Reduce to compatibility only: `src/ansim_review/__init__.py`, `src/ansim_review/__main__.py`
@@ -233,12 +227,13 @@ git commit -m "chore: set Python 3.13 policy and remove historical artifacts"
 
 - [ ] **Step 1: Add namespace ownership tests**
 
-Create `tests/integration/contracts/test_namespace_ownership.py` with assertions equivalent to:
+Create `tests/integration/contracts/test_namespace_ownership.py` with:
 
 ```python
 import evidence_review.review_packet
 import evidence_review.rule_engine
 import evidence_review.evidence
+import evidence_review.release
 
 assert evidence_review.review_packet.__name__.startswith("evidence_review.")
 ```
@@ -265,8 +260,6 @@ Expected: FAIL because implementation still resides under `ansim_review`.
 Use `git mv` for implementation modules so history remains readable. Resolve collisions with the existing four `evidence_review` facade files by retaining their public bootstrap behavior and moving only non-duplicate implementation symbols around them.
 
 - [ ] **Step 4: Rewrite internal absolute imports**
-
-Run:
 
 ```bash
 git grep -n "from ansim_review\|import ansim_review" -- src tests scripts
@@ -301,8 +294,6 @@ raise SystemExit(main())
 
 - [ ] **Step 7: Update mypy scope**
 
-Set:
-
 ```toml
 [tool.mypy]
 python_version = "3.13"
@@ -336,14 +327,14 @@ git commit -m "refactor: migrate implementation to evidence_review namespace"
 - Modify: `src/evidence_review/cli.py`
 - Modify: `src/evidence_review/__main__.py`
 - Modify: migrated `src/evidence_review/cli_parser.py`
-- Modify/remove implementation routing from migrated legacy `entrypoint.py`/`cli.py`
+- Remove alternate runtime branch trees from migrated CLI/entrypoint code
 - Compatibility only: `src/ansim_review/__main__.py`
 - Add: `tests/integration/contracts/test_cli_dispatch_equivalence.py`
 - Modify: production-facing CLI tests under `tests/integration/**`
 
 **Interfaces:**
 - Consumes: canonical namespace from Task 2.
-- Produces: exactly one business command dispatcher:
+- Produces exactly one business dispatcher:
 
 ```python
 def main(argv: Sequence[str] | None = None) -> int:
@@ -354,7 +345,7 @@ in `evidence_review.command_dispatch`.
 
 - [ ] **Step 1: Write RED dispatch-equivalence tests**
 
-Test these entrypoints:
+Test:
 
 ```text
 evidence_review.cli.main
@@ -364,7 +355,7 @@ console script evidence-review
 console script ansim-review
 ```
 
-for representative help/parse behavior and representative business commands. Assert compatibility paths delegate to the same dispatcher and do not own another command branch tree.
+for representative help/parse behavior and business commands. Assert compatibility paths delegate to the same dispatcher and do not own another command branch tree.
 
 - [ ] **Step 2: Characterize bootstrap-only behavior**
 
@@ -372,15 +363,13 @@ Keep `--version`, `doctor`, source provenance, and dependency preflight in `evid
 
 - [ ] **Step 3: Extract the post-preflight branch tree**
 
-`src/evidence_review/command_dispatch.py` owns all business routing. It installs the offline/network guard once at the runtime boundary and invokes existing handlers without changing their output schema or exit codes.
+`src/evidence_review/command_dispatch.py` owns all business routing. It installs the offline/network guard once at the runtime boundary and invokes existing handlers without changing output schemas or exit codes.
 
 - [ ] **Step 4: Break circular imports mechanically if required**
 
 If migrated `cli.py` mixes handlers and dispatch, move handler functions unchanged to `cli_handlers.py`. Do not duplicate handlers between files.
 
 - [ ] **Step 5: Convert `evidence_review.cli` to bootstrap + local import**
-
-Required pattern:
 
 ```python
 from evidence_review.command_dispatch import main as runtime_main
@@ -394,8 +383,6 @@ The import occurs only after diagnostic/preflight success.
 `python -m ansim_review` and `ansim-review` call `evidence_review.cli.main`; no alternate parser/dispatcher remains.
 
 - [ ] **Step 7: Move production CLI integration tests to the canonical path**
-
-Search:
 
 ```bash
 git grep -n "cli.main(" tests/integration
@@ -453,11 +440,11 @@ CHANGELOG.md
 .github/pull_request_template.md
 ```
 
-Require `CONTRIBUTING.md` to use Python 3.13 and `python -m evidence_review` / `evidence-review` only as canonical commands.
+Require `CONTRIBUTING.md` to use Python 3.13 and canonical `evidence_review` commands.
 
 - [ ] **Step 2: Write `CONTRIBUTING.md`**
 
-Include exactly these contributor stages:
+Include:
 
 ```text
 Python 3.13 environment
@@ -476,11 +463,11 @@ State that user/customer PDFs, parser outputs, DBs, screenshots, and acceptance 
 
 - [ ] **Step 3: Write `SECURITY.md`**
 
-Document supported release line (`0.2.x` once released), private vulnerability reporting expectations, offline/trust-boundary scope, and that public GitHub Issues are not appropriate for unpatched vulnerability details. Do not invent an email address; use GitHub private vulnerability reporting only if repository settings enable it, otherwise instruct reporters to contact the repository owner privately through GitHub profile/contact methods without publishing exploit details.
+Document the supported release line (`0.2.x` after release), offline/trust-boundary scope, and private vulnerability reporting expectations. Do not invent an email address. Public Issues must not contain unpatched exploit details.
 
 - [ ] **Step 4: Seed `CHANGELOG.md` with v0.2.0 unreleased content**
 
-Use sections:
+Use:
 
 ```text
 Added
@@ -507,7 +494,7 @@ PR template checklist: tests, docs, no sensitive artifacts, no weakened fail-clo
 
 - [ ] **Step 7: Handle license as an explicit gate**
 
-If the owner has not chosen a license at implementation time, do **not** create a placeholder or guessed license. Add a visible `LICENSE REQUIRED BEFORE PUBLICATION` checklist item to PR/release readiness documentation. Once the owner selects a license, add the exact standard license text in a separate commit or the release metadata commit.
+If the owner has not chosen a license at implementation time, do **not** create a placeholder or guessed license. Add `LICENSE REQUIRED BEFORE PUBLICATION` to the public-readiness checklist. Once the owner selects a license, add the exact standard license text in a dedicated commit or the release metadata commit.
 
 - [ ] **Step 8: Run documentation integrity**
 
@@ -566,7 +553,7 @@ rules\approved\R1.json
 ..
 ```
 
-Expected stable code: `UNSAFE_RUNTIME_PATH`.
+Expected: `UNSAFE_RUNTIME_PATH`.
 
 - [ ] **Step 2: Add RED strict-schema tests**
 
@@ -645,7 +632,7 @@ class _ViewerDocument:
     pages: tuple[tuple[str, int, _PageAsset], ...]
 ```
 
-and JS state functions:
+and:
 
 ```javascript
 setActiveSource(sourceId)
@@ -675,7 +662,7 @@ Multiple sources: native `<select data-source-select>`.
 
 Single source: non-interactive label.
 
-Render page context as:
+Render:
 
 ```text
 근거 페이지 1 / 2 · 원문 p.3
@@ -758,7 +745,7 @@ Create valid records with different timestamps plus malformed/wrong-run/wrong-pa
 
 - [ ] **Step 2: Implement deterministic record loading**
 
-Reuse existing envelope validator. Sort by parsed offset-aware `reviewed_at`, then filename as deterministic tie-break. `has_valid_human_decision()` delegates to the new reader.
+Reuse the existing envelope validator. Sort by parsed offset-aware `reviewed_at`, then filename as deterministic tie-break. `has_valid_human_decision()` delegates to the new reader.
 
 - [ ] **Step 3: Increase filename timestamp precision**
 
@@ -827,7 +814,7 @@ git commit -m "fix: surface persisted human decision state"
 - Modify: `src/evidence_review/review_packet/local_server.py`
 - Modify: `src/evidence_review/review_packet/assets/review.js`
 - Modify: `src/evidence_review/review_packet/assets/review.css`
-- Modify: migrated `src/evidence_review/review_run.py`
+- Modify: `src/evidence_review/review_run.py`
 - Add: `tests/integration/review_packet/test_protected_image_delivery.py`
 - Modify: `tests/integration/review_packet/test_review_workspace_performance.py`
 - Modify: `tests/integration/review_packet/test_local_server.py`
@@ -854,10 +841,10 @@ class VerifiedPageImage:
     box_kind: str
 
 
-def read_verified_page_image(... ) -> VerifiedPageImage: ...
+def read_verified_page_image(...) -> VerifiedPageImage: ...
 ```
 
-and renderer mode:
+and:
 
 ```python
 ImageDeliveryMode = Literal["embedded", "protected"]
@@ -869,7 +856,7 @@ Generate deterministic verified PNG fixtures >=1 MiB each. For 10 cited pages re
 
 - [ ] **Step 2: Centralize verified page-image reading**
 
-Move all existing metadata/source-hash/image-SHA/geometry validation behind `read_verified_page_image()`. `html_renderer.py` and server route use the same verifier.
+Move all existing metadata/source-hash/image-SHA/geometry validation behind `read_verified_page_image()`. `html_renderer.py` and the server route use the same verifier.
 
 - [ ] **Step 3: Add explicit `embedded` and `protected` rendering**
 
@@ -877,7 +864,7 @@ Default remains `embedded` so existing `review.html` is standalone. Protected mo
 
 - [ ] **Step 4: Add protected image route**
 
-Route requires existing review token/loopback authorization, validated revision/page/source hash, serve-time re-verification, and headers:
+Route requires existing review token/loopback authorization, validated revision/page/source hash, serve-time re-verification, and:
 
 ```text
 Content-Type: image/png
@@ -922,8 +909,8 @@ git commit -m "perf: lazy load protected review page images"
 
 **Files:**
 - Modify/move: ANSIM-specific rule data under `rules/**` only after exact path/hash dependency audit
-- Possible destination for test-only ANSIM rule data: `tests/fixtures/ansim/rules/**`
-- Possible destination for durable example-only rule data: `examples/ansim/rules/**`
+- Preferred destination for test-only ANSIM rule data: `tests/fixtures/ansim/rules/**`
+- Use `examples/ansim/rules/**` only for a durable runnable contributor example
 - Modify: rule manifests/approvals/golden references that point to moved data
 - Modify: `docs/RULE_ACTIVATION_GOVERNANCE.md`
 - Delete or rename after compatibility audit: `scripts/build_ansim_release.py`
@@ -963,19 +950,19 @@ For every ANSIM-specific file under `rules/`, search exact path and hash referen
 
 - [ ] **Step 3: Separate product engine from ANSIM example/test data**
 
-Move test-only rule datasets to `tests/fixtures/ansim/rules/`. Use `examples/ansim/rules/` only if an external contributor benefits from a runnable durable example. Keep `rules/` only for governed current runtime rules.
+Move test-only rule datasets to `tests/fixtures/ansim/rules/`. Use `examples/ansim/rules/` only when the dataset is deliberately retained as a runnable public example. Keep `rules/` only for governed current runtime rules.
 
 - [ ] **Step 4: Remove obsolete ANSIM/Grist migration wrappers**
 
-If canonical CLI already exposes equivalent release/migration behavior, delete `scripts/build_ansim_release.py` and `scripts/migrate_ansim_workspace.py`. If a script remains required, rename to generic `build_release.py` / `migrate_legacy_workspace.py` and update all references.
+If canonical CLI already exposes equivalent release/migration behavior, delete `scripts/build_ansim_release.py` and `scripts/migrate_ansim_workspace.py`. If the behavior is still required as a script, rename to generic `build_release.py` / `migrate_legacy_workspace.py` and update all references.
 
 - [ ] **Step 5: Remove legacy docs when the feature is gone**
 
-Delete `LEGACY_LINEAGE_MIGRATION.md` and `LEGACY_VISUALS.md` only after their CLI/code paths no longer exist. Otherwise rewrite them as current compatibility docs and link them under a clearly marked migration section rather than main user navigation.
+Delete `LEGACY_LINEAGE_MIGRATION.md` and `LEGACY_VISUALS.md` only after their CLI/code paths no longer exist. Otherwise rewrite them as current compatibility docs under a clearly marked migration section rather than main user navigation.
 
 - [ ] **Step 6: Enforce canonical package metadata**
 
-`pyproject.toml` final state must have:
+Final `pyproject.toml`:
 
 ```toml
 [project]
@@ -987,7 +974,7 @@ evidence-review = "evidence_review.cli:main"
 ansim-review = "evidence_review.cli:main"
 ```
 
-If `ansim-review` compatibility is removed by explicit decision before release, delete that script and document the breaking change in `CHANGELOG.md`; do not silently change it.
+If `ansim-review` compatibility is explicitly removed before release, delete that script and document the breaking change in `CHANGELOG.md`; do not silently change it.
 
 - [ ] **Step 7: Run repository-wide name/reference checks**
 
@@ -1021,13 +1008,23 @@ git commit -m "chore: normalize rules docs tests and package metadata"
 
 **Files:**
 - Modify: `CHANGELOG.md`
-- Modify: release/build scripts under `scripts/` or `src/evidence_review/release/**` as required by current release architecture
-- Modify: release tests under `tests/unit/release/**`, `tests/integration/release/**`, `tests/integration/packaging/**`
-- Do not commit generated distribution files unless the existing repository policy explicitly tracks them
-- Generated after acceptance: `dist/evidence_review_system-0.2.0-py3-none-any.whl`
-- Generated after acceptance: `dist/evidence-review-system-v0.2.0-runtime.zip`
-- Generated after acceptance: `dist/SHA256SUMS.txt`
-- Generated if current governance produces it: `dist/release-manifest.json`
+- Modify: `src/evidence_review/release/acceptance.py`
+- Modify: `src/evidence_review/release/attestation.py`
+- Modify: `src/evidence_review/release/builder.py`
+- Modify: `src/evidence_review/release/config.py`
+- Modify/delete as appropriate after migration: `src/evidence_review/release/legacy_acceptance.py`
+- Modify: `src/evidence_review/release/offline_boundary.py`
+- Modify: `src/evidence_review/release/output_verifier.py`
+- Modify: `src/evidence_review/release/validator.py`
+- Modify/delete: `scripts/build_ansim_release.py`
+- Modify: `scripts/validate_release.py`
+- Modify: `tests/unit/release/**`
+- Modify: `tests/integration/release/**`
+- Modify: `tests/integration/packaging/**`
+- Generated after acceptance, not committed by default: `dist/evidence_review_system-0.2.0-py3-none-any.whl`
+- Generated after acceptance, not committed by default: `dist/evidence-review-system-v0.2.0-runtime.zip`
+- Generated after acceptance, not committed by default: `dist/SHA256SUMS.txt`
+- Generated when current release governance emits it: `dist/release-manifest.json`
 
 **Interfaces:**
 - Consumes: final source/config/docs from Tasks 1–9.
@@ -1053,13 +1050,11 @@ Require canonical `evidence_review` package data to be present.
 
 - [ ] **Step 2: Build wheel with Python 3.13**
 
-From a clean environment:
-
 ```bash
 py -3.13 -m pip wheel . --no-deps -w dist
 ```
 
-Expected wheel: `evidence_review_system-0.2.0-py3-none-any.whl`.
+Expected: `evidence_review_system-0.2.0-py3-none-any.whl`.
 
 - [ ] **Step 3: Smoke test the installed wheel in a clean venv**
 
@@ -1070,15 +1065,15 @@ py -3.13 -m venv .venv-release-smoke
 .venv-release-smoke\Scripts\python -m evidence_review doctor --repository-root .
 ```
 
-Install runtime dependencies from the approved offline/online source appropriate to the acceptance environment before business-command smoke tests.
+Install runtime dependencies from the approved source appropriate to the acceptance environment before business-command smoke tests.
 
 - [ ] **Step 4: Build runtime ZIP through the canonical release path**
 
-Use the repository's migrated generic release builder/CLI, not `build_ansim_release.py`. Verify the ZIP without extraction through the existing release-output validator and then run extracted `bootstrap.py --self-test`.
+Use migrated `evidence_review.release.builder` / canonical release CLI. Do not invoke `build_ansim_release.py`. Verify the ZIP without extraction through `evidence_review.release.output_verifier`, then extract a copy and run `bootstrap.py --self-test`.
 
-- [ ] **Step 5: Produce deterministic SHA256SUMS**
+- [ ] **Step 5: Produce deterministic `SHA256SUMS.txt`**
 
-Include wheel, runtime ZIP, and release manifest if present. Paths in `SHA256SUMS.txt` are release filenames only, not local absolute paths.
+Include wheel, runtime ZIP, and release manifest when present. Use release filenames only, never local absolute paths.
 
 - [ ] **Step 6: Finalize CHANGELOG v0.2.0**
 
@@ -1096,18 +1091,18 @@ Expected: PASS.
 
 ```bash
 git add pyproject.toml CHANGELOG.md scripts src tests docs
- git commit -m "release: prepare v0.2.0 metadata and artifacts"
+git commit -m "release: prepare v0.2.0 metadata and artifacts"
 ```
 
-If generated files are intentionally tracked by existing policy, include only those explicitly required by that policy.
+Generated distributions remain untracked unless an existing explicit repository rule requires tracking them.
 
 ---
 
 ### Task 11: Exact-HEAD integrated acceptance and Draft PR readiness
 
 **Files:**
-- Create or update a current non-historical release validation record only if the repository's release governance requires one; do not recreate issue-number acceptance directories.
-- Update: PR #111 checklist/body with exact results.
+- Update: PR #111 with exact acceptance evidence.
+- Do not recreate issue-number acceptance directories.
 
 **Interfaces:**
 - Consumes: candidate exact HEAD after Task 10.
@@ -1148,7 +1143,7 @@ Expected: PASS.
 py -3.13 -m evidence_review documentation validate --repository-root .
 ```
 
-Expected: PASS, `errors=0`. Warnings are reviewed and must not identify broken current links or stale public instructions.
+Expected: PASS, `errors=0`. Warnings must not identify broken current links or stale public instructions.
 
 - [ ] **Step 5: Run clean wheel/runtime validation**
 
@@ -1166,7 +1161,7 @@ No Python 3.11 duplicate run is required.
 
 - [ ] **Step 7: Run real-browser Review Workspace acceptance**
 
-Validate at least:
+Validate:
 
 ```text
 1366x768
@@ -1183,11 +1178,11 @@ standalone archival review.html
 print view
 ```
 
-Confirm browser network traffic is loopback-only for the protected review.
+Confirm browser network traffic is loopback-only for protected review.
 
 - [ ] **Step 8: Run public-tree sensitive-content scan**
 
-At minimum search tracked files for:
+Search tracked files for at least:
 
 ```text
 password
@@ -1195,20 +1190,20 @@ secret
 api_key
 BEGIN PRIVATE KEY
 private-user-images
-customer-specific paths/usernames where prohibited
-*.pdf tracked outside explicit sanitized test fixtures
-*.sqlite tracked outside explicit deterministic test fixtures
+customer-specific absolute paths/usernames
+tracked PDF files outside explicit sanitized test fixtures
+tracked SQLite files outside explicit deterministic test fixtures
 ```
 
-Review findings manually; do not treat a keyword-only scan as proof of absence.
+Review every match manually; keyword scan alone is not proof of absence.
 
 - [ ] **Step 9: Verify clean-clone contributor path**
 
-In a fresh clone/venv using Python 3.13, follow `README.md` and `CONTRIBUTING.md` exactly through install, a focused test, and the documented full validation commands. Correct documentation rather than relying on undocumented local state.
+In a fresh clone/venv using Python 3.13, follow `README.md` and `CONTRIBUTING.md` exactly through install, focused test, and documented full validation commands. Fix documentation instead of relying on undocumented local state.
 
 - [ ] **Step 10: Check license/publication gate**
 
-PR may become Ready for code review without a license if the repository is still private, but **repository visibility must remain private** until the owner selects and commits an intentional license. Record this as `BLOCKED_LICENSE_SELECTION` if unresolved.
+PR may become Ready for code review without a license while the repository remains private, but **repository visibility must remain private** until the owner selects and commits an intentional license. Record unresolved state as `BLOCKED_LICENSE_SELECTION`.
 
 - [ ] **Step 11: Update PR #111 with exact acceptance evidence**
 
@@ -1222,10 +1217,10 @@ Do not mark Ready if any #105–#110 acceptance criterion is incomplete or an ex
 
 ## Post-Merge Release Procedure
 
-This is not an implementation commit inside PR #111; it occurs only after the accepted PR is merged to `main`.
+This occurs only after the accepted PR is merged to `main`.
 
-1. Confirm merged `main` exact HEAD equals the accepted code line or rerun all release-critical gates if the merge commit changes the exact source identity.
-2. Build the final wheel/runtime ZIP from merged `main` using Python 3.13.
+1. Confirm merged `main` exact HEAD equals the accepted code line or rerun all release-critical gates if merge changes source identity.
+2. Build final wheel/runtime ZIP from merged `main` using Python 3.13.
 3. Recompute `SHA256SUMS.txt` and release manifest.
 4. Create tag `v0.2.0` at the accepted merged HEAD.
 5. Create GitHub Release `Evidence Review System v0.2.0`.
@@ -1238,9 +1233,9 @@ SHA256SUMS.txt
 release-manifest.json    # when generated by the release-governance path
 ```
 
-7. Verify every uploaded asset hash against local accepted output.
-8. Keep `v0.1.0` as historical; do not retag or overwrite it.
-9. Change repository visibility to public only after license selection and the public-visibility gate in the approved design are satisfied.
+7. Verify every uploaded asset hash against accepted local output.
+8. Keep `v0.1.0` historical; do not retag or overwrite it.
+9. Change repository visibility to public only after license selection and all public-visibility gates in the approved design pass.
 
 ---
 
@@ -1261,6 +1256,7 @@ release-manifest.json    # when generated by the release-governance path
 - [x] #105–#110 each have explicit closure evidence.
 - [x] Python support is consistently 3.13-only.
 - [x] Namespace migration happens before CLI/UI feature work, preventing double refactors.
+- [x] `src/ansim_review/release/**` is explicitly migrated to `src/evidence_review/release/**` before release preparation.
 - [x] #108 depends on #105 source/page state and therefore follows it.
 - [x] Cleanup never deletes governed `rules/` wholesale.
 - [x] Historical acceptance material is not recreated as issue-number folders.
