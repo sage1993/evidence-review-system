@@ -65,7 +65,7 @@ def render_decision_form(model: Mapping[str, object]) -> str:
             '<p id="decision-notes-error" class="field-error" role="alert" aria-live="polite"></p>',
             '<p class="reviewer-session visually-hidden" data-reviewer-session></p>',
             '<div class="decision-actions"><button class="primary-action" data-protected-only type="submit">결정 저장</button>',  # noqa: E501
-            '<button type="button" class="secondary-action" data-download-decision data-archive-only>결정 JSON 다운로드</button></div>',  # noqa: E501
+            '<button type="button" class="secondary-action" data-download-decision data-archive-only hidden>결정 JSON 다운로드</button></div>',  # noqa: E501
             '<p class="decision-storage-note">', icon_svg("lock", size=14), ' 저장 시 검토 기록이 추가되며, 수정은 불가능합니다.</p>',  # noqa: E501
             '<p class="form-status" aria-live="polite"></p>',
             '</form></section>',
