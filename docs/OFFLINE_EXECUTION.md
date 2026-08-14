@@ -187,6 +187,30 @@ docker run --rm --network none \
 
 Retain the exact container command as OS-isolation evidence when claiming that assurance level.
 
+## 9. Runtime provenance diagnostics
+
+Run the dependency-safe diagnostic surface with the exact interpreter that will run the
+review. It is intentionally stdlib-only and executes before business imports:
+
+```powershell
+$Workspace = "C:\evidence-review-workspace"
+py -3.11 -m evidence_review doctor --repository-root .
+py -3.11 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
+
+py -3.13 -m evidence_review doctor --repository-root .
+py -3.13 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
+```
+
+`SOURCE_MISMATCH` blocks business commands until the intended checkout is active. Use
+an interpreter-pinned editable install to remediate it:
+
+```powershell
+py -3.11 -m pip install -e ".[dev]"
+py -3.13 -m pip install -e ".[dev]"
+```
+
+`DEPENDENCY_MISSING` is a structured diagnostic, not a traceback. Record the JSON
+output before changing the environment.
 ## 10. Issue #87 acceptance checks
 
 From a clean Windows checkout at the exact acceptance HEAD, record:

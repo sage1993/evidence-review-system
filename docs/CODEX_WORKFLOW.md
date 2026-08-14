@@ -3,6 +3,29 @@
 Use local evidence only. Project Python code does not call a model or remote API. Codex supplies the external Track A/Track B reasoning at deterministic file handoffs; runtime code validates those outputs before the workflow can advance.
 
 Shared status and contract governance is documented in `docs/CONTRACT_GOVERNANCE.md`.
+## 0. Prove runtime provenance before business commands
+
+Use the interpreter-pinned module entrypoint before every acceptance or review run. The
+stdlib-only diagnostic surface runs before heavy runtime imports and reports the
+checkout HEAD, package source path, and required dependency state.
+
+```powershell
+$Workspace = "C:\evidence-review-workspace"
+py -3.11 -m evidence_review doctor --repository-root .
+py -3.11 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
+
+py -3.13 -m evidence_review doctor --repository-root .
+py -3.13 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
+```
+
+`SOURCE_MISMATCH` means the active interpreter is importing `ansim_review` from a
+different checkout. Activate the intended interpreter and reinstall this checkout
+editable with that interpreter:
+
+```powershell
+py -3.11 -m pip install -e ".[dev]"
+py -3.13 -m pip install -e ".[dev]"
+```
 
 ## 1. Prepare source evidence
 
