@@ -193,12 +193,28 @@ if (typeof button.listeners.click !== "function") throw new Error("mode button l
 
 def test_reviewer_layout_and_viewer_labels_are_applied_by_controller(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
-    controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
+    html = render_review_html(_model(), tmp_path / "pages")
+    controller = _inline_controller(html)
 
-    assert "minmax(320px,360px) minmax(0,1fr) minmax(320px,360px)" in controller
-    assert "max-height:min(60vh,640px)" in controller
-    assert "#evidence-zoom{min-height:44px}" in controller
+    assert "applyReviewerLayout" not in controller
+    assert "reviewer-layout-refinement" not in controller
+    assert "grid-template-columns: 392px minmax(0, 1fr) 342px" in html
+    assert "max-height: min(60vh, 640px)" in html
+    assert "#evidence-zoom" in html and "min-height: 44px" in html
     assert 'original: "원문"' in controller
     assert 'evidence: "근거 강조"' in controller
     assert 'compare: "원문 + 강조"' in controller
-    assert ".bbox-location,.citation-audit,.item-audit{display:none!important}" in controller
+
+
+def test_detail_activation_does_not_change_protected_mode_or_inject_layout(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
+
+    start = controller.index("function activateDetailTab")
+    end = controller.index("let printPanelStates", start)
+    detail_activation = controller[start:end]
+
+    assert "setProtectedMode" not in detail_activation
+    assert "applyReviewerLayout" not in detail_activation

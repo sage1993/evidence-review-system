@@ -339,7 +339,7 @@ pre {
 
 #evidence-zoom {
   width: 110px;
-  min-height: 32px;
+  min-height: 44px;
 }
 
 .evidence-page {
@@ -840,12 +840,12 @@ pre {
 .info-mark { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1.5px solid #1464d2; border-radius: 50%; color: #1464d2; font-size: 11px; font-weight: 800; }
 .additional-message strong { color: #075fd3; white-space: nowrap; }
 .additional-message span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.additional-toggle { flex: 0 0 auto; min-height: 34px; border-color: #b9cde8; padding: 4px 13px; background: #fff; font-size: 13px; }
+.additional-toggle { flex: 0 0 auto; min-height: 44px; border-color: #b9cde8; padding: 4px 13px; background: #fff; font-size: 13px; }
 .additional-details { width: 100%; }
 #review-items { padding: 10px 9px 8px; border-radius: 9px; }
 .panel-heading { align-items: center; padding: 0 7px 8px; }
 .panel-heading h2 { font-size: 17px; }
-.evidence-sort { min-height: 34px; border: 0; padding: 4px 2px; color: #42526b; font-size: 13px; }
+.evidence-sort { min-height: 44px; border: 0; padding: 4px 2px; color: #42526b; font-size: 13px; }
 .review-item-list { display: grid; gap: 7px; margin-top: 0; }
 .review-item.evidence-card { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) 22px; align-items: start; width: 100%; min-width: 0; min-height: 142px; gap: 8px; border: 1px solid var(--border); border-radius: 9px; padding: 12px 10px; background: #fff; }
 .evidence-card.is-selected { border-color: #1769e0; box-shadow: inset 0 0 0 1px #1769e0; background: #f7fbff; }
@@ -861,16 +861,16 @@ pre {
 .evidence-selection-hint { margin: 8px 7px 0; color: #64748b; font-size: 12px; }
 #evidence-viewer { border-radius: 9px; }
 .viewer-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 58px; border-bottom: 1px solid var(--border); padding: 8px 14px; }
-.pdf-source-select { min-height: 36px; border-color: var(--border); font-weight: 700; }
+.pdf-source-select { min-height: 44px; border-color: var(--border); font-weight: 700; }
 .pdf-source-select span { color: #566276; font-size: 12px; font-weight: 400; }
 .pdf-page-controls, .pdf-zoom-controls { display: flex; align-items: center; gap: 7px; }
 .pdf-page-controls { margin-left: auto; margin-right: 18px; }
-.pdf-page-controls button, .pdf-zoom-controls button { min-height: 32px; border: 0; padding: 3px 7px; }
+.pdf-page-controls button, .pdf-zoom-controls button { min-height: 44px; border: 0; padding: 3px 7px; }
 .pdf-page-controls span { min-width: 92px; text-align: center; font-size: 13px; }
 .pdf-zoom-controls { border-left: 1px solid var(--border); padding-left: 12px; }
 .viewer-body { display: grid; grid-template-columns: 104px minmax(0, 1fr); min-height: 530px; }
 .thumbnail-rail { display: grid; align-content: start; gap: 10px; overflow: auto; border-right: 1px solid var(--border); background: #f3f5f7; padding: 10px 12px; }
-.page-thumb { display: grid; gap: 3px; min-height: auto; border: 1px solid transparent; padding: 3px; background: transparent; font-size: 12px; }
+.page-thumb { display: grid; gap: 3px; min-height: 44px; border: 1px solid transparent; padding: 3px; background: transparent; font-size: 12px; }
 .page-thumb img { display: block; width: 76px; height: 74px; object-fit: cover; background: #fff; }
 .page-thumb span { color: #596779; text-align: center; }
 .page-thumb.is-active { border-color: #1769e0; background: #fff; }
@@ -911,7 +911,7 @@ pre {
   min-height: 60px;
   padding: 11px 26px;
 }
-.status-band button { min-height: 38px; padding: 5px 12px; }
+.status-band button { min-height: 44px; padding: 5px 12px; }
 .review-workspace {
   grid-template-columns: 392px minmax(0, 1fr) 342px;
   column-gap: 14px;
@@ -933,7 +933,8 @@ pre {
 .page-stage {
   height: 491px;
   min-height: 0;
-  max-height: none;
+  max-height: min(60vh, 640px);
+  overflow: auto;
 }
 .viewer-footnote {
   position: absolute;
@@ -971,7 +972,7 @@ pre {
 }
 .radio-mark { display: none; }
 #decision-form form { gap: 10px; }
-.decision-option { min-height: 43px; }
+.decision-option { min-height: 44px; }
 #decision-notes { min-height: 100px; }
 .process-strip {
   min-height: 40px;
@@ -990,89 +991,12 @@ pre {
 .footer-meta { gap: 12px; }
 .footer-meta code { color: inherit; font-size: inherit; }
 .footer-divider { color: var(--border-strong); }
-@media (max-width: 1100px) {
-  .app-shell {
-    width: calc(100% - 20px);
-    margin: 10px auto;
-  }
-
-  .review-workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "summary"
-      "additional"
-      "items"
-      "detail"
-      "viewer"
-      "decision"
-      "audit";
-  }
-
-  #decision-form {
-    position: static;
-  }
-
-  .page-stage {
-    min-height: 320px;
-    max-height: none;
-  }
-}
-
-@media (max-width: 700px) {
-  .status-band,
-  .result-card {
-    grid-template-columns: 1fr;
-  }
-
-  .header-actions {
-    justify-self: start;
-  }
-
-  .result-facts {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .result-facts div {
-    border-left: 0;
-    border-top: 1px solid var(--border);
-    padding: 8px 0 0;
-  }
-
-  .viewer-heading,
-  .decision-heading {
-    display: grid;
-  }
-
-  .viewer-controls {
-    justify-content: flex-start;
-  }
-
-  .review-item-list {
-    display: grid;
-  }
-
-  .review-item {
-    width: 100%;
-  }
-}
 
 @page {
   size: A4;
   margin: 12mm;
 }
 
-@media (max-width: 1100px) {
-  #review-items,
-  #evidence-viewer,
-  #decision-form {
-    height: auto;
-    min-height: 0;
-  }
-  .viewer-body { height: auto; min-height: 320px; }
-  .page-stage { height: auto; min-height: 320px; }
-  .viewer-footnote { position: static; }
-  #packet-global-review { height: auto; min-height: 56px; margin-top: 0; }
-}
 @media print {
   :root {
     --bg: #fff;

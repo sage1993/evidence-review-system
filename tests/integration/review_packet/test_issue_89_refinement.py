@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import re
 import subprocess
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from ansim_review.review_packet.html_renderer import render_review_html
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
+
+
+def _installed_version() -> str:
+    try:
+        return version("evidence-review-system")
+    except PackageNotFoundError:
+        return "development"
 
 
 def _inline_controller(html: str) -> str:
@@ -31,6 +39,7 @@ def test_image_matched_workspace_contract_has_three_columns_and_reference_hierar
     assert '"additional additional additional"' in html
     assert "max-height: min(60vh, 640px)" in html
 
+
 def test_reference_layout_has_evidence_column_above_pdf_and_decision_column(
     tmp_path: Path,
 ) -> None:
@@ -53,9 +62,9 @@ def test_reference_pdf_viewer_has_toolbar_thumbnail_rail_and_page_controls(
     html = render_review_html(_model(), tmp_path / "pages")
 
     assert 'class="thumbnail-rail"' in html
-    assert 'data-page-select' in html
-    assert 'data-page-prev' in html
-    assert 'data-page-next' in html
+    assert "data-page-select" in html
+    assert "data-page-prev" in html
+    assert "data-page-next" in html
     assert "PDF" in html
 
 
@@ -64,7 +73,7 @@ def test_reference_decision_panel_has_image_matched_notes_counter(tmp_path: Path
     html = render_review_html(_model(), tmp_path / "pages")
 
     assert 'class="decision-note-footer"' in html
-    assert 'data-notes-count' in html
+    assert "data-notes-count" in html
     assert "1,000" in html
 
 
@@ -114,6 +123,7 @@ def test_browser_controller_contains_keyboard_evidence_and_notes_validation(tmp_
     )
     assert completed.returncode == 0, completed.stderr
 
+
 def test_p0_frame_and_grid_match_reference_geometry_contract(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
     html = render_review_html(_model(), tmp_path / "pages")
@@ -132,9 +142,9 @@ def test_p0_audit_and_footer_use_reference_labels(tmp_path: Path) -> None:
 
     assert "감사 정보" in html
     assert "Evidence Review System" in html
-    assert "v1.0.0" in html
-    assert 'data-packet-hash' in html
-    assert 'data-created-at' in html
+    assert f"v{_installed_version()}" in html
+    assert "data-packet-hash" not in html
+    assert "data-created-at" in html
 
 
 def test_p0_decision_options_render_one_radio_control_each(tmp_path: Path) -> None:
@@ -182,8 +192,55 @@ def test_evidence_card_focuses_its_pdf_page_in_browser_controller(tmp_path: Path
     _write_page_assets(tmp_path / "pages")
     controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
 
-    assert 'focusEvidence(item.dataset.itemId)' in controller
-    focus_start = controller.index('function focusEvidence')
-    focus_end = controller.index('function setActivePage')
-    assert 'setActivePage(assetKey);' in controller[focus_start:focus_end]
-    assert 'data-asset-key=' in render_review_html(_model(), tmp_path / "pages")
+    assert "focusEvidence(item.dataset.itemId, item.dataset.evidenceId)" in controller
+    focus_start = controller.index("function focusEvidence")
+    focus_end = controller.index("function setActivePage")
+    assert "setActivePage(assetKey);" in controller[focus_start:focus_end]
+    assert "data-asset-key=" in render_review_html(_model(), tmp_path / "pages")
+
+
+def test_multi_citation_cards_preserve_each_identity_and_focus_target(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    model = _model()
+    claims = model["claims"]
+    assert isinstance(claims, list) and isinstance(claims[0], dict)
+    citations = claims[0]["citations"]
+    assert isinstance(citations, list) and isinstance(citations[0], dict)
+    citations.append(
+        {
+            **citations[0],
+            "citation_id": "CIT-E2",
+            "evidence_id": "E2",
+            "bbox": [20.0, 30.0, 100.0, 50.0],
+            "evidence_type": "table",
+        }
+    )
+
+    html = render_review_html(model, tmp_path / "pages")
+    nav = re.search(r'<nav id="review-items".*?</nav>', html, re.DOTALL)
+    assert nav is not None
+    assert nav.group(0).count('class="review-item evidence-card') == 2
+    assert 'data-evidence-id="E1"' in nav.group(0)
+    assert 'data-evidence-id="E2"' in nav.group(0)
+    assert html.count('class="citation"') == 2
+    assert html.count('class="citation-overlay"') == 2
+
+    controller = _inline_controller(html)
+    assert "focusEvidence(item.dataset.itemId, item.dataset.evidenceId)" in controller
+
+
+def test_evidence_type_pill_uses_canonical_value_and_hides_unknown_types(tmp_path: Path) -> None:
+    known = _model()
+    known["claims"][0]["citations"][0]["evidence_type"] = "clause"
+    _write_page_assets(tmp_path / "known-pages")
+    known_html = render_review_html(known, tmp_path / "known-pages")
+    assert "조항 근거" in known_html
+    assert "직접 근거" not in known_html
+
+    unknown = _model()
+    unknown["claims"][0]["citations"][0]["evidence_type"] = "unsupported"
+    _write_page_assets(tmp_path / "unknown-pages")
+    unknown_html = render_review_html(unknown, tmp_path / "unknown-pages")
+    nav = re.search(r'<nav id="review-items".*?</nav>', unknown_html, re.DOTALL)
+    assert nav is not None
+    assert 'class="evidence-type-pill"' not in nav.group(0)

@@ -165,9 +165,9 @@
     });
   }
 
-  function selectReviewItem(itemId) {
+  function selectReviewItem(itemId, evidenceId) {
     document.querySelectorAll(".review-item, .detail-panel").forEach((node) => {
-      const selected = node.dataset.itemId === itemId;
+      const selected = node.dataset.itemId === itemId && (!node.classList.contains("review-item") || !evidenceId || node.dataset.evidenceId === evidenceId);
       node.classList.toggle("is-selected", selected);
       if (node.classList.contains("review-item")) {
         node.setAttribute("aria-pressed", selected ? "true" : "false");
@@ -187,10 +187,7 @@
     document.querySelectorAll(".detail-panel [data-tab-panel]").forEach((panel) => {
       panel.hidden = panel.dataset.tabPanel !== tabName;
     });
-    applyReviewerLayout();
-  enhanceReviewerSurface();
-  setProtectedMode(false);
-  updateTabControls(selectedDetailPanel());
+    updateTabControls(selectedDetailPanel());
   }
 
   let printPanelStates = null;
@@ -215,7 +212,7 @@
       assetKey = item ? item.dataset.assetKey : itemId;
       evidenceId = item ? item.dataset.evidenceId : evidenceId;
     } else {
-      selectReviewItem(itemId);
+      selectReviewItem(itemId, evidenceId);
       const citation = Array.from(document.querySelectorAll(".citation")).find((node) => {
         const panel = node.closest(".detail-panel");
         return panel && panel.dataset.itemId === itemId && node.dataset.evidenceId === evidenceId;
@@ -263,20 +260,21 @@
     const next = Math.max(0, Math.min(pages.length - 1, active + delta));
     setActivePage(pages[next].dataset.assetKey);
   }
-  function applyReviewerLayout() {
-    const style = document.createElement("style");
-    style.id = "reviewer-layout-refinement";
-    style.textContent = ".review-workspace{grid-template-columns:minmax(320px,360px) minmax(0,1fr) minmax(320px,360px)}"
-      + ".page-stage{max-height:min(60vh,640px);overflow:auto}"
-      + "#evidence-zoom{min-height:44px}"
-      + ".bbox-location,.citation-audit,.item-audit{display:none!important}";
-    document.head.appendChild(style);
-  }
 
   function enhanceReviewerSurface() {
     document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
       const label = VIEWER_LABELS[button.dataset.viewerMode];
       if (label) button.textContent = label;
+    });
+    const pageImages = new Map(
+      Array.from(document.querySelectorAll("[data-page-image-source]")).map((image) => [
+        image.dataset.pageImageSource,
+        image.getAttribute("src") || ""
+      ])
+    );
+    document.querySelectorAll("[data-page-image-for]").forEach((image) => {
+      const source = pageImages.get(image.dataset.pageImageFor);
+      if (source) image.setAttribute("src", source);
     });
   }
 
@@ -366,7 +364,7 @@
   });  document.querySelectorAll(".review-item").forEach((item) => {
     item.addEventListener("click", () => {
       selectReviewItem(item.dataset.itemId);
-      focusEvidence(item.dataset.itemId);
+      focusEvidence(item.dataset.itemId, item.dataset.evidenceId);
     });
   });
   document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
@@ -443,6 +441,7 @@
   if (printButton) printButton.addEventListener("click", () => window.print());
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
+  enhanceReviewerSurface();
   updateTabControls(selectedDetailPanel());
   updateReviewerSession();
   void refreshDisplayStatus();

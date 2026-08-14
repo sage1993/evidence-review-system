@@ -1,4 +1,5 @@
 """Non-developer presentation policy for the Review Workspace."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -26,6 +27,19 @@ _ISSUE_LABELS = {
 }
 
 _NO_ANSWER_FALLBACK = "질문에 대한 결론이 제공되지 않았습니다."
+_EVIDENCE_TYPE_LABELS = {
+    "clause": "조항 근거",
+    "text": "본문 근거",
+    "table": "표 근거",
+    "visual": "시각 근거",
+}
+
+
+def evidence_type_label(value: object) -> str | None:
+    """Return a reviewer label only for canonical evidence types."""
+    if not isinstance(value, str):
+        return None
+    return _EVIDENCE_TYPE_LABELS.get(value)
 
 
 def _mapping(value: object) -> Mapping[str, object]:
@@ -93,6 +107,7 @@ def has_rules_or_calculations(model: Mapping[str, object]) -> bool:
 __all__ = [
     "additional_review_items",
     "conclusion_text",
+    "evidence_type_label",
     "has_rules_or_calculations",
     "localized_status",
 ]

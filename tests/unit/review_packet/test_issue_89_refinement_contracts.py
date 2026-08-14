@@ -34,7 +34,11 @@ def test_answer_summary_precedes_claim_fallback_and_never_uses_status_as_conclus
     }
 
     assert conclusion_text(model) == "정식 결론입니다."
-    assert conclusion_text({**model, "answer_summary": None}) == "주장 fallback"
+    fallback = (
+        "\uC9C8\uBB38\uC5D0 \uB300\uD55C \uACB0\uB860\uC774 \uC81C\uACF5\uB418\uC9C0 "
+        "\uC54A\uC558\uC2B5\uB2C8\uB2E4."
+    )
+    assert conclusion_text({**model, "answer_summary": None}) == fallback
     assert conclusion_text({"status": "ABSTAIN", "claims": []}) != "추가 자료 필요"
 
 
