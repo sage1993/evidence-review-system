@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import unicodedata
 from decimal import Decimal
@@ -10,7 +11,12 @@ from ansim_review.canonical_json import dumps
 from ansim_review.contracts.common import BBox
 from ansim_review.retrieval.models import ChannelScore, RetrievalHit
 
-_GROUP_CHANNELS = frozenset({"fts_entity", "fts_numeric", "fts_concept"})
+_GROUP_CHANNELS = frozenset({
+    "fts_entity",
+    "fts_numeric",
+    "fts_concept",
+    "fts_korean_compound",
+})
 
 
 class StaleRetrievalIndexError(RuntimeError):
@@ -20,6 +26,28 @@ class StaleRetrievalIndexError(RuntimeError):
 def _nfc(value: str | None) -> str:
     return unicodedata.normalize("NFC", value or "")
 
+
+_HANGUL_TOKEN = re.compile(r"^[\uac00-\ud7a3]+$")
+
+
+def _fts_search_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFC", " ".join(value.split()))
+    for marker in ("\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"):
+        normalized = normalized.replace(marker, "")
+
+    tokens = normalized.split()
+    aliases: list[str] = []
+    for size in (2, 3):
+        for start in range(0, len(tokens) - size + 1):
+            group = tokens[start : start + size]
+            cleaned = [
+                token.strip(".,!?;:()[]{}<>\\\"'“”‘’") for token in group
+            ]
+            if all(_HANGUL_TOKEN.fullmatch(token) for token in cleaned):
+                aliases.append("".join(cleaned))
+
+    values = [normalized, *aliases]
+    return " ".join(dict.fromkeys(value for value in values if value))
 
 def _bbox(value: str | None) -> BBox | None:
     if value is None:
@@ -171,7 +199,7 @@ def build_fts_index(connection: sqlite3.Connection) -> str:
             INSERT INTO evidence_fts(evidence_id, title, raw_text, normalized_text)
             VALUES(?, ?, ?, ?)
             """,
-            ((row[0], row[8], row[9], row[10]) for row in rows),
+            ((row[0], row[8], row[9], _fts_search_text(str(row[10]))) for row in rows),
         )
         connection.execute(
             """

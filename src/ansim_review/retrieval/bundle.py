@@ -15,7 +15,10 @@ from ansim_review.retrieval.index import (
     search_fts_phrase,
     search_fts_token_and,
 )
-from ansim_review.retrieval.korean_variants import derive_korean_query_variants
+from ansim_review.retrieval.korean_variants import (
+    derive_korean_compound_variants,
+    derive_korean_query_variants,
+)
 from ansim_review.retrieval.models import (
     ChannelScore,
     CitationUnavailableError,
@@ -28,7 +31,7 @@ from ansim_review.retrieval.structured import (
 )
 
 _GROUPED_CONTEXT_CHANNELS = frozenset(
-    {"fts_entity", "fts_numeric", "fts_concept"}
+    {"fts_entity", "fts_numeric", "fts_concept", "fts_korean_compound"}
 )
 
 
@@ -179,6 +182,28 @@ def _origin_hits(
     return tuple(channels)
 
 
+def _compound_variant_hits(
+    connection: sqlite3.Connection,
+    primary: str,
+    limit: int,
+) -> tuple[tuple[RetrievalHit, ...], ...]:
+    channels: list[tuple[RetrievalHit, ...]] = []
+    for term in derive_korean_compound_variants(primary):
+        hits = search_fts_literal(
+            connection,
+            term,
+            channel="fts_korean_compound",
+            limit=limit,
+        )
+        channels.append(
+            _trace_hits(
+                hits,
+                origin="derived:korean_compound",
+                term=term,
+            )
+        )
+    return tuple(channels)
+
 def _derived_variant_hits(
     connection: sqlite3.Connection,
     primary: str,
@@ -247,10 +272,12 @@ def build_evidence_bundle(
         graph_depth,
         limit,
     ) = _normalize_request(request_payload)
+    compound_variants = derive_korean_compound_variants(query.primary)
     variants = derive_korean_query_variants(query.primary)
     channels: list[Sequence[RetrievalHit]] = list(
         _origin_hits(connection, query, limit)
     )
+    channels.extend(_compound_variant_hits(connection, query.primary, limit))
     channels.extend(_derived_variant_hits(connection, query.primary, limit))
     if filters:
         channels.append(retrieve_structured(connection, filters, limit))
@@ -289,6 +316,7 @@ def build_evidence_bundle(
                 for term in query.terms
             ],
             "derived_variants": {
+                "compound": list(compound_variants),
                 "entity": list(variants.entity),
                 "numeric": list(variants.numeric),
                 "concept": list(variants.concept),

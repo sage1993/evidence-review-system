@@ -4,6 +4,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.bundle import build_evidence_bundle
@@ -183,3 +185,41 @@ def test_real_question_returns_separately_cited_row_context_without_crossing_bou
     assert "structural_context" in {
         score["channel"] for score in hits["E-CULTURE-DESC"]["channel_scores"]
     }
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_ids"),
+    [
+        (
+            "\uccad\uc18c\ub144 \ubb38\ud654\uc758\uc9d1 \uc124\uce58\uae30\uc900",
+            {"E-CULTURE-LABEL", "E-CULTURE-DESC"},
+        ),
+        (
+            "\uccad\uc18c\ub144\ubb38\ud654\uc758\uc9d1 \uc124\uce58\uae30\uc900",
+            {"E-CULTURE-LABEL", "E-CULTURE-DESC"},
+        ),
+        (
+            "\uccad\uc18c\ub144\uc218\ub828\uad00 \uc124\uce58\uae30\uc900",
+            {"E-ROW-LABEL", "E-ROW-CRITERION"},
+        ),
+    ],
+)
+def test_bare_korean_formal_review_question_retrieves_without_user_expansion(
+    tmp_path: Path,
+    question: str,
+    expected_ids: set[str],
+) -> None:
+    with _store(tmp_path) as store:
+        bundle = build_evidence_bundle(
+            store.require_connection(),
+            {
+                "question": question,
+                "synonym_manifest": {},
+                "expansions": [],
+                "limit": 20,
+            },
+        )
+
+    hits = {item["evidence_id"]: item for item in bundle["hits"]}
+    assert expected_ids <= set(hits)
+    assert all(term["origin"] != "user" for term in bundle["query"]["terms"])

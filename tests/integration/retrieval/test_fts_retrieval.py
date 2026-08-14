@@ -86,3 +86,28 @@ def test_stale_index_is_rejected(tmp_path: Path) -> None:
             match="snapshot hash mismatch",
         ):
             search_fts(store.require_connection(), "이면도로")
+
+
+def test_fts_shadow_aliases_preserve_authority_fields(tmp_path: Path) -> None:
+    expected = (
+        "\uc8fc\ucc28 \uad6c\ud68d\uc120 "
+        "\ud06c\uae30\ub294 \uae30\uc900\uc5d0 "
+        "\ub9de\ucdb0\uc57c \ud55c\ub2e4."
+    )
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(store, _snapshot(expected))
+        build_fts_index(store.require_connection())
+        record = (
+            store.require_connection()
+            .execute(
+                "SELECT raw_text, normalized_text, source_hash FROM retrieval_records "
+                "WHERE evidence_id = ?",
+                ("E-KR-1",),
+            )
+            .fetchone()
+        )
+
+    assert record is not None
+    assert record["raw_text"] == expected
+    assert record["normalized_text"] == expected
+    assert record["source_hash"] == "a" * 64
