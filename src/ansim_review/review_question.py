@@ -423,7 +423,8 @@ def prepare_review_question(
     _write_or_identical(run_directory / "evidence-query.json", bundle)
 
     guidance_path: Path | None = None
-    attempted = bundle["query"].get("attempted_terms", [])
+    query_payload = _mapping(bundle["query"], "evidence_bundle.query")
+    attempted = query_payload.get("attempted_terms", [])
     if not bundle["hits"] and attempted:
         guidance_path = run_directory / "retrieval-guidance.json"
         _write_or_identical(
@@ -431,7 +432,7 @@ def prepare_review_question(
             {
                 "format": "evidence-review/retrieval-guidance",
                 "version": 1,
-                "query": bundle["query"]["primary"],
+                "query": query_payload["primary"],
                 "attempted_terms": attempted,
                 "authoritative_hit_count": 0,
             },

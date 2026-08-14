@@ -211,11 +211,12 @@ def _derived_variant_hits(
 ) -> tuple[tuple[RetrievalHit, ...], ...]:
     variants = derive_korean_query_variants(primary)
     channels: list[tuple[RetrievalHit, ...]] = []
-    for group, terms in (
+    derived_groups: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("entity", variants.entity),
         ("numeric", variants.numeric),
         ("concept", variants.concept),
-    ):
+    )
+    for group, terms in derived_groups:
         for term in terms:
             hits = search_fts_literal(
                 connection,
@@ -276,26 +277,28 @@ def build_evidence_bundle(
     variants = derive_korean_query_variants(query.primary)
     attempted_terms: list[dict[str, str]] = []
     attempted_seen: set[tuple[str, str]] = set()
-    for term in query.terms:
-        candidate = (term.text, term.origin)
+    candidate: tuple[str, str]
+    for query_term in query.terms:
+        candidate = (query_term.text, query_term.origin)
         if candidate not in attempted_seen:
             attempted_seen.add(candidate)
-            attempted_terms.append({"text": term.text, "origin": term.origin})
-    for term in compound_variants:
-        candidate = (term, "derived:korean_compound")
+            attempted_terms.append({"text": query_term.text, "origin": query_term.origin})
+    for compound_term in compound_variants:
+        candidate = (compound_term, "derived:korean_compound")
         if candidate not in attempted_seen:
             attempted_seen.add(candidate)
-            attempted_terms.append({"text": term, "origin": "derived:korean_compound"})
-    for group, terms in (
+            attempted_terms.append({"text": compound_term, "origin": "derived:korean_compound"})
+    derived_groups: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("entity", variants.entity),
         ("numeric", variants.numeric),
         ("concept", variants.concept),
-    ):
-        for term in terms:
-            candidate = (term, f"derived:{group}")
+    )
+    for group, derived_terms in derived_groups:
+        for derived_term in derived_terms:
+            candidate = (derived_term, f"derived:{group}")
             if candidate not in attempted_seen:
                 attempted_seen.add(candidate)
-                attempted_terms.append({"text": term, "origin": f"derived:{group}"})
+                attempted_terms.append({"text": derived_term, "origin": f"derived:{group}"})
     channels: list[Sequence[RetrievalHit]] = list(
         _origin_hits(connection, query, limit)
     )
