@@ -19,8 +19,9 @@ from urllib.parse import unquote, urlsplit
 
 from ansim_review.contracts.identifiers import validate_identifier
 from ansim_review.review_packet.decision_record import (
+    HumanDecisionRecord,
     build_human_decision_envelope,
-    has_valid_human_decision,
+    load_latest_valid_human_decision,
     validate_human_decision_request,
     write_human_decision,
 )
@@ -293,6 +294,19 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         except OSError:
             return None
 
+    def _latest_decision(
+        self,
+        run_id: str,
+        packet_bytes: bytes,
+    ) -> HumanDecisionRecord | None:
+        run_directory = self._run_directory(run_id)
+        if run_directory is None:
+            return None
+        return load_latest_valid_human_decision(
+            run_directory,
+            hashlib.sha256(packet_bytes).hexdigest(),
+        )
+
     def _display_status(self, run_id: str, packet_bytes: bytes) -> str:
         try:
             document = json.loads(packet_bytes.decode("utf-8"))
@@ -303,10 +317,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             candidate = document.get("finalizer_status", document.get("status"))
             if isinstance(candidate, str) and candidate:
                 machine_status = candidate
-        run_directory = self._run_directory(run_id)
-        if run_directory is not None and has_valid_human_decision(
-            run_directory, hashlib.sha256(packet_bytes).hexdigest()
-        ):
+        if self._latest_decision(run_id, packet_bytes) is not None:
             return "REVIEW_COMPLETED"
         return machine_status
 
@@ -334,12 +345,23 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             if packet_bytes is None:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
+            packet_hash = hashlib.sha256(packet_bytes).hexdigest()
+            record = self._latest_decision(route.run_id, packet_bytes)
+            decision_record: dict[str, str] | None = None
+            if record is not None:
+                decision_record = {
+                    "reviewer_id": record.reviewer_id,
+                    "reviewed_at": record.reviewed_at,
+                    "decision": record.decision,
+                    "notes": record.notes,
+                }
             self._send_json(
                 HTTPStatus.OK,
                 {
                     "display_status": self._display_status(route.run_id, packet_bytes),
                     "reviewer_id": self.state.reviewer_ids.get(route.run_id),
-                    "packet_hash": hashlib.sha256(packet_bytes).hexdigest(),
+                    "packet_hash": packet_hash,
+                    "decision_record": decision_record,
                 },
             )
             return
