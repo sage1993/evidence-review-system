@@ -10,7 +10,14 @@ from pathlib import Path
 
 from evidence_review.diagnostics import collect_runtime_diagnostics, preflight_runtime
 
-__all__ = ["main"]
+__all__ = ["main", "build_parser"]  # noqa: F822
+
+def __getattr__(name: str) -> object:
+    if name == "build_parser":
+        from ansim_review.cli_parser import build_parser
+
+        return build_parser
+    raise AttributeError(name)
 
 
 def _doctor_parser() -> argparse.ArgumentParser:
