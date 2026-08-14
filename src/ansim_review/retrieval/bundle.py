@@ -274,6 +274,28 @@ def build_evidence_bundle(
     ) = _normalize_request(request_payload)
     compound_variants = derive_korean_compound_variants(query.primary)
     variants = derive_korean_query_variants(query.primary)
+    attempted_terms: list[dict[str, str]] = []
+    attempted_seen: set[tuple[str, str]] = set()
+    for term in query.terms:
+        candidate = (term.text, term.origin)
+        if candidate not in attempted_seen:
+            attempted_seen.add(candidate)
+            attempted_terms.append({"text": term.text, "origin": term.origin})
+    for term in compound_variants:
+        candidate = (term, "derived:korean_compound")
+        if candidate not in attempted_seen:
+            attempted_seen.add(candidate)
+            attempted_terms.append({"text": term, "origin": "derived:korean_compound"})
+    for group, terms in (
+        ("entity", variants.entity),
+        ("numeric", variants.numeric),
+        ("concept", variants.concept),
+    ):
+        for term in terms:
+            candidate = (term, f"derived:{group}")
+            if candidate not in attempted_seen:
+                attempted_seen.add(candidate)
+                attempted_terms.append({"text": term, "origin": f"derived:{group}"})
     channels: list[Sequence[RetrievalHit]] = list(
         _origin_hits(connection, query, limit)
     )
@@ -315,6 +337,7 @@ def build_evidence_bundle(
                 {"text": term.text, "origin": term.origin}
                 for term in query.terms
             ],
+            "attempted_terms": attempted_terms,
             "derived_variants": {
                 "compound": list(compound_variants),
                 "entity": list(variants.entity),

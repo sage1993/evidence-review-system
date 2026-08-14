@@ -531,6 +531,11 @@ def _review_question_prepare(
                 None if result.next_action_path is None else str(result.next_action_path)
             ),
             "resumed": result.resumed,
+            "retrieval_guidance_path": (
+                None
+                if result.retrieval_guidance_path is None
+                else str(result.retrieval_guidance_path)
+            ),
         }
     )
     return 0

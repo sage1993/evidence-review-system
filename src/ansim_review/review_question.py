@@ -52,6 +52,7 @@ class PreparedReviewQuestion:
     status: str
     next_action_path: Path | None
     resumed: bool
+    retrieval_guidance_path: Path | None
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -421,6 +422,21 @@ def prepare_review_question(
         prepare_metric = finish_stage("prepare", prepare_timer)
     _write_or_identical(run_directory / "evidence-query.json", bundle)
 
+    guidance_path: Path | None = None
+    attempted = bundle["query"].get("attempted_terms", [])
+    if not bundle["hits"] and attempted:
+        guidance_path = run_directory / "retrieval-guidance.json"
+        _write_or_identical(
+            guidance_path,
+            {
+                "format": "evidence-review/retrieval-guidance",
+                "version": 1,
+                "query": bundle["query"]["primary"],
+                "attempted_terms": attempted,
+                "authoritative_hit_count": 0,
+            },
+        )
+
     for metric in (
         normalization_metric,
         retrieval_metric,
@@ -441,6 +457,7 @@ def prepare_review_question(
         status=status,
         next_action_path=next_action_path,
         resumed=resumed,
+        retrieval_guidance_path=guidance_path,
     )
 
 

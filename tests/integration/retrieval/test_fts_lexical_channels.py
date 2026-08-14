@@ -278,3 +278,26 @@ def test_korean_compound_channel_retrieves_authoritative_element(
     channels = {item["channel"] for item in hit["channel_scores"]}
     assert "fts_korean_compound" in channels or "fts_phrase" in channels
     assert hit["citation"]["evidence_id"] == expected_id
+
+
+def test_zero_hit_bundle_reports_attempted_deterministic_terms_without_hits(
+    tmp_path: Path,
+) -> None:
+    with _store(tmp_path) as store:
+        bundle = build_evidence_bundle(
+            store.require_connection(),
+            {
+                "question": "존재하지않는시설 설치기준",
+                "synonym_manifest": {},
+                "expansions": [],
+                "limit": 20,
+            },
+        )
+
+    assert bundle["hits"] == []
+    assert bundle["query"]["primary"] == "존재하지않는시설 설치기준"
+    assert bundle["query"]["attempted_terms"]
+    assert all(
+        item["origin"].startswith("derived:") or item["origin"] == "primary"
+        for item in bundle["query"]["attempted_terms"]
+    )

@@ -706,3 +706,51 @@ def test_review_question_submit_track_b_open_preserves_finalization_on_display_f
     assert document["display_status"] == "OPEN_FAILED"
     assert "browser dispatch failed" in document["display_error"]
     assert "url" not in document
+
+def test_prepare_zero_hit_emits_guidance_but_keeps_authoritative_evidence_empty(
+    tmp_path: Path,
+) -> None:
+    workspace, _snapshot_hash = _korean_workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, "존재하지않는시설 설치기준")
+    run_directory = workspace / "runs" / prepared.run_id
+
+    request = json.loads(
+        (run_directory / "review-request.json").read_text(encoding="utf-8")
+    )
+    assert prepared.retrieval_guidance_path is not None
+    guidance = json.loads(
+        prepared.retrieval_guidance_path.read_text(encoding="utf-8")
+    )
+
+    assert request["evidence"] == []
+    assert guidance["authoritative_hit_count"] == 0
+    assert guidance["attempted_terms"]
+    assert all(
+        value["value"] == "0.0"
+        for name, value in request["confidence_input"]["factors"].items()
+        if name in {"source completeness", "traceability", "input completeness"}
+    )
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "청소년 문화의집 설치기준",
+        "청소년문화의집 설치기준",
+        "청소년수련관 설치기준",
+    ],
+)
+def test_reported_korean_question_prepares_with_authoritative_evidence_without_expansion(
+    tmp_path: Path,
+    question: str,
+) -> None:
+    workspace, snapshot_hash = _korean_workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, question)
+    run_directory = workspace / "runs" / prepared.run_id
+    request = json.loads(
+        (run_directory / "review-request.json").read_text(encoding="utf-8")
+    )
+
+    assert request["evidence"]
+    assert request["inputs"]["snapshot_hash"] == snapshot_hash
+    assert prepared.retrieval_guidance_path is None
