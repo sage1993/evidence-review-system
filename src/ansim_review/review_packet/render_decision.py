@@ -35,7 +35,7 @@ def render_decision_form(model: Mapping[str, object]) -> str:
     }
     option_html = "".join(
         '<label class="decision-option"><input type="radio" name="decision" '
-        f'value="{_text(option)}" required><strong>'  # noqa: E501
+        f'value="{_text(option)}" required><strong>'
         f'{_text(labels.get(str(option), str(option)))}</strong></label>'
         for option in options
     )
@@ -47,8 +47,23 @@ def render_decision_form(model: Mapping[str, object]) -> str:
             '<p data-archive-only>검토 결과를 선택하고 필요한 의견을 입력하십시오.</p>',
             '<span class="visually-hidden">최종 결정</span>',
             '<div class="decision-panel-heading"><h2 id="decision-heading">검토자 의견</h2></div>',
+            '<div class="persisted-decision" data-persisted-decision hidden>',
+            '<h3>저장된 검토 결정</h3>',
+            '<dl>',
+            '<div><dt>검토자</dt><dd data-persisted-reviewer></dd></div>',
+            '<div><dt>검토 시각</dt><dd data-persisted-reviewed-at></dd></div>',
+            '<div><dt>결정</dt><dd data-persisted-decision-value></dd></div>',
+            '<div><dt>검토 의견</dt><dd data-persisted-notes></dd></div>',
+            '</dl>',
+            '<button type="button" class="secondary-action" data-add-decision ',
+            'data-protected-only hidden>추가 결정 기록</button>',
+            '<p class="decision-storage-note">',
+            icon_svg("lock", size=14),
+            ' 기존 기록은 수정하지 않고 새 append-only 기록을 추가합니다.</p>',
+            '</div>',
             '<form action="./decision" method="post">',
             f'<input type="hidden" name="packet_sha256" value="{packet_hash}">',
+            '<div data-decision-editor>',
             '<fieldset class="decision-choices"><legend>판정</legend>',
             option_html or '<p class="empty-state">허용된 결정 값이 없습니다.</p>',
             '</fieldset>',
@@ -60,14 +75,17 @@ def render_decision_form(model: Mapping[str, object]) -> str:
             '<span id="review-notes" class="visually-hidden" aria-hidden="true"></span>',
             '<p id="notes-help" class="visually-hidden">notes help</p>',
             '<p id="notes-error" class="visually-hidden"></p>',
-            '<span class="decision-note-footer"><span></span><span data-notes-count>0 / 1,000</span></span>',  # noqa: E501
+            '<span class="decision-note-footer"><span></span><span data-notes-count>0 / 1,000</span></span>',
             '</label>',
             '<p id="decision-notes-error" class="field-error" role="alert" aria-live="polite"></p>',
             '<p class="reviewer-session visually-hidden" data-reviewer-session></p>',
-            '<div class="decision-actions"><button class="primary-action" data-protected-only type="submit">결정 저장</button>',  # noqa: E501
-            '<button type="button" class="secondary-action" data-download-decision data-archive-only hidden>결정 JSON 다운로드</button></div>',  # noqa: E501
-            '<p class="decision-storage-note">', icon_svg("lock", size=14), ' 저장 시 검토 기록이 추가되며, 수정은 불가능합니다.</p>',  # noqa: E501
+            '<div class="decision-actions"><button class="primary-action" data-protected-only type="submit">결정 저장</button>',
+            '<button type="button" class="secondary-action" data-download-decision data-archive-only hidden>결정 JSON 다운로드</button></div>',
+            '<p class="decision-storage-note">',
+            icon_svg("lock", size=14),
+            ' 저장 시 검토 기록이 추가되며, 수정은 불가능합니다.</p>',
             '<p class="form-status" aria-live="polite"></p>',
+            '</div>',
             '</form></section>',
         )
     )
