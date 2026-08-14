@@ -10,9 +10,7 @@
   "historical_roots": [
     "docs/acceptance"
   ],
-  "current_overrides": [
-    "docs/acceptance/issue-52/README.md"
-  ],
+  "current_overrides": [],
   "historical_overrides": [],
   "generated_documents": [
     {
