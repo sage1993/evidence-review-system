@@ -266,6 +266,66 @@
     printPanelStates = null;
   }
 
+  function activeSourceId() {
+    const active = document.querySelector(".evidence-page.is-active");
+    if (active && active.dataset.sourceId) return active.dataset.sourceId;
+    const selector = document.querySelector("[data-source-select]");
+    if (selector && selector.value) return selector.value;
+    const first = document.querySelector(".evidence-page[data-source-id]");
+    return first ? first.dataset.sourceId : "";
+  }
+
+  function setActiveSource(sourceId, requestedAssetKey) {
+    if (!sourceId) return;
+    const selector = document.querySelector("[data-source-select]");
+    if (selector) selector.value = sourceId;
+    document.querySelectorAll(".evidence-page[data-source-id]").forEach((page) => {
+      const sameSource = page.dataset.sourceId === sourceId;
+      page.hidden = !sameSource;
+      if (!sameSource) page.classList.remove("is-active");
+    });
+    document.querySelectorAll("[data-page-select][data-source-id]").forEach((thumb) => {
+      const sameSource = thumb.dataset.sourceId === sourceId;
+      thumb.hidden = !sameSource;
+      if (!sameSource) thumb.classList.remove("is-active");
+    });
+    const requested = requestedAssetKey
+      ? document.querySelector('.evidence-page[data-asset-key="' + requestedAssetKey + '"][data-source-id="' + sourceId + '"]')
+      : null;
+    const target = requested || document.querySelector('.evidence-page[data-source-id="' + sourceId + '"]');
+    if (target) setActivePage(target.dataset.assetKey);
+  }
+
+  function setActivePage(assetKey) {
+    const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
+    if (!page) return;
+    if (page.dataset.sourceId && page.dataset.sourceId !== activeSourceId()) {
+      setActiveSource(page.dataset.sourceId, assetKey);
+      return;
+    }
+    document.querySelectorAll('.evidence-page').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.assetKey === assetKey);
+    });
+    document.querySelectorAll('[data-page-select]').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.pageSelect === assetKey);
+    });
+    const position = document.querySelector('[data-current-source-position]');
+    const count = document.querySelector('[data-current-source-count]');
+    const original = document.querySelector('[data-current-original-page]');
+    if (position) position.textContent = page.dataset.sourcePosition || "1";
+    if (count) count.textContent = page.dataset.sourceCount || "1";
+    if (original) original.textContent = page.dataset.originalPage || "";
+  }
+
+  function movePage(delta) {
+    const sourceId = activeSourceId();
+    const pages = Array.from(document.querySelectorAll('.evidence-page[data-source-id="' + sourceId + '"]'));
+    const active = pages.findIndex((node) => node.classList.contains('is-active'));
+    if (active < 0 || pages.length === 0) return;
+    const next = Math.max(0, Math.min(pages.length - 1, active + delta));
+    setActivePage(pages[next].dataset.assetKey);
+  }
+
   function focusEvidence(itemId, evidenceId) {
     const citation = Array.from(document.querySelectorAll(".citation")).find((node) => {
       const panel = node.closest(".detail-panel");
@@ -273,17 +333,20 @@
     });
     const assetKey = citation ? citation.dataset.assetKey : "";
     if (!assetKey) return false;
-
-    setActivePage(assetKey);
+    const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
+    const sourceId = citation && citation.dataset.sourceId
+      ? citation.dataset.sourceId
+      : page && page.dataset.sourceId
+        ? page.dataset.sourceId
+        : "";
+    if (sourceId) setActiveSource(sourceId, assetKey);
+    else setActivePage(assetKey);
     document.querySelectorAll(".citation-overlay").forEach((overlay) => {
       overlay.classList.toggle(
         "is-focused",
         overlay.dataset.evidenceId === evidenceId
       );
     });
-    const page = Array.from(document.querySelectorAll(".evidence-page")).find(
-      (node) => node.dataset.assetKey === assetKey
-    );
     if (page) {
       page.scrollIntoView({ behavior: "smooth", block: "nearest" });
       page.focus({ preventScroll: true });
@@ -317,31 +380,6 @@
     const evidenceId = resolveReviewItemEvidence(itemId, requestedEvidenceId);
     if (!evidenceId) return false;
     return focusEvidence(itemId, evidenceId);
-  }
-
-  function setActivePage(assetKey) {
-    const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
-    if (!page) return;
-    document.querySelectorAll('.evidence-page').forEach((node) => {
-      node.classList.toggle('is-active', node.dataset.assetKey === assetKey);
-    });
-    document.querySelectorAll('[data-page-select]').forEach((node) => {
-      node.classList.toggle('is-active', node.dataset.pageSelect === assetKey);
-    });
-    const current = document.querySelector('[data-current-page]');
-    const label = page.querySelector('figcaption');
-    if (current && label) {
-      const match = label.textContent.match(/(\d+)$/);
-      if (match) current.textContent = match[1];
-    }
-  }
-
-  function movePage(delta) {
-    const pages = Array.from(document.querySelectorAll('.evidence-page'));
-    const active = pages.findIndex((node) => node.classList.contains('is-active'));
-    if (active < 0) return;
-    const next = Math.max(0, Math.min(pages.length - 1, active + delta));
-    setActivePage(pages[next].dataset.assetKey);
   }
 
   function enhanceReviewerSurface() {
@@ -411,7 +449,6 @@
 
   function downloadDecisionEnvelope() {
     const form = document.querySelector("#decision-form form");
-
     if (!form || !form.reportValidity()) return;
     const envelope = decisionEnvelope(form);
     if (!envelope) {
@@ -433,6 +470,8 @@
   window.focusItemEvidence = focusItemEvidence;
   window.resolveReviewItemEvidence = resolveReviewItemEvidence;
   window.activateReviewItem = activateReviewItem;
+  window.setActiveSource = setActiveSource;
+  window.setActivePage = setActivePage;
   window.setEvidenceZoom = setEvidenceZoom;
   window.submitDecision = submitDecision;
   window.refreshDisplayStatus = refreshDisplayStatus;
@@ -486,8 +525,13 @@
   document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
     button.addEventListener("click", () => setEvidenceMode(button.dataset.viewerMode));
   });
+  const sourceSelect = document.querySelector("[data-source-select]");
+  if (sourceSelect) sourceSelect.addEventListener("change", () => setActiveSource(sourceSelect.value));
   document.querySelectorAll("[data-page-select]").forEach((button) => {
-    button.addEventListener("click", () => setActivePage(button.dataset.pageSelect));
+    button.addEventListener("click", () => {
+      if (button.dataset.sourceId) setActiveSource(button.dataset.sourceId, button.dataset.pageSelect);
+      else setActivePage(button.dataset.pageSelect);
+    });
   });
   const previousPage = document.querySelector("[data-page-prev]");
   if (previousPage) previousPage.addEventListener("click", () => movePage(-1));
@@ -543,6 +587,8 @@
   enhanceReviewerSurface();
   updateTabControls(selectedDetailPanel());
   updateReviewerSession();
+  const initial = document.querySelector(".evidence-page.is-active");
+  if (initial && initial.dataset.sourceId) setActiveSource(initial.dataset.sourceId, initial.dataset.assetKey);
   void refreshDisplayStatus();
 
   void reviewModel;
