@@ -35,6 +35,58 @@ _CONCEPT_VARIANTS: dict[str, tuple[str, ...]] = {
 }
 
 
+_GENERIC_TRAILING_TERMS = frozenset(
+    {
+        "\uae30\uc900",
+        "\uc124\uce58\uae30\uc900",
+        "\uad00\uacc4\ubc95\ub839",
+        "\uc548\uc804",
+        "\uc2dc\uc124",
+        "\uaddc\uc815",
+        "\uc870\uac74",
+    }
+)
+_ZERO_WIDTH = ("\u200b", "\u200c", "\u200d", "\u2060", "\ufeff")
+_HANGUL = re.compile(r"[\uac00-\ud7a3]")
+
+
+def _search_normalized(value: str) -> str:
+    normalized = normalize_text(value)
+    for marker in _ZERO_WIDTH:
+        normalized = normalized.replace(marker, "")
+    return " ".join(normalized.split())
+
+
+def _hangul_token(value: str) -> bool:
+    return bool(value) and _HANGUL.search(value) is not None
+
+
+def derive_korean_compound_variants(primary: str) -> tuple[str, ...]:
+    """Derive a small phrase/compound-only search expansion."""
+    normalized = _search_normalized(primary)
+    if not normalized:
+        raise ValueError("primary query must not be empty")
+
+    tokens = [_strip_suffix(token) for token in normalized.split()]
+    while tokens and tokens[-1] in _GENERIC_TRAILING_TERMS:
+        tokens.pop()
+    tokens = [token for token in tokens if token]
+    if not tokens:
+        return ()
+
+    if len(tokens) == 1:
+        token = tokens[0]
+        if len(token) < 2 or not _hangul_token(token):
+            return ()
+        return (token,)
+
+    if len(tokens) > 3 or not all(_hangul_token(token) for token in tokens):
+        return ()
+
+    spaced = " ".join(tokens)
+    compact = "".join(tokens)
+    return _ordered_unique([spaced, compact])
+
 @dataclass(frozen=True, slots=True)
 class GroupedQueryVariants:
     """Bounded retrieval terms derived from one normalized question."""
