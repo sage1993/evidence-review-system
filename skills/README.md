@@ -1,30 +1,48 @@
-# PDF-to-Grist Skill Set
+# Evidence Review System Skills
 
-이 저장소에는 두 가지 사용 방식이 있습니다.
-
-## Codex Desktop에서 가장 쉬운 사용법
-
-사용자에게는 다음 두 단축어만 안내합니다.
+이 저장소의 현재 사용자용 Codex 진입점은 두 개입니다.
 
 - `$ERS_PDF 이 PDF 파일 파싱해줘` → [`ers-pdf/SKILL.md`](ers-pdf/SKILL.md)
 - `$ERS_REVIEW 이 사업이 해당 기준을 충족하는지 검토해줘` → [`ers-review/SKILL.md`](ers-review/SKILL.md)
 
-두 스킬은 내부 5단계 처리와 로컬 HTML 검토 화면을 자동으로 연결합니다. PDF 파싱이 준비되지 않았거나 근거가 부족하면 성공한 것처럼 진행하지 않습니다.
+## `$ERS_PDF`
 
-## 내부 단계 스킬
+PDF 준비 단계는 다음 책임을 가집니다.
 
-개발자나 운영자가 처리 단계를 직접 점검할 때만 다음 순서를 사용합니다.
+- 원본 PDF와 SHA-256 보존
+- parser output 및 source binding 검증
+- parser warnings/reproducibility 확인
+- source-batch v2 준비/검증
+- 검색 가능한 `evidence.sqlite` 생성
+- revision 단위 verified page-image cache 준비
+- 도면 등 사람 확인이 필요한 자료를 확인 전 계산·규칙 입력으로 사용하지 않음
 
-1. `preserving-and-parsing-pdfs`
-2. `structuring-pdf-content-and-visuals`
-3. `cleaning-pdf-derived-data`
-4. `building-and-exporting-grist-databases`
-5. `validating-pdf-database-workflows`
+## `$ERS_REVIEW`
+
+모든 질문은 하나의 정식 검토 흐름으로 처리합니다.
+
+```text
+질문
+→ 로컬 근거 검색
+→ formal review request
+→ Track A 작성/검증
+→ Track B 독립 감사/검증
+→ final-review-packet.json
+→ Review Workspace
+→ 사람 결정
+```
+
+사용자가 query JSON, Track handoff metadata, packet hash, timestamp를 직접 작성하도록 요구하지 않습니다.
 
 ## 공통 원칙
 
 - 원본 PDF와 raw parser output을 덮어쓰지 않습니다.
 - 원시 근거와 정규화·요약·해석 자료를 분리합니다.
-- 파생 데이터에는 문서, 페이지, 좌표, source element ID 또는 source path를 남깁니다.
+- 문서, revision, 페이지, 좌표, source hash를 유지합니다.
 - parser 결과를 법적 해석이나 사실 확정으로 취급하지 않습니다.
+- 계산은 승인된 Math Engine 결과를 사용합니다.
+- 규칙 판정은 승인된 Rule Engine 결과를 사용합니다.
 - `READY_FOR_HUMAN_REVIEW`는 사람 검토 준비 상태이며 최종 승인 결과가 아닙니다.
+- 실행하지 않은 검증은 `PASS`가 아니라 `NOT_RUN`으로 기록합니다.
+
+과거 PDF-to-Grist 단계형 skill은 현재 ERS 제품 경로가 아니며 active skill set에서 제거됩니다. 과거 내용이 필요한 경우 Git history를 사용합니다.
