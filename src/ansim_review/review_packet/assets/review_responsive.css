@@ -1,4 +1,6 @@
 /* Loaded after review.css; this file owns responsive layout behavior. */
+.secondary-action:not([hidden]) { display: block; }
+
 @media (max-width: 1100px) {
   .app-shell {
     width: calc(100% - 20px);
