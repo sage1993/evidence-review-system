@@ -1,6 +1,96 @@
 /* Loaded after review.css; this file owns responsive layout behavior. */
 .secondary-action:not([hidden]) { display: block; }
 
+.viewer-mode-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+}
+
+.viewer-mode-controls button {
+  min-height: 36px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.viewer-mode-controls button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: #174a86;
+}
+
+.pdf-source-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pdf-source-select {
+  max-width: 260px;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 5px 28px 5px 8px;
+  font: inherit;
+}
+
+.pdf-source-label,
+.evidence-sort-label {
+  color: #42526b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.persisted-decision {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding: 14px 16px 16px;
+}
+
+.persisted-decision[hidden] {
+  display: none;
+}
+
+.persisted-decision h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.persisted-decision dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.persisted-decision dl > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.persisted-decision dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.persisted-decision dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+[data-decision-editor][hidden] {
+  display: none;
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     width: calc(100% - 20px);
@@ -28,6 +118,15 @@
   #decision-form {
     height: auto;
     min-height: 0;
+  }
+
+  .viewer-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pdf-page-controls {
+    margin-left: 0;
   }
 
   .viewer-body {
@@ -85,6 +184,23 @@
 
   .viewer-controls {
     justify-content: flex-start;
+  }
+
+  .viewer-toolbar,
+  .viewer-mode-controls,
+  .pdf-page-controls,
+  .pdf-zoom-controls {
+    width: 100%;
+    margin: 0;
+    border-left: 0;
+    padding-left: 0;
+    justify-content: flex-start;
+  }
+
+  .pdf-source-control,
+  .pdf-source-select {
+    width: 100%;
+    max-width: none;
   }
 
   .review-item-list {
