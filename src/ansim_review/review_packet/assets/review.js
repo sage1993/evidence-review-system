@@ -16,6 +16,12 @@
     evidence: "근거 강조",
     compare: "원문 + 강조"
   };
+  const DECISION_LABELS = {
+    SATISFIED: "검토 결과에 동의",
+    NOT_SATISFIED: "검토 결과에 오류 있음",
+    CONDITIONAL: "조건 충족 시 동의",
+    ADDITIONAL_REVIEW_REQUIRED: "추가 자료 검토 필요"
+  };
   const ALLOWED_DECISIONS = new Set([
     "SATISFIED",
     "NOT_SATISFIED",
@@ -90,6 +96,7 @@
     }
     return !required || Boolean(notes.value.trim());
   }
+
   function validDecisionRequest(request) {
     return Boolean(
       validReviewerId(request.reviewer_id) &&
@@ -128,10 +135,60 @@
     });
   }
 
+  function renderPersistedDecision(record) {
+    const container = document.querySelector("[data-persisted-decision]");
+    const editor = document.querySelector("[data-decision-editor]");
+    if (!container || !editor) return;
+    const valid = Boolean(
+      record &&
+      typeof record.reviewer_id === "string" &&
+      typeof record.reviewed_at === "string" &&
+      typeof record.decision === "string" &&
+      typeof record.notes === "string" &&
+      ALLOWED_DECISIONS.has(record.decision)
+    );
+    if (!valid) {
+      container.hidden = true;
+      editor.hidden = false;
+      return;
+    }
+    const reviewer = container.querySelector("[data-persisted-reviewer]");
+    const reviewedAt = container.querySelector("[data-persisted-reviewed-at]");
+    const decision = container.querySelector("[data-persisted-decision-value]");
+    const notes = container.querySelector("[data-persisted-notes]");
+    if (reviewer) reviewer.textContent = record.reviewer_id;
+    if (reviewedAt) reviewedAt.textContent = record.reviewed_at;
+    if (decision) decision.textContent = DECISION_LABELS[record.decision] || record.decision;
+    if (notes) notes.textContent = record.notes || "(의견 없음)";
+    container.hidden = false;
+    editor.hidden = true;
+  }
+
+  function beginAdditionalDecision() {
+    const container = document.querySelector("[data-persisted-decision]");
+    const editor = document.querySelector("[data-decision-editor]");
+    const form = document.querySelector("#decision-form form");
+    if (!editor || !form) return;
+    if (container) container.hidden = true;
+    editor.hidden = false;
+    form.reset();
+    const notes = form.querySelector("#decision-notes");
+    if (notes) notes.required = false;
+    const count = document.querySelector("[data-notes-count]");
+    if (count) count.textContent = "0 / 1,000";
+    formStatus("새 결정은 기존 기록을 수정하지 않고 별도 append-only 기록으로 추가됩니다.");
+    const first = form.querySelector('input[name="decision"]');
+    if (first) first.focus();
+  }
+
   async function refreshDisplayStatus() {
     try {
       const response = await fetch("./decision/status");
-      if (!response.ok) { setProtectedMode(false); return; }
+      if (!response.ok) {
+        setProtectedMode(false);
+        renderPersistedDecision(null);
+        return null;
+      }
       const payload = await response.json();
       setProtectedMode(true);
       applyDisplayStatus(payload.display_status);
@@ -141,10 +198,14 @@
       if (typeof payload.packet_hash === "string" && payload.packet_hash) {
         decisionContext.packet_hash = payload.packet_hash;
       }
+      renderPersistedDecision(payload.decision_record);
       updateReviewerSession();
+      return payload;
     } catch (_) {
       setProtectedMode(false);
+      renderPersistedDecision(null);
       updateReviewerSession();
+      return null;
     }
   }
 
@@ -257,6 +318,7 @@
     if (!evidenceId) return false;
     return focusEvidence(itemId, evidenceId);
   }
+
   function setActivePage(assetKey) {
     const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
     if (!page) return;
@@ -334,7 +396,11 @@
       if (response.ok) {
         const payload = await response.json();
         applyDisplayStatus(payload.display_status);
+        await refreshDisplayStatus();
         formStatus("검토자 결정이 별도 append-only 기록으로 저장되었습니다.");
+      } else if (response.status === 409) {
+        await refreshDisplayStatus();
+        formStatus("이미 기록된 결정 상태를 다시 불러왔습니다. 새 기록이 필요하면 추가 결정 기록을 선택하십시오.");
       } else {
         formStatus("결정 저장이 거부되었습니다. 입력과 현재 패킷을 확인하십시오.");
       }
@@ -370,6 +436,8 @@
   window.setEvidenceZoom = setEvidenceZoom;
   window.submitDecision = submitDecision;
   window.refreshDisplayStatus = refreshDisplayStatus;
+  window.renderPersistedDecision = renderPersistedDecision;
+  window.beginAdditionalDecision = beginAdditionalDecision;
   window.downloadDecisionEnvelope = downloadDecisionEnvelope;
 
   document.querySelectorAll('.evidence-link, .citation[role="button"]').forEach((node) => {
@@ -385,7 +453,8 @@
       const panel = citation.closest(".detail-panel");
       if (panel) activateReviewItem(panel.dataset.itemId, citation.dataset.evidenceId);
     });
-  });  document.querySelectorAll(".review-item").forEach((item) => {
+  });
+  document.querySelectorAll(".review-item").forEach((item) => {
     item.addEventListener("click", () => {
       activateReviewItem(item.dataset.itemId);
     });
@@ -394,7 +463,8 @@
       event.preventDefault();
       activateReviewItem(item.dataset.itemId);
     });
-  });  document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
+  });
+  document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
     tab.addEventListener("click", () => activateDetailTab(tab.dataset.detailTab));
     tab.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -412,7 +482,8 @@
       const panel = link.closest(".detail-panel");
       if (panel) activateReviewItem(panel.dataset.itemId, link.dataset.evidenceId);
     });
-  });  document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
+  });
+  document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
     button.addEventListener("click", () => setEvidenceMode(button.dataset.viewerMode));
   });
   document.querySelectorAll("[data-page-select]").forEach((button) => {
@@ -461,6 +532,8 @@
     validateNotesField(form);
     form.addEventListener("submit", submitDecision);
   }
+  const addDecision = document.querySelector("[data-add-decision]");
+  if (addDecision) addDecision.addEventListener("click", beginAdditionalDecision);
   const download = document.querySelector("[data-download-decision]");
   if (download) download.addEventListener("click", downloadDecisionEnvelope);
   const printButton = document.querySelector("[data-print]");
