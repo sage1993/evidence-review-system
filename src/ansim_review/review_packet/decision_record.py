@@ -65,7 +65,7 @@ def validate_human_decision_request(value: object) -> dict[str, str]:
         raise ValueError("packet_hash must be a lowercase SHA-256 digest")
     if decision not in _ALLOWED:
         raise ValueError(f"unsupported human decision: {decision}")
-    if not notes.strip():
+    if decision != "SATISFIED" and not notes.strip():
         raise ValueError("notes is required")
     return {
         "reviewer_id": reviewer_id,

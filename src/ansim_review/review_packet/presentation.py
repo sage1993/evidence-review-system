@@ -1,4 +1,5 @@
 """Non-developer presentation policy for the Review Workspace."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -25,6 +26,21 @@ _ISSUE_LABELS = {
     "TRACK_B_REJECTED": "교차 검증에서 추가 확인이 필요하다고 판단했습니다.",
 }
 
+_NO_ANSWER_FALLBACK = "질문에 대한 결론이 제공되지 않았습니다."
+_EVIDENCE_TYPE_LABELS = {
+    "clause": "조항 근거",
+    "text": "본문 근거",
+    "table": "표 근거",
+    "visual": "시각 근거",
+}
+
+
+def evidence_type_label(value: object) -> str | None:
+    """Return a reviewer label only for canonical evidence types."""
+    if not isinstance(value, str):
+        return None
+    return _EVIDENCE_TYPE_LABELS.get(value)
+
 
 def _mapping(value: object) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
@@ -44,29 +60,11 @@ def localized_status(value: object) -> str:
 
 
 def conclusion_text(model: Mapping[str, object]) -> str:
-    """Return one concise reviewer-facing conclusion without inventing facts."""
-    raw_status = str(model.get("status", ""))
-    summary = _mapping(model.get("summary"))
-    citation_count = summary.get("citation_count", 0)
-    missing_count = summary.get("missing_input_count", 0)
-    conflict_count = summary.get("conflict_count", 0)
-    exception_count = summary.get("exception_count", 0)
-    if raw_status == "ABSTAIN":
-        return "현재 근거만으로 확정하기 어려워 추가 자료 확인이 필요합니다."
-    if raw_status == "READY_FOR_HUMAN_REVIEW":
-        if any(
-            value not in (0, None, "0")
-            for value in (missing_count, conflict_count, exception_count)
-        ):
-            return "검토 자료가 준비되었으나 일부 항목은 추가 확인이 필요합니다."
-        return f"근거 {citation_count}건이 연결되어 최종 검토가 가능한 상태입니다."
-    if raw_status == "INDETERMINATE":
-        return "현재 자료로는 판단을 확정할 수 없습니다."
-    if raw_status == "MISSING_REQUIRED_INPUT":
-        return "판단에 필요한 입력 자료가 부족합니다."
-    if raw_status == "COMPLETE":
-        return "질문과 근거의 연결이 완료되었습니다."
-    return f"현재 검토 상태는 ‘{localized_status(raw_status)}’입니다."
+    """Return only an explicit reviewer-facing answer, never a workflow-status paraphrase."""
+    value = model.get("answer_summary")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return _NO_ANSWER_FALLBACK
 
 
 def _human_issue(value: object) -> str:
@@ -109,6 +107,7 @@ def has_rules_or_calculations(model: Mapping[str, object]) -> bool:
 __all__ = [
     "additional_review_items",
     "conclusion_text",
+    "evidence_type_label",
     "has_rules_or_calculations",
     "localized_status",
 ]

@@ -28,11 +28,12 @@ def _media(css: str, marker: str) -> str:
 
 def test_desktop_layout_keeps_evidence_primary_and_decision_sticky(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
-    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+    html = render_review_html(_model(), tmp_path / "pages")
+    css = _inline_css(html)
 
-    assert "grid-template-columns: minmax(0, 1fr) 360px" in css
-    assert '"viewer decision"' in css
-    assert '"detail decision"' in css
+    assert "grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(320px, 360px)" in css
+    assert "items viewer decision" in css
+    assert '"additional additional additional"' in css
     assert "position: sticky" in css
     assert "top: 16px" in css
     assert "font-size: 16px" in css
@@ -41,7 +42,8 @@ def test_desktop_layout_keeps_evidence_primary_and_decision_sticky(tmp_path: Pat
 
 def test_1100_breakpoint_stacks_decision_and_preserves_min_width_zero(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
-    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+    html = render_review_html(_model(), tmp_path / "pages")
+    css = _inline_css(html)
     medium = _media(css, "@media (max-width: 1100px)")
 
     assert "grid-template-columns: minmax(0, 1fr)" in medium
@@ -53,12 +55,16 @@ def test_1100_breakpoint_stacks_decision_and_preserves_min_width_zero(tmp_path: 
 
 def test_accessibility_contract_has_visible_focus_and_44px_targets(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
-    css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
+    html = render_review_html(_model(), tmp_path / "pages")
+    css = _inline_css(html)
 
     assert "min-height: 44px" in css
     assert "outline: 3px solid var(--focus)" in css
     assert "outline-offset: 2px" in css
     assert ".evidence-page:focus-visible" in css
+    assert ".pdf-page-controls button, .pdf-zoom-controls button" in css
+    assert "min-height: 44px" in css
+    assert "review_responsive.css" in html
 
 
 def test_print_hides_audit_navigation_and_interactive_controls(tmp_path: Path) -> None:

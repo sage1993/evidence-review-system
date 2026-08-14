@@ -5,6 +5,8 @@ import json
 from collections.abc import Mapping
 from html import escape
 
+from ansim_review.review_packet.icons import icon_svg
+
 
 def _text(value: object) -> str:
     return "" if value is None else escape(str(value), quote=True)
@@ -34,15 +36,17 @@ def render_audit_details(model: Mapping[str, object]) -> str:
     return "".join(
         (
             '<details id="packet-global-review" class="audit-details">',
-            '<summary>감사 정보 <span>기술 정보 보기</span></summary>',
+            '<summary><span class="audit-lock">', icon_svg("lock", size=16), '</span>',
+            '<span class="audit-summary-label">감사 정보</span>',
+            '<span class="audit-summary-help">패킷 전체 감사 정보와 추적 데이터를 확인할 수 있습니다.</span>',  # noqa: E501
+            '<span class="audit-chevron">', icon_svg("chevron-down", size=16), '</span></summary>',
             '<div class="audit-body">',
-            '<p>검토 재현성과 추적을 위한 내부 ID, 해시, 원시 상태, 신뢰도 요인입니다.</p>',
+            '<p>검토 과정과 추적을 위한 실행 ID, 해시, 감사 상태, 신뢰도 요인입니다.</p>',
             '<pre aria-label="감사 정보 JSON">',
             _json_text(raw),
             "</pre></div></details>",
         )
     )
-
 
 def render_citation_audit(citation: Mapping[str, object]) -> str:
     raw = {
@@ -51,6 +55,15 @@ def render_citation_audit(citation: Mapping[str, object]) -> str:
         "document_id": citation.get("document_id"),
         "revision_id": citation.get("revision_id"),
         "source_hash": citation.get("source_hash"),
+        "bbox_raw": citation.get("bbox"),
+        "page_geometry": {
+            "width": citation.get("page_width"),
+            "height": citation.get("page_height"),
+            "origin_x": citation.get("page_origin_x"),
+            "origin_y": citation.get("page_origin_y"),
+            "rotation": citation.get("page_rotation"),
+            "box_kind": citation.get("page_box_kind"),
+        },
         "evidence_type": citation.get("evidence_type"),
     }
     return "".join(

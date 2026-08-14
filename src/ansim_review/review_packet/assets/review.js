@@ -11,6 +11,11 @@
     COMPLETE: "근거 연결 완료",
     MISSING_REQUIRED_INPUT: "필요한 자료가 부족합니다"
   };
+  const VIEWER_LABELS = {
+    original: "원문",
+    evidence: "근거 강조",
+    compare: "원문 + 강조"
+  };
   const ALLOWED_DECISIONS = new Set([
     "SATISFIED",
     "NOT_SATISFIED",
@@ -68,12 +73,29 @@
     };
   }
 
+  function notesRequired(decision) {
+    return decision && decision !== "SATISFIED";
+  }
+
+  function validateNotesField(form) {
+    const decision = form.querySelector('input[name="decision"]:checked');
+    const notes = form.querySelector("#decision-notes");
+    const error = document.getElementById("decision-notes-error");
+    if (!notes) return true;
+    const required = Boolean(decision && notesRequired(decision.value));
+    notes.required = required;
+    notes.setAttribute("aria-invalid", required && !notes.value.trim() ? "true" : "false");
+    if (error) {
+      error.textContent = required && !notes.value.trim() ? "이 결정을 선택하면 검토 의견을 입력해야 합니다." : "";
+    }
+    return !required || Boolean(notes.value.trim());
+  }
   function validDecisionRequest(request) {
     return Boolean(
       validReviewerId(request.reviewer_id) &&
       /^[0-9a-f]{64}$/.test(request.packet_hash) &&
       ALLOWED_DECISIONS.has(request.decision) &&
-      request.notes.trim()
+      (!notesRequired(request.decision) || request.notes.trim())
     );
   }
 
@@ -93,15 +115,25 @@
     if (!["READY_FOR_HUMAN_REVIEW", "REVIEW_COMPLETED"].includes(status)) return;
     reviewModel.display_status = status;
     document.querySelectorAll("[data-display-status]").forEach((node) => {
-      node.textContent = statusLabel(status);
+      node.textContent = node.dataset.displayStatusMode === "raw" ? status : statusLabel(status);
+    });
+  }
+
+  function setProtectedMode(protectedMode) {
+    document.querySelectorAll("[data-protected-only]").forEach((node) => {
+      node.hidden = !protectedMode;
+    });
+    document.querySelectorAll("[data-archive-only]").forEach((node) => {
+      node.hidden = protectedMode;
     });
   }
 
   async function refreshDisplayStatus() {
     try {
       const response = await fetch("./decision/status");
-      if (!response.ok) return;
+      if (!response.ok) { setProtectedMode(false); return; }
       const payload = await response.json();
+      setProtectedMode(true);
       applyDisplayStatus(payload.display_status);
       if (typeof payload.reviewer_id === "string" && payload.reviewer_id) {
         decisionContext.reviewer_id = payload.reviewer_id;
@@ -111,6 +143,7 @@
       }
       updateReviewerSession();
     } catch (_) {
+      setProtectedMode(false);
       updateReviewerSession();
     }
   }
@@ -132,9 +165,9 @@
     });
   }
 
-  function selectReviewItem(itemId) {
+  function selectReviewItem(itemId, evidenceId) {
     document.querySelectorAll(".review-item, .detail-panel").forEach((node) => {
-      const selected = node.dataset.itemId === itemId;
+      const selected = node.dataset.itemId === itemId && (!node.classList.contains("review-item") || !evidenceId || node.dataset.evidenceId === evidenceId);
       node.classList.toggle("is-selected", selected);
       if (node.classList.contains("review-item")) {
         node.setAttribute("aria-pressed", selected ? "true" : "false");
@@ -175,9 +208,11 @@
   function focusEvidence(itemId, evidenceId) {
     let assetKey = "";
     if (typeof evidenceId === "undefined") {
-      assetKey = itemId;
+      const item = document.querySelector('.review-item[data-item-id="' + itemId + '"]');
+      assetKey = item ? item.dataset.assetKey : itemId;
+      evidenceId = item ? item.dataset.evidenceId : evidenceId;
     } else {
-      selectReviewItem(itemId);
+      selectReviewItem(itemId, evidenceId);
       const citation = Array.from(document.querySelectorAll(".citation")).find((node) => {
         const panel = node.closest(".detail-panel");
         return panel && panel.dataset.itemId === itemId && node.dataset.evidenceId === evidenceId;
@@ -185,9 +220,7 @@
       assetKey = citation ? citation.dataset.assetKey : "";
     }
     if (!assetKey) return;
-    document.querySelectorAll(".evidence-page").forEach((page) => {
-      page.classList.toggle("is-active", page.dataset.assetKey === assetKey);
-    });
+    setActivePage(assetKey);
     document.querySelectorAll(".citation-overlay").forEach((overlay) => {
       overlay.classList.toggle(
         "is-focused",
@@ -201,6 +234,48 @@
       page.scrollIntoView({ behavior: "smooth", block: "nearest" });
       page.focus({ preventScroll: true });
     }
+  }
+
+  function setActivePage(assetKey) {
+    const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
+    if (!page) return;
+    document.querySelectorAll('.evidence-page').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.assetKey === assetKey);
+    });
+    document.querySelectorAll('[data-page-select]').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.pageSelect === assetKey);
+    });
+    const current = document.querySelector('[data-current-page]');
+    const label = page.querySelector('figcaption');
+    if (current && label) {
+      const match = label.textContent.match(/(\d+)$/);
+      if (match) current.textContent = match[1];
+    }
+  }
+
+  function movePage(delta) {
+    const pages = Array.from(document.querySelectorAll('.evidence-page'));
+    const active = pages.findIndex((node) => node.classList.contains('is-active'));
+    if (active < 0) return;
+    const next = Math.max(0, Math.min(pages.length - 1, active + delta));
+    setActivePage(pages[next].dataset.assetKey);
+  }
+
+  function enhanceReviewerSurface() {
+    document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
+      const label = VIEWER_LABELS[button.dataset.viewerMode];
+      if (label) button.textContent = label;
+    });
+    const pageImages = new Map(
+      Array.from(document.querySelectorAll("[data-page-image-source]")).map((image) => [
+        image.dataset.pageImageSource,
+        image.getAttribute("src") || ""
+      ])
+    );
+    document.querySelectorAll("[data-page-image-for]").forEach((image) => {
+      const source = pageImages.get(image.dataset.pageImageFor);
+      if (source) image.setAttribute("src", source);
+    });
   }
 
   function setEvidenceMode(mode) {
@@ -221,7 +296,8 @@
   async function submitDecision(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    if (!form.reportValidity()) return;
+    validateNotesField(form);
+    if (!form.reportValidity() || !validateNotesField(form)) return;
     const request = decisionRequest(form);
     if (!validDecisionRequest(request)) {
       formStatus("결정 저장에 필요한 검토자·패킷·결정·의견 정보를 확인하십시오.");
@@ -248,6 +324,7 @@
 
   function downloadDecisionEnvelope() {
     const form = document.querySelector("#decision-form form");
+
     if (!form || !form.reportValidity()) return;
     const envelope = decisionEnvelope(form);
     if (!envelope) {
@@ -271,8 +348,24 @@
   window.refreshDisplayStatus = refreshDisplayStatus;
   window.downloadDecisionEnvelope = downloadDecisionEnvelope;
 
-  document.querySelectorAll(".review-item").forEach((item) => {
-    item.addEventListener("click", () => selectReviewItem(item.dataset.itemId));
+  document.querySelectorAll('.evidence-link, .citation[role="button"]').forEach((node) => {
+    node.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      node.click();
+    });
+  });
+  document.querySelectorAll('.citation[role="button"]').forEach((citation) => {
+    citation.addEventListener("click", (event) => {
+      if (event.target.closest(".evidence-link")) return;
+      const panel = citation.closest(".detail-panel");
+      if (panel) focusEvidence(panel.dataset.itemId, citation.dataset.evidenceId);
+    });
+  });  document.querySelectorAll(".review-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      selectReviewItem(item.dataset.itemId);
+      focusEvidence(item.dataset.itemId, item.dataset.evidenceId);
+    });
   });
   document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
     tab.addEventListener("click", () => activateDetailTab(tab.dataset.detailTab));
@@ -296,16 +389,59 @@
   document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
     button.addEventListener("click", () => setEvidenceMode(button.dataset.viewerMode));
   });
+  document.querySelectorAll("[data-page-select]").forEach((button) => {
+    button.addEventListener("click", () => setActivePage(button.dataset.pageSelect));
+  });
+  const previousPage = document.querySelector("[data-page-prev]");
+  if (previousPage) previousPage.addEventListener("click", () => movePage(-1));
+  const nextPage = document.querySelector("[data-page-next]");
+  if (nextPage) nextPage.addEventListener("click", () => movePage(1));
+  const fullscreen = document.querySelector("[data-fullscreen]");
+  if (fullscreen) fullscreen.addEventListener("click", () => {
+    const viewer = document.getElementById("evidence-viewer");
+    if (viewer && viewer.requestFullscreen) void viewer.requestFullscreen();
+  });
+  let zoomScale = 1;
+  const zoomValue = document.querySelector("[data-zoom-value]");
+  function updateZoom(next) {
+    zoomScale = Math.max(0.5, Math.min(2, next));
+    setEvidenceZoom(zoomScale);
+    if (zoomValue) zoomValue.textContent = Math.round(zoomScale * 100) + "%";
+  }
+  const zoomOut = document.querySelector("[data-zoom-out]");
+  if (zoomOut) zoomOut.addEventListener("click", () => updateZoom(zoomScale - 0.1));
+  const zoomIn = document.querySelector("[data-zoom-in]");
+  if (zoomIn) zoomIn.addEventListener("click", () => updateZoom(zoomScale + 0.1));
+  const additionalToggle = document.querySelector("[data-additional-toggle]");
+  if (additionalToggle) additionalToggle.addEventListener("click", () => {
+    const details = document.getElementById("additional-details");
+    if (!details) return;
+    details.hidden = !details.hidden;
+    additionalToggle.setAttribute("aria-expanded", details.hidden ? "false" : "true");
+  });
   const zoom = document.getElementById("evidence-zoom");
   if (zoom) zoom.addEventListener("input", () => setEvidenceZoom(zoom.value));
   const form = document.querySelector("#decision-form form");
-  if (form) form.addEventListener("submit", submitDecision);
+  if (form) {
+    form.querySelectorAll('input[name="decision"]').forEach((input) => {
+      input.addEventListener("change", () => validateNotesField(form));
+    });
+    const notes = form.querySelector("#decision-notes");
+    if (notes) notes.addEventListener("input", () => {
+      validateNotesField(form);
+      const count = document.querySelector("[data-notes-count]");
+      if (count) count.textContent = notes.value.length.toLocaleString("en-US") + " / 1,000";
+    });
+    validateNotesField(form);
+    form.addEventListener("submit", submitDecision);
+  }
   const download = document.querySelector("[data-download-decision]");
   if (download) download.addEventListener("click", downloadDecisionEnvelope);
   const printButton = document.querySelector("[data-print]");
   if (printButton) printButton.addEventListener("click", () => window.print());
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
+  enhanceReviewerSurface();
   updateTabControls(selectedDetailPanel());
   updateReviewerSession();
   void refreshDisplayStatus();
