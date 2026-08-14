@@ -12,6 +12,7 @@ from evidence_review.diagnostics import collect_runtime_diagnostics, preflight_r
 
 __all__ = ["main", "build_parser"]  # noqa: F822
 
+
 def __getattr__(name: str) -> object:
     if name == "build_parser":
         from ansim_review.cli_parser import build_parser
@@ -55,6 +56,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_json(result.to_document())
         return 2
 
-    from ansim_review.entrypoint import main as runtime_main
+    from ansim_review.command_dispatch import dispatch
 
-    return runtime_main(arguments)
+    return dispatch(arguments)
