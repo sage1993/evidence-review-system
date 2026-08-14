@@ -1,6 +1,7 @@
 """Single business-command dispatcher for every Evidence Review CLI entrypoint."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from collections.abc import Sequence
@@ -134,7 +135,7 @@ def _review_import_decision(workspace: Path, run_id: str, envelope_path: Path) -
     run_directory = workspace / "runs" / run_id
     packet_path = run_directory / "final-review-packet.json"
     try:
-        packet_hash = __import__("hashlib").sha256(packet_path.read_bytes()).hexdigest()
+        packet_hash = hashlib.sha256(packet_path.read_bytes()).hexdigest()
         envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
         output = import_human_decision_envelope(
             run_directory,
@@ -339,18 +340,18 @@ def dispatch(arguments: Sequence[str] | None = None) -> int:
                 args.approved_rule_result_id,
             )
         if args.review_question_stage == "submit-track-a":
-            return handlers._review_question_track_a(
+            return handlers._review_question_submit_track_a(
                 args.workspace,
                 args.run_id,
                 args.track_a_output,
             )
         if args.review_question_stage == "submit-track-b":
-            return handlers._review_question_track_b(
+            return handlers._review_question_submit_track_b(
                 args.workspace,
                 args.run_id,
                 args.track_b_output,
-                args.publish,
-                args.open,
+                publish=args.publish,
+                open_browser=args.open,
             )
     if args.command == "review-run":
         if args.review_stage == "prepare":
@@ -361,8 +362,8 @@ def dispatch(arguments: Sequence[str] | None = None) -> int:
                 args.run_id,
                 args.track_a_output,
                 args.track_b_output,
-                args.publish,
-                args.open,
+                publish=args.publish,
+                open_browser=args.open,
             )
         if args.review_stage == "serve-status":
             try:
