@@ -7,6 +7,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from ansim_review.packaging.web_bundle import build_web_runtime_zip
 
 
@@ -149,17 +151,41 @@ def _extract_runtime(root: Path, tmp_path: Path) -> Path:
     return extracted
 
 
-def _refresh_database_manifest(extracted: Path) -> None:
+def _run_self_test(extracted: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "bootstrap.py", "--self-test"],
+        cwd=extracted,
+        text=True,
+        capture_output=True,
+    )
+
+
+def _runtime_manifest(extracted: Path) -> tuple[Path, dict[str, object]]:
     manifest_path = extracted / "runtime-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return manifest_path, manifest
+
+
+def _write_runtime_manifest(path: Path, manifest: dict[str, object]) -> None:
+    path.write_text(
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _refresh_database_manifest(extracted: Path) -> None:
+    manifest_path, manifest = _runtime_manifest(extracted)
     digest = hashlib.sha256(
         (extracted / "evidence" / "evidence.sqlite").read_bytes()
     ).hexdigest()
-    for item in manifest["files"]:
+    files = manifest["files"]
+    assert isinstance(files, list)
+    for item in files:
+        assert isinstance(item, dict)
         if item["path"] == "evidence/evidence.sqlite":
             item["sha256"] = digest
             item["size"] = (extracted / "evidence" / "evidence.sqlite").stat().st_size
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    _write_runtime_manifest(manifest_path, manifest)
 
 
 def test_web_runtime_self_test_rejects_corrupt_sqlite(tmp_path: Path) -> None:
@@ -170,12 +196,7 @@ def test_web_runtime_self_test_rejects_corrupt_sqlite(tmp_path: Path) -> None:
     database.write_bytes(b"not-a-sqlite-database")
     _refresh_database_manifest(extracted)
 
-    completed = subprocess.run(
-        [sys.executable, "bootstrap.py", "--self-test"],
-        cwd=extracted,
-        text=True,
-        capture_output=True,
-    )
+    completed = _run_self_test(extracted)
 
     assert completed.returncode != 0
     assert "WEB_RUNTIME_SELF_TEST_PASS" not in completed.stdout
@@ -198,13 +219,144 @@ def test_web_runtime_self_test_rejects_foreign_key_errors(tmp_path: Path) -> Non
     connection.close()
     _refresh_database_manifest(extracted)
 
-    completed = subprocess.run(
-        [sys.executable, "bootstrap.py", "--self-test"],
-        cwd=extracted,
-        text=True,
-        capture_output=True,
-    )
+    completed = _run_self_test(extracted)
 
     assert completed.returncode != 0
     assert "WEB_RUNTIME_SELF_TEST_PASS" not in completed.stdout
     assert "SQLITE_INTEGRITY_FAILED" in completed.stderr
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "../outside.txt",
+        "rules/../../outside.txt",
+        "/absolute/path",
+        "C:/Windows/System32/file",
+        r"C:\Windows\System32\file",
+        r"\\server\share\file",
+        r"rules\approved\R1.json",
+        ".",
+        "..",
+    ],
+)
+def test_web_runtime_self_test_rejects_unsafe_manifest_paths(
+    tmp_path: Path,
+    unsafe_path: str,
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    extracted = _extract_runtime(root, tmp_path)
+    manifest_path, manifest = _runtime_manifest(extracted)
+    files = manifest["files"]
+    assert isinstance(files, list)
+    files.append(
+        {
+            "path": unsafe_path,
+            "sha256": "0" * 64,
+            "size": 0,
+        }
+    )
+    _write_runtime_manifest(manifest_path, manifest)
+
+    completed = _run_self_test(extracted)
+
+    assert completed.returncode != 0
+    assert "UNSAFE_RUNTIME_PATH" in completed.stderr
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {},
+        {"format": "wrong", "version": 1, "files": []},
+        {
+            "format": "evidence-review/chatgpt-web-runtime",
+            "version": 2,
+            "files": [],
+        },
+        {
+            "format": "evidence-review/chatgpt-web-runtime",
+            "version": 1,
+            "files": [],
+            "extra": True,
+        },
+        {
+            "format": "evidence-review/chatgpt-web-runtime",
+            "version": 1,
+            "files": "not-a-list",
+        },
+    ],
+)
+def test_web_runtime_self_test_rejects_invalid_manifest_schema(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    extracted = _extract_runtime(root, tmp_path)
+    manifest_path = extracted / "runtime-manifest.json"
+    _write_runtime_manifest(manifest_path, manifest)
+
+    completed = _run_self_test(extracted)
+
+    assert completed.returncode != 0
+    assert "INVALID_RUNTIME_MANIFEST" in completed.stderr
+
+
+def test_web_runtime_self_test_rejects_duplicate_and_casefold_paths(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    extracted = _extract_runtime(root, tmp_path)
+    manifest_path, manifest = _runtime_manifest(extracted)
+    files = manifest["files"]
+    assert isinstance(files, list)
+    first = dict(files[0])
+    first["path"] = str(first["path"]).upper()
+    files.append(first)
+    _write_runtime_manifest(manifest_path, manifest)
+
+    completed = _run_self_test(extracted)
+
+    assert completed.returncode != 0
+    assert "INVALID_RUNTIME_MANIFEST" in completed.stderr
+
+
+def test_web_runtime_self_test_checks_size_before_hash(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    extracted = _extract_runtime(root, tmp_path)
+    manifest_path, manifest = _runtime_manifest(extracted)
+    files = manifest["files"]
+    assert isinstance(files, list)
+    item = files[0]
+    assert isinstance(item, dict)
+    item["size"] = int(item["size"]) + 1
+    item["sha256"] = "0" * 64
+    _write_runtime_manifest(manifest_path, manifest)
+
+    completed = _run_self_test(extracted)
+
+    assert completed.returncode != 0
+    assert "RUNTIME_FILE_SIZE_MISMATCH" in completed.stderr
+    assert "RUNTIME_FILE_HASH_MISMATCH" not in completed.stderr
+
+
+def test_web_runtime_self_test_rejects_hash_mismatch(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    extracted = _extract_runtime(root, tmp_path)
+    manifest_path, manifest = _runtime_manifest(extracted)
+    files = manifest["files"]
+    assert isinstance(files, list)
+    item = files[0]
+    assert isinstance(item, dict)
+    item["sha256"] = "0" * 64
+    _write_runtime_manifest(manifest_path, manifest)
+
+    completed = _run_self_test(extracted)
+
+    assert completed.returncode != 0
+    assert "RUNTIME_FILE_HASH_MISMATCH" in completed.stderr
