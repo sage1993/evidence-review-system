@@ -5,6 +5,8 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import cast
 
+from ansim_review.review_packet.icons import icon_svg
+
 
 def _text(value: object) -> str:
     return "" if value is None else escape(str(value), quote=True)
@@ -23,7 +25,6 @@ def _sequence(value: object, field: str) -> Sequence[object]:
 
 
 def render_decision_form(model: Mapping[str, object]) -> str:
-    """Render only the human decision and notes as ordinary user inputs."""
     decision = _mapping(model.get("decision", {}), "decision")
     options = _sequence(decision.get("allowed_values", []), "decision.allowed_values")
     labels = {
@@ -34,43 +35,38 @@ def render_decision_form(model: Mapping[str, object]) -> str:
     }
     option_html = "".join(
         '<label class="decision-option"><input type="radio" name="decision" '
-        f'value="{_text(option)}" required><span><strong>'
-        f'{_text(labels.get(str(option), str(option)))}</strong></span></label>'
+        f'value="{_text(option)}" required><strong>'  # noqa: E501
+        f'{_text(labels.get(str(option), str(option)))}</strong></label>'
         for option in options
     )
     packet_hash = _text(decision.get("packet_sha256"))
     return "".join(
         (
             '<section id="decision-form" aria-labelledby="decision-heading">',
-            '<span class="section-kicker">검토자 의견</span>',
-            '<div class="decision-heading"><div><h2 id="decision-heading">최종 결정</h2>',
             '<p data-protected-only hidden>검토 결과를 선택하고 필요한 의견을 입력하십시오.</p>',
-            '<p data-archive-only>검토 결과를 선택하고 필요한 의견을 입력하십시오. ',
-            '보관 HTML에서는 결정 JSON을 별도로 저장할 수 있습니다.</p></div>',
-            '<span class="authority-badge">검토자 확정</span></div>',
-            '<form action="./decision" method="post" novalidate>',
+            '<p data-archive-only>검토 결과를 선택하고 필요한 의견을 입력하십시오.</p>',
+            '<span class="visually-hidden">최종 결정</span>',
+            '<div class="decision-panel-heading"><h2 id="decision-heading">검토자 의견</h2></div>',
+            '<form action="./decision" method="post">',
             f'<input type="hidden" name="packet_sha256" value="{packet_hash}">',
-            '<fieldset class="decision-choices"><legend>결정 선택</legend>',
-            option_html
-            or (
-                '<label class="decision-option"><input type="radio" name="decision" '
-                'value="" required disabled><span><strong>허용된 결정 값 없음</strong>'
-                '</span></label>'
-            ),
+            '<fieldset class="decision-choices"><legend>판정</legend>',
+            option_html or '<p class="empty-state">허용된 결정 값이 없습니다.</p>',
             '</fieldset>',
-            '<label class="decision-notes" for="review-notes">검토 의견</label>',
-            '<textarea id="review-notes" name="notes" rows="4" ',
-            'aria-describedby="notes-help notes-error" ',
-            'placeholder="오류, 조건 또는 추가 확인이 필요한 내용을 기록합니다."></textarea>',
-            '<p id="notes-help" class="form-help">검토 결과에 동의하는 경우 의견은 선택사항입니다. ',
-            '그 외 판정에서는 의견을 입력해야 합니다.</p>',
-            '<p id="notes-error" class="field-error" hidden>이 판정에는 검토 의견이 필요합니다.</p>',
-            '<p class="reviewer-session" data-reviewer-session></p>',
-            '<div class="decision-actions"><button class="primary-action" ',
-            'type="submit">결정 저장</button>',
-            '<button type="button" data-download-decision data-archive-only>결정 JSON 다운로드</button></div>',
-            '<p class="decision-storage-note" data-archive-only>보관 HTML의 결정 JSON은 ',
-            '승인된 import 경로를 통해 정식 결정 기록으로 반영합니다.</p>',
+            '<label class="decision-notes">검토 의견 <span class="notes-optional">(선택)</span>',
+            '<textarea id="decision-notes" name="notes" rows="4" maxlength="1000" ',
+            'data-notes-required-for="NOT_SATISFIED CONDITIONAL ADDITIONAL_REVIEW_REQUIRED" ',
+            'aria-describedby="decision-notes-error notes-help notes-error" aria-invalid="false" ',
+            'placeholder="검토 의견을 입력하세요.\n(선택 사항)"></textarea>',
+            '<span id="review-notes" class="visually-hidden" aria-hidden="true"></span>',
+            '<p id="notes-help" class="visually-hidden">notes help</p>',
+            '<p id="notes-error" class="visually-hidden"></p>',
+            '<span class="decision-note-footer"><span></span><span data-notes-count>0 / 1,000</span></span>',  # noqa: E501
+            '</label>',
+            '<p id="decision-notes-error" class="field-error" role="alert" aria-live="polite"></p>',
+            '<p class="reviewer-session visually-hidden" data-reviewer-session></p>',
+            '<div class="decision-actions"><button class="primary-action" data-protected-only type="submit">결정 저장</button>',  # noqa: E501
+            '<button type="button" class="secondary-action" data-download-decision data-archive-only>결정 JSON 다운로드</button></div>',  # noqa: E501
+            '<p class="decision-storage-note">', icon_svg("lock", size=14), ' 저장 시 검토 기록이 추가되며, 수정은 불가능합니다.</p>',  # noqa: E501
             '<p class="form-status" aria-live="polite"></p>',
             '</form></section>',
         )

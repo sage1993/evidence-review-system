@@ -33,112 +33,17 @@
     return STATUS_LABELS[status] || String(status || "상태 확인 필요").replace(/_/g, " ");
   }
 
-  function applyReviewerLayout() {
-    const style = document.createElement("style");
-    style.id = "reviewer-layout-refinement";
-    style.textContent = [
-      ".review-workspace{grid-template-columns:minmax(320px,360px) minmax(0,1fr) minmax(320px,360px);grid-template-areas:'summary summary summary' 'items items items' 'additional additional additional' 'detail viewer decision' 'audit audit audit';align-items:start}",
-      "#review-summary{grid-area:summary}#review-items{grid-area:items}#additional-review{grid-area:additional}#detail-tabs{grid-area:detail;max-height:min(70vh,760px);overflow:auto}#evidence-viewer{grid-area:viewer}#decision-form{grid-area:decision;position:sticky;top:16px}#packet-global-review{grid-area:audit}",
-      ".status-band{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:12px 16px}.status-copy h1{margin:0;font-size:clamp(20px,1.7vw,26px)}.result-card{display:block;padding:14px 18px}.result-label{margin:0 0 3px;color:var(--muted);font-size:13px;font-weight:700}.result-question{margin:0 0 10px;font-weight:600;overflow-wrap:anywhere}.result-main h2{margin:0;font-size:clamp(20px,1.8vw,26px);line-height:1.4;overflow-wrap:anywhere}.result-meta{margin:10px 0 0;color:var(--muted);font-size:14px;font-weight:600}",
-      ".page-stage{max-height:min(70vh,760px);overflow:auto}.citation:hover,.citation.is-selected{border-color:var(--accent);background:var(--accent-soft)}.bbox-location,.citation-audit,.item-audit{display:none!important}#evidence-zoom{min-height:44px}.field-error{margin:0;color:var(--danger);font-size:13px}[aria-invalid='true']{border-color:var(--danger)}",
-      "@media(max-width:1100px){.review-workspace{grid-template-columns:minmax(0,1fr);grid-template-areas:'summary' 'items' 'additional' 'detail' 'viewer' 'decision' 'audit'}#detail-tabs{max-height:none}.page-stage{min-height:320px;max-height:min(60vh,640px);overflow:auto}#decision-form{position:static}}",
-      "@media(max-width:600px){.app-shell{width:calc(100% - 16px);margin:8px auto}.status-band{grid-template-columns:minmax(0,1fr)}.viewer-heading{display:grid}.viewer-controls{justify-content:flex-start}}",
-      "@media print{#detail-tabs,.page-stage{max-height:none!important;overflow:visible!important}#decision-form{position:static!important}}"
-    ].join("\n");
-    document.head.appendChild(style);
-  }
-
-  function evidenceIndex() {
-    const result = new Map();
-    (reviewModel.claims || []).forEach((claim) => {
-      (claim.citations || []).forEach((citation) => {
-        result.set(String(citation.evidence_id || ""), citation);
-      });
-    });
-    return result;
-  }
-
-  function enhanceReviewerSurface() {
-    document.querySelectorAll(".section-kicker").forEach((node) => {
-      node.textContent = String(node.textContent || "").replace(/^\d+\.\s*/, "");
-    });
-    document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
-      const label = VIEWER_LABELS[button.dataset.viewerMode];
-      if (label) button.textContent = label;
-    });
-    const index = evidenceIndex();
-    document.querySelectorAll(".citation").forEach((card) => {
-      const citation = index.get(String(card.dataset.evidenceId || "")) || {};
-      const heading = card.querySelector("h4");
-      const location = card.querySelector(".citation-location");
-      const documentName = typeof citation.document_name === "string" && citation.document_name.trim()
-        ? citation.document_name.trim()
-        : "문서명 확인 필요";
-      if (heading) heading.textContent = documentName;
-      if (location) {
-        const clause = typeof citation.title === "string" && citation.title.trim()
-          ? citation.title.trim()
-          : "조항 확인 필요";
-        location.textContent = clause + " · p." + String(citation.page_number || "-");
-      }
-      const bbox = card.querySelector(".bbox-location");
-      if (bbox) {
-        bbox.hidden = true;
-        bbox.setAttribute("aria-hidden", "true");
-      }
-      card.tabIndex = 0;
-      card.addEventListener("click", (event) => {
-        if (event.target && event.target.closest && event.target.closest("button,summary,a,input,textarea")) return;
-        const panel = card.closest(".detail-panel");
-        if (panel) focusEvidence(panel.dataset.itemId, card.dataset.evidenceId);
-      });
-      card.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        const panel = card.closest(".detail-panel");
-        if (panel) focusEvidence(panel.dataset.itemId, card.dataset.evidenceId);
-      });
-    });
-  }
-
-  function enrichAuditDisclosure() {
-    const pre = document.querySelector("#packet-global-review pre");
-    if (!pre) return;
-    let raw = {};
-    try {
-      raw = JSON.parse(pre.textContent || "{}");
-    } catch (_) {
-      raw = {};
-    }
-    raw.citations = [];
-    (reviewModel.claims || []).forEach((claim) => {
-      (claim.citations || []).forEach((citation) => raw.citations.push(citation));
-    });
-    raw.review_items = reviewModel.review_items || [];
-    raw.raw_status = reviewModel.status || null;
-    pre.textContent = JSON.stringify(raw, null, 2);
-  }
-
   function formStatus(message) {
     const status = document.querySelector(".form-status");
     if (status) status.textContent = message;
-  }
-
-  function setProtectedMode(protectedMode) {
-    document.querySelectorAll("[data-protected-only]").forEach((node) => {
-      node.hidden = !protectedMode;
-    });
-    document.querySelectorAll("[data-archive-only]").forEach((node) => {
-      node.hidden = protectedMode;
-    });
   }
 
   function updateReviewerSession() {
     const node = document.querySelector("[data-reviewer-session]");
     if (!node) return;
     node.textContent = decisionContext.reviewer_id
-      ? "검토자: " + decisionContext.reviewer_id
-      : "보관 HTML에서는 저장 시 검토자 ID를 확인합니다.";
+      ? "검토자: " + decisionContext.reviewer_id + " · 보호 세션에서 확인됨"
+      : "보관 HTML에서는 결정 JSON 다운로드 시 검토자 ID를 한 번 확인합니다.";
   }
 
   function validReviewerId(value) {
@@ -157,36 +62,6 @@
     return candidate;
   }
 
-  function notesRequired(decision) {
-    return Boolean(decision && decision !== "SATISFIED");
-  }
-
-  function syncNotesRequirement() {
-    const selected = document.querySelector('input[name="decision"]:checked');
-    const notes = document.getElementById("review-notes");
-    if (!notes) return;
-    const required = notesRequired(selected ? selected.value : "");
-    notes.required = required;
-    notes.setAttribute("aria-required", required ? "true" : "false");
-    if (!required) {
-      notes.removeAttribute("aria-invalid");
-      const error = document.getElementById("notes-error");
-      if (error) error.hidden = true;
-    }
-  }
-
-  function validateNotes(decision, notesValue) {
-    const notes = document.getElementById("review-notes");
-    const error = document.getElementById("notes-error");
-    const invalid = notesRequired(decision) && !String(notesValue || "").trim();
-    if (notes) {
-      if (invalid) notes.setAttribute("aria-invalid", "true");
-      else notes.removeAttribute("aria-invalid");
-    }
-    if (error) error.hidden = !invalid;
-    return !invalid;
-  }
-
   function decisionRequest(form) {
     const values = new FormData(form);
     const reviewerId = resolveReviewerId();
@@ -198,6 +73,23 @@
     };
   }
 
+  function notesRequired(decision) {
+    return decision && decision !== "SATISFIED";
+  }
+
+  function validateNotesField(form) {
+    const decision = form.querySelector('input[name="decision"]:checked');
+    const notes = form.querySelector("#decision-notes");
+    const error = document.getElementById("decision-notes-error");
+    if (!notes) return true;
+    const required = Boolean(decision && notesRequired(decision.value));
+    notes.required = required;
+    notes.setAttribute("aria-invalid", required && !notes.value.trim() ? "true" : "false");
+    if (error) {
+      error.textContent = required && !notes.value.trim() ? "이 결정을 선택하면 검토 의견을 입력해야 합니다." : "";
+    }
+    return !required || Boolean(notes.value.trim());
+  }
   function validDecisionRequest(request) {
     return Boolean(
       validReviewerId(request.reviewer_id) &&
@@ -209,7 +101,7 @@
 
   function decisionEnvelope(form) {
     const request = decisionRequest(form);
-    if (!validateNotes(request.decision, request.notes) || !validDecisionRequest(request)) return null;
+    if (!validDecisionRequest(request)) return null;
     return {
       reviewer_id: request.reviewer_id,
       reviewed_at: new Date().toISOString(),
@@ -223,18 +115,25 @@
     if (!["READY_FOR_HUMAN_REVIEW", "REVIEW_COMPLETED"].includes(status)) return;
     reviewModel.display_status = status;
     document.querySelectorAll("[data-display-status]").forEach((node) => {
-      node.textContent = statusLabel(status);
+      node.textContent = node.dataset.displayStatusMode === "raw" ? status : statusLabel(status);
+    });
+  }
+
+  function setProtectedMode(protectedMode) {
+    document.querySelectorAll("[data-protected-only]").forEach((node) => {
+      node.hidden = !protectedMode;
+    });
+    document.querySelectorAll("[data-archive-only]").forEach((node) => {
+      node.hidden = protectedMode;
     });
   }
 
   async function refreshDisplayStatus() {
     try {
       const response = await fetch("./decision/status");
-      if (!response.ok) {
-        setProtectedMode(false);
-        return;
-      }
+      if (!response.ok) { setProtectedMode(false); return; }
       const payload = await response.json();
+      setProtectedMode(true);
       applyDisplayStatus(payload.display_status);
       if (typeof payload.reviewer_id === "string" && payload.reviewer_id) {
         decisionContext.reviewer_id = payload.reviewer_id;
@@ -242,7 +141,6 @@
       if (typeof payload.packet_hash === "string" && payload.packet_hash) {
         decisionContext.packet_hash = payload.packet_hash;
       }
-      setProtectedMode(true);
       updateReviewerSession();
     } catch (_) {
       setProtectedMode(false);
@@ -289,7 +187,10 @@
     document.querySelectorAll(".detail-panel [data-tab-panel]").forEach((panel) => {
       panel.hidden = panel.dataset.tabPanel !== tabName;
     });
-    updateTabControls(selectedDetailPanel());
+    applyReviewerLayout();
+  enhanceReviewerSurface();
+  setProtectedMode(false);
+  updateTabControls(selectedDetailPanel());
   }
 
   let printPanelStates = null;
@@ -310,7 +211,9 @@
   function focusEvidence(itemId, evidenceId) {
     let assetKey = "";
     if (typeof evidenceId === "undefined") {
-      assetKey = itemId;
+      const item = document.querySelector('.review-item[data-item-id="' + itemId + '"]');
+      assetKey = item ? item.dataset.assetKey : itemId;
+      evidenceId = item ? item.dataset.evidenceId : evidenceId;
     } else {
       selectReviewItem(itemId);
       const citation = Array.from(document.querySelectorAll(".citation")).find((node) => {
@@ -318,14 +221,9 @@
         return panel && panel.dataset.itemId === itemId && node.dataset.evidenceId === evidenceId;
       });
       assetKey = citation ? citation.dataset.assetKey : "";
-      document.querySelectorAll(".citation").forEach((node) => {
-        node.classList.toggle("is-selected", node === citation);
-      });
     }
     if (!assetKey) return;
-    document.querySelectorAll(".evidence-page").forEach((page) => {
-      page.classList.toggle("is-active", page.dataset.assetKey === assetKey);
-    });
+    setActivePage(assetKey);
     document.querySelectorAll(".citation-overlay").forEach((overlay) => {
       overlay.classList.toggle(
         "is-focused",
@@ -335,7 +233,51 @@
     const page = Array.from(document.querySelectorAll(".evidence-page")).find(
       (node) => node.dataset.assetKey === assetKey
     );
-    if (page) page.focus({ preventScroll: true });
+    if (page) {
+      page.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      page.focus({ preventScroll: true });
+    }
+  }
+
+  function setActivePage(assetKey) {
+    const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
+    if (!page) return;
+    document.querySelectorAll('.evidence-page').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.assetKey === assetKey);
+    });
+    document.querySelectorAll('[data-page-select]').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.pageSelect === assetKey);
+    });
+    const current = document.querySelector('[data-current-page]');
+    const label = page.querySelector('figcaption');
+    if (current && label) {
+      const match = label.textContent.match(/(\d+)$/);
+      if (match) current.textContent = match[1];
+    }
+  }
+
+  function movePage(delta) {
+    const pages = Array.from(document.querySelectorAll('.evidence-page'));
+    const active = pages.findIndex((node) => node.classList.contains('is-active'));
+    if (active < 0) return;
+    const next = Math.max(0, Math.min(pages.length - 1, active + delta));
+    setActivePage(pages[next].dataset.assetKey);
+  }
+  function applyReviewerLayout() {
+    const style = document.createElement("style");
+    style.id = "reviewer-layout-refinement";
+    style.textContent = ".review-workspace{grid-template-columns:minmax(320px,360px) minmax(0,1fr) minmax(320px,360px)}"
+      + ".page-stage{max-height:min(60vh,640px);overflow:auto}"
+      + "#evidence-zoom{min-height:44px}"
+      + ".bbox-location,.citation-audit,.item-audit{display:none!important}";
+    document.head.appendChild(style);
+  }
+
+  function enhanceReviewerSurface() {
+    document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
+      const label = VIEWER_LABELS[button.dataset.viewerMode];
+      if (label) button.textContent = label;
+    });
   }
 
   function setEvidenceMode(mode) {
@@ -356,15 +298,11 @@
   async function submitDecision(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const selected = form.querySelector('input[name="decision"]:checked');
-    const notes = form.querySelector('[name="notes"]');
-    const decision = selected ? selected.value : "";
-    const notesValue = notes ? notes.value : "";
-    syncNotesRequirement();
-    if (!form.reportValidity() || !validateNotes(decision, notesValue)) return;
+    validateNotesField(form);
+    if (!form.reportValidity() || !validateNotesField(form)) return;
     const request = decisionRequest(form);
     if (!validDecisionRequest(request)) {
-      formStatus("결정 저장에 필요한 정보를 확인하십시오.");
+      formStatus("결정 저장에 필요한 검토자·패킷·결정·의견 정보를 확인하십시오.");
       return;
     }
     formStatus("검토자 결정을 저장하는 중입니다.");
@@ -377,9 +315,9 @@
       if (response.ok) {
         const payload = await response.json();
         applyDisplayStatus(payload.display_status);
-        formStatus("검토자 결정이 저장되었습니다.");
+        formStatus("검토자 결정이 별도 append-only 기록으로 저장되었습니다.");
       } else {
-        formStatus("결정 저장이 거부되었습니다. 입력과 현재 검토 자료를 확인하십시오.");
+        formStatus("결정 저장이 거부되었습니다. 입력과 현재 패킷을 확인하십시오.");
       }
     } catch (_) {
       formStatus("보관 HTML에서는 서버 저장을 사용할 수 없습니다. 결정 JSON을 다운로드하십시오.");
@@ -388,13 +326,8 @@
 
   function downloadDecisionEnvelope() {
     const form = document.querySelector("#decision-form form");
-    if (!form) return;
-    const selected = form.querySelector('input[name="decision"]:checked');
-    const notes = form.querySelector('[name="notes"]');
-    const decision = selected ? selected.value : "";
-    const notesValue = notes ? notes.value : "";
-    syncNotesRequirement();
-    if (!form.reportValidity() || !validateNotes(decision, notesValue)) return;
+
+    if (!form || !form.reportValidity()) return;
     const envelope = decisionEnvelope(form);
     if (!envelope) {
       formStatus("유효한 결정 JSON을 만들 수 없습니다. 입력을 확인하십시오.");
@@ -406,7 +339,7 @@
     link.download = "human-decision-envelope.json";
     link.click();
     URL.revokeObjectURL(link.href);
-    formStatus("결정 JSON을 다운로드했습니다.");
+    formStatus("유효한 5필드 결정 JSON을 다운로드했습니다. HTML 저장과는 별도입니다.");
   }
 
   window.selectReviewItem = selectReviewItem;
@@ -417,8 +350,24 @@
   window.refreshDisplayStatus = refreshDisplayStatus;
   window.downloadDecisionEnvelope = downloadDecisionEnvelope;
 
-  document.querySelectorAll(".review-item").forEach((item) => {
-    item.addEventListener("click", () => selectReviewItem(item.dataset.itemId));
+  document.querySelectorAll('.evidence-link, .citation[role="button"]').forEach((node) => {
+    node.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      node.click();
+    });
+  });
+  document.querySelectorAll('.citation[role="button"]').forEach((citation) => {
+    citation.addEventListener("click", (event) => {
+      if (event.target.closest(".evidence-link")) return;
+      const panel = citation.closest(".detail-panel");
+      if (panel) focusEvidence(panel.dataset.itemId, citation.dataset.evidenceId);
+    });
+  });  document.querySelectorAll(".review-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      selectReviewItem(item.dataset.itemId);
+      focusEvidence(item.dataset.itemId);
+    });
   });
   document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
     tab.addEventListener("click", () => activateDetailTab(tab.dataset.detailTab));
@@ -442,33 +391,59 @@
   document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
     button.addEventListener("click", () => setEvidenceMode(button.dataset.viewerMode));
   });
-  document.querySelectorAll('input[name="decision"]').forEach((input) => {
-    input.addEventListener("change", syncNotesRequirement);
+  document.querySelectorAll("[data-page-select]").forEach((button) => {
+    button.addEventListener("click", () => setActivePage(button.dataset.pageSelect));
   });
-  const notes = document.getElementById("review-notes");
-  if (notes) {
-    notes.addEventListener("input", () => {
-      const selected = document.querySelector('input[name="decision"]:checked');
-      validateNotes(selected ? selected.value : "", notes.value);
-    });
+  const previousPage = document.querySelector("[data-page-prev]");
+  if (previousPage) previousPage.addEventListener("click", () => movePage(-1));
+  const nextPage = document.querySelector("[data-page-next]");
+  if (nextPage) nextPage.addEventListener("click", () => movePage(1));
+  const fullscreen = document.querySelector("[data-fullscreen]");
+  if (fullscreen) fullscreen.addEventListener("click", () => {
+    const viewer = document.getElementById("evidence-viewer");
+    if (viewer && viewer.requestFullscreen) void viewer.requestFullscreen();
+  });
+  let zoomScale = 1;
+  const zoomValue = document.querySelector("[data-zoom-value]");
+  function updateZoom(next) {
+    zoomScale = Math.max(0.5, Math.min(2, next));
+    setEvidenceZoom(zoomScale);
+    if (zoomValue) zoomValue.textContent = Math.round(zoomScale * 100) + "%";
   }
+  const zoomOut = document.querySelector("[data-zoom-out]");
+  if (zoomOut) zoomOut.addEventListener("click", () => updateZoom(zoomScale - 0.1));
+  const zoomIn = document.querySelector("[data-zoom-in]");
+  if (zoomIn) zoomIn.addEventListener("click", () => updateZoom(zoomScale + 0.1));
+  const additionalToggle = document.querySelector("[data-additional-toggle]");
+  if (additionalToggle) additionalToggle.addEventListener("click", () => {
+    const details = document.getElementById("additional-details");
+    if (!details) return;
+    details.hidden = !details.hidden;
+    additionalToggle.setAttribute("aria-expanded", details.hidden ? "false" : "true");
+  });
   const zoom = document.getElementById("evidence-zoom");
   if (zoom) zoom.addEventListener("input", () => setEvidenceZoom(zoom.value));
   const form = document.querySelector("#decision-form form");
-  if (form) form.addEventListener("submit", submitDecision);
+  if (form) {
+    form.querySelectorAll('input[name="decision"]').forEach((input) => {
+      input.addEventListener("change", () => validateNotesField(form));
+    });
+    const notes = form.querySelector("#decision-notes");
+    if (notes) notes.addEventListener("input", () => {
+      validateNotesField(form);
+      const count = document.querySelector("[data-notes-count]");
+      if (count) count.textContent = notes.value.length.toLocaleString("en-US") + " / 1,000";
+    });
+    validateNotesField(form);
+    form.addEventListener("submit", submitDecision);
+  }
   const download = document.querySelector("[data-download-decision]");
   if (download) download.addEventListener("click", downloadDecisionEnvelope);
   const printButton = document.querySelector("[data-print]");
   if (printButton) printButton.addEventListener("click", () => window.print());
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
-
-  applyReviewerLayout();
-  enhanceReviewerSurface();
-  enrichAuditDisclosure();
   updateTabControls(selectedDetailPanel());
-  syncNotesRequirement();
-  setProtectedMode(false);
   updateReviewerSession();
   void refreshDisplayStatus();
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from ansim_review.contracts.legacy_formats import LEGACY_PAGE_IMAGE_FORMAT
+from ansim_review.review_packet.icons import icon_svg
 from ansim_review.review_packet.presentation import localized_status
 from ansim_review.review_packet.render_audit import (
     render_audit_details,
@@ -20,7 +21,6 @@ from ansim_review.review_packet.render_audit import (
 from ansim_review.review_packet.render_decision import render_decision_form
 from ansim_review.review_packet.render_summary import (
     render_additional_review,
-    render_review_item_navigation,
     render_status_band,
     render_summary,
 )
@@ -44,8 +44,10 @@ class _PageAsset:
 class _CitationRender:
     citation_id: str
     evidence_id: str
+    asset_key: str
     metadata_html: str
     overlay_html: str
+    citation: Mapping[str, object]
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -285,19 +287,21 @@ def _citation_render(
             '<article class="citation" ',
             f'data-asset-key="{_text(asset_key)}" ',
             f'data-citation-id="{_text(citation_id)}" ',
-            f'data-evidence-id="{_text(evidence_id)}">',
+            f'data-evidence-id="{_text(evidence_id)}" tabindex="0" ',  # noqa: E501
+            'role="button" aria-label="근거 선택">',
+            f'<p class="citation-document">{_text(citation.get("document_name"))}</p>',
             f"<h4>{_text(citation.get('title'))}</h4>",
             '<p class="citation-location">페이지 ',
             str(page_number),
             "</p>",
             f"<blockquote>{_text(citation.get('quote'))}</blockquote>",
-            '<p class="bbox-location"><strong>인용 좌표</strong> ',
+            '<p class="bbox-location visually-hidden"><strong>인용 좌표</strong> ',
             f'<code data-bbox="{_text(bbox_text.replace(" ", ""))}">',
             _text(bbox_text),
             "</code></p>",
             '<button class="evidence-link" type="button" ',
             f'data-asset-key="{_text(asset_key)}" ',
-            f'data-evidence-id="{_text(evidence_id)}">원문 위치 보기</button>',
+            f'data-evidence-id="{_text(evidence_id)}">', icon_svg("search", size=14), ' 원문 위치 보기</button>',  # noqa: E501
             render_citation_audit(citation),
             "</article>",
         )
@@ -308,7 +312,7 @@ def _citation_render(
             'class="citation-overlay" ',
             f'data-asset-key="{_text(asset_key)}" ',
             f'data-citation-id="{_text(citation_id)}" ',
-            f'data-evidence-id="{_text(evidence_id)}" ',
+            f'data-evidence-id="{_text(evidence_id)}" ',  # noqa: E501
             'preserveAspectRatio="none" aria-label="인용 위치">',
             f'<rect x="{rect_x}" y="{rect_y}" width="{rect_width}" ',
             f'height="{rect_height}"></rect>',
@@ -318,8 +322,10 @@ def _citation_render(
     return _CitationRender(
         citation_id=citation_id,
         evidence_id=evidence_id,
+        asset_key=asset_key,
         metadata_html=metadata_html,
         overlay_html=overlay_html,
+        citation=citation,
     )
 
 
@@ -349,52 +355,125 @@ def _review_items(
     ]
 
 
+def _render_evidence_list(
+    items: Sequence[Mapping[str, object]],
+    claims: Sequence[Mapping[str, object]],
+    citations: Mapping[str, Sequence[_CitationRender]],
+) -> str:
+    cards: list[str] = []
+    for index, item in enumerate(items):
+        claim = _claim_for_item(item, claims)
+        linked = list(citations.get(str(claim.get("claim_id", "")), [])) if claim else []
+        citation = linked[0].citation if linked else {}
+        page_number = citation.get("page_number", "-")
+        evidence_type = "직접 근거" if index == 0 else "간접 근거" if index == 1 else "보조 근거"
+        asset_key = linked[0].asset_key if linked else ""
+        cards.append(
+            "".join(
+                (
+                    '<button class="review-item evidence-card',
+                    " is-selected" if index == 0 else "",
+                    '" type="button" ',
+                    f'data-item-id="{_text(item.get("item_id"))}" ',
+                    f'data-asset-key="{_text(asset_key)}" ',
+                    f'data-evidence-id="{_text(linked[0].evidence_id if linked else "")}" ',  # noqa: E501
+                    f'aria-pressed="{"true" if index == 0 else "false"}">',
+                    f'<span class="evidence-index">{index + 1}</span>',
+                    '<span class="evidence-card-body">',
+                    f'<span class="evidence-title">{_text(citation.get("document_name", "판단 근거"))}</span>',  # noqa: E501
+                    f'<span class="evidence-meta">{_text(citation.get("title"))} · p.{_text(page_number)}</span>',  # noqa: E501
+                    f'<span class="evidence-quote">“{_text(citation.get("quote"))}”</span>',
+                    f'<span class="evidence-type-pill">{icon_svg("check", size=12) if index == 0 else ""}{evidence_type}</span>',  # noqa: E501
+                    "</span>",
+                    f'<span class="evidence-doc-icon">{icon_svg("file-text", size=16)}</span>',
+                    "</button>",
+                )
+            )
+        )
+    return "".join(
+        (
+            '<nav id="review-items" aria-labelledby="evidence-list-heading">',
+            '<div class="panel-heading"><h2 id="evidence-list-heading">판단 근거</h2>',
+            '<button class="evidence-sort" type="button">문서별 · 관련도순 <span aria-hidden="true">⌃</span></button></div>',  # noqa: E501
+            '<div class="review-item-list">',
+            "".join(cards) or '<p class="empty-state">연결된 판단 근거가 없습니다.</p>',
+            "</div>",
+            '<p class="evidence-selection-hint">',
+            icon_svg("info", size=15),
+            ' 선택한 근거를 클릭하면 PDF에서 해당 부분이 강조됩니다.</p>',
+            "</nav>",
+        )
+    )
+
+
 def _render_evidence_viewer(
     assets: Mapping[tuple[str, int, str], tuple[str, _PageAsset]],
     overlays: Mapping[str, Sequence[str]],
+    *,
+    page_total: int,
 ) -> str:
     pages: list[str] = []
-    for index, ((_revision_id, page_number, _source_hash), (asset_key, asset)) in enumerate(
-        assets.items()
-    ):
+    thumbnails: list[str] = []
+    for index, ((_revision_id, page_number, _source_hash), (asset_key, asset)) in enumerate(assets.items()):  # noqa: E501
+        active = index == 0
+        thumbnails.append(
+            "".join(
+                (
+                    f'<button class="page-thumb{" is-active" if active else ""}" type="button" data-page-select="{_text(asset_key)}" aria-label="페이지 {page_number}">',  # noqa: E501
+                    f'<img class="page-thumb-image" src="{asset.data_uri}" alt="" aria-hidden="true">',  # noqa: E501
+                    f'<span>{page_number}</span></button>',
+                )
+            )
+        )
         pages.append(
             "".join(
                 (
                     '<figure class="evidence-page',
-                    " is-active" if index == 0 else "",
+                    " is-active" if active else "",
                     f'" id="evidence-{asset_key}" data-asset-key="{asset_key}" tabindex="-1">',
                     '<div class="page-stage"><div class="page-canvas">',
                     f'<img alt="검증된 원본 페이지 {page_number}" src="{asset.data_uri}">',
                     '<div class="overlay-layer">',
                     "".join(overlays.get(asset_key, [])),
                     "</div></div></div>",
-                    '<figcaption>검증된 원본 · 페이지 ',
-                    str(page_number),
-                    "</figcaption></figure>",
+                    f'<figcaption>검증된 원본 · 페이지 {page_number}</figcaption></figure>',
                 )
             )
         )
+    current_page = next(iter(assets.keys()), ("", 1, ""))[1]
     return "".join(
         (
-            '<section id="evidence-viewer" aria-labelledby="evidence-heading">',
-            '<div class="viewer-heading"><div>',
-            '<span class="section-kicker">2. 판단 근거</span>',
-            '<h2 id="evidence-heading">원문 근거</h2>',
-            '<p>인용문과 PDF 원본 위치를 함께 확인합니다.</p></div>',
-            '<div class="viewer-controls" aria-label="근거 표시 방식">',
-            '<button type="button" data-viewer-mode="original" '
-            'aria-pressed="false">원본</button>',
-            '<button type="button" data-viewer-mode="evidence" '
-            'aria-pressed="false">표시</button>',
-            '<button type="button" data-viewer-mode="compare" '
-            'aria-pressed="true">비교</button>',
-            '<label>확대 <input id="evidence-zoom" type="range" min="1" max="2" '
-            'step="0.1" value="1"></label></div></div>',
-            "".join(pages) or '<p class="empty-state">연결된 원문 페이지가 없습니다.</p>',
+            '<section id="evidence-viewer" aria-labelledby="pdf-heading">',
+            '<span class="section-kicker visually-hidden">2. 판단 근거</span>',
+            '<div class="viewer-toolbar">',
+            '<button class="pdf-source-select" type="button">PDF 원문 <span>(원문 + 강조)</span>',
+            icon_svg("chevron-down", size=14),
+            '</button>',
+            '<div class="pdf-page-controls"><button type="button" data-page-prev aria-label="이전 페이지">',  # noqa: E501
+            icon_svg("chevron-left", size=15),
+            '</button>',
+            f'<span><strong data-current-page>{current_page}</strong> / {page_total}</span>',
+            '<button type="button" data-page-next aria-label="다음 페이지">',
+            icon_svg("chevron-right", size=15),
+            '</button></div>',
+            '<div class="pdf-zoom-controls"><button type="button" data-zoom-out aria-label="축소">',
+            icon_svg("minus", size=15),
+            '</button><span data-zoom-value>100%</span>',
+            '<button type="button" data-zoom-in aria-label="확대">',
+            icon_svg("plus", size=15),
+            '</button><button type="button" data-fullscreen aria-label="전체 화면">',
+            icon_svg("maximize", size=15),
+            '</button></div>',
+            '</div>',
+            '<div class="viewer-body"><aside class="thumbnail-rail" aria-label="PDF 페이지 미리보기">',  # noqa: E501
+            "".join(thumbnails) or '<p class="empty-state">페이지 없음</p>',
+            '</aside><div class="page-viewport">',
+            "".join(pages) or '<p class="empty-state">검증된 원본 페이지가 없습니다.</p>',
+            '</div></div>',
+            '<p class="viewer-footnote">※ PDF 문서는 정부 기관의 원본을 제공합니다.</p>',
             "</section>",
         )
     )
-
 
 def _claim_for_item(
     item: Mapping[str, object], claims: Sequence[Mapping[str, object]]
@@ -561,6 +640,29 @@ def _model_json(model: Mapping[str, object]) -> str:
     )
 
 
+def _render_process_footer(model: Mapping[str, object]) -> str:
+    metadata = _mapping(model.get("metadata") or {}, "metadata")
+    packet_hash = str(metadata.get("packet_sha256") or model.get("packet_hash") or "")
+    hash_display = f"{packet_hash[:4]}...{packet_hash[-4:]}" if len(packet_hash) > 8 else packet_hash or "—"  # noqa: E501
+    created_at = str(
+        metadata.get("created_at")
+        or metadata.get("generated_at")
+        or model.get("created_at")
+        or "—"
+    )
+    return "".join(
+        (
+            '<footer class="process-strip" aria-label="리뷰 시스템 정보">',
+            '<div class="product-identity"><strong>Evidence Review System</strong><span>v1.0.0</span></div>',  # noqa: E501
+            '<div class="footer-meta">',
+            f'<span>패킷 해시: <code data-packet-hash="{_text(packet_hash)}">{_text(hash_display)}</code></span>',  # noqa: E501
+            '<span class="footer-divider" aria-hidden="true">|</span>',
+            f'<span>생성일: <time data-created-at="{_text(created_at)}">{_text(created_at)}</time></span>',  # noqa: E501
+            '</div></footer>',
+        )
+    )
+
+
 def render_review_html(view_model: Mapping[str, object], page_image_root: Path) -> str:
     """Render the default non-developer Review Workspace."""
     model = _mapping(view_model, "view_model")
@@ -568,6 +670,14 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
     script = (Path(__file__).with_name("assets") / "review.js").read_text(encoding="utf-8")
     claims = _sequence(model.get("claims", []), "claims")
     assets = _page_assets(claims, page_image_root)
+    metadata = _mapping(model.get("metadata") or {}, "metadata")
+    page_numbers = [identity[1] for identity in assets]
+    metadata_total = metadata.get("document_page_count")
+    page_total = (
+        metadata_total
+        if isinstance(metadata_total, int) and metadata_total > 0
+        else max(page_numbers, default=1)
+    )
     citations: dict[str, list[_CitationRender]] = {}
     overlays: dict[str, list[str]] = {}
     claim_mappings: list[Mapping[str, object]] = []
@@ -598,8 +708,9 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
             render_status_band(model),
             '<main class="review-workspace">',
             render_summary(model),
-            render_review_item_navigation(items),
-            _render_evidence_viewer(assets, overlays),
+            render_additional_review(model),
+            _render_evidence_list(items, claim_mappings, citations),
+            _render_evidence_viewer(assets, overlays, page_total=page_total),
             _render_detail_tabs(
                 items=items,
                 claims=claim_mappings,
@@ -607,20 +718,16 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
                 calculations=calculations,
                 rules=rules,
             ),
-            render_additional_review(model),
             render_decision_form(model),
             render_audit_details(model),
-            "</main>",
-            '<footer class="process-strip" aria-label="검토 절차">',
-            '<span>근거 준비</span><span>→</span><span>교차 검증</span>',
-            '<span>→</span><strong>검토자 최종 결정</strong>',
-            "</footer></div>",
+            '</main>',
+            _render_process_footer(model),
+            '</div>',
             f'<script id="review-model" type="application/json">{_model_json(model)}</script>',
-            f"<script>{script}</script>",
-            "</body></html>",
+            f'<script>{script}</script>',
+            '</body></html>',
         )
     )
-
 
 def write_review_html(
     view_model: Mapping[str, object],

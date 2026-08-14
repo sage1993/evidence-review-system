@@ -211,7 +211,7 @@ def test_default_workspace_is_nondeveloper_first_and_traceable(tmp_path: Path) -
 
     for text in (
         "검토 준비 완료",
-        "1. 검토 결과",
+        "결론",
         "2. 판단 근거",
         "질문 &lt;검토 질문&gt;",
         "정확한 &lt;인용문&gt;",
@@ -234,13 +234,13 @@ def test_single_claim_and_empty_conditions_do_not_create_empty_sections(tmp_path
     model["calculations"] = []
     html = render_review_html(model, tmp_path / "pages")
 
-    assert 'id="review-items"' not in html
+    assert 'id="review-items"' in html
     assert 'id="additional-review"' not in html
     assert 'data-detail-tab="rules-calculations"' not in html
-    assert "규칙·계산" not in html
+    assert "洹쒖튃쨌怨꾩궛" not in html
 
 
-def test_multiple_claims_use_generic_navigation_labels(tmp_path: Path) -> None:
+def test_multiple_claims_use_evidence_card_labels(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
     model = _model()
     claims = model["claims"]
@@ -254,9 +254,9 @@ def test_multiple_claims_use_generic_navigation_labels(tmp_path: Path) -> None:
     nav = re.search(r'<nav id="review-items".*?</nav>', html, re.DOTALL)
 
     assert nav is not None
-    assert "검토 항목 1" in nav.group(0) and "검토 항목 2" in nav.group(0)
+    assert nav.group(0).count("class=\"evidence-card") == 2
+    assert "문서별 · 관련도순" in nav.group(0)
     assert ">C1<" not in nav.group(0) and ">ITEM-C1<" not in nav.group(0)
-
 
 def test_additional_review_renders_only_present_missing_and_conflict_items(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")

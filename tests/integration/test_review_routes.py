@@ -317,19 +317,34 @@ def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_
     assert not (run_dir / "human-decisions").exists()
 
 
-def test_decision_rejects_blank_notes_without_writing(tmp_path: Path) -> None:
+def test_decision_allows_blank_notes_for_satisfied(tmp_path: Path) -> None:
+    run_dir, packet = _review_artifacts(tmp_path)
+    with _server(tmp_path) as (_, base):
+        response = _request(
+            f"{base}/runs/RUN-001/{TOKEN}/decision",
+            method="POST",
+            body=_decision(packet, notes="  \t"),
+            headers={"Content-Type": "application/json", "Origin": base},
+        )
+    created = json.loads(response)
+    assert created["status"] == "RECORDED"
+    assert len(tuple((run_dir / "human-decisions").glob("*.json"))) == 1
+
+
+def test_decision_rejects_blank_notes_for_non_satisfied_without_writing(
+    tmp_path: Path,
+) -> None:
     run_dir, packet = _review_artifacts(tmp_path)
     with _server(tmp_path) as (_, base):
         with pytest.raises(HTTPError) as error:
             _request(
                 f"{base}/runs/RUN-001/{TOKEN}/decision",
                 method="POST",
-                body=_decision(packet, notes="  \t"),
+                body=_decision(packet, decision="NOT_SATISFIED", notes="  \t"),
                 headers={"Content-Type": "application/json", "Origin": base},
             )
         assert error.value.code == 400
     assert not (run_dir / "human-decisions").exists()
-
 
 @pytest.mark.parametrize(
     "changes",

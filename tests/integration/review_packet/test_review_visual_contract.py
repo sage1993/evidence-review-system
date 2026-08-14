@@ -30,9 +30,9 @@ def test_desktop_layout_keeps_evidence_primary_and_decision_sticky(tmp_path: Pat
     _write_page_assets(tmp_path / "pages")
     css = _inline_css(render_review_html(_model(), tmp_path / "pages"))
 
-    assert "grid-template-columns: minmax(0, 1fr) 360px" in css
-    assert '"viewer decision"' in css
-    assert '"detail decision"' in css
+    assert "grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(320px, 360px)" in css
+    assert "items viewer decision" in css
+    assert '"additional additional additional"' in css
     assert "position: sticky" in css
     assert "top: 16px" in css
     assert "font-size: 16px" in css

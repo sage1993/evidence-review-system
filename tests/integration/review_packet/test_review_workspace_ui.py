@@ -105,9 +105,9 @@ def test_conditional_notes_error_is_connected_to_textarea(tmp_path: Path) -> Non
     form = _decision_form_html(html)
 
     assert 'id="review-notes"' in form
-    assert 'aria-describedby="notes-help notes-error"' in form
+    assert 'aria-describedby="decision-notes-error notes-help notes-error"' in form
     assert 'id="notes-error"' in form
-    assert 'setAttribute("aria-invalid", "true")' in html
+    assert 'setAttribute("aria-invalid", required' in html
     assert 'decision !== "SATISFIED"' in html
 
 

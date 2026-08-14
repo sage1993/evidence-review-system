@@ -81,17 +81,20 @@ def _resolve_citation(
     evidence_id = _evidence_id(citation_id)
     row = connection.execute(
         """SELECT r.evidence_id, r.document_id, r.revision_id, r.page_number,
-                  r.bbox_json, r.source_hash, r.title, r.raw_text, r.evidence_type,
-                  p.width, p.height, p.origin_x, p.origin_y, p.rotation, p.box_kind
+                  r.bbox_json, r.source_hash, d.title, r.title, r.raw_text,
+                  r.evidence_type, p.width, p.height, p.origin_x, p.origin_y,
+                  p.rotation, p.box_kind
              FROM retrieval_records AS r
              JOIN pages AS p ON p.id = r.page_id
+             LEFT JOIN documents AS d ON d.id = r.document_id
             WHERE r.evidence_id = ?""",
         (evidence_id,),
     ).fetchone()
     if row is None:
         raise ValueError(f"unresolved citation: {citation_id}")
-    if not isinstance(row[6], str) or not isinstance(row[7], str):
+    if not isinstance(row[7], str) or not isinstance(row[8], str):
         raise ValueError(f"incomplete evidence record: {evidence_id}")
+    document_name = row[6] if isinstance(row[6], str) and row[6] else row[7]
     return {
         "citation_id": citation_id,
         "evidence_id": row[0],
@@ -100,15 +103,16 @@ def _resolve_citation(
         "page_number": row[3],
         "bbox": _bbox(row[4]),
         "source_hash": row[5],
-        "title": row[6],
-        "quote": row[7],
-        "evidence_type": row[8],
-        "page_width": float(row[9]),
-        "page_height": float(row[10]),
-        "page_origin_x": float(row[11]),
-        "page_origin_y": float(row[12]),
-        "page_rotation": int(row[13]),
-        "page_box_kind": row[14],
+        "document_name": document_name,
+        "title": row[7],
+        "quote": row[8],
+        "evidence_type": row[9],
+        "page_width": float(row[10]),
+        "page_height": float(row[11]),
+        "page_origin_x": float(row[12]),
+        "page_origin_y": float(row[13]),
+        "page_rotation": int(row[14]),
+        "page_box_kind": row[15],
     }
 
 
@@ -381,6 +385,11 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         "formula_manifest_sha256": document.get("formula_manifest_sha256"),
         "packet_sha256": packet_sha256,
     }
+    answer_summary = document.get("answer_summary")
+    if not isinstance(answer_summary, str) or not answer_summary.strip():
+        answer_summary = document.get("answer")
+    if not isinstance(answer_summary, str) or not answer_summary.strip():
+        answer_summary = None
     model: dict[str, object] = {
         "run_id": metadata["run_id"],
         "status": status,
@@ -388,6 +397,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         "human_decision": None,
         "decision_options": [],
         "question": _string(document.get("question"), "question"),
+        "answer_summary": answer_summary,
         "claims": claims,
         "calculations": calculations,
         "rules": rule_documents,
