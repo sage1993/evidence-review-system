@@ -74,6 +74,14 @@ _FINALIZER_ARTIFACTS = (
 )
 
 
+class TrackBContractError(ValueError):
+    """Stable error for Track B ownership and retry contract violations."""
+
+    def __init__(self, reason_code: str, message: str) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedReviewRun:
     """Paths created by the deterministic preparation stage."""
@@ -165,6 +173,36 @@ def _publish_validated_track_a(
         return
     _write_json_or_identical(destination, document)
 
+
+def _publish_validated_track_b(
+    source: Path,
+    destination: Path,
+    document: object,
+) -> None:
+    """Bind a validated Track B without rewriting or replacing user input."""
+    if source.resolve() == destination.resolve():
+        if not destination.is_file():
+            raise FileNotFoundError(destination)
+        return
+
+    encoded = dump_bytes(document)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with destination.open("xb") as stream:
+            stream.write(encoded)
+    except FileExistsError:
+        try:
+            existing = dump_bytes(_json(destination))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise TrackBContractError(
+                "TRACK_B_INPUT_MISMATCH",
+                "existing run-local Track B is not a valid canonical JSON document",
+            ) from error
+        if existing != encoded:
+            raise TrackBContractError(
+                "TRACK_B_INPUT_MISMATCH",
+                "existing run-local Track B differs from validated submission",
+            ) from None
 
 def _citation_document(citation: Citation) -> dict[str, object]:
     return {
@@ -558,17 +596,21 @@ def submit_track_b(
     publish: bool = False,
     prevalidated: bool = False,
 ) -> FinalizedReviewRun:
-    """Reject incomplete Track B output before the existing finalizer can run."""
+    """Bind validated Track B before the finalizer enforces output ownership."""
     if not prevalidated:
         validate_track_b_submission(workspace_root, run_id, track_b_output)
     run_directory = _require_prepared_run(workspace_root, run_id)
+    output = _json(track_b_output)
+    bound_track_b = run_directory / "track-b-output.json"
+    _publish_validated_track_b(track_b_output, bound_track_b, output)
     track_a_path = run_directory / "track-a-output.json"
     return finalize_review_run(
         workspace_root,
         run_id,
         track_a_path,
-        track_b_output,
+        bound_track_b,
         publish=publish,
+        bound_track_b=True,
     )
 
 
@@ -627,6 +669,7 @@ def finalize_review_run(
     track_b_output: Path,
     *,
     publish: bool = False,
+    bound_track_b: bool = False,
 ) -> FinalizedReviewRun:
     """Bind external Track outputs, finalize, render, and optionally publish."""
     run_directory = _require_prepared_run(workspace_root, run_id)
@@ -642,11 +685,26 @@ def finalize_review_run(
         raise FileExistsError(imported_a)
 
     generated = (
-        run_directory / "track-b-output.json",
-        run_directory / "run-manifest.json",
-        run_directory / "final-review-packet.json",
-        run_directory / "review.html",
+        (
+            run_directory / "run-manifest.json",
+            run_directory / "final-review-packet.json",
+            run_directory / "review.html",
+        )
+        if bound_track_b
+        else (
+            run_directory / "track-b-output.json",
+            run_directory / "run-manifest.json",
+            run_directory / "final-review-packet.json",
+            run_directory / "review.html",
+        )
     )
+    if bound_track_b and (
+        track_b_output.resolve() != imported_b.resolve() or not imported_b.is_file()
+    ):
+        raise TrackBContractError(
+            "TRACK_B_INPUT_MISMATCH",
+            "bound Track B must be the validated run-local artifact",
+        )
     existing = next((path for path in generated if path.exists()), None)
     if existing is not None:
         raise FileExistsError(existing)
@@ -657,13 +715,14 @@ def finalize_review_run(
     manifest_path = run_directory / "run-manifest.json"
     packet_path = run_directory / "final-review-packet.json"
     html_path = run_directory / "review.html"
-    cleanup = [imported_b, manifest_path, packet_path, html_path]
+    cleanup = list(generated)
     if not prevalidated_track_a:
         cleanup.append(imported_a)
     try:
         if not prevalidated_track_a:
             _write_json(imported_a, track_a_document)
-        _write_json(imported_b, track_b_document)
+        if not bound_track_b:
+            _write_json(imported_b, track_b_document)
         artifacts = {
             name: _sha256(run_directory / name)
             for name in _FINALIZER_ARTIFACTS

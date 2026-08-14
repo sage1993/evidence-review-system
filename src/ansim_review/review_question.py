@@ -31,6 +31,7 @@ from ansim_review.review_run import (
     FinalizedReviewRun,
     PreparedReviewRun,
     SubmittedTrackA,
+    TrackBContractError,
     prepare_review_run,
     submit_track_a,
     submit_track_b,
@@ -51,6 +52,7 @@ class PreparedReviewQuestion:
     status: str
     next_action_path: Path | None
     resumed: bool
+    retrieval_guidance_path: Path | None
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -318,26 +320,55 @@ def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
     )
 
 
-def _recover_incomplete_finalization(run_directory: Path, track_b_output: Path) -> None:
-    """Remove only restartable finalizer outputs from an interrupted FINALIZING run."""
-    track_b = run_directory / "track-b-output.json"
-    if track_b.exists():
+def _recover_incomplete_finalization(
+    run_directory: Path,
+    track_b_output: Path,
+) -> None:
+    """Recover restartable outputs while preserving validated Track B input."""
+    canonical = run_directory / "track-b-output.json"
+    if canonical.exists():
         try:
-            existing_track_b = dump_bytes(_json(track_b))
+            canonical_document = _json(canonical)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            existing_track_b = None
-        if existing_track_b is not None and existing_track_b != dump_bytes(
-            _json(track_b_output)
-        ):
-            raise FileExistsError("existing Track B artifact differs from retry input")
-    for name in (
-        "track-b-output.json",
-        "run-manifest.json",
-        "final-review-packet.json",
-        "review.html",
-    ):
+            canonical_document = None
+
+        if canonical_document is not None:
+            incoming = dump_bytes(_json(track_b_output))
+            if dump_bytes(canonical_document) != incoming:
+                raise TrackBContractError(
+                    "TRACK_B_INPUT_MISMATCH",
+                    "validated run-local Track B differs from retry input",
+                )
+        elif track_b_output.resolve() == canonical.resolve():
+            raise ValueError(
+                "malformed run-local Track B cannot be recovered as validated input"
+            )
+        else:
+            canonical.unlink()
+
+    for name in ("run-manifest.json", "final-review-packet.json", "review.html"):
         (run_directory / name).unlink(missing_ok=True)
 
+
+def _required_finalizing_track_b_hash(run_directory: Path) -> str:
+    events = load_workflow_events(run_directory / "events")
+    finalizing = [event for event in events if event.next_state == "FINALIZING"]
+    if not finalizing:
+        raise ValueError("FINALIZING state requires a Track B identity event")
+    return finalizing[-1].payload_sha256
+
+
+def _validate_finalizing_retry_identity(
+    run_directory: Path,
+    track_b_output: Path,
+) -> None:
+    expected = _required_finalizing_track_b_hash(run_directory)
+    actual = _sha256(track_b_output)
+    if actual != expected:
+        raise TrackBContractError(
+            "TRACK_B_RETRY_MISMATCH",
+            "retry Track B does not match the artifact that entered FINALIZING",
+        )
 
 def _prepare_from_document(workspace: Path, document: dict[str, object]) -> PreparedReviewRun:
     with tempfile.NamedTemporaryFile("wb", suffix=".json", delete=False) as stream:
@@ -391,6 +422,22 @@ def prepare_review_question(
         prepare_metric = finish_stage("prepare", prepare_timer)
     _write_or_identical(run_directory / "evidence-query.json", bundle)
 
+    guidance_path: Path | None = None
+    query_payload = _mapping(bundle["query"], "evidence_bundle.query")
+    attempted = query_payload.get("attempted_terms", [])
+    if not bundle["hits"] and attempted:
+        guidance_path = run_directory / "retrieval-guidance.json"
+        _write_or_identical(
+            guidance_path,
+            {
+                "format": "evidence-review/retrieval-guidance",
+                "version": 1,
+                "query": query_payload["primary"],
+                "attempted_terms": attempted,
+                "authoritative_hit_count": 0,
+            },
+        )
+
     for metric in (
         normalization_metric,
         retrieval_metric,
@@ -411,6 +458,7 @@ def prepare_review_question(
         status=status,
         next_action_path=next_action_path,
         resumed=resumed,
+        retrieval_guidance_path=guidance_path,
     )
 
 
@@ -462,6 +510,9 @@ def submit_question_track_b(
         return finalized
     if state not in {"WAITING_TRACK_B", "FINALIZING"}:
         raise ValueError("review question run is not waiting for Track B")
+
+    if state == "FINALIZING":
+        _validate_finalizing_retry_identity(run_directory, track_b_output)
 
     record_external_wait(
         run_directory,

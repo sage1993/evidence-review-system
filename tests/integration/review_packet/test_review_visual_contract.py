@@ -95,3 +95,18 @@ def test_target_desktop_viewports_remain_above_stacking_breakpoint(tmp_path: Pat
     threshold = int(breakpoint.group("width"))
     for width, height in ((1366, 768), (1920, 1080), (3840, 2160)):
         assert width > threshold, f"{width}x{height} unexpectedly stacks"
+
+
+def test_review_selection_and_focus_orchestration_is_non_recursive(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_model(), tmp_path / "pages")
+    select_start = html.index("function selectReviewItem")
+    focus_start = html.index("function focusEvidence")
+    resolve_start = html.index("function resolveReviewItemEvidence")
+    select_body = html[select_start:focus_start]
+    focus_body = html[focus_start:resolve_start]
+
+    assert "focusEvidence(" not in select_body
+    assert "selectReviewItem(" not in focus_body
+    assert "function activateReviewItem" in html
+    assert "window.activateReviewItem = activateReviewItem" in html

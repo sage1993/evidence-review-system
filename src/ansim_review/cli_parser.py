@@ -187,6 +187,11 @@ def build_parser() -> argparse.ArgumentParser:
     question_track_b.add_argument("--run-id", required=True)
     question_track_b.add_argument("--track-b-output", required=True, type=Path)
     question_track_b.add_argument("--publish", action="store_true")
+    question_track_b.add_argument(
+        "--open",
+        action="store_true",
+        help="open the finalized formal-review workspace through its protected loopback route",
+    )
 
     review_run = subparsers.add_parser(
         "review-run", help="prepare, finalize, serve, or record an immutable review run"

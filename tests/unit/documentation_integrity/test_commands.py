@@ -226,3 +226,32 @@ def test_existing_supported_script_invocations_are_accepted(tmp_path: Path) -> N
     )
     for command in commands:
         assert _validate_text_command(command, tmp_path) == ()
+
+def test_powershell_here_strings_are_not_tokenized_as_commands() -> None:
+    block = CommandBlock(
+        language="powershell",
+        start_line=20,
+        text=(
+            "@'\n"
+            "import json\n"
+            "print(json.dumps({'ok': True}))\n"
+            "'@ | py -3.13 -\n"
+        ),
+    )
+
+    assert normalize_command_block(block) == ()
+
+def test_bootstrap_doctor_command_is_accepted() -> None:
+    assert (
+        validate_cli_tokens(
+            (
+                "python",
+                "-m",
+                "evidence_review",
+                "doctor",
+                "--repository-root",
+                "<path>",
+            )
+        )
+        is None
+    )

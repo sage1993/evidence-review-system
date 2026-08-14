@@ -3,8 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
-from ansim_review import cli
+import pytest
+
+from ansim_review import cli, review_question
 from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from ansim_review.evidence.store import EvidenceStore
 from ansim_review.retrieval.index import build_fts_index
@@ -14,6 +17,7 @@ from ansim_review.review_question import (
     submit_question_track_a,
     submit_question_track_b,
 )
+from ansim_review.review_run import TrackBContractError
 from ansim_review.workflow.events import load_workflow_events
 
 
@@ -88,6 +92,50 @@ def test_review_question_prepare_hides_question_and_evidence_from_stdout(
     assert "주차장 설치 기준" not in json.dumps(document, ensure_ascii=False)
     action = json.loads(Path(document["next_action_path"]).read_text(encoding="utf-8"))
     assert action["action"] == "PRODUCE_TRACK_A"
+
+
+def test_review_question_submit_track_b_open_returns_review_html_and_protected_url(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_id = "RUN-0123456789ABCDEF0123"
+    html_path = workspace / "runs" / run_id / "review.html"
+
+    def fake_submit(*_args, **_kwargs):
+        return SimpleNamespace(
+            run_id=run_id,
+            review_html=html_path,
+            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
+            published_packet=None,
+        )
+
+    def fake_open(_workspace: Path, _run_id: str) -> str:
+        return f"http://127.0.0.1:8123/runs/{run_id}/token/review"
+
+    monkeypatch.setattr(cli, "submit_question_track_b", fake_submit)
+    monkeypatch.setattr(cli, "open_review_run", fake_open)
+
+    exit_code = cli.main(
+        [
+            "review-question",
+            "submit-track-b",
+            "--workspace",
+            str(workspace),
+            "--run-id",
+            run_id,
+            "--track-b-output",
+            str(tmp_path / "track-b.json"),
+            "--open",
+        ]
+    )
+
+    assert exit_code == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["review_html"] == str(html_path)
+    assert document["display_status"] == "OPENED"
+    assert document["url"].startswith("http://127.0.0.1:")
 
 
 def test_review_question_prepare_resumes_the_same_immutable_request(
@@ -332,6 +380,42 @@ def test_track_b_retries_after_interruption_before_finalizer_starts(tmp_path: Pa
     assert load_workflow_events(run_directory / "events")[-1].next_state == "READY_FOR_REVIEW"
 
 
+def test_finalizing_retry_rejects_different_track_b_before_finalizer(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    first = prepare_review_question(
+        workspace,
+        "\uc8fc\ucc28\uc7a5\uc740 \ubcc4\ud45c 2\uc5d0 \ub530\ub978\ub2e4",
+    )
+    run_directory = workspace / "runs" / first.run_id
+    submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
+
+    original = _track_b(run_directory)
+    original_hash = hashlib.sha256(original.read_bytes()).hexdigest()
+    _append_event(run_directory, "FINALIZING", original_hash)
+
+    changed = run_directory / "different-track-b.json"
+    payload = json.loads(original.read_text(encoding="utf-8"))
+    payload["claim_audits"][0]["notes"] = "different retry"
+    changed.write_text(json.dumps(payload), encoding="utf-8")
+
+    called = False
+
+    def fail_if_called(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("finalizer must not run for a retry hash mismatch")
+
+    monkeypatch.setattr(review_question, "submit_track_b", fail_if_called)
+
+    with pytest.raises(TrackBContractError) as caught:
+        submit_question_track_b(workspace, first.run_id, changed)
+
+    assert caught.value.reason_code == "TRACK_B_RETRY_MISMATCH"
+    assert called is False
+
 def test_invalid_track_b_keeps_the_run_waiting_for_track_b(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path / "workspace")
     first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
@@ -575,3 +659,218 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
     }
 
     assert artifacts_after == artifacts_before
+
+def test_review_question_submit_track_b_open_preserves_finalization_on_display_failure(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_id = "RUN-0123456789ABCDEF0123"
+    html_path = workspace / "runs" / run_id / "review.html"
+
+    monkeypatch.setattr(
+        cli,
+        "submit_question_track_b",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            run_id=run_id,
+            review_html=html_path,
+            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
+            published_packet=None,
+        ),
+    )
+
+    def fail_open(*_args, **_kwargs):
+        raise RuntimeError("browser dispatch failed")
+
+    monkeypatch.setattr(cli, "open_review_run", fail_open)
+
+    exit_code = cli.main(
+        [
+            "review-question",
+            "submit-track-b",
+            "--workspace",
+            str(workspace),
+            "--run-id",
+            run_id,
+            "--track-b-output",
+            str(tmp_path / "track-b.json"),
+            "--open",
+        ]
+    )
+
+    assert exit_code == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["status"] == "READY_FOR_HUMAN_REVIEW"
+    assert document["review_html"] == str(html_path)
+    assert document["display_status"] == "OPEN_FAILED"
+    assert "browser dispatch failed" in document["display_error"]
+    assert "url" not in document
+
+def test_prepare_zero_hit_emits_guidance_but_keeps_authoritative_evidence_empty(
+    tmp_path: Path,
+) -> None:
+    workspace, _snapshot_hash = _korean_workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, "존재하지않는시설 설치기준")
+    run_directory = workspace / "runs" / prepared.run_id
+
+    request = json.loads(
+        (run_directory / "review-request.json").read_text(encoding="utf-8")
+    )
+    assert prepared.retrieval_guidance_path is not None
+    guidance = json.loads(
+        prepared.retrieval_guidance_path.read_text(encoding="utf-8")
+    )
+
+    assert request["evidence"] == []
+    assert guidance["authoritative_hit_count"] == 0
+    assert guidance["attempted_terms"]
+    assert all(
+        value["value"] == "0.0"
+        for name, value in request["confidence_input"]["factors"].items()
+        if name in {"source completeness", "traceability", "input completeness"}
+    )
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "청소년 문화의집 설치기준",
+        "청소년문화의집 설치기준",
+        "청소년수련관 설치기준",
+    ],
+)
+def test_reported_korean_question_prepares_with_authoritative_evidence_without_expansion(
+    tmp_path: Path,
+    question: str,
+) -> None:
+    workspace, snapshot_hash = _korean_workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, question)
+    run_directory = workspace / "runs" / prepared.run_id
+    request = json.loads(
+        (run_directory / "review-request.json").read_text(encoding="utf-8")
+    )
+
+    assert request["evidence"]
+    assert request["inputs"]["snapshot_hash"] == snapshot_hash
+    assert prepared.retrieval_guidance_path is None
+def test_korean_formal_review_traverses_to_protected_handoff(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    workspace, snapshot_hash = _korean_workspace(tmp_path / "workspace")
+    _page_assets(workspace)
+    page_directory = workspace / "page-images" / "REV-KR"
+    page_directory.mkdir(parents=True)
+    image = b"\\x89PNG\\r\\n\\x1a\\nreview-question-korean"
+    (page_directory / "page-0001.png").write_bytes(image)
+    (page_directory / "page-0001.json").write_text(
+        json.dumps(
+            {
+                "format": "ansim/page-image",
+                "version": 1,
+                "revision_id": "REV-KR",
+                "page_number": 1,
+                "source_hash": "c" * 64,
+                "pdf_width": 595.0,
+                "pdf_height": 842.0,
+                "image_sha256": hashlib.sha256(image).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    prepared = prepare_review_question(
+        workspace,
+        "\uccad\uc18c\ub144\ubb38\ud654\uc758\uc9d1 \uc124\uce58\uae30\uc900",
+    )
+    assert prepared.status == "WAITING_TRACK_A"
+    run_directory = workspace / "runs" / prepared.run_id
+    evidence_query = json.loads(
+        (run_directory / "evidence-query.json").read_text(encoding="utf-8")
+    )
+    expected_citations = {
+        hit["citation"]["citation_id"]: hit["citation"]
+        for hit in evidence_query["hits"]
+        if hit["citation"] is not None
+    }
+
+    track_a_bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
+    first_evidence = track_a_bundle["evidence"][0]
+    integrated_track_a = run_directory / "integrated-track-a.json"
+    integrated_track_a.write_text(
+        json.dumps(
+            {
+                "run_id": prepared.run_id,
+                "claims": [
+                    {
+                        "claim_id": "CL1",
+                        "text": first_evidence["text"],
+                        "citation_ids": [first_evidence["citation"]["citation_id"]],
+                        "numeric_tokens": [],
+                        "calculation_result_ids": [],
+                        "rule_references": [],
+                    }
+                ],
+                "citations": [first_evidence["citation"]["citation_id"]],
+                "missing_inputs": [],
+                "exceptions": [],
+                "conflicts": [],
+                "explanation": "integrated formal review fixture",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    submitted_a = submit_question_track_a(
+        workspace,
+        prepared.run_id,
+        integrated_track_a,
+    )
+    assert submitted_a.next_action_path.is_file()
+
+    external_track_b = _track_b(run_directory)
+    track_b_bytes = external_track_b.read_bytes()
+    run_local_b = run_directory / "track-b-output.json"
+    run_local_b.write_bytes(track_b_bytes)
+    finalized = submit_question_track_b(workspace, prepared.run_id, run_local_b)
+    assert finalized.packet.status == "READY_FOR_HUMAN_REVIEW"
+    assert finalized.review_html.is_file()
+    assert run_local_b.read_bytes() == track_b_bytes
+
+    request = json.loads(
+        (run_directory / "review-request.json").read_text(encoding="utf-8")
+    )
+    assert request["inputs"]["snapshot_hash"] == snapshot_hash
+    for item in request["evidence"]:
+        citation = item["citation"]
+        authoritative = expected_citations[citation["citation_id"]]
+        assert citation["source_hash"] == authoritative["source_hash"]
+        assert citation["page_number"] == authoritative["page_number"]
+        assert citation["bbox"] == authoritative["bbox"]
+        assert citation["evidence_id"] == authoritative["evidence_id"]
+
+    monkeypatch.setattr(
+        cli,
+        "open_review_run",
+        lambda _workspace, run_id: (
+            f"http://127.0.0.1:8123/runs/{run_id}/acceptance-token/review"
+        ),
+    )
+    assert cli.main(
+        [
+            "review-question",
+            "submit-track-b",
+            "--workspace",
+            str(workspace),
+            "--run-id",
+            prepared.run_id,
+            "--track-b-output",
+            str(run_local_b),
+            "--open",
+        ]
+    ) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["review_html"] == str(finalized.review_html)
+    assert document["display_status"] == "OPENED"
+    assert document["url"].startswith("http://127.0.0.1:")

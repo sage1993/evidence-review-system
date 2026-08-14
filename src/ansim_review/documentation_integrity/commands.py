@@ -119,9 +119,18 @@ def _logical_lines(block: CommandBlock) -> tuple[tuple[str, int], ...]:
     accumulated: list[str] = []
     start_line = block.start_line
     suffix = _continuation_suffix(block.language)
+    here_string: str | None = None
     for offset, physical in enumerate(block.text.splitlines()):
         line_number = block.start_line + offset
         stripped = _strip_prompt(physical)
+        if block.language in {"powershell", "pwsh"}:
+            if here_string is not None:
+                if stripped.startswith(here_string + "@"):
+                    here_string = None
+                continue
+            if stripped.startswith("@") and stripped[-1:] in {chr(39), chr(34)}:
+                here_string = stripped[-1]
+                continue
         if not accumulated and (not stripped or stripped.startswith("#")):
             continue
         if not accumulated:
@@ -202,6 +211,17 @@ def validate_cli_tokens(tokens: Sequence[str]) -> str | None:
         "__DOCUMENTATION_PLACEHOLDER__" if token in _RECOGNIZED_PLACEHOLDERS else token
         for token in arguments
     )
+    if arguments and arguments[0] == "doctor":
+        if len(arguments) == 1:
+            return None
+        if (
+            len(arguments) == 3
+            and arguments[1] == "--repository-root"
+            and not arguments[2].startswith("-")
+        ):
+            return None
+        return "command does not match the evidence-review bootstrap parser"
+
     parser = build_parser()
     stdout = io.StringIO()
     stderr = io.StringIO()

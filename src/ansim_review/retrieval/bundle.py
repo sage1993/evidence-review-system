@@ -15,7 +15,10 @@ from ansim_review.retrieval.index import (
     search_fts_phrase,
     search_fts_token_and,
 )
-from ansim_review.retrieval.korean_variants import derive_korean_query_variants
+from ansim_review.retrieval.korean_variants import (
+    derive_korean_compound_variants,
+    derive_korean_query_variants,
+)
 from ansim_review.retrieval.models import (
     ChannelScore,
     CitationUnavailableError,
@@ -28,7 +31,7 @@ from ansim_review.retrieval.structured import (
 )
 
 _GROUPED_CONTEXT_CHANNELS = frozenset(
-    {"fts_entity", "fts_numeric", "fts_concept"}
+    {"fts_entity", "fts_numeric", "fts_concept", "fts_korean_compound"}
 )
 
 
@@ -179,6 +182,28 @@ def _origin_hits(
     return tuple(channels)
 
 
+def _compound_variant_hits(
+    connection: sqlite3.Connection,
+    primary: str,
+    limit: int,
+) -> tuple[tuple[RetrievalHit, ...], ...]:
+    channels: list[tuple[RetrievalHit, ...]] = []
+    for term in derive_korean_compound_variants(primary):
+        hits = search_fts_literal(
+            connection,
+            term,
+            channel="fts_korean_compound",
+            limit=limit,
+        )
+        channels.append(
+            _trace_hits(
+                hits,
+                origin="derived:korean_compound",
+                term=term,
+            )
+        )
+    return tuple(channels)
+
 def _derived_variant_hits(
     connection: sqlite3.Connection,
     primary: str,
@@ -186,11 +211,12 @@ def _derived_variant_hits(
 ) -> tuple[tuple[RetrievalHit, ...], ...]:
     variants = derive_korean_query_variants(primary)
     channels: list[tuple[RetrievalHit, ...]] = []
-    for group, terms in (
+    derived_groups: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("entity", variants.entity),
         ("numeric", variants.numeric),
         ("concept", variants.concept),
-    ):
+    )
+    for group, terms in derived_groups:
         for term in terms:
             hits = search_fts_literal(
                 connection,
@@ -247,10 +273,36 @@ def build_evidence_bundle(
         graph_depth,
         limit,
     ) = _normalize_request(request_payload)
+    compound_variants = derive_korean_compound_variants(query.primary)
     variants = derive_korean_query_variants(query.primary)
+    attempted_terms: list[dict[str, str]] = []
+    attempted_seen: set[tuple[str, str]] = set()
+    candidate: tuple[str, str]
+    for query_term in query.terms:
+        candidate = (query_term.text, query_term.origin)
+        if candidate not in attempted_seen:
+            attempted_seen.add(candidate)
+            attempted_terms.append({"text": query_term.text, "origin": query_term.origin})
+    for compound_term in compound_variants:
+        candidate = (compound_term, "derived:korean_compound")
+        if candidate not in attempted_seen:
+            attempted_seen.add(candidate)
+            attempted_terms.append({"text": compound_term, "origin": "derived:korean_compound"})
+    derived_groups: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("entity", variants.entity),
+        ("numeric", variants.numeric),
+        ("concept", variants.concept),
+    )
+    for group, derived_terms in derived_groups:
+        for derived_term in derived_terms:
+            candidate = (derived_term, f"derived:{group}")
+            if candidate not in attempted_seen:
+                attempted_seen.add(candidate)
+                attempted_terms.append({"text": derived_term, "origin": f"derived:{group}"})
     channels: list[Sequence[RetrievalHit]] = list(
         _origin_hits(connection, query, limit)
     )
+    channels.extend(_compound_variant_hits(connection, query.primary, limit))
     channels.extend(_derived_variant_hits(connection, query.primary, limit))
     if filters:
         channels.append(retrieve_structured(connection, filters, limit))
@@ -288,7 +340,9 @@ def build_evidence_bundle(
                 {"text": term.text, "origin": term.origin}
                 for term in query.terms
             ],
+            "attempted_terms": attempted_terms,
             "derived_variants": {
+                "compound": list(compound_variants),
                 "entity": list(variants.entity),
                 "numeric": list(variants.numeric),
                 "concept": list(variants.concept),

@@ -206,25 +206,18 @@
   }
 
   function focusEvidence(itemId, evidenceId) {
-    let assetKey = "";
-    if (typeof evidenceId === "undefined") {
-      const item = document.querySelector('.review-item[data-item-id="' + itemId + '"]');
-      assetKey = item ? item.dataset.assetKey : itemId;
-      evidenceId = item ? item.dataset.evidenceId : evidenceId;
-    } else {
-      selectReviewItem(itemId, evidenceId);
-      const citation = Array.from(document.querySelectorAll(".citation")).find((node) => {
-        const panel = node.closest(".detail-panel");
-        return panel && panel.dataset.itemId === itemId && node.dataset.evidenceId === evidenceId;
-      });
-      assetKey = citation ? citation.dataset.assetKey : "";
-    }
-    if (!assetKey) return;
+    const citation = Array.from(document.querySelectorAll(".citation")).find((node) => {
+      const panel = node.closest(".detail-panel");
+      return panel && panel.dataset.itemId === itemId && node.dataset.evidenceId === evidenceId;
+    });
+    const assetKey = citation ? citation.dataset.assetKey : "";
+    if (!assetKey) return false;
+
     setActivePage(assetKey);
     document.querySelectorAll(".citation-overlay").forEach((overlay) => {
       overlay.classList.toggle(
         "is-focused",
-        Boolean(evidenceId) && overlay.dataset.evidenceId === evidenceId
+        overlay.dataset.evidenceId === evidenceId
       );
     });
     const page = Array.from(document.querySelectorAll(".evidence-page")).find(
@@ -234,8 +227,36 @@
       page.scrollIntoView({ behavior: "smooth", block: "nearest" });
       page.focus({ preventScroll: true });
     }
+    return true;
   }
 
+  function focusItemEvidence(item) {
+    return focusEvidence(item.dataset.itemId, item.dataset.evidenceId);
+  }
+
+  function resolveReviewItemEvidence(itemId, requestedEvidenceId) {
+    const panel = Array.from(document.querySelectorAll(".detail-panel")).find(
+      (node) => node.dataset.itemId === itemId
+    );
+    if (!panel) return "";
+
+    if (requestedEvidenceId) {
+      const requested = Array.from(panel.querySelectorAll(".citation")).find(
+        (node) => node.dataset.evidenceId === requestedEvidenceId
+      );
+      if (requested) return requestedEvidenceId;
+    }
+
+    const first = panel.querySelector(".citation[data-evidence-id]");
+    return first ? first.dataset.evidenceId : "";
+  }
+
+  function activateReviewItem(itemId, requestedEvidenceId) {
+    selectReviewItem(itemId, requestedEvidenceId);
+    const evidenceId = resolveReviewItemEvidence(itemId, requestedEvidenceId);
+    if (!evidenceId) return false;
+    return focusEvidence(itemId, evidenceId);
+  }
   function setActivePage(assetKey) {
     const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
     if (!page) return;
@@ -343,6 +364,9 @@
   window.selectReviewItem = selectReviewItem;
   window.activateDetailTab = activateDetailTab;
   window.focusEvidence = focusEvidence;
+  window.focusItemEvidence = focusItemEvidence;
+  window.resolveReviewItemEvidence = resolveReviewItemEvidence;
+  window.activateReviewItem = activateReviewItem;
   window.setEvidenceZoom = setEvidenceZoom;
   window.submitDecision = submitDecision;
   window.refreshDisplayStatus = refreshDisplayStatus;
@@ -359,15 +383,18 @@
     citation.addEventListener("click", (event) => {
       if (event.target.closest(".evidence-link")) return;
       const panel = citation.closest(".detail-panel");
-      if (panel) focusEvidence(panel.dataset.itemId, citation.dataset.evidenceId);
+      if (panel) activateReviewItem(panel.dataset.itemId, citation.dataset.evidenceId);
     });
   });  document.querySelectorAll(".review-item").forEach((item) => {
     item.addEventListener("click", () => {
-      selectReviewItem(item.dataset.itemId);
-      focusEvidence(item.dataset.itemId, item.dataset.evidenceId);
+      activateReviewItem(item.dataset.itemId);
     });
-  });
-  document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
+    item.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      activateReviewItem(item.dataset.itemId);
+    });
+  });  document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
     tab.addEventListener("click", () => activateDetailTab(tab.dataset.detailTab));
     tab.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -383,10 +410,9 @@
   document.querySelectorAll(".evidence-link").forEach((link) => {
     link.addEventListener("click", () => {
       const panel = link.closest(".detail-panel");
-      if (panel) focusEvidence(panel.dataset.itemId, link.dataset.evidenceId);
+      if (panel) activateReviewItem(panel.dataset.itemId, link.dataset.evidenceId);
     });
-  });
-  document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
+  });  document.querySelectorAll("button[data-viewer-mode]").forEach((button) => {
     button.addEventListener("click", () => setEvidenceMode(button.dataset.viewerMode));
   });
   document.querySelectorAll("[data-page-select]").forEach((button) => {
