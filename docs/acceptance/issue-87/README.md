@@ -421,3 +421,121 @@ Issue #95 does **not** claim completion of:
 
 Those remaining acceptance items continue under their respective issues, including
 #89, #90, #92, and #93.
+
+## 16. Issue #93 execution record - merged HEAD
+
+This record documents the Issue #93 work performed after PR #103 was merged.
+It is an evidence record, not a completion claim for the full #93 acceptance
+gate.
+
+Exact repository HEAD:
+
+`dbad355c11d8413f01fd250d5ceaf06797f1cf23`
+
+The verification was run in the Windows worktree on both supported interpreters:
+
+| Interpreter | Executable | Version |
+|---|---|---|
+| Python 3.11 | `C:\Users\KSH\AppData\Local\Programs\Python\Python311\python.exe` | 3.11.9 |
+| Python 3.13 | `C:\Program Files\Python313\python.exe` | 3.13.14 |
+
+### 16.1 Documentation integrity
+
+The authoritative validation used the source checkout explicitly, so the CLI
+could not resolve a stale installed `ansim_review` package:
+
+```powershell
+$env:PYTHONPATH=(Resolve-Path src).Path
+evidence-review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
+```
+
+Both Python 3.11 and Python 3.13 returned exit code 0:
+
+- Documentation integrity: **PASS**
+- documents: 37; current: 26; historical: 9; generated: 2
+- errors: **0**
+- warnings: **105**
+
+An unpinned `evidence-review` invocation under Python 3.13 reproduced the
+previous stale-install result of 31 errors and 105 warnings. That result is
+recorded as an environment mismatch and is not acceptance evidence; the
+source-pinned result above is authoritative.
+
+### 16.2 Windows automated matrix
+
+| Gate | Python 3.11 | Python 3.13 |
+|---|---|---|
+| Full pytest | 1304 passed, 7 skipped in 153.53 s; exit 0 | 1304 passed, 7 skipped in 150.04 s; exit 0 |
+| Ruff | PASS; exit 0 | PASS; exit 0 |
+| mypy | PASS; 191 source files; exit 0 | PASS; 191 source files; exit 0 |
+| compileall | PASS; exit 0 | PASS; exit 0 |
+| Focused review suites | 134 passed in 26.77 s; exit 0 | 134 passed in 22.54 s; exit 0 |
+| Explicit-stop lifecycle suite | 7 passed in 11.77 s; exit 0 | 7 passed in 11.40 s; exit 0 |
+
+The focused review suites covered `review_question`, `review_packet`,
+`review_run`, `unit/review_packet`, and `unit/observability`.
+
+### 16.3 Protected decision E2E
+
+The protected loopback server was exercised on both interpreters. Each run
+returned GET 200 and POST 201, appended exactly one decision record, produced
+an offset-aware `reviewed_at`, and left the packet and HTML bytes unchanged.
+
+| Interpreter | Packet SHA-256 | HTML SHA-256 | Decision record SHA-256 |
+|---|---|---|---|
+| Python 3.11 | `7da4c4555142f1e5ccd78c419b60ffaeb5e0675430966f84b40d87068fe4ed51` | `75c06e2b52b2d18c9a890972a67571ee49ba9add4a42eb692882ff9ff3792146` | `1137D2D2273108D57A330FF9E370B99377F3EED74003E9E38685F48276F422E3` |
+| Python 3.13 | `7da4c4555142f1e5ccd78c419b60ffaeb5e0675430966f84b40d87068fe4ed51` | `75c06e2b52b2d18c9a890972a67571ee49ba9add4a42eb692882ff9ff3792146` | `179B91B897A24569EC0D3B117253F1E88CB666281AE09E61906401E6455DDAB0` |
+
+### 16.4 Browser viewport and fit-to-page matrix
+
+Actual headed-browser checks used 1366x768, 1920x1080, and 3840x2160 at
+page-scale 1 and 2. All six cases had `horizontalOverflow=false` and the
+evidence viewer fit-to-page value was `1`. The observed client and scroll
+widths were equal in every case:
+
+| Viewport | Page scale | Client/scroll width | Active figure right edge |
+|---|---:|---:|---:|
+| 1366x768 | 1 / 2 | 1351 / 1351 | 960 |
+| 1920x1080 | 1 / 2 | 1905 / 1905 | 1428 |
+| 3840x2160 | 1 / 2 | 3825 / 3825 | 2388 |
+
+The separate PR #103 exact-HEAD 200% check also measured
+`visualViewport.scale=2`, no horizontal overflow, and an active figure right
+edge of 903 px. Full keyboard-focus, print, and browser-open-failure matrices
+remain unexecuted here.
+
+### 16.5 Timing samples
+
+Three unique simple-question `review-question prepare` samples were run per
+interpreter. These are deterministic prepare-only timings; no Track A/B
+external wait was performed, so the full formal-review timing gate remains
+**NOT_RUN**.
+
+| Interpreter | Wall p50 | Wall p95 | Deterministic p50 | Deterministic p95 |
+|---|---:|---:|---:|---:|
+| Python 3.11 | 566.312 ms | 573.160 ms | 15 ms | 18 ms |
+| Python 3.13 | 529.939 ms | 583.560 ms | 14 ms | 15 ms |
+
+The p95 values use the nearest-rank convention for three samples. All six
+samples reported `external_wait=0`, `retry=0`, and `resumed=false`.
+
+Timing metrics SHA-256:
+
+| Run ID | SHA-256 |
+|---|---|
+| `RUN-D58B0C5AB5EF1E242AAF` | `950B907E188E1226E8A0E16AB01A4DB036ACBC2B299C882076DE9768530397E3` |
+| `RUN-C1B715F8C83F789A6DE1` | `027B214911865E03AF6A65C1723D076A35C5ADA1D96EB209569F794C1C2BC27F` |
+| `RUN-EB4FB51608A3EF93A761` | `352B31929B326E7D772C7D637C775D3EE46846723948C40C978C04150AB435E7` |
+| `RUN-DAEAA84F023E848466E1` | `ECA42DAFA16CC44A8B04B03F5D9B5CDA033D08993ADE5256C901D36E180D67C9` |
+| `RUN-A06570D24FFD9E829983` | `0E3F40E7080F02A1BBA51BAD73335B911B5A9C109B033759A04160E199AF4622` |
+| `RUN-236E0FE0BFA7858ED459` | `54C4B4E50C570E0DB725A4CA26AD3EBEDD837EFF5DD63C561DE239ACA918E3B6` |
+
+### 16.6 Remaining Issue #93 gates
+
+The following required gates remain **NOT_RUN**: the complete formal
+`$ERS_REVIEW` user flow with independently produced Track A and Track B,
+archival HTML decision download/import in the browser, browser-open-failure
+matrix, full keyboard/focus/print manual acceptance, and timing that includes
+external Track A/B waits. GitHub Actions status is **ACTIONS_NOT_RUN**.
+
+Current Issue #93 decision remains: **NOT_RUN / DO NOT CLOSE #93**.
