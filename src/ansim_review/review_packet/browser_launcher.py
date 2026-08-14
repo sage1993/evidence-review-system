@@ -12,6 +12,7 @@ import signal
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,8 @@ _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
 _ACTIVE_SERVERS_LOCK = Lock()
 _READY_TIMEOUT_SECONDS = 2.0
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_SERVER_IDENTITY_RETRY_SECONDS = 1.0
+_SERVER_IDENTITY_POLL_SECONDS = 0.05
 _STILL_ACTIVE = 259
 
 
@@ -60,6 +63,21 @@ def _process_is_alive(pid: int) -> bool:
             kernel32.CloseHandle(handle)
     except (AttributeError, OSError):
         return False
+
+def _verified_process_is_alive(
+    pid: int, run_id: str, token_hash: object
+) -> bool:
+    deadline = time.monotonic() + _SERVER_IDENTITY_RETRY_SECONDS
+    while True:
+        if not _process_is_alive(pid):
+            return False
+        if _matches_server_process(pid, run_id, token_hash):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(_SERVER_IDENTITY_POLL_SECONDS, remaining))
+
 
 
 def _readline_with_timeout(stream: TextIO) -> str:
@@ -225,10 +243,7 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
     if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1:
         path.unlink(missing_ok=True)
         return {"running": False, "run_id": validated_run_id}
-    if not _process_is_alive(pid):
-        path.unlink(missing_ok=True)
-        return {"running": False, "run_id": validated_run_id}
-    if not _matches_server_process(pid, validated_run_id, state.get("token_sha256")):
+    if not _verified_process_is_alive(pid, validated_run_id, state.get("token_sha256")):
         path.unlink(missing_ok=True)
         return {"running": False, "run_id": validated_run_id}
     return {
