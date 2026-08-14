@@ -40,7 +40,7 @@ def test_console_scripts_target_canonical_package() -> None:
 
     assert 'evidence-review = "evidence_review.cli:main"' in pyproject
     assert 'ansim-review = "evidence_review.cli:main"' in pyproject
-    assert 'packages = ["evidence_review", "ansim_review"]' in pyproject
+    assert 'files = ["src/evidence_review", "src/ansim_review"]' in pyproject
 
 
 def test_legacy_module_entrypoint_remains_compatible() -> None:
