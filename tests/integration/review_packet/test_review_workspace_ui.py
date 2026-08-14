@@ -23,16 +23,17 @@ def _run_node_harness(controller: str, harness: str) -> subprocess.CompletedProc
 
 def test_decision_form_exposes_only_decision_and_notes_as_human_inputs(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
-    html = render_review_html(_model(), tmp_path / "pages")
-    form = _decision_form_html(html)
+    form = _decision_form_html(render_review_html(_model(), tmp_path / "pages"))
 
     assert 'name="decision"' in form
     assert 'name="notes"' in form
     assert 'type="hidden" name="packet_sha256"' in form
     assert 'name="reviewer_id"' not in form
     assert 'name="reviewed_at"' not in form
-    assert "검토자 ID·시각·패킷 해시는" in form
-    assert "HTML 파일 저장은 결정 기록 저장이 아닙니다." in form
+    assert "검토 결과를 선택하고 필요한 의견을 입력하십시오." in form
+    assert "data-protected-only" in form
+    assert "data-archive-only" in form
+    assert "append-only" not in form
     assert "checked" not in form
 
 
@@ -66,6 +67,7 @@ def test_browser_request_v2_and_archival_envelope_contract_are_distinct(tmp_path
     ]
     assert "reviewed_at: new Date().toISOString()" in envelope.group("fields")
     assert "validDecisionRequest" in html
+    assert "notesRequired" in html
     assert "유효한 결정 JSON을 만들 수 없습니다" in html
 
 
@@ -76,7 +78,8 @@ def test_protected_status_supplies_reviewer_and_packet_context(tmp_path: Path) -
     assert 'fetch("./decision/status")' in html
     assert "payload.reviewer_id" in html
     assert "payload.packet_hash" in html
-    assert "보호 세션에서 확인됨" in html
+    assert "setProtectedMode(true)" in html
+    assert '"검토자: " + decisionContext.reviewer_id' in html
 
 
 def test_final_decision_controls_are_korean_and_unselected(tmp_path: Path) -> None:
@@ -85,15 +88,27 @@ def test_final_decision_controls_are_korean_and_unselected(tmp_path: Path) -> No
 
     for value in (
         "최종 결정",
-        "내용 확인 완료",
-        "내용에 오류 있음",
-        "조건부 확인",
-        "추가 자료 필요",
+        "검토 결과에 동의",
+        "검토 결과에 오류 있음",
+        "조건 충족 시 동의",
+        "추가 자료 검토 필요",
         "결정 저장",
         "결정 JSON 다운로드",
     ):
         assert value in decision_form
     assert "checked" not in decision_form
+
+
+def test_conditional_notes_error_is_connected_to_textarea(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_model(), tmp_path / "pages")
+    form = _decision_form_html(html)
+
+    assert 'id="review-notes"' in form
+    assert 'aria-describedby="decision-notes-error notes-help notes-error"' in form
+    assert 'id="notes-error"' in form
+    assert 'setAttribute("aria-invalid", required' in html
+    assert 'decision !== "SATISFIED"' in html
 
 
 def test_print_lifecycle_reveals_panels_and_restores_hidden_state(tmp_path: Path) -> None:
@@ -121,6 +136,8 @@ global.window = {
   prompt() { return ""; }
 };
 global.document = {
+  head: { appendChild() {} },
+  createElement() { return {}; },
   getElementById() { return null; }, querySelector() { return null; },
   querySelectorAll(selector) {
     if (selector === ".detail-panel [data-tab-panel]") return panels;
@@ -156,6 +173,8 @@ const shell = node({viewerMode: "compare"});
 const button = node({viewerMode: "compare"});
 global.window = { addEventListener() {}, prompt() { return ""; } };
 global.document = {
+  head: { appendChild() {} },
+  createElement() { return {}; },
   getElementById() { return null; },
   querySelector(selector) { return selector === ".app-shell" ? shell : null; },
   querySelectorAll(selector) {
@@ -170,3 +189,32 @@ if (typeof button.listeners.click !== "function") throw new Error("mode button l
 """
     completed = _run_node_harness(controller, harness)
     assert completed.returncode == 0, completed.stderr
+
+
+def test_reviewer_layout_and_viewer_labels_are_applied_by_controller(tmp_path: Path) -> None:
+    _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_model(), tmp_path / "pages")
+    controller = _inline_controller(html)
+
+    assert "applyReviewerLayout" not in controller
+    assert "reviewer-layout-refinement" not in controller
+    assert "grid-template-columns: 392px minmax(0, 1fr) 342px" in html
+    assert "max-height: min(60vh, 640px)" in html
+    assert "#evidence-zoom" in html and "min-height: 44px" in html
+    assert 'original: "원문"' in controller
+    assert 'evidence: "근거 강조"' in controller
+    assert 'compare: "원문 + 강조"' in controller
+
+
+def test_detail_activation_does_not_change_protected_mode_or_inject_layout(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    controller = _inline_controller(render_review_html(_model(), tmp_path / "pages"))
+
+    start = controller.index("function activateDetailTab")
+    end = controller.index("let printPanelStates", start)
+    detail_activation = controller[start:end]
+
+    assert "setProtectedMode" not in detail_activation
+    assert "applyReviewerLayout" not in detail_activation
