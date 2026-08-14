@@ -5,6 +5,7 @@ import argparse
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 import sqlite3
 import stat
 from pathlib import Path, PurePosixPath
@@ -67,7 +68,7 @@ def safe_runtime_file(root: Path, relative: str) -> Path:
     return current
 
 
-def _require_regular_file(path: Path) -> stat.stat_result:
+def _require_regular_file(path: Path) -> os.stat_result:
     try:
         info = path.lstat()
     except FileNotFoundError:
