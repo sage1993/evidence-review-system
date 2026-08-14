@@ -66,7 +66,10 @@ def default_offline_policy() -> OfflinePolicy:
             }
         ),
         allowed_subprocess_paths=frozenset(
-            {"ansim_review/review_packet/browser_launcher.py"}
+            {
+                "ansim_review/review_packet/browser_launcher.py",
+                "evidence_review/diagnostics.py",
+            }
         ),
     )
 

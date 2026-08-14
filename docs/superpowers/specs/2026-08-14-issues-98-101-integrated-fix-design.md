@@ -203,7 +203,7 @@ Normal business commands fail with stable `DEPENDENCY_MISSING` diagnostics rathe
 Support a dependency-safe diagnostic command such as:
 
 ```text
-python -m evidence_review doctor --repository-root <repo>
+python -m evidence_review doctor --repository-root <path>
 ```
 
 and a dependency-safe version surface.

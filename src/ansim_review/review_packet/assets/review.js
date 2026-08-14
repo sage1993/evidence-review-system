@@ -230,6 +230,10 @@
     return true;
   }
 
+  function focusItemEvidence(item) {
+    return focusEvidence(item.dataset.itemId, item.dataset.evidenceId);
+  }
+
   function resolveReviewItemEvidence(itemId, requestedEvidenceId) {
     const panel = Array.from(document.querySelectorAll(".detail-panel")).find(
       (node) => node.dataset.itemId === itemId
@@ -360,6 +364,7 @@
   window.selectReviewItem = selectReviewItem;
   window.activateDetailTab = activateDetailTab;
   window.focusEvidence = focusEvidence;
+  window.focusItemEvidence = focusItemEvidence;
   window.resolveReviewItemEvidence = resolveReviewItemEvidence;
   window.activateReviewItem = activateReviewItem;
   window.setEvidenceZoom = setEvidenceZoom;

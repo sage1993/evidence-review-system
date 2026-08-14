@@ -109,6 +109,16 @@ def _dependency_diagnostics() -> tuple[DependencyDiagnostic, ...]:
     return tuple(result)
 
 
+def _is_packaged_runtime(package_root: Path | None) -> bool:
+    if package_root is None:
+        return False
+    candidates = (package_root.parent, package_root.parent.parent)
+    return any(
+        (candidate / "VALIDATE.md").is_file()
+        or (candidate / "runtime-manifest.json").is_file()
+        for candidate in candidates
+    )
+
 def _repository_head(repository_root: Path) -> str | None:
     completed = subprocess.run(
         ["git", "-C", str(repository_root), "rev-parse", "HEAD"],
@@ -137,7 +147,11 @@ def collect_runtime_diagnostics(
         expected = (detected / "src" / "ansim_review").resolve()
         package_checkout_match = package_root == expected
 
-    if detected is not None and package_checkout_match is False:
+    if (
+        detected is not None
+        and package_checkout_match is False
+        and not _is_packaged_runtime(package_root)
+    ):
         status: RuntimeStatus = "SOURCE_MISMATCH"
     elif any(item.status == "MISSING" for item in dependencies):
         status = "DEPENDENCY_MISSING"
