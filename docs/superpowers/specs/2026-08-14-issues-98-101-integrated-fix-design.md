@@ -2,268 +2,558 @@
 
 Issues: #98, #99, #100, #101  
 Related: #92, #95  
-Base: `main` at `820fff52c568ec860cc2d92459e4502fccfc14e3`  
+PR: #102  
+Original PR base: `820fff52c568ec860cc2d92459e4502fccfc14e3`  
+Target implementation baseline: current `main` observed at `cf9a7f6c3868eab52c918f7de86bb032dc9ebf1b` on 2026-08-14  
 Date: 2026-08-14
 
-## 1. Problem statement
+## 1. Decision
 
-Four P1 issues were discovered during real `$ERS_REVIEW` operation. They look separate at the UI level, but they share one critical property: each can make the user distrust whether the final review result was produced from the intended source, query, Track B artifact, or review item.
+Keep #98–#101 in one integration PR, but do not execute the original implementation plan unchanged.
 
-- #99: the CLI may execute a stale installed checkout instead of the active development checkout.
-- #100: Korean compound terms and exact phrases can exist in the evidence database but still miss deterministic FTS retrieval.
-- #101: a valid run-local `track-b-output.json` is treated as a generated-output collision during finalization.
-- #98: the formal-review path does not consistently open/return the protected result view, and selecting a review item does not move the PDF viewer to that item's first citation; its Korean-spacing symptom depends on #100.
+PR #102 was planned against an older `main`. Current `main` is materially ahead and already changed `review.js`, review workspace tests, browser behavior, and protected-review acceptance. The first implementation gate is therefore to synchronize the PR branch with current `main` and re-characterize all four failures before editing production code.
 
-The integrated fix must restore end-to-end trust without weakening the system's evidence-first and fail-closed guarantees.
-
-## 2. Goals
-
-1. Make the runtime provenance observable and fail closed when a development checkout is executing code from another checkout.
-2. Retrieve bounded Korean compound/spacing variants deterministically while preserving existing English/numeric behavior.
-3. Treat validated Track B output as an input artifact, not as a finalizer-generated artifact, with deterministic retry semantics.
-4. Make `review-question submit-track-b --open` return a usable protected review handoff using the already-implemented #92 detached server lifecycle.
-5. Make review-item selection and PDF page/bbox focus one coherent interaction for mouse and keyboard users.
-6. Preserve citation IDs, evidence/source hashes, snapshot hash, packet authority, and fail-closed validation semantics.
-7. Finish with Windows Python 3.11/3.13 acceptance and real-browser checks at 1366×768, 200% zoom, and print.
-
-## 3. Non-goals
-
-- No LLM/API query rewrite.
-- No external Korean morphology service or new heavyweight NLP dependency.
-- No redesign of the protected loopback server lifecycle already completed in #92.
-- No evidence text, citation, source hash, or packet authority rewriting for search convenience.
-- No unrelated parser, rule-engine, release, or broad UI refactor.
-- No automatic overwrite of immutable run artifacts.
-
-## 4. Chosen architecture
-
-The integrated PR is one delivery vehicle, but implementation remains four bounded subsystems with explicit dependencies.
+The implementation order is:
 
 ```text
-Phase A: Runtime provenance (#99)
-        |
-        +--> trusted execution environment
-               |
-               +--> Phase B1: Korean lexical retrieval (#100)
-               |
-               +--> Phase B2: Track B ownership/retry (#101)
-                              |
-                              +--> Phase C: Formal-review UX integration (#98)
-                                      - protected handoff
-                                      - item -> citation -> PDF focus
-                                      - zero-hit guidance / #100 E2E
+Phase 0  Sync to current main + re-characterize failures
+   |
+   +--> Phase 1  Runtime provenance (#99)
+   |
+   +--> Phase 2  Track B ownership/retry (#101)
+   |
+   +--> Phase 3  Korean deterministic retrieval (#100)
+   |
+   +--> Phase 4  Formal-review integration (#98)
+   |
+   +--> Phase 5  Combined E2E + Windows/browser acceptance
 ```
 
-#99 lands first because later acceptance results are not trustworthy if the executable can silently come from another checkout. #100 and #101 are functionally independent and may be implemented in parallel after the provenance gate exists. #98 is the final integration phase because it consumes the retrieval fix and the #92 protected-server contract.
+#99 remains first because no later acceptance result is trustworthy if the executed CLI can silently come from another checkout. #101 is next because its failure contract is currently explicit and isolated. #100 follows only after the exact FTS failure mode is characterized. #98 is integrated last because it consumes the existing #92 protected-server lifecycle and the retrieval behavior from #100.
 
-## 5. Component design
+## 2. Problem statement
 
-### 5.1 Runtime provenance and dependency-safe bootstrap (#99)
+Four P1 issues were discovered during real `$ERS_REVIEW` operation.
 
-The console-script entrypoint must become diagnostic-safe before importing heavy runtime modules.
+- #99: the CLI can execute a stale installed checkout instead of the active development checkout.
+- #101: a valid run-local `track-b-output.json` is treated as a finalizer-generated collision.
+- #100: Korean compound terms and exact phrases can exist in evidence records but miss deterministic FTS retrieval.
+- #98: the formal-review path does not consistently return/open the protected result view, and item-to-evidence focus behavior must be coherent across mouse, keyboard, and multiple citations.
 
-Current packaging binds `evidence-review` to `evidence_review.cli:main`. The bootstrap layer should therefore remain under `src/evidence_review/` and use only the Python standard library until it has handled `doctor`, `--version`, and provenance preflight.
+These problems share a trust boundary: the user must be able to verify that the intended source, query, Track B artifact, review item, and citation produced the displayed result.
 
-Create `src/evidence_review/diagnostics.py` with a small immutable diagnostic model and functions that report:
+## 3. Current-main observations that change the previous design
 
-- `sys.executable`;
+### 3.1 PR #102 is stale relative to main
+
+The PR branch contains only the design and implementation-plan documents but was created from `main` at `820fff52...`. Current `main` has advanced substantially. Implementation must not begin until the branch is synchronized and RED tests are rerun on the synchronized code.
+
+### 3.2 #98 review-item behavior is partially implemented on current main
+
+Current `review.js` already handles review-item click by calling both `selectReviewItem(...)` and `focusEvidence(...)`.
+
+At the same time, `focusEvidence(itemId, evidenceId)` can call `selectReviewItem(itemId, evidenceId)` internally.
+
+Therefore the previous proposal—calling `focusEvidence()` from inside `selectReviewItem()`—is no longer safe. It would create bidirectional coupling and can lead to recursive or duplicated state transitions.
+
+The revised design introduces one orchestration boundary instead:
+
+```text
+activateReviewItem(itemId, requestedEvidenceId?)
+    |
+    +--> selectReviewItem(...)   # rail/detail state only
+    |
+    +--> resolve citation
+    |
+    +--> focusEvidence(...)      # PDF page/bbox state only
+```
+
+`selectReviewItem()` and `focusEvidence()` must not call each other after the refactor.
+
+### 3.3 #99 remains unresolved
+
+`src/evidence_review/cli.py` still imports runtime modules eagerly. A missing heavy dependency can therefore prevent diagnostics from running, and a stale package source can enter business logic before provenance is checked.
+
+### 3.4 #101 remains unresolved
+
+`finalize_review_run()` still classifies `track-b-output.json` together with generated finalizer artifacts and fails when that run-local file already exists.
+
+### 3.5 #100 remains unresolved, but implementation mechanism is not yet proven
+
+Current Korean query helpers provide grouped entity/numeric/concept variants. The FTS layer does not yet have a proven general solution for the reported compound/exact-phrase miss.
+
+The fix must be selected only after characterization distinguishes among:
+
+1. SQLite FTS5 `unicode61` token behavior;
+2. embedded whitespace, line-break, or zero-width format characters;
+3. mismatch between authoritative normalized evidence and FTS searchable representation;
+4. missing bounded Korean lexical variants.
+
+Do not introduce an FTS schema or shadow representation until tests prove it is required.
+
+## 4. Goals
+
+1. Make runtime provenance observable and fail closed for development-checkout source mismatch.
+2. Allow diagnostics to execute even when heavy runtime dependencies are missing.
+3. Treat validated Track B as an input artifact with deterministic same-path and retry behavior.
+4. Retrieve bounded Korean compound/spacing variants without weakening evidence authority.
+5. Make `review-question submit-track-b --open` return a bounded protected review handoff using #92 infrastructure.
+6. Make review-item, citation, keyboard, and PDF page/bbox state transition through one coherent UI orchestration path.
+7. Preserve original query origin and provide deterministic zero-hit guidance without fabricating evidence.
+8. Finish with exact-HEAD Windows Python 3.11/3.13 validation and real-browser acceptance.
+
+## 5. Non-goals
+
+- No LLM/API query rewriting.
+- No external Korean morphology service or heavyweight NLP dependency.
+- No redesign of #92 protected loopback server lifecycle.
+- No citation, page, bbox, evidence text, evidence hash, source hash, snapshot hash, or packet-authority rewriting for search convenience.
+- No weakening of Track A/Track B validation.
+- No unrelated parser, rules, release, or broad UI refactor.
+- No automatic overwrite of immutable run artifacts.
+- No new UI redesign beyond the interaction correction required for #98.
+
+## 6. Phase 0 — synchronize and characterize before implementation
+
+### 6.1 Branch synchronization gate
+
+Before production edits:
+
+1. synchronize `agent/issues-98-101-integrated-fix` with current `main`;
+2. record the exact synchronized HEAD;
+3. verify tracked worktree state is clean before characterization;
+4. rerun relevant current-main focused tests.
+
+If merge/rebase conflicts touch review workspace files, preserve current-main behavior first and reapply only issue-specific changes after characterization.
+
+### 6.2 RED characterization matrix
+
+Add or refresh tests proving the failures on the synchronized baseline.
+
+| Issue | Required characterization |
+|---|---|
+| #99 | stale checkout source is detected before business logic; missing runtime dependency still permits diagnostics |
+| #101 | valid run-local Track B fails under the current finalizer ownership contract |
+| #100 | authoritative record exists but representative Korean query misses; inspect exact indexed representation/token behavior |
+| #98 | `submit-track-b --open` is absent/incomplete; item/citation/keyboard behavior is tested against current main rather than assumed |
+
+Production code must not be changed until each still-open issue has a failing test or a documented finding that current main already fixed that subproblem.
+
+## 7. Phase 1 — runtime provenance and dependency-safe bootstrap (#99)
+
+### 7.1 Bootstrap boundary
+
+`src/evidence_review/cli.py` becomes a stdlib-only bootstrap for diagnostic/preflight work.
+
+Allowed bootstrap dependencies include standard-library modules such as:
+
+- `argparse`;
+- `dataclasses`;
+- `importlib.metadata`;
+- `importlib.util`;
+- `pathlib`;
+- `shutil`;
+- `subprocess`;
+- `sys`.
+
+Do not import `ansim_review.cli`, parser modules, PDF libraries, or other heavy business modules until preflight passes.
+
+### 7.2 Diagnostic model
+
+Create `src/evidence_review/diagnostics.py` with an immutable diagnostic result containing:
+
+- Python executable;
 - resolved console-script path when available;
 - distribution version;
 - current working directory;
-- requested/detected repository root;
-- repository HEAD when Git metadata is available;
-- actual imported `ansim_review` package path without importing heavy submodules;
-- whether the package path matches `<repository>/src/ansim_review` for development checkout execution;
-- required dependency availability and version;
-- status: `OK`, `SOURCE_MISMATCH`, `DEPENDENCY_MISSING`, or `NOT_A_CHECKOUT`.
+- detected or explicitly supplied repository root;
+- repository HEAD when available;
+- actual `ansim_review` package source path discovered without heavy imports;
+- package/checkout match state;
+- required dependency availability/version;
+- stable status.
 
-Development-checkout semantics:
+Stable statuses:
 
-- If the process is inside or explicitly pointed at this repository checkout and the package source is from another checkout, normal commands fail before business logic executes.
-- A wheel/install used outside a checkout is not rejected merely because no Git commit is available.
-- Missing runtime dependencies produce a structured `DEPENDENCY_MISSING` diagnostic rather than an eager-import traceback.
+```text
+OK
+SOURCE_MISMATCH
+DEPENDENCY_MISSING
+NOT_A_CHECKOUT
+```
 
-Normal commands then lazy-import `ansim_review.entrypoint` only after preflight succeeds.
+### 7.3 Development-checkout policy
 
-### 5.2 Bounded Korean lexical fallback (#100)
+When running inside or explicitly targeting this repository checkout:
 
-The existing #95 grouped-variant design remains authoritative. This change extends it rather than replacing it.
+- actual package source must resolve to `<repository>/src/ansim_review`;
+- if it resolves to another checkout, fail before business logic with `SOURCE_MISMATCH`;
+- output must include the requested checkout, actual package source, Python executable, and command path.
 
-Before implementation, characterization tests must determine whether the representative misses come from:
+A normal installed wheel executed outside a development checkout is not rejected merely because Git metadata is unavailable.
 
-1. FTS `unicode61` token boundaries;
-2. embedded whitespace/line-break/format characters in indexed text;
-3. missing derived variants for independent Korean lexical terms.
+### 7.4 Missing dependency policy
 
-The fix adds one deterministic Korean compound channel without removing or weakening existing channels.
+`doctor` must remain runnable when `pypdfium2`, `pypdf`, Pillow, or another declared runtime dependency is missing.
 
-Recommended search order:
+Normal business commands fail with stable `DEPENDENCY_MISSING` diagnostics rather than an eager-import traceback.
 
-1. `fts_phrase`;
-2. `fts_token_and`;
-3. bounded `fts_korean_compound`;
-4. existing grouped entity/numeric/concept channels;
-5. existing fusion.
+### 7.5 CLI surface
 
-The Korean helper may normalize only evidence-insensitive search representations: NFC, repeated whitespace, known zero-width format characters, bounded Hangul spacing compaction, and the existing suffix/particle rules. It must not mutate `retrieval_records.raw_text`, authoritative normalized evidence text, citation fields, or snapshot lineage.
+Support a dependency-safe diagnostic command such as:
 
-If FTS tokenization itself prevents a correct bounded match, add derived searchable terms to the FTS search representation only. Do not add a schema migration unless characterization proves the existing FTS table cannot support the required behavior.
+```text
+python -m evidence_review doctor --repository-root <repo>
+```
 
-Every fallback hit keeps an origin trace such as `derived:korean_compound:<term>` so the bundle remains auditable.
+and a dependency-safe version surface.
 
-### 5.3 Track B artifact ownership and retry contract (#101)
+Development and acceptance documentation should prefer interpreter-pinned commands (`python -m evidence_review ...`) after running `doctor`, rather than relying on a bare PATH console script.
 
-`track-b-output.json` is reclassified conceptually as a validated input artifact, symmetric with `track-a-output.json`.
+## 8. Phase 2 — Track B artifact ownership and retry (#101)
 
-Validated inputs:
+### 8.1 Artifact ownership
 
-- `track-a-output.json`
-- `track-b-output.json`
+Validated run inputs:
+
+```text
+track-a-output.json
+track-b-output.json
+```
 
 Finalizer-generated artifacts:
 
-- `run-manifest.json`
-- `final-review-packet.json`
-- `review.html`
+```text
+run-manifest.json
+final-review-packet.json
+review.html
+```
 
-Submission semantics:
+Track B must no longer be treated as a finalizer-generated collision merely because the validated input already exists at the canonical run-local path.
 
-- same-path run-local Track B: validate and reuse without rewriting;
-- external Track B path: validate, then publish to run-local `track-b-output.json` using create-or-identical semantics;
-- existing run-local Track B with different canonical bytes: fail closed with a contract-specific mismatch error;
-- `FINALIZING` retry: compare the submitted Track B hash with the hash journaled when entering `FINALIZING`; identical retry may continue, differing retry must fail before finalizer execution;
-- incomplete-finalization recovery removes only restartable finalizer outputs and preserves validated Track A/B inputs.
+### 8.2 Submission contract
 
-Raw `FileExistsError` must no longer represent a valid run-local submission. Validation failures, input mismatch, generated-artifact collision, and publish collision must remain distinguishable.
+#### Run-local Track B
 
-### 5.4 Formal-review protected handoff (#98, result display)
+If the submitted source resolves to `<run>/track-b-output.json`:
 
-Do not create another server lifecycle. Reuse the completed #92 `open_review_run()` / detached protected loopback path.
+1. validate it against the immutable validated Track A;
+2. do not rewrite it;
+3. continue finalization.
 
-Extend `review-question submit-track-b` with `--open`.
+#### External Track B
 
-On successful finalization, stdout always includes at least:
+If Track B is outside the run directory:
+
+1. validate it;
+2. publish to run-local `track-b-output.json` with create-or-identical semantics;
+3. continue finalization.
+
+### 8.3 Retry identity
+
+The transition into `FINALIZING` must record the validated Track B identity/hash used for the attempt.
+
+- identical retry may resume;
+- differing retry fails before finalizer execution;
+- a differing pre-existing run-local Track B fails as an input mismatch rather than a raw `FileExistsError`.
+
+Required stable distinctions include:
+
+```text
+TRACK_B_INPUT_MISMATCH
+TRACK_B_RETRY_MISMATCH
+TRACK_B_VALIDATION_FAILED
+FINALIZER_ARTIFACT_COLLISION
+```
+
+Exact representation may use existing project error/status conventions, but the states must remain distinguishable.
+
+### 8.4 Recovery contract
+
+Interrupted finalization recovery may remove only restartable finalizer outputs:
+
+```text
+run-manifest.json
+final-review-packet.json
+review.html
+```
+
+Validated Track A and Track B inputs are preserved.
+
+## 9. Phase 3 — bounded Korean deterministic retrieval (#100)
+
+### 9.1 Characterization-first rule
+
+Before choosing a production mechanism, the regression fixture must prove:
+
+- the authoritative record exists in `retrieval_records`;
+- its exact authoritative text and Unicode representation;
+- what is stored in/searchable through `evidence_fts`;
+- how FTS tokenization behaves for the representative string.
+
+`fts5vocab` may be used in tests or diagnostics for characterization, but production retrieval must not depend on it.
+
+### 9.2 Permitted normalization
+
+Search-only representation may perform bounded evidence-insensitive normalization:
+
+- NFC normalization;
+- repeated whitespace collapse;
+- explicit known zero-width format-character removal;
+- bounded Hangul spacing compaction;
+- existing safe suffix/particle handling.
+
+It must not mutate authoritative evidence fields or citation lineage.
+
+### 9.3 Retrieval order
+
+Preserve high-precision channels first:
+
+```text
+fts_phrase
+-> fts_token_and
+-> bounded Korean lexical fallback
+-> existing grouped entity/numeric/concept channels
+-> fusion
+```
+
+The fallback must be traceable by origin and derived term.
+
+### 9.4 Mechanism selection
+
+Use the smallest mechanism proven sufficient by characterization.
+
+1. If query-side bounded variants solve the miss, do not change the index schema.
+2. If hidden format/spacing normalization in the FTS representation solves it, change only the search representation.
+3. If FTS tokenization prevents the required match, add a derived searchable shadow representation while leaving authoritative retrieval records unchanged.
+4. Add a schema migration only if the existing FTS structure cannot support the required representation.
+
+### 9.5 Required regressions
+
+Representative terms include:
+
+```text
+주차구획선
+소방차 전용구역
+소방차전용구역
+피난안전구역
+청소년 문화의집 설치기준
+청소년문화의집 설치기준
+청소년수련관 설치기준
+```
+
+Existing English and numeric retrieval must remain compatible.
+
+## 10. Phase 4 — formal-review integration (#98)
+
+### 10.1 Protected handoff
+
+Add `--open` to:
+
+```text
+review-question submit-track-b
+```
+
+Reuse the existing #92 `open_review_run()` / detached protected loopback lifecycle. Do not create another server implementation.
+
+After successful finalization, stdout always includes at least:
 
 - format/version/stage;
-- `status`;
+- final status;
 - `run_id`;
 - `review_html` path.
 
-When `--open` is requested, also return a display outcome and protected URL when available. If browser dispatch fails after packet/HTML creation, the CLI must clearly report that display failed while preserving the successful review result and HTML path. It must not make the user infer that finalization failed.
+When `--open` is requested, also include a display outcome and protected URL when available.
 
-The command must remain bounded and inherit #92's loopback/token/idle-timeout/process-identity rules.
+Browser dispatch failure after packet/HTML creation is a display failure, not a finalization failure. The successful review artifacts remain visible in the command result.
 
-### 5.5 Review-item to PDF evidence focus (#98, workspace interaction)
+### 10.2 Review-item/evidence orchestration
 
-`focusEvidence()` remains the single source of truth for PDF page/bbox movement.
+Refactor UI responsibilities into three non-recursive layers.
 
-`selectReviewItem()` should:
+#### `selectReviewItem(...)`
 
-1. select the review item and update the detail panel;
-2. resolve the item's first valid citation/evidence link;
-3. activate the evidence/PDF context as needed;
-4. call the existing `focusEvidence()` path;
-5. leave PDF state unchanged when the item has no citation.
+Owns only:
 
-Mouse and keyboard item changes must flow through the same selection function. For multiple citations, item selection focuses the first citation; clicking another citation continues to focus that citation normally.
+- selected rail item;
+- selected detail panel;
+- ARIA selected/pressed state;
+- detail-tab state.
 
-No page/bbox positioning logic should be duplicated inside `selectReviewItem()`.
+It does not move the PDF viewer.
 
-### 5.6 Zero-hit user guidance (#98 consuming #100)
+#### `focusEvidence(...)`
 
-The retrieval engine remains fail closed. If the original query returns no authoritative evidence but bounded deterministic Korean variants were derived, the formal-review handoff may expose the attempted normalized/derived terms as guidance.
+Owns only:
 
-The guidance must:
+- active evidence page;
+- bbox overlay focus;
+- page scrolling/focus;
+- related viewer state.
 
-- preserve the original query and each query origin;
-- never fabricate a hit;
-- never alter evidence authority;
-- remain compatible with an eventual `ABSTAIN` result when no evidence is found.
+It does not select review items.
 
-The representative formal-review regressions are:
+#### `activateReviewItem(...)`
 
-- `청소년 문화의집 설치기준`;
-- `청소년문화의집 설치기준`;
-- `청소년수련관 설치기준`.
+Owns orchestration:
 
-They must succeed without user-supplied expansion when relevant evidence exists.
+1. select the review item;
+2. resolve an explicitly requested citation or the first valid citation;
+3. activate evidence context as needed;
+4. call `focusEvidence(...)` once;
+5. leave PDF state unchanged if no valid citation exists.
 
-## 6. Cross-cutting error contract
+### 10.3 Unified event routes
 
-The integrated PR should prefer stable reason/status codes over leaking incidental Python exception names to end users.
+Mouse and keyboard routes must use the same orchestration behavior.
+
+Required routes:
+
+- review-item click;
+- review-item keyboard activation;
+- citation click;
+- citation keyboard activation;
+- evidence-link click.
+
+For a review item with multiple citations:
+
+- item activation focuses the first valid citation;
+- direct activation of another citation focuses that citation;
+- selected review item remains coherent.
+
+### 10.4 Zero-hit guidance
+
+If no authoritative evidence is returned but bounded deterministic variants were attempted, the formal-review handoff may expose:
+
+- original query;
+- normalized/derived attempted terms;
+- origin of each term.
+
+This is guidance only. It must not fabricate a hit or suppress a legitimate `ABSTAIN` result.
+
+## 11. Error contract
+
+Prefer stable reason/status codes over incidental Python exception names in user-facing surfaces.
 
 Required distinguishable states:
 
-- `SOURCE_MISMATCH`
-- `DEPENDENCY_MISSING`
-- Korean retrieval no-hit with deterministic attempted-term trace
-- Track B structural/integrity validation failure
-- `TRACK_B_INPUT_MISMATCH`
-- `TRACK_B_RETRY_MISMATCH`
-- finalizer generated-artifact collision
-- review finalization success + browser/display failure
+- `SOURCE_MISMATCH`;
+- `DEPENDENCY_MISSING`;
+- deterministic Korean no-hit with attempted-term trace;
+- Track B structural/integrity validation failure;
+- `TRACK_B_INPUT_MISMATCH`;
+- `TRACK_B_RETRY_MISMATCH`;
+- generated finalizer artifact collision;
+- review finalization success plus browser/display failure.
 
-Existing security-sensitive path validation, immutable artifact semantics, and stale retrieval index checks remain authoritative.
+Existing security-sensitive path checks, immutable artifact semantics, stale-index checks, offline/network policy, and #92 process-identity/token rules remain authoritative.
 
-## 7. Testing strategy
+## 12. TDD strategy
 
-TDD is mandatory for each subsystem.
+TDD is mandatory for production behavior changes.
 
-1. Provenance RED tests before bootstrap changes.
-2. Korean lexical characterization RED tests before retrieval changes.
-3. Run-local Track B collision/retry RED tests before finalizer ownership changes.
-4. Review-item/PDF focus RED test before `review.js` changes.
-5. `review-question submit-track-b --open` subprocess RED test before CLI integration.
-6. Focused suites after each subsystem.
-7. Combined formal-review E2E after #100 and #98 are both implemented.
-8. Full pytest, Ruff, mypy, compileall, documentation integrity.
-9. Windows Python 3.11 and 3.13 smoke/acceptance.
-10. Real browser acceptance at 1366×768, 200% zoom, and print.
+1. Sync/re-characterize current main.
+2. #99 provenance RED tests, then bootstrap implementation.
+3. #101 run-local Track B and retry RED tests, then ownership/recovery implementation.
+4. #100 exact FTS characterization RED tests, then smallest sufficient Korean retrieval fix.
+5. #98 `submit-track-b --open` RED test, then protected handoff integration.
+6. #98 current-main UI behavior test, then non-recursive orchestration refactor only where required.
+7. Multi-citation and keyboard regressions.
+8. Formal-review Korean E2E using #100 behavior.
+9. Full repository gates.
+10. Windows and real-browser acceptance at exact final HEAD.
 
-## 8. Authority and compatibility invariants
+## 13. Combined formal-review E2E
 
-The implementation is unacceptable if it changes any of these merely to make the tests pass:
+The final integrated path must exercise:
+
+```text
+doctor
+  -> review-question prepare
+  -> Track A validation
+  -> run-local Track B validation
+  -> submit-track-b --open
+  -> protected review page
+  -> review-item/citation activation
+  -> PDF page + bbox focus
+```
+
+Run representative Korean questions without user-supplied expansion when relevant evidence exists.
+
+The E2E must prove the visible result remains tied to the same authoritative citation/source/snapshot lineage.
+
+## 14. Authority and compatibility invariants
+
+The implementation is unacceptable if it changes any of these merely to make tests pass:
 
 - citation ID derivation;
 - page number or bbox authority;
 - evidence/source hashes;
 - evidence snapshot hash;
 - final packet authority semantics;
-- Track A/B validation strictness;
+- Track A/Track B validation strictness;
 - offline/network guard policy;
-- protected review loopback/token security rules;
+- protected review loopback/token/process-identity security;
 - existing English/numeric retrieval behavior.
 
-## 9. Delivery and review gates
+## 15. Acceptance gates
 
-The PR remains Draft until all four issue-level acceptance sets pass together.
+All issue-level gates must pass at one exact final HEAD.
 
-Recommended commit gates:
+### Automated
 
-1. `fix: add CLI runtime provenance diagnostics`
-2. `fix: retrieve bounded Korean compound terms`
-3. `fix: make Track B run-local submission idempotent`
-4. `fix: synchronize review items with PDF evidence`
-5. `fix: return protected review handoff from review-question`
-6. `test: cover issues 98 through 101 integration`
-7. `docs: record issues 98 through 101 acceptance`
+- focused regression suites PASS;
+- full pytest PASS;
+- Ruff PASS;
+- mypy PASS;
+- compileall PASS;
+- documentation integrity PASS with zero errors.
 
-Do not close #98–#101 until the exact final HEAD used for acceptance is recorded and the combined regression suite passes.
+### Windows
 
-## 10. Acceptance
+Run with Python 3.11 and 3.13:
 
-- Development checkout execution identifies Python, package source, repository HEAD, and dependency state.
-- A stale package source is blocked before business logic.
-- Missing dependencies do not prevent `doctor` diagnostics.
-- `주차구획선`, `소방차 전용구역`/compact variant, and `피난안전구역` retrieve the correct authoritative evidence when present.
-- Existing English/numeric retrieval remains unchanged.
-- Run-local Track B submission succeeds without rewriting the validated same-path input.
-- Byte-identical retry succeeds; differing retry fails closed before finalizer execution.
-- Partial finalizer recovery preserves validated Track B input.
-- `review-question submit-track-b --open` returns a bounded protected result handoff or an explicit display-failure state plus `review_html`.
-- Selecting a review item focuses its first citation page and bbox; multiple citations and keyboard navigation remain coherent.
-- The three Korean formal-review questions work without user expansion when evidence exists.
-- Citation/evidence/source/snapshot/packet authority remains unchanged.
-- Focused tests, full pytest, Ruff, mypy, compileall, and documentation integrity pass.
-- Windows Python 3.11/3.13 acceptance passes.
-- Browser acceptance passes at 1366×768, 200% zoom, and print.
+- `doctor` current checkout;
+- intentional stale source mismatch;
+- missing-dependency diagnostic scenario;
+- run-local Track B submission;
+- byte-identical Track B retry;
+- differing Track B retry;
+- Korean retrieval regressions;
+- formal-review protected handoff.
+
+### Browser
+
+Real browser acceptance must include:
+
+- 1366×768;
+- 200% zoom;
+- keyboard item/citation activation;
+- multiple citations;
+- PDF page and bbox focus;
+- print.
+
+## 16. Delivery gates
+
+PR #102 remains Draft until:
+
+1. the branch is synchronized with current `main`;
+2. all still-open failures are characterized on the synchronized baseline;
+3. implementation is complete;
+4. all acceptance gates pass at one exact HEAD;
+5. the acceptance record contains the exact HEAD and command results.
+
+Recommended implementation commit sequence after the synchronized RED baseline:
+
+```text
+1. test: recharacterize issues 98 through 101 on current main
+2. fix: add dependency-safe runtime provenance diagnostics
+3. fix: treat Track B as a validated run input
+4. fix: retrieve bounded Korean compound terms
+5. fix: return protected formal-review handoff
+6. fix: unify review selection and evidence focus
+7. test: cover issues 98 through 101 end to end
+8. docs: record issues 98 through 101 acceptance
+```
+
+Do not close #98–#101 and do not mark PR #102 Ready for review until the combined exact-HEAD acceptance passes.
