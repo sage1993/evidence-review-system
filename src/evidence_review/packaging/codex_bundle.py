@@ -92,7 +92,7 @@ def build_codex_bundle(
     workspace_root: Path,
     output_directory: Path,
 ) -> dict[str, object]:
-    """Copy required offline runtime assets and write a canonical manifest."""
+    """Copy required offline runtime assets and current ERS skills."""
     if output_directory.exists():
         raise FileExistsError(output_directory)
     output_directory.mkdir(parents=True)
@@ -121,26 +121,12 @@ def build_codex_bundle(
         output_directory / "rules" / "manifests",
     )
 
-    skill_files = sorted(
-        source
-        for source in (workspace_root / "skills").glob("*/SKILL.md")
-        if source.parent.name not in USER_FACING_SKILL_NAMES
-    )
-    if len(skill_files) != 5:
-        raise ValueError("Codex bundle requires exactly five PDF workflow skills")
-    for source in skill_files:
-        _copy_file(
-            source,
-            output_directory / "skills" / source.parent.name / "SKILL.md",
-        )
-
     for name in USER_FACING_SKILL_NAMES:
         source = workspace_root / "skills" / name / "SKILL.md"
-        if source.is_file():
-            _copy_file(
-                source,
-                output_directory / ".agents" / "skills" / name / "SKILL.md",
-            )
+        _copy_file(
+            source,
+            output_directory / ".agents" / "skills" / name / "SKILL.md",
+        )
 
     (output_directory / "VALIDATE.md").write_text(
         render_validation_document(),
