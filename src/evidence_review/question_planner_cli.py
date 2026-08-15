@@ -118,12 +118,17 @@ def _prepare(arguments: Sequence[str]) -> int:
         print(str(error), file=sys.stderr)
         return 2
 
+    prepare_status = (
+        "RETRIEVAL_NO_EVIDENCE"
+        if result.retrieval_guidance_path is not None
+        else result.status
+    )
     _write_stdout(
         {
             "format": "evidence-review/review-question-status",
             "version": 1,
             "stage": "prepare",
-            "status": result.status,
+            "status": prepare_status,
             "run_id": result.run_id,
             "question_plan_sha256": question_plan_sha256(plan),
             "next_action_path": (
