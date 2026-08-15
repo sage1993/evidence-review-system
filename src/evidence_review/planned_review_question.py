@@ -10,6 +10,7 @@ from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from evidence_review.question_planning import (
     bind_question_plan_to_review_request,
@@ -18,6 +19,7 @@ from evidence_review.question_planning import (
     query_request_from_plan,
 )
 from evidence_review.retrieval.bundle import build_evidence_bundle
+from evidence_review.retrieval.coverage import CoverageReport, evaluate_issue_coverage
 from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
 from evidence_review.review_question import (
@@ -55,6 +57,7 @@ def prepare_planned_review_question(
     )
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
+    coverage_report: CoverageReport | None = None
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
         connection = store.require_connection()
@@ -63,6 +66,7 @@ def prepare_planned_review_question(
         else:
             snapshot_hash = require_fresh_index(connection)
             issue_bundle = retrieve_issue_bundle(connection, question_plan)
+            coverage_report = evaluate_issue_coverage(question_plan, issue_bundle)
             bundle = issue_retrieval_bundle_document(
                 question_plan,
                 issue_bundle,
@@ -79,6 +83,11 @@ def prepare_planned_review_question(
     )
     review_request = bind_question_plan_to_review_request(review_request, question_plan)
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
+    if coverage_report is not None:
+        review_request = bind_issue_coverage_to_review_request(
+            review_request,
+            coverage_report,
+        )
     request_metric = finish_stage("review-request-build", request_timer)
 
     run_id = compute_run_id_from_request(review_request)
