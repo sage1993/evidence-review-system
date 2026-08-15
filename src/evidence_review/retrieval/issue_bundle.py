@@ -112,18 +112,6 @@ def _match_sort_key(match: IssueCandidateMatch) -> tuple[str, str, str, str, str
     )
 
 
-def _trace_sort_key(
-    trace: IssueFallbackTrace,
-) -> tuple[str, str, str, str, str]:
-    return (
-        trace.issue_id,
-        trace.role,
-        trace.search_request_id,
-        trace.stage.value,
-        trace.derived_query,
-    )
-
-
 def _drop_sort_key(drop: BudgetDrop) -> tuple[str, str, str, str]:
     return (
         drop.issue_id,
@@ -291,7 +279,8 @@ def _bucket_candidates(
             key=lambda item: (-item.clause.score, item.clause.clause_id),
         )[: policy.per_issue_role_limit]
     )
-    return candidates, tuple(sorted(traces, key=_trace_sort_key))
+    # Preserve actual attempt order for audit/replay. Do not sort fallback traces.
+    return candidates, tuple(traces)
 
 
 def _global_round_robin(
@@ -425,5 +414,5 @@ def retrieve_issue_bundle(
         candidates=candidates,
         selected_evidence=evidence,
         budget_drops=tuple(sorted(budget_drops, key=_drop_sort_key)),
-        fallback_traces=tuple(sorted(fallback_traces, key=_trace_sort_key)),
+        fallback_traces=tuple(fallback_traces),
     )
