@@ -120,12 +120,40 @@ def test_bind_question_plan_to_review_request_adds_replay_identity_and_issues() 
     assert len(inputs["question_plan_sha256"]) == 64
     assert inputs["question_plan"] == {
         "issues": [
-            {"id": "I1", "question": "에어컨 설치기준은 무엇인가", "depends_on": []},
-            {"id": "I2", "question": "실외기 설치조건은 무엇인가", "depends_on": []},
+            {
+                "id": "I1",
+                "question": "에어컨 설치기준은 무엇인가",
+                "depends_on": [],
+                "required_evidence_roles": ["rule"],
+            },
+            {
+                "id": "I2",
+                "question": "실외기 설치조건은 무엇인가",
+                "depends_on": [],
+                "required_evidence_roles": ["rule"],
+            },
         ],
         "facts": [],
         "assumptions": [],
         "legal_anchors": [],
+        "search_requests": [
+            {
+                "id": "S1",
+                "issue_ids": ["I1"],
+                "text": "에어컨 설치기준",
+                "kind": "phrase",
+                "source": "planner",
+                "role": "rule",
+            },
+            {
+                "id": "S2",
+                "issue_ids": ["I2"],
+                "text": "에어컨 실외기 설치",
+                "kind": "phrase",
+                "source": "planner",
+                "role": "rule",
+            },
+        ],
     }
 
 
