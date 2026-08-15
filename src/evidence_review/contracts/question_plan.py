@@ -18,7 +18,21 @@ SearchKind = Literal["phrase", "legal_anchor", "concept_relation", "counterfactu
 AnchorSource = Literal["user", "planner"]
 Polarity = Literal["positive", "negative"]
 
-_NUMERIC_LITERAL = re.compile(r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?")
+_NUMERIC_LITERAL = re.compile(
+    r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
+    r"(?P<unit>제곱미터|퍼센트|킬로미터|밀리미터|센티미터|미터|"
+    r"m²|m2|km|mm|cm|㎡|㎥|m|%|종|조|항|호|층|세대|대|명|년|개월|월|일)?"
+)
+_UNIT_CANONICAL = {
+    "제곱미터": "㎡",
+    "m²": "㎡",
+    "m2": "㎡",
+    "퍼센트": "%",
+    "킬로미터": "km",
+    "밀리미터": "mm",
+    "센티미터": "cm",
+    "미터": "m",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,8 +246,13 @@ def _validate_issue_graph(issues: tuple[QuestionIssue, ...]) -> None:
 
 
 def _numeric_literals(text: str) -> set[str]:
-    """Extract normalized user numeric literals while preserving percent semantics."""
-    return {match.group(0).replace(",", "") for match in _NUMERIC_LITERAL.finditer(text)}
+    """Extract normalized numeric literals while preserving explicit unit semantics."""
+    result: set[str] = set()
+    for match in _NUMERIC_LITERAL.finditer(text):
+        number = match.group("number").replace(",", "")
+        unit = match.group("unit") or ""
+        result.add(number + _UNIT_CANONICAL.get(unit, unit))
+    return result
 
 
 def _validate_numeric_preservation(
