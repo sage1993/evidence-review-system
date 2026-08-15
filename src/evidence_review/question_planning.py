@@ -11,6 +11,7 @@ from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.llm_layer.question_planner import build_question_planner_bundle
 from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
+from evidence_review.retrieval.models import RetrievalHit
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +112,7 @@ def bind_question_plan_to_review_request(
     return bound
 
 
-def _citation_document(hit: object) -> dict[str, object]:
+def _citation_document(hit: RetrievalHit) -> dict[str, object]:
     citation = hit.citation()
     return {
         "citation_id": citation.citation_id,
@@ -152,7 +153,8 @@ def issue_retrieval_bundle_document(
         ] = {}
         issue_ids: set[str] = set()
         roles: set[str] = set()
-        for candidate in candidates:
+        for candidate_object in candidates:
+            candidate = cast("IssueClauseCandidate", candidate_object)
             for match in candidate.matches:
                 issue_ids.add(match.issue_id)
                 roles.add(match.role)
