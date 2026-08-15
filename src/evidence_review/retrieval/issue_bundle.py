@@ -15,9 +15,11 @@ from evidence_review.contracts.question_plan import (
 from evidence_review.retrieval.clause_resolution import (
     ClauseRetrievalHit,
     resolve_clause_to_evidence,
-    search_clause_exact,
-    search_clause_phrase,
-    search_clause_token_and,
+)
+from evidence_review.retrieval.fallback import (
+    FallbackStage,
+    FallbackTrace,
+    search_clause_with_fallback,
 )
 from evidence_review.retrieval.models import ChannelScore, RetrievalHit
 from evidence_review.retrieval.policy import RetrievalPolicy
@@ -36,6 +38,19 @@ class BudgetDrop:
 
 
 @dataclass(frozen=True, slots=True)
+class IssueFallbackTrace:
+    """One fallback attempt bound to the issue/search request that caused it."""
+
+    issue_id: str
+    search_request_id: str
+    role: EvidenceRole
+    stage: FallbackStage
+    input_query: str
+    derived_query: str
+    hit_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class IssueCandidateMatch:
     """Lineage binding one semantic clause candidate to one planned issue query."""
 
@@ -43,6 +58,8 @@ class IssueCandidateMatch:
     issue_id: str
     role: EvidenceRole
     query_text: str
+    retrieval_query: str
+    fallback_stage: FallbackStage
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +91,7 @@ class IssueRetrievalBundle:
     candidates: tuple[IssueClauseCandidate, ...]
     selected_evidence: tuple[RetrievalHit, ...]
     budget_drops: tuple[BudgetDrop, ...]
+    fallback_traces: tuple[IssueFallbackTrace, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,8 +101,27 @@ class _IssueRoleBucket:
     candidates: tuple[IssueClauseCandidate, ...]
 
 
-def _match_sort_key(match: IssueCandidateMatch) -> tuple[str, str, str, str]:
-    return (match.issue_id, match.role, match.search_request_id, match.query_text)
+def _match_sort_key(match: IssueCandidateMatch) -> tuple[str, str, str, str, str, str]:
+    return (
+        match.issue_id,
+        match.role,
+        match.search_request_id,
+        match.query_text,
+        match.fallback_stage.value,
+        match.retrieval_query,
+    )
+
+
+def _trace_sort_key(
+    trace: IssueFallbackTrace,
+) -> tuple[str, str, str, str, str]:
+    return (
+        trace.issue_id,
+        trace.role,
+        trace.search_request_id,
+        trace.stage.value,
+        trace.derived_query,
+    )
 
 
 def _drop_sort_key(drop: BudgetDrop) -> tuple[str, str, str, str]:
@@ -134,26 +171,20 @@ def _merge_candidate(
     if left.clause.clause_id != right.clause.clause_id:
         raise ValueError("cannot merge different clause candidates")
     matches = {
-        (match.issue_id, match.role, match.search_request_id, match.query_text): match
+        (
+            match.issue_id,
+            match.role,
+            match.search_request_id,
+            match.query_text,
+            match.fallback_stage.value,
+            match.retrieval_query,
+        ): match
         for match in (*left.matches, *right.matches)
     }
     return IssueClauseCandidate(
         clause=_merge_clause_hit(left.clause, right.clause),
         matches=tuple(sorted(matches.values(), key=_match_sort_key)),
     )
-
-
-def _initial_clause_hits(
-    connection: sqlite3.Connection,
-    request: SearchRequest,
-    *,
-    limit: int,
-) -> tuple[ClauseRetrievalHit, ...]:
-    if request.kind == "legal_anchor":
-        return search_clause_exact(connection, request.text, limit=limit)
-    if request.kind == "phrase":
-        return search_clause_phrase(connection, request.text, limit=limit)
-    return search_clause_token_and(connection, request.text, limit=limit)
 
 
 def _requests_for_issue(
@@ -200,22 +231,43 @@ def _requests_for_issue(
     return tuple(selected), tuple(sorted(drops, key=_drop_sort_key))
 
 
+def _bind_fallback_trace(
+    issue: QuestionIssue,
+    request: SearchRequest,
+    trace: FallbackTrace,
+) -> IssueFallbackTrace:
+    return IssueFallbackTrace(
+        issue_id=issue.id,
+        search_request_id=request.id,
+        role=request.role,
+        stage=trace.stage,
+        input_query=trace.input_query,
+        derived_query=trace.derived_query,
+        hit_count=trace.hit_count,
+    )
+
+
 def _bucket_candidates(
     connection: sqlite3.Connection,
     issue: QuestionIssue,
     role: EvidenceRole,
     requests: tuple[SearchRequest, ...],
     policy: RetrievalPolicy,
-) -> tuple[IssueClauseCandidate, ...]:
+) -> tuple[tuple[IssueClauseCandidate, ...], tuple[IssueFallbackTrace, ...]]:
     by_clause: dict[str, IssueClauseCandidate] = {}
+    traces: list[IssueFallbackTrace] = []
     for request in requests:
         if request.role != role:
             continue
-        for clause_hit in _initial_clause_hits(
+        result = search_clause_with_fallback(
             connection,
-            request,
+            request.text,
             limit=policy.per_issue_role_limit,
-        ):
+        )
+        traces.extend(_bind_fallback_trace(issue, request, trace) for trace in result.traces)
+        if result.success_stage is None or result.successful_query is None:
+            continue
+        for clause_hit in result.hits:
             candidate = IssueClauseCandidate(
                 clause=clause_hit,
                 matches=(
@@ -224,6 +276,8 @@ def _bucket_candidates(
                         issue_id=issue.id,
                         role=role,
                         query_text=request.text,
+                        retrieval_query=result.successful_query,
+                        fallback_stage=result.success_stage,
                     ),
                 ),
             )
@@ -231,12 +285,13 @@ def _bucket_candidates(
             by_clause[clause_hit.clause_id] = (
                 candidate if current is None else _merge_candidate(current, candidate)
             )
-    return tuple(
+    candidates = tuple(
         sorted(
             by_clause.values(),
             key=lambda item: (-item.clause.score, item.clause.clause_id),
         )[: policy.per_issue_role_limit]
     )
+    return candidates, tuple(sorted(traces, key=_trace_sort_key))
 
 
 def _global_round_robin(
@@ -331,6 +386,7 @@ def retrieve_issue_bundle(
 
     buckets: list[_IssueRoleBucket] = []
     budget_drops: list[BudgetDrop] = []
+    fallback_traces: list[IssueFallbackTrace] = []
     for issue in plan.issues:
         selected_requests, query_drops = _requests_for_issue(
             plan,
@@ -339,17 +395,19 @@ def retrieve_issue_bundle(
         )
         budget_drops.extend(query_drops)
         for role in issue.required_evidence_roles:
+            candidates, traces = _bucket_candidates(
+                connection,
+                issue,
+                role,
+                selected_requests,
+                effective_policy,
+            )
+            fallback_traces.extend(traces)
             buckets.append(
                 _IssueRoleBucket(
                     issue_id=issue.id,
                     role=role,
-                    candidates=_bucket_candidates(
-                        connection,
-                        issue,
-                        role,
-                        selected_requests,
-                        effective_policy,
-                    ),
+                    candidates=candidates,
                 )
             )
 
@@ -367,4 +425,5 @@ def retrieve_issue_bundle(
         candidates=candidates,
         selected_evidence=evidence,
         budget_drops=tuple(sorted(budget_drops, key=_drop_sort_key)),
+        fallback_traces=tuple(sorted(fallback_traces, key=_trace_sort_key)),
     )
