@@ -32,6 +32,28 @@ def test_prepare_plan_cli_writes_handoff_without_question_in_status(
     assert document["expected_output"].endswith("question-plan-output.json")
 
 
+def test_prepare_without_question_plan_is_rejected_before_legacy_retrieval(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    exit_code = dispatch_question_planning(
+        [
+            "review-question",
+            "prepare",
+            "--workspace",
+            str(tmp_path),
+            "--question",
+            "에어컨 등 가전제품 설치기준 알려줘",
+        ]
+    )
+
+    assert exit_code == 2
+    document = json.loads(capsys.readouterr().out)
+    assert document["status"] == "PLANNER_FAILED"
+    assert document["reason_code"] == "QUESTION_PLAN_OUTPUT_REQUIRED"
+    assert not (tmp_path / "runs").exists()
+
+
 def test_prepare_cli_rejects_invalid_plan_before_creating_run(
     capsys,
     tmp_path: Path,
