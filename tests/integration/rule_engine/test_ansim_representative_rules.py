@@ -10,9 +10,10 @@ from evidence_review.rule_engine.evaluator import evaluate_rule
 from evidence_review.rule_engine.governance_contract import RuleSelectionContext
 from evidence_review.rule_engine.manifest import load_governed_active_rules
 
-ROOT = Path(__file__).parents[3]
-MANIFEST = ROOT / "rules" / "manifests" / "active.json"
-GOLDEN = ROOT / "tests" / "golden" / "rules" / "ansim_representative_cases.json"
+REPOSITORY_ROOT = Path(__file__).parents[3]
+FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "ansim"
+MANIFEST = FIXTURE_ROOT / "rules" / "manifests" / "active.json"
+GOLDEN = REPOSITORY_ROOT / "tests" / "golden" / "rules" / "ansim_representative_cases.json"
 FORMULA_MANIFEST_HASH = "b" * 64
 
 
@@ -54,7 +55,7 @@ def _evidence(rule):
 
 def _execute_cases() -> tuple[bytes, ...]:
     loaded = load_governed_active_rules(
-        ROOT,
+        FIXTURE_ROOT,
         MANIFEST,
         RuleSelectionContext(document_family="ANSIM"),
     )
