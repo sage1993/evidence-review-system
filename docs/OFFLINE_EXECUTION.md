@@ -17,7 +17,7 @@ Allowed local communication includes:
 
 The formal review workflow, metrics, page image cache, Track handoffs, HTML, and human decision records require no external API.
 
-Static process scanning has one narrow exception: `ansim_review/review_packet/browser_launcher.py` may use `subprocess` only to start the protected loopback review-server child process. The exception does not allow HTTP clients, remote network access, `os.system`, or subprocess use in another source path. PDF page rendering is in-process and does not use an external `pdftoppm` process.
+Static process scanning has one narrow exception: `evidence_review/review_packet/browser_launcher.py` may use `subprocess` only to start the protected loopback review-server child process. The exception does not allow HTTP clients, remote network access, `os.system`, or subprocess use in another source path. PDF page rendering is in-process and does not use an external `pdftoppm` process.
 
 Application-only validation records:
 
@@ -85,7 +85,7 @@ The default idle timeout is 1800 seconds (30 minutes), measured from the last va
 
 The run-scoped state file is management metadata, not review authority. Stale state must be removed. PID reuse protection must prevent `serve-stop` from signaling an unrelated process.
 
-Windows and POSIX process identity mechanisms differ. Windows liveness uses a non-destructive process query before command-line/token identity validation. Acceptance must still test Windows explicitly on the exact target commit; an unexecuted Windows lifecycle check is `NOT_RUN`, not a PASS inferred from POSIX behavior. Issue #92 remains the lifecycle authority for this lifecycle contract.
+Windows and POSIX process identity mechanisms differ. Windows liveness uses a non-destructive process query before command-line/token identity validation. Acceptance must still test Windows explicitly on the exact target commit; an unexecuted Windows lifecycle check is `NOT_RUN`, not a PASS inferred from POSIX behavior.
 
 ## 4. Human decision boundary
 
