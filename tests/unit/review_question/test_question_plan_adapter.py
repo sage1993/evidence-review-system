@@ -118,10 +118,15 @@ def test_bind_question_plan_to_review_request_adds_replay_identity_and_issues() 
     assert isinstance(inputs, dict)
     assert inputs["snapshot_hash"] == "a" * 64
     assert len(inputs["question_plan_sha256"]) == 64
-    assert inputs["question_issues"] == [
-        {"id": "I1", "question": "에어컨 설치기준은 무엇인가", "depends_on": []},
-        {"id": "I2", "question": "실외기 설치조건은 무엇인가", "depends_on": []},
-    ]
+    assert inputs["question_plan"] == {
+        "issues": [
+            {"id": "I1", "question": "에어컨 설치기준은 무엇인가", "depends_on": []},
+            {"id": "I2", "question": "실외기 설치조건은 무엇인가", "depends_on": []},
+        ],
+        "facts": [],
+        "assumptions": [],
+        "legal_anchors": [],
+    }
 
 
 def test_bind_question_plan_to_review_request_rejects_question_mismatch() -> None:
