@@ -266,6 +266,29 @@
     printPanelStates = null;
   }
 
+  function isProtectedPresentation() {
+    return Boolean(document.querySelector('[data-protected-presentation="true"]'));
+  }
+
+  function ensurePageImageLoaded(page) {
+    if (!isProtectedPresentation() || !page) return;
+    const image = page.querySelector("img[data-page-image-source]");
+    if (!image || image.getAttribute("src")) return;
+    const source = image.dataset.pageSrc || "";
+    if (source) image.setAttribute("src", source);
+  }
+
+  function prefetchAdjacentPages(page) {
+    if (!isProtectedPresentation() || !page) return;
+    const sourceId = page.dataset.sourceId || "";
+    const pages = Array.from(document.querySelectorAll('.evidence-page[data-source-id="' + sourceId + '"]'));
+    const activeIndex = pages.indexOf(page);
+    if (activeIndex < 0) return;
+    pages.forEach((candidate, index) => {
+      if (Math.abs(index - activeIndex) <= 1) ensurePageImageLoaded(candidate);
+    });
+  }
+
   function activeSourceId() {
     const active = document.querySelector(".evidence-page.is-active");
     if (active && active.dataset.sourceId) return active.dataset.sourceId;
@@ -296,6 +319,29 @@
     if (target) setActivePage(target.dataset.assetKey);
   }
 
+  function setActivePage(assetKey) {
+    const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
+    if (!page) return;
+    if (page.dataset.sourceId && page.dataset.sourceId !== activeSourceId()) {
+      setActiveSource(page.dataset.sourceId, assetKey);
+      return;
+    }
+    document.querySelectorAll('.evidence-page').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.assetKey === assetKey);
+    });
+    document.querySelectorAll('[data-page-select]').forEach((node) => {
+      node.classList.toggle('is-active', node.dataset.pageSelect === assetKey);
+    });
+    const position = document.querySelector('[data-current-source-position]');
+    const count = document.querySelector('[data-current-source-count]');
+    const original = document.querySelector('[data-current-original-page]');
+    if (position) position.textContent = page.dataset.sourcePosition || "1";
+    if (count) count.textContent = page.dataset.sourceCount || "1";
+    if (original) original.textContent = page.dataset.originalPage || "";
+    ensurePageImageLoaded(page);
+    prefetchAdjacentPages(page);
+  }
+
   function movePage(delta) {
     const sourceId = activeSourceId();
     const pages = Array.from(document.querySelectorAll('.evidence-page[data-source-id="' + sourceId + '"]'));
@@ -319,8 +365,7 @@
         ? page.dataset.sourceId
         : "";
     if (sourceId) setActiveSource(sourceId, assetKey);
-    setActivePage(assetKey);
-
+    else setActivePage(assetKey);
     document.querySelectorAll(".citation-overlay").forEach((overlay) => {
       overlay.classList.toggle(
         "is-focused",
@@ -332,27 +377,6 @@
       page.focus({ preventScroll: true });
     }
     return true;
-  }
-
-  function setActivePage(assetKey) {
-    const page = document.querySelector('.evidence-page[data-asset-key="' + assetKey + '"]');
-    if (!page) return;
-    if (page.dataset.sourceId && page.dataset.sourceId !== activeSourceId()) {
-      setActiveSource(page.dataset.sourceId, assetKey);
-      return;
-    }
-    document.querySelectorAll('.evidence-page').forEach((node) => {
-      node.classList.toggle('is-active', node.dataset.assetKey === assetKey);
-    });
-    document.querySelectorAll('[data-page-select]').forEach((node) => {
-      node.classList.toggle('is-active', node.dataset.pageSelect === assetKey);
-    });
-    const position = document.querySelector('[data-current-source-position]');
-    const count = document.querySelector('[data-current-source-count]');
-    const original = document.querySelector('[data-current-original-page]');
-    if (position) position.textContent = page.dataset.sourcePosition || "1";
-    if (count) count.textContent = page.dataset.sourceCount || "1";
-    if (original) original.textContent = page.dataset.originalPage || "";
   }
 
   function focusItemEvidence(item) {
@@ -388,6 +412,7 @@
       const label = VIEWER_LABELS[button.dataset.viewerMode];
       if (label) button.textContent = label;
     });
+    if (isProtectedPresentation()) return;
     const pageImages = new Map(
       Array.from(document.querySelectorAll("[data-page-image-source]")).map((image) => [
         image.dataset.pageImageSource,
@@ -478,6 +503,8 @@
   window.refreshDisplayStatus = refreshDisplayStatus;
   window.renderPersistedDecision = renderPersistedDecision;
   window.beginAdditionalDecision = beginAdditionalDecision;
+  window.ensurePageImageLoaded = ensurePageImageLoaded;
+  window.prefetchAdjacentPages = prefetchAdjacentPages;
   window.downloadDecisionEnvelope = downloadDecisionEnvelope;
 
   document.querySelectorAll('.evidence-link, .citation[role="button"]').forEach((node) => {

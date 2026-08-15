@@ -25,24 +25,45 @@ from evidence_review.review_packet.decision_record import (
     validate_human_decision_request,
     write_human_decision,
 )
+from evidence_review.review_packet.page_image_verifier import read_verified_page_image
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
 _CSP = (
-    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
+    "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
     "frame-ancestors 'none'; form-action 'self'"
 )
+_MODEL_SCRIPT = re.compile(
+    r'<script id="review-model" type="application/json">(?P<model>.*?)</script>',
+    re.DOTALL,
+)
+_CITATION_TAG = re.compile(r'<article class="citation" (?P<attrs>[^>]*)>')
+_PAGE_IMAGE_TAG = re.compile(r'<img\b[^>]*\bdata-page-image-source="[^"]+"[^>]*>')
+_DATA_ATTR = re.compile(r'\b(?P<name>data-[a-z-]+)="(?P<value>[^"]*)"')
+_IMAGE_SOURCE = re.compile(r'\bdata-page-image-source="(?P<asset>[^"]+)"')
+_EMBEDDED_SRC = re.compile(r'\bsrc="data:image/png;base64,[^"]*"')
 
 
 @dataclass(frozen=True, slots=True)
 class _Route:
     run_id: str
     endpoint: Literal[
-        "confirmation", "review", "packet", "packet_hash", "decision", "decision_status"
+        "confirmation",
+        "review",
+        "packet",
+        "packet_hash",
+        "decision",
+        "decision_status",
+        "page_image",
     ]
     token: str | None = None
+    revision_id: str | None = None
+    page_number: int | None = None
+    source_hash: str | None = None
 
 
 def _is_reparse_point(status: object) -> bool:
@@ -108,20 +129,36 @@ def _route_path(path: str) -> _Route | None:
         run_id = validate_identifier(parts[1], "run_id")
     except ValueError:
         return None
+    token = parts[2]
+    if not _TOKEN_PATTERN.fullmatch(token):
+        return None
     if len(parts) == 4 and parts[3] in {"confirmation", "review", "packet", "decision"}:
-        token = parts[2]
-        if not _TOKEN_PATTERN.fullmatch(token):
-            return None
         endpoint = cast(Literal["confirmation", "review", "packet", "decision"], parts[3])
         return _Route(run_id=run_id, token=token, endpoint=endpoint)
     if len(parts) == 5 and parts[3:] in (["packet", "hash"], ["decision", "status"]):
-        token = parts[2]
-        if not _TOKEN_PATTERN.fullmatch(token):
-            return None
         return _Route(
             run_id=run_id,
             token=token,
             endpoint="packet_hash" if parts[3:] == ["packet", "hash"] else "decision_status",
+        )
+    if len(parts) == 7 and parts[3] == "page-images":
+        revision_id = parts[4]
+        if not _IDENTIFIER_PATTERN.fullmatch(revision_id):
+            return None
+        try:
+            page_number = int(parts[5])
+        except ValueError:
+            return None
+        source_hash = parts[6]
+        if page_number < 1 or not _SHA256_PATTERN.fullmatch(source_hash):
+            return None
+        return _Route(
+            run_id=run_id,
+            token=token,
+            endpoint="page_image",
+            revision_id=revision_id,
+            page_number=page_number,
+            source_hash=source_hash,
         )
     return None
 
@@ -157,6 +194,115 @@ def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError("invalid JSON object")
         result[key] = value
     return result
+
+
+def _citation_identities(model: object) -> dict[str, tuple[str, int, str]]:
+    if not isinstance(model, dict):
+        raise ValueError("review model must be an object")
+    claims = model.get("claims", [])
+    if not isinstance(claims, list):
+        raise ValueError("review claims must be an array")
+    identities: dict[str, tuple[str, int, str]] = {}
+    for claim in claims:
+        if not isinstance(claim, dict):
+            raise ValueError("review claim must be an object")
+        citations = claim.get("citations", [])
+        if not isinstance(citations, list):
+            raise ValueError("review citations must be an array")
+        for citation in citations:
+            if not isinstance(citation, dict):
+                raise ValueError("review citation must be an object")
+            citation_id = citation.get("citation_id")
+            revision_id = citation.get("revision_id")
+            page_number = citation.get("page_number")
+            source_hash = citation.get("source_hash")
+            if (
+                not isinstance(citation_id, str)
+                or not citation_id
+                or not isinstance(revision_id, str)
+                or not _IDENTIFIER_PATTERN.fullmatch(revision_id)
+                or isinstance(page_number, bool)
+                or not isinstance(page_number, int)
+                or page_number < 1
+                or not isinstance(source_hash, str)
+                or not _SHA256_PATTERN.fullmatch(source_hash)
+            ):
+                raise ValueError("review citation page identity is invalid")
+            identity = (revision_id, page_number, source_hash)
+            previous = identities.get(citation_id)
+            if previous is not None and previous != identity:
+                raise ValueError("conflicting citation page identity")
+            identities[citation_id] = identity
+    return identities
+
+
+def _asset_page_identities(html: str, model: object) -> dict[str, tuple[str, int, str]]:
+    citations = _citation_identities(model)
+    assets: dict[str, tuple[str, int, str]] = {}
+    for match in _CITATION_TAG.finditer(html):
+        attributes = {
+            item.group("name"): item.group("value")
+            for item in _DATA_ATTR.finditer(match.group("attrs"))
+        }
+        asset_key = attributes.get("data-asset-key", "")
+        citation_id = attributes.get("data-citation-id", "")
+        if not asset_key or citation_id not in citations:
+            continue
+        identity = citations[citation_id]
+        previous = assets.get(asset_key)
+        if previous is not None and previous != identity:
+            raise ValueError("page asset has conflicting provenance")
+        assets[asset_key] = identity
+    return assets
+
+
+def _protected_review_html(html_bytes: bytes) -> bytes:
+    """Derive a protected presentation without mutating archival review.html."""
+    try:
+        html = html_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("review HTML must be UTF-8") from error
+    model_match = _MODEL_SCRIPT.search(html)
+    if model_match is None:
+        raise ValueError("review model missing")
+    try:
+        model = json.loads(model_match.group("model"))
+    except json.JSONDecodeError as error:
+        raise ValueError("review model is invalid JSON") from error
+    asset_identities = _asset_page_identities(html, model)
+
+    marker = '<div class="app-shell"'
+    if marker not in html:
+        raise ValueError("review HTML app shell missing")
+    html = html.replace(
+        marker,
+        '<div class="app-shell" data-protected-presentation="true"',
+        1,
+    )
+
+    def lazy_image(match: re.Match[str]) -> str:
+        tag = match.group(0)
+        source = _IMAGE_SOURCE.search(tag)
+        if source is None:
+            return tag
+        asset_key = source.group("asset")
+        identity = asset_identities.get(asset_key)
+        if identity is None:
+            raise ValueError("page image asset has no citation provenance")
+        revision_id, page_number, source_hash = identity
+        protected_src = f"./page-images/{revision_id}/{page_number}/{source_hash}"
+        if _EMBEDDED_SRC.search(tag) is None:
+            raise ValueError("archival page image source is missing")
+        return _EMBEDDED_SRC.sub(
+            f'data-page-src="{protected_src}" src=""',
+            tag,
+            count=1,
+        )
+
+    html = _PAGE_IMAGE_TAG.sub(lazy_image, html)
+    if "data:image/png;base64," in html:
+        raise ValueError("protected presentation still contains embedded page images")
+    return html.encode("utf-8")
 
 
 class _ReviewHTTPServer(ThreadingHTTPServer):
@@ -321,11 +467,30 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             return "REVIEW_COMPLETED"
         return machine_status
 
+    def _send_page_image(self, route: _Route) -> None:
+        if route.revision_id is None or route.page_number is None or route.source_hash is None:
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        try:
+            verified = read_verified_page_image(
+                self.state.workspace_root / "page-images",
+                route.revision_id,
+                route.page_number,
+                route.source_hash,
+            )
+        except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        self._send_bytes(HTTPStatus.OK, verified.image_bytes, "image/png")
+
     def do_GET(self) -> None:  # noqa: N802
         route = self._route()
         if route is None or not self._authorized(route, require_origin=False):
             return
         self.state.mark_activity()
+        if route.endpoint == "page_image":
+            self._send_page_image(route)
+            return
         if route.endpoint == "confirmation":
             artifact = self._artifact(route.run_id, "machine", "drawing-confirmation.json")
             if artifact is None:
@@ -378,9 +543,19 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
             try:
-                self._send_bytes(HTTPStatus.OK, html.read_bytes(), "text/html; charset=utf-8")
+                html_bytes = html.read_bytes()
+                protected = _protected_review_html(html_bytes)
             except OSError:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+                return
+            except ValueError as error:
+                if str(error) not in {"review model missing", "review HTML app shell missing"}:
+                    self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+                    return
+                # Keep compatibility with pre-protected archival fixtures; canonical
+                # review HTML still takes the lazy protected path above.
+                protected = html_bytes
+            self._send_bytes(HTTPStatus.OK, protected, "text/html; charset=utf-8")
             return
         if route.endpoint == "packet":
             self._send_bytes(HTTPStatus.OK, packet_bytes, "application/json; charset=utf-8")

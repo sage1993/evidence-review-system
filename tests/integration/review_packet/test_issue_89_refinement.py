@@ -197,7 +197,8 @@ def test_evidence_card_focuses_its_pdf_page_in_browser_controller(tmp_path: Path
 
     assert "focusEvidence(item.dataset.itemId, item.dataset.evidenceId)" in controller
     focus_start = controller.index("function focusEvidence")
-    focus_end = controller.index("function setActivePage")
+    focus_end = controller.find("\n  function ", focus_start + 1)
+    assert focus_end > focus_start
     assert "setActivePage(assetKey);" in controller[focus_start:focus_end]
     assert "data-asset-key=" in render_review_html(_model(), tmp_path / "pages")
 
