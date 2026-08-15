@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class SchemaUpgradeRequired(RuntimeError):
@@ -86,56 +86,6 @@ _V1_COLUMNS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_V3_COLUMNS: dict[str, tuple[str, ...]] = {
-    **_COMMON_COLUMNS,
-    "pages": (
-        "id", "revision_id", "page_number", "width", "height",
-        "origin_x", "origin_y", "rotation", "box_kind",
-    ),
-    "schema_meta": ("key", "value"),
-    "elements": (
-        "id",
-        "page_id",
-        "element_type",
-        "raw_json",
-        "raw_text",
-        "normalized_text",
-        "raw_payload_hash",
-        "bbox_json",
-        "parser_order",
-    ),
-    "tables": (
-        "id",
-        "page_id",
-        "bbox_json",
-        "raw_json",
-        "normalized_json",
-    ),
-    "visuals": (
-        "id",
-        "page_id",
-        "kind",
-        "relative_path",
-        "sha256",
-        "bbox_json",
-        "duplicate_group",
-    ),
-    "retrieval_records": (
-        "evidence_id",
-        "evidence_type",
-        "document_id",
-        "revision_id",
-        "page_id",
-        "page_number",
-        "bbox_json",
-        "source_hash",
-        "title",
-        "raw_text",
-        "normalized_text",
-    ),
-}
-
-
 _V2_COLUMNS: dict[str, tuple[str, ...]] = {
     **_COMMON_COLUMNS,
     "schema_meta": ("key", "value"),
@@ -181,13 +131,97 @@ _V2_COLUMNS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_FTS_TABLES = {
+_V3_COLUMNS: dict[str, tuple[str, ...]] = {
+    **_COMMON_COLUMNS,
+    "pages": (
+        "id",
+        "revision_id",
+        "page_number",
+        "width",
+        "height",
+        "origin_x",
+        "origin_y",
+        "rotation",
+        "box_kind",
+    ),
+    "schema_meta": ("key", "value"),
+    "elements": (
+        "id",
+        "page_id",
+        "element_type",
+        "raw_json",
+        "raw_text",
+        "normalized_text",
+        "raw_payload_hash",
+        "bbox_json",
+        "parser_order",
+    ),
+    "tables": (
+        "id",
+        "page_id",
+        "bbox_json",
+        "raw_json",
+        "normalized_json",
+    ),
+    "visuals": (
+        "id",
+        "page_id",
+        "kind",
+        "relative_path",
+        "sha256",
+        "bbox_json",
+        "duplicate_group",
+    ),
+    "retrieval_records": (
+        "evidence_id",
+        "evidence_type",
+        "document_id",
+        "revision_id",
+        "page_id",
+        "page_number",
+        "bbox_json",
+        "source_hash",
+        "title",
+        "raw_text",
+        "normalized_text",
+    ),
+}
+
+_V4_COLUMNS: dict[str, tuple[str, ...]] = {
+    **_V3_COLUMNS,
+    "clause_retrieval_records": (
+        "clause_id",
+        "document_id",
+        "revision_id",
+        "title",
+        "chapter",
+        "section",
+        "clause_number",
+        "raw_text",
+        "normalized_text",
+    ),
+    "clause_evidence_links": (
+        "clause_id",
+        "evidence_id",
+        "relation_type",
+    ),
+}
+
+_EVIDENCE_FTS_TABLES = {
     "evidence_fts",
     "evidence_fts_config",
     "evidence_fts_content",
     "evidence_fts_data",
     "evidence_fts_docsize",
     "evidence_fts_idx",
+}
+_CLAUSE_FTS_TABLES = {
+    "clause_fts",
+    "clause_fts_config",
+    "clause_fts_content",
+    "clause_fts_data",
+    "clause_fts_docsize",
+    "clause_fts_idx",
 }
 
 
@@ -222,15 +256,17 @@ def _table_names(connection: sqlite3.Connection) -> set[str]:
 def _is_exact_shape(
     connection: sqlite3.Connection,
     expected: dict[str, tuple[str, ...]],
+    *,
+    fts_tables: set[str],
 ) -> bool:
     for table, expected_columns in expected.items():
         if not _table_exists(connection, table):
             return False
         if _columns(connection, table) != expected_columns:
             return False
-    if not _table_exists(connection, "evidence_fts"):
+    if not all(_table_exists(connection, table) for table in fts_tables):
         return False
-    return _table_names(connection) == set(expected) | _FTS_TABLES
+    return _table_names(connection) == set(expected) | fts_tables
 
 
 def detect_schema_version(connection: sqlite3.Connection) -> int:
@@ -251,21 +287,35 @@ def detect_schema_version(connection: sqlite3.Connection) -> int:
             raise UnsupportedSchemaVersion(
                 f"unsupported evidence schema version: {version}"
             )
-        if version == 3 and not _is_exact_shape(connection, _V3_COLUMNS):
-            raise UnsupportedSchemaVersion(
-                f"evidence schema version {version} shape is invalid"
-            )
         if version == 1:
             raise UnsupportedSchemaVersion(
                 "schema version 1 metadata does not match the recognized legacy shape"
             )
-        if version == 2 and not _is_exact_shape(connection, _V2_COLUMNS):
-            raise UnsupportedSchemaVersion(
-                "evidence schema version 2 shape is invalid"
-            )
+        if version == 2 and not _is_exact_shape(
+            connection,
+            _V2_COLUMNS,
+            fts_tables=_EVIDENCE_FTS_TABLES,
+        ):
+            raise UnsupportedSchemaVersion("evidence schema version 2 shape is invalid")
+        if version == 3 and not _is_exact_shape(
+            connection,
+            _V3_COLUMNS,
+            fts_tables=_EVIDENCE_FTS_TABLES,
+        ):
+            raise UnsupportedSchemaVersion("evidence schema version 3 shape is invalid")
+        if version == 4 and not _is_exact_shape(
+            connection,
+            _V4_COLUMNS,
+            fts_tables=_EVIDENCE_FTS_TABLES | _CLAUSE_FTS_TABLES,
+        ):
+            raise UnsupportedSchemaVersion("evidence schema version 4 shape is invalid")
         return version
 
-    if _is_exact_shape(connection, _V1_COLUMNS):
+    if _is_exact_shape(
+        connection,
+        _V1_COLUMNS,
+        fts_tables=_EVIDENCE_FTS_TABLES,
+    ):
         return 1
 
     raise UnsupportedSchemaVersion("unrecognized evidence schema")
@@ -274,7 +324,7 @@ def detect_schema_version(connection: sqlite3.Connection) -> int:
 def require_current_schema(connection: sqlite3.Connection) -> None:
     """Require the current evidence schema without mutating the database."""
     version = detect_schema_version(connection)
-    if version in (1, 2):
+    if version in (1, 2, 3):
         raise SchemaUpgradeRequired(
             f"database uses schema version {version}; explicit migration is required"
         )
