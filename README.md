@@ -402,7 +402,7 @@ py -3.13 -m pytest -v
 py -3.13 -m ruff check src tests web_runtime
 py -3.13 -m mypy src
 py -3.13 -m compileall -q src scripts web_runtime tests
-py -3.13 -m evidence_review documentation validate --repository-root .
+py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
 ```
 
 Question Planner changes additionally require the planned-question integration matrix and staged CLI flow tests. Packaging/release changes require wheel/runtime smoke tests and confirmation that the planner instruction template is included in package data. Review Workspace changes require real-browser acceptance; static tests are not a substitute for UI/interaction validation.
