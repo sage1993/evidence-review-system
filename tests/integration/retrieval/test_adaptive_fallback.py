@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from evidence_review.contracts.question_plan import decode_question_plan
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.retrieval.fallback import (
@@ -11,6 +12,7 @@ from evidence_review.retrieval.fallback import (
     search_clause_with_fallback,
 )
 from evidence_review.retrieval.index import build_fts_index
+from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
 
 
 def _snapshot() -> EvidenceSnapshot:
@@ -145,3 +147,49 @@ def test_fallback_stops_after_first_successful_stage(tmp_path: Path) -> None:
     assert FallbackStage.LEGAL_COMPOUND_DECOMPOSITION not in {
         trace.stage for trace in result.traces
     }
+
+
+def test_issue_bundle_preserves_successful_fallback_provenance(tmp_path: Path) -> None:
+    question = "안심주택의 일반 사업대상지 최소 면적은 얼마야?"
+    plan = decode_question_plan(
+        {
+            "format": "evidence-review/question-plan",
+            "version": 2,
+            "original_question": question,
+            "facts": [],
+            "assumptions": [],
+            "issues": [
+                {
+                    "id": "I1",
+                    "question": "일반 사업대상지 최소 면적 기준은 무엇인가?",
+                    "depends_on": [],
+                    "required_evidence_roles": ["rule"],
+                }
+            ],
+            "legal_anchors": [],
+            "search_requests": [
+                {
+                    "id": "S1",
+                    "issue_ids": ["I1"],
+                    "text": "안심주택 사업대상지 최소 면적",
+                    "kind": "concept_relation",
+                    "source": "planner",
+                    "role": "rule",
+                }
+            ],
+        },
+        question,
+    )
+    with EvidenceStore(tmp_path / "bundle.sqlite", create=True) as store:
+        ingest_snapshot(store, _snapshot())
+        connection = store.require_connection()
+        build_fts_index(connection)
+        bundle = retrieve_issue_bundle(connection, plan)
+
+    candidate = next(item for item in bundle.candidates if item.clause.clause_id == "C-AREA")
+    assert len(candidate.matches) == 1
+    assert candidate.matches[0].fallback_stage == FallbackStage.APPROVED_ALIAS
+    assert candidate.matches[0].query_text == "안심주택 사업대상지 최소 면적"
+    assert candidate.matches[0].retrieval_query == "안심주택 사업대상지 대지면적"
+    assert bundle.fallback_traces[-1].stage == FallbackStage.APPROVED_ALIAS
+    assert bundle.fallback_traces[-1].hit_count > 0
