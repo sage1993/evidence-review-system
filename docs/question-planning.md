@@ -136,7 +136,26 @@ Evidence hits may expose `matches` such as:
 
 When one evidence item is found through multiple requests or channels, lineage is unioned deterministically. Lineage does **not** add score and does not change channel weights or fusion ranking.
 
-The review request also binds retrieval lineage into `inputs.retrieval_lineage`, allowing Track A to understand why each supplied evidence item was retrieved without expanding its citation authority.
+The review request also binds retrieval lineage into `inputs.retrieval_lineage` as an evidence-level array:
+
+```json
+[
+  {
+    "evidence_id": "E1",
+    "citation_id": "CIT-E1",
+    "matches": [
+      {
+        "search_request_id": "S2",
+        "issue_ids": ["I1"],
+        "query_text": "에어컨 실외기 설치",
+        "origin": "llm"
+      }
+    ]
+  }
+]
+```
+
+This allows Track A to understand why each supplied evidence item was retrieved without expanding its citation authority.
 
 ## Review-run identity and replay boundary
 
@@ -153,7 +172,7 @@ The canonical validated QuestionPlan is hashed with SHA-256. The review request 
       "issues": [],
       "legal_anchors": []
     },
-    "retrieval_lineage": {}
+    "retrieval_lineage": []
   }
 }
 ```
