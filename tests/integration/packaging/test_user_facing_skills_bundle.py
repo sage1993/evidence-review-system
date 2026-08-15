@@ -33,6 +33,16 @@ def _workspace(root: Path) -> None:
         (skill / "SKILL.md").write_text(f"# {name}", encoding="utf-8")
 
 
+def test_repository_publishes_only_current_ers_skill_directories() -> None:
+    repository_root = Path(__file__).parents[3]
+    skills_root = repository_root / "skills"
+
+    skill_directories = sorted(path.name for path in skills_root.iterdir() if path.is_dir())
+
+    assert skill_directories == ["ers-pdf", "ers-review"]
+    assert not (skills_root / "VALIDATION.json").exists()
+
+
 def test_codex_bundle_includes_only_user_facing_ers_skills(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     _workspace(root)
