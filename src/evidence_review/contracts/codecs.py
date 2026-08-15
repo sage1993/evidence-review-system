@@ -81,6 +81,13 @@ def _expect_string_tuple(value: object, field: str) -> tuple[str, ...]:
     return tuple(_expect_string(item, f"{field}[{index}]") for index, item in enumerate(items))
 
 
+def _expect_unique_string_tuple(value: object, field: str) -> tuple[str, ...]:
+    items = _expect_string_tuple(value, field)
+    if len(items) != len(set(items)):
+        raise ValueError(f"{field} must contain unique values")
+    return items
+
+
 def _expect_string_dict(value: object, field: str) -> dict[str, str]:
     payload = _expect_mapping(value, field)
     return {
@@ -139,14 +146,19 @@ def decode_citation(value: object) -> Citation:
 
 
 def decode_claim(value: object) -> Claim:
-    """Decode one cited factual claim."""
+    """Decode one cited factual claim, preserving optional issue lineage."""
     payload = _expect_mapping(value, "claim")
-    _reject_unknown(payload, {"claim_id", "text", "citation_ids", "numeric_tokens"}, "claim")
+    _reject_unknown(
+        payload,
+        {"claim_id", "text", "citation_ids", "numeric_tokens", "issue_ids"},
+        "claim",
+    )
     return Claim(
         claim_id=_expect_string(payload.get("claim_id"), "claim_id"),
         text=_expect_string(payload.get("text"), "text"),
         citation_ids=_expect_string_tuple(payload.get("citation_ids"), "citation_ids"),
         numeric_tokens=_expect_string_tuple(payload.get("numeric_tokens", []), "numeric_tokens"),
+        issue_ids=_expect_unique_string_tuple(payload.get("issue_ids", []), "issue_ids"),
     )
 
 
