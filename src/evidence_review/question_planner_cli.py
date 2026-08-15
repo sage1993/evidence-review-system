@@ -151,6 +151,11 @@ def dispatch_question_planning(argv: Sequence[str]) -> int | None:
         return None
     if argv[1] == "prepare-plan":
         return _prepare_plan(argv[2:])
-    if argv[1] == "prepare" and "--question-plan-output" in argv[2:]:
-        return _prepare(argv[2:])
+    if argv[1] == "prepare":
+        prepare_arguments = argv[2:]
+        if "--help" in prepare_arguments or "-h" in prepare_arguments:
+            return _prepare(prepare_arguments)
+        if "--question-plan-output" not in prepare_arguments:
+            return _planner_failure("QUESTION_PLAN_OUTPUT_REQUIRED")
+        return _prepare(prepare_arguments)
     return None
