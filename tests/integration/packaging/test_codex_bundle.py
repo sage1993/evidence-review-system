@@ -43,15 +43,17 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
         encoding="utf-8",
     )
     (root / "AGENTS.md").write_text("# agents", encoding="utf-8")
-    for index in range(1, 6):
-        skill = root / f"skills/0{index}-skill"
+    for name in ("ers-pdf", "ers-review"):
+        skill = root / "skills" / name
         skill.mkdir(parents=True)
-        (skill / "SKILL.md").write_text(f"# skill {index}", encoding="utf-8")
+        (skill / "SKILL.md").write_text(f"# {name}", encoding="utf-8")
 
     output = tmp_path / "bundle"
     manifest = build_codex_bundle(root, output)
     assert (output / "AGENTS.md").is_file()
-    assert len(list((output / "skills").glob("*/SKILL.md"))) == 5
+    assert (output / ".agents" / "skills" / "ers-pdf" / "SKILL.md").is_file()
+    assert (output / ".agents" / "skills" / "ers-review" / "SKILL.md").is_file()
+    assert not (output / "skills").exists()
     assert (output / "src" / "evidence_review" / "__main__.py").is_file()
     assert (output / "src" / "ansim_review" / "__init__.py").is_file()
     assert not (

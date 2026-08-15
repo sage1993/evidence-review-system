@@ -132,15 +132,17 @@ See [Offline Execution Boundary](docs/OFFLINE_EXECUTION.md) and [Security Policy
 The active tree is intended to contain only current runtime/product/developer material or clearly scoped deterministic fixtures.
 
 ```text
-src/               Python runtime
-web_runtime/       installation-free web runtime bootstrap
-schemas/           machine-readable contracts
-tests/fixtures/    deterministic ANSIM compatibility and rule fixtures
-tests/             unit/integration/golden fixtures
-skills/            ERS Codex workflow skills
-docs/              current architecture/workflow/governance docs
-scripts/           current operational/developer scripts only
+src/                         Python runtime
+web_runtime/                 installation-free web runtime bootstrap
+schemas/                     machine-readable contracts
+tests/                       unit/integration/golden fixtures
+tests/fixtures/ansim/rules/  ANSIM-specific governed Rule Engine test data
+skills/                      current ERS Codex workflow skills
+docs/                        current architecture/workflow/governance docs
+scripts/                     current operational/developer scripts only
 ```
+
+Runtime workspaces can still contain their own governed `rules/` tree. The repository itself does not publish ANSIM-specific rule authority as a current product default; those deterministic artifacts are retained only as explicit test fixtures.
 
 Historical issue-specific acceptance output does not need to remain in the active tree because Git history and GitHub Issue/PR history already preserve it.
 

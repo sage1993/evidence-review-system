@@ -49,7 +49,7 @@ addopts = ["--import-mode=importlib"]
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-extend-exclude = ["scripts/export_grist_csv.py", "scripts/rebuild_visuals_and_grist.py", "scripts/repair_grist_document.py", "scripts/validate_workspace.py"]
+extend-exclude = ["scripts/validate_workspace.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

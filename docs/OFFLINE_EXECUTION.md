@@ -85,7 +85,7 @@ The default idle timeout is 1800 seconds (30 minutes), measured from the last va
 
 The run-scoped state file is management metadata, not review authority. Stale state must be removed. PID reuse protection must prevent `serve-stop` from signaling an unrelated process.
 
-Windows and POSIX process identity mechanisms differ. Windows liveness uses a non-destructive process query before command-line/token identity validation. Acceptance must still test Windows explicitly on the exact target commit; an unexecuted Windows lifecycle check is `NOT_RUN`, not a PASS inferred from POSIX behavior. Issue #92 remains the lifecycle authority for this lifecycle contract.
+Windows and POSIX process identity mechanisms differ. Windows liveness uses a non-destructive process query before command-line/token identity validation. Acceptance must still test Windows explicitly on the exact target commit; an unexecuted Windows lifecycle check is `NOT_RUN`, not a PASS inferred from POSIX behavior.
 
 ## 4. Human decision boundary
 

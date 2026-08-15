@@ -183,7 +183,7 @@ evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 
 Detached-server startup timeout is 2 seconds. Stale state must be removed and management operations must not signal an unrelated reused PID.
 
-Do not claim Windows lifecycle acceptance until it has been exercised on the exact target commit. Issue #92 remains the authority for any unresolved lifecycle acceptance work.
+Do not claim Windows lifecycle acceptance until it has been exercised on the exact target commit using the current lifecycle acceptance contract.
 
 ## 9. Documentation and verification
 
