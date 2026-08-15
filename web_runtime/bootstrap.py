@@ -157,12 +157,19 @@ def validate_database(database: Path) -> None:
 
 def self_test(root: Path) -> None:
     root = root.resolve()
+    public_runtime = (root / "public-runtime.txt").is_file()
+    if public_runtime and ((root / "evidence").exists() or (root / "rules").exists()):
+        _fail("PUBLIC_RUNTIME_CONTAINS_WORKSPACE_DATA")
     required_paths = (
-        "evidence/evidence.sqlite",
-        "rules/manifests/active.json",
-        "formulas/manifest.json",
-        "examples/sample-request.json",
-        "runtime-manifest.json",
+        ("formulas/manifest.json", "examples/sample-request.json", "runtime-manifest.json")
+        if public_runtime
+        else (
+            "evidence/evidence.sqlite",
+            "rules/manifests/active.json",
+            "formulas/manifest.json",
+            "examples/sample-request.json",
+            "runtime-manifest.json",
+        )
     )
     required: dict[str, Path] = {}
     for relative in required_paths:
@@ -179,6 +186,9 @@ def self_test(root: Path) -> None:
         if sha256_file(path) != entry.sha256:
             _fail("RUNTIME_FILE_HASH_MISMATCH")
 
+    if public_runtime:
+        print("WEB_RUNTIME_PUBLIC_SELF_TEST_PASS")
+        return
     validate_database(required["evidence/evidence.sqlite"])
     print("WEB_RUNTIME_SELF_TEST_PASS")
 

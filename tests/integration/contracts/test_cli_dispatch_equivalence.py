@@ -5,6 +5,8 @@ import inspect
 import subprocess
 import sys
 
+import pytest
+
 import evidence_review.cli
 
 

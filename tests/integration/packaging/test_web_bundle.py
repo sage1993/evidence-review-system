@@ -9,7 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from evidence_review.packaging.web_bundle import build_web_runtime_zip
+from evidence_review.packaging.web_bundle import (
+    build_public_runtime_zip,
+    build_web_runtime_zip,
+)
 
 
 def _workspace(root: Path) -> None:
@@ -140,6 +143,46 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
             check=True,
         )
         assert completed.stdout.startswith("usage: evidence-review")
+
+
+def test_public_runtime_zip_excludes_workspace_data_and_self_tests(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    _workspace(root)
+    first = tmp_path / "public-first.zip"
+    second = tmp_path / "public-second.zip"
+    first_hash = build_public_runtime_zip(root, first)
+    second_hash = build_public_runtime_zip(root, second)
+    assert first_hash == second_hash
+    assert first.read_bytes() == second.read_bytes()
+
+    extracted = tmp_path / "public-extracted"
+    with zipfile.ZipFile(first) as archive:
+        names = archive.namelist()
+        archive.extractall(extracted)
+    lowered = [name.casefold() for name in names]
+    assert not any(
+        any(
+            token in name
+            for token in (
+                "evidence.sqlite", ".pdf", ".grist", ".sqlite",
+                ".db", ".csv", "human-decisions", "rules/",
+            )
+        )
+        for name in lowered
+    )
+    completed = subprocess.run(
+        [sys.executable, "bootstrap.py", "--self-test"],
+        cwd=extracted,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert completed.stdout.strip() == "WEB_RUNTIME_PUBLIC_SELF_TEST_PASS"
+    assert (extracted / "evidence_review" / "__main__.py").is_file()
+    assert not (extracted / "evidence").exists()
+    assert not (extracted / "rules").exists()
 
 
 def _extract_runtime(root: Path, tmp_path: Path) -> Path:

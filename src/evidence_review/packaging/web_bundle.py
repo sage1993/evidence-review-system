@@ -103,6 +103,35 @@ def _write_zip(source: Path, output: Path) -> None:
             )
 
 
+def build_public_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
+    """Build a software-only runtime ZIP without user workspace artifacts."""
+    with tempfile.TemporaryDirectory(
+        prefix="evidence-review-public-runtime-"
+    ) as temporary:
+        stage = Path(temporary) / "runtime"
+        stage.mkdir()
+        _copy_file(
+            workspace_root / "web_runtime" / "bootstrap.py",
+            stage / "bootstrap.py",
+        )
+        (stage / "public-runtime.txt").write_text(
+            "Evidence Review System public software runtime.\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (stage / "PROJECT_INSTRUCTIONS.md").write_text(
+            render_project_instructions(),
+            encoding="utf-8",
+            newline="\n",
+        )
+        for name, source in runtime_package_roots(workspace_root / "src"):
+            _copy_tree(source, stage / name)
+        _write_generated_runtime_inputs(stage)
+        (stage / "runtime-manifest.json").write_bytes(dump_bytes(_manifest(stage)))
+        _write_zip(stage, output_zip)
+    return hashlib.sha256(output_zip.read_bytes()).hexdigest()
+
+
 def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
     """Build byte-reproducible runtime ZIP without source PDFs or installation."""
     with tempfile.TemporaryDirectory(
