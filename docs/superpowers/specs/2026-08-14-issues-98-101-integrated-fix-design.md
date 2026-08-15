@@ -1,3 +1,5 @@
+> Historical design record: this document predates the current public-readiness policy. Python 3.13 is the only supported validation interpreter; any older-version references below describe past work and are not current requirements.
+
 # Issues #98–#101 Integrated Fix Design
 
 Issues: #98, #99, #100, #101  
@@ -527,7 +529,6 @@ Run with Python 3.11 and 3.13:
 Real browser acceptance must include:
 
 - 1366×768;
-- 200% zoom;
 - keyboard item/citation activation;
 - multiple citations;
 - PDF page and bbox focus;

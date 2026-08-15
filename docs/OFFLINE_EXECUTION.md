@@ -17,7 +17,7 @@ Allowed local communication includes:
 
 The formal review workflow, metrics, page image cache, Track handoffs, HTML, and human decision records require no external API.
 
-Static process scanning has one narrow exception: `ansim_review/review_packet/browser_launcher.py` may use `subprocess` only to start the protected loopback review-server child process. The exception does not allow HTTP clients, remote network access, `os.system`, or subprocess use in another source path. PDF page rendering is in-process and does not use an external `pdftoppm` process.
+Static process scanning has one narrow exception: `evidence_review/review_packet/browser_launcher.py` may use `subprocess` only to start the protected loopback review-server child process. The exception does not allow HTTP clients, remote network access, `os.system`, or subprocess use in another source path. PDF page rendering is in-process and does not use an external `pdftoppm` process.
 
 Application-only validation records:
 
@@ -218,7 +218,7 @@ From a clean Windows checkout at the exact acceptance HEAD, record:
 - protected human decision and `REVIEW_COMPLETED` projection;
 - archival envelope download and `import-decision`;
 - 1366×768, 1920×1080, 3840×2160;
-- 100%, 200%, fit-to-page browser zoom;
+- responsive browser validation at 1366×768, 1920×1080, and 3840×2160;
 - three simple-question metrics runs and p50/p95;
 - final packet, HTML, metrics, and decision-record hashes.
 

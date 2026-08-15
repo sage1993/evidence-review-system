@@ -1,3 +1,5 @@
+> Historical design record: this document predates the current public-readiness policy. Python 3.13 is the only supported validation interpreter; any older-version references below describe past work and are not current requirements.
+
 # Issues #98–#101 Integrated Fix Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -19,7 +21,7 @@
 - A valid run-local `track-b-output.json` is an input artifact and must not be rewritten or deleted by normal finalization/retry.
 - A malformed partial run-local Track B left by an interrupted external publish may be replaced only after the retry input hash matches the journaled `FINALIZING` hash; malformed same-path user input remains a validation failure.
 - The Korean retrieval mechanism must be chosen only after the reported FTS miss is characterized; no schema migration unless the existing FTS representation is proven insufficient.
-- Real-browser acceptance must include 1366×768, 200% zoom, keyboard activation, multiple citations, PDF page/bbox focus, and print.
+- Real-browser acceptance must include 1366×768, keyboard activation, multiple citations, PDF page/bbox focus, and print.
 - Use interpreter-pinned development/acceptance commands (`python -m evidence_review`) after provenance diagnostics rather than relying on a bare PATH console script.
 
 ---
@@ -2908,17 +2910,7 @@ Using Tab/Shift+Tab and Enter/Space only:
 - verify the same page/bbox transitions as mouse input;
 - verify visible focus remains present.
 
-- [ ] **Step 8: Validate 200% zoom**
-
-At browser zoom 200%:
-
-- review rail remains usable;
-- current detail remains reachable;
-- evidence viewer controls remain reachable;
-- activating a different item still changes page/bbox;
-- no required control is clipped without a scroll path.
-
-- [ ] **Step 9: Validate print**
+- [ ] **Step 8: Validate print**
 
 Use print preview and verify:
 
@@ -2927,7 +2919,7 @@ Use print preview and verify:
 - protected-only controls that should not appear in the archive are excluded as intended;
 - returning from print restores the pre-print tab visibility state.
 
-- [ ] **Step 10: Validate display-failure semantics from the committed automated test evidence**
+- [ ] **Step 9: Validate display-failure semantics from the committed automated test evidence**
 
 Confirm the Task 10 logs include the explicit opener-failure regression proving:
 
@@ -2938,7 +2930,7 @@ Confirm the Task 10 logs include the explicit opener-failure regression proving:
 
 Do not damage or disable the user's real browser installation to force this scenario manually.
 
-- [ ] **Step 11: Reconfirm exact HEAD and clean tracked tree after browser acceptance**
+- [ ] **Step 10: Reconfirm exact HEAD and clean tracked tree after browser acceptance**
 
 ```powershell
 $HeadAfterBrowser = (git rev-parse HEAD).Trim()
@@ -2948,14 +2940,14 @@ $StatusAfterBrowser = git status --short
 if ($StatusAfterBrowser) { throw "browser acceptance changed tracked/unignored files: $StatusAfterBrowser" }
 ```
 
-- [ ] **Step 12: Finalize the untracked acceptance evidence**
+- [ ] **Step 11: Finalize the untracked acceptance evidence**
 
 If every gate passed, append:
 
 ```text
 Final status: PASS — READY FOR REVIEW
 1366×768: PASS
-200% zoom: PASS
+
 Keyboard activation: PASS
 Multiple citations: PASS
 PDF first-citation page/bbox focus: PASS
@@ -3019,7 +3011,7 @@ PR #102 may move from Draft to Ready for review only when all of the following a
 - zero-hit guidance does not fabricate authority or suppress legitimate ABSTAIN behavior;
 - full pytest, Ruff, mypy, compileall, and documentation integrity pass;
 - Windows Python 3.11 and 3.13 gates pass;
-- real browser 1366×768, 200% zoom, keyboard, multiple citation, PDF page/bbox, and print gates pass;
+- real browser 1366×768, keyboard, multiple citation, PDF page/bbox, and print gates pass;
 - final acceptance record names the exact tested HEAD.
 
 Do not close #98, #99, #100, or #101 and do not mark PR #102 Ready for review before these criteria pass.

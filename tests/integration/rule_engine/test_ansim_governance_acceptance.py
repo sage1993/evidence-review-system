@@ -13,7 +13,7 @@ from evidence_review.rule_engine.governance_verify import verify_manifest_entry
 from evidence_review.rule_engine.manifest import load_governed_active_rules
 
 ROOT = Path(__file__).parents[3]
-MANIFEST = ROOT / "rules" / "manifests" / "active.json"
+MANIFEST = ROOT / "tests" / "fixtures" / "ansim" / "rules" / "manifests" / "active.json"
 EXPECTED_RULE_IDS = (
     "ANSIM-ARTERIAL-FRONTAGE-ONE-EIGHTH",
     "ANSIM-MINIMUM-SITE-AREA-1500",

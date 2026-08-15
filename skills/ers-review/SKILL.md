@@ -139,7 +139,7 @@ evidence-review review-run import-decision `
 - Track A/B 외부 대기시간은 deterministic total과 분리
 - 실패 후 재시도만 retry로 집계
 
-실제 수용 판정은 Windows Python 3.11/3.13에서 3회 timing과 p50/p95를 기록한 뒤 한다.
+실제 수용 판정은 Windows Python 3.13에서 3회 timing과 p50/p95를 기록한 뒤 한다.
 
 ## 중단 조건
 

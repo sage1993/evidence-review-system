@@ -124,7 +124,11 @@ def read_verified_page_image(
     origin_x = _number(metadata.get("origin_x", 0.0), "origin_x")
     origin_y = _number(metadata.get("origin_y", 0.0), "origin_y")
     rotation = metadata.get("rotation", 0)
-    if isinstance(rotation, bool) or not isinstance(rotation, int) or rotation not in {0, 90, 180, 270}:
+    if (
+        isinstance(rotation, bool)
+        or not isinstance(rotation, int)
+        or rotation not in {0, 90, 180, 270}
+    ):
         raise ValueError("page image rotation is invalid")
     box_kind = metadata.get("box_kind", "MEDIA_BOX")
     if box_kind not in {"CROP_BOX", "MEDIA_BOX"}:

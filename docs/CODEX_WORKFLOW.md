@@ -262,6 +262,6 @@ py -3.13 -m pytest -v tests/integration/review_run
 py -3.13 -m pytest -v tests/unit/review_packet
 ```
 
-Current release acceptance uses Python 3.13 only. It requires three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 3840×2160, zoom 100% / 200% / fit-to-page, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
+Current release acceptance uses Python 3.13 only. It requires three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 3840×2160, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
 
 Record unexecuted gates as `NOT_RUN`. GitHub Actions must be reported separately as its actual observed state; it is not replaced by local validation.

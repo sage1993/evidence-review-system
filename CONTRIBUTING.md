@@ -87,4 +87,4 @@ Reviewers may request focused commits, additional regression tests, security har
 
 ## License
 
-A project license will be committed only after the repository owner makes an explicit license choice. Until then, contribution acceptance does not imply a particular open-source license grant.
+Evidence Review System is licensed under the Apache License 2.0. Contributions are accepted under the terms described in `LICENSE` unless a separate written agreement says otherwise.

@@ -7,12 +7,8 @@
     "docs",
     "skills"
   ],
-  "historical_roots": [
-    "docs/acceptance"
-  ],
-  "current_overrides": [
-    "docs/acceptance/issue-52/README.md"
-  ],
+  "historical_roots": [],
+  "current_overrides": [],
   "historical_overrides": [],
   "generated_documents": [
     {

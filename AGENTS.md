@@ -123,7 +123,7 @@ The default HTML surface is intentionally simple:
 
 A single claim has no redundant item navigator. Empty rule/calculation sections do not render. Internal IDs, hashes, confidence factors/weights, and raw audit data remain available under collapsed audit details rather than the default surface.
 
-The reviewer decision panel is sticky on desktop and stacks below 1100 px. Browser QA, 200% zoom, keyboard focus, and print behavior must be manually checked for acceptance; static tests do not substitute for visual QA.
+The reviewer decision panel is sticky on desktop and stacks below 1100 px. Browser QA at the supported viewport matrix, keyboard focus, and print behavior must be manually checked for acceptance; static tests do not substitute for visual QA.
 
 ## 7. Protected browser and human decision
 
@@ -206,7 +206,7 @@ py -3.13 -m pytest -v tests/integration/review_run
 py -3.13 -m pytest -v tests/unit/review_packet
 ```
 
-Current release acceptance uses Python 3.13 only. It still requires the browser viewport/zoom matrix, protected/archival decision paths, server lifecycle tests, and three simple-question timing runs. Record exact artifact hashes. Unsupported Python versions are not release gates.
+Current release acceptance uses Python 3.13 only. It still requires the supported browser viewport matrix, protected/archival decision paths, server lifecycle tests, and three simple-question timing runs. Record exact artifact hashes. Unsupported Python versions are not release gates.
 
 GitHub Actions is not the default acceptance dependency. Report its actual state precisely as `ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, `ACTIONS_BILLING_BLOCKED`, or an observed PASS. Never convert local/manual PASS into Actions PASS.
 

@@ -15,7 +15,7 @@ from evidence_review.rule_engine.governance_contract import (
 ROOT = Path(__file__).parents[3]
 DOC = ROOT / "docs" / "RULE_ACTIVATION_GOVERNANCE.md"
 ACCEPTANCE = ROOT / "docs" / "acceptance" / "issue-48"
-MANIFEST = ROOT / "rules" / "manifests" / "active.json"
+MANIFEST = ROOT / "tests" / "fixtures" / "ansim" / "rules" / "manifests" / "active.json"
 EXPECTED_IDS = (
     "ANSIM-ARTERIAL-FRONTAGE-ONE-EIGHTH",
     "ANSIM-MINIMUM-SITE-AREA-1500",
@@ -119,7 +119,7 @@ def test_governance_documentation_is_explicit_and_fail_closed() -> None:
         "BLOCKED",
         "human_decision",
         "암호학적 증명이 아니다",
-        "MANUAL_PASS / ACTIONS_BILLING_BLOCKED",
+        "GitHub Actions PASS",
     )
     for phrase in required:
         assert phrase in text

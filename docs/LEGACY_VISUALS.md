@@ -95,7 +95,7 @@ Issue #46의 **document lineage migration**은 evidence schema v2 database에서
 
 Issue #38의 Grist Desktop QA에서는 이 inspection report를 legacy artifact inventory의 입력으로 사용할 수 있다. 그러나 Grist 화면에서 이미지가 보인다는 사실만으로 canonical identity가 증명되지는 않는다. QA artifact에는 원본 Grist 파일 hash, CSV hash, asset hash, 표시 결과와 검토자 기록을 별도로 보존해야 한다.
 
-실제 Windows 수동 검토 절차와 version 1 acceptance artifact 작성법은 `docs/GRIST_DESKTOP_QA.md`를 따른다. 검증 명령은 다음과 같다.
+이 문서는 현재 제품 경로가 아닌 legacy Grist 시각 호환성 parser 계약을 설명한다. 실제 운영 데이터나 고객 문서를 포함하지 않으며, 예제와 parser regression test의 경계만 정의한다. 검증 명령은 다음과 같다.
 
 ```powershell
 evidence-review legacy validate-grist-qa `
@@ -103,7 +103,7 @@ evidence-review legacy validate-grist-qa `
   --root .
 ```
 
-예제 `docs/examples/grist-desktop-qa.example.json`은 모든 view가 `NOT_RUN`인 `INCOMPLETE` 시작점이며 acceptance evidence가 아니다. Issue #38은 실제 Grist Desktop에서 작성한 artifact의 validator 결과가 `PASS`이고 exit code가 0인 기록이 제출될 때까지 열린 상태로 유지한다.
+예제 `docs/examples/grist-desktop-qa.example.json`은 모든 view가 `NOT_RUN`인 `INCOMPLETE` 시작점이며 acceptance evidence가 아니다. 이 예제와 legacy parser 계약은 현재 공개 제품의 기본 evidence 경로가 아니며, 새 runtime artifact의 authority로 사용되지 않는다.
 
 ## Legacy reader 제거 조건
 

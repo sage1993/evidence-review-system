@@ -65,17 +65,19 @@ _CSP = (
 
 
 def _default_authority_hashes() -> tuple[str | None, str | None]:
-    """Resolve the repository-owned rule and formula authorities for source runs."""
+    """Resolve only the bundled formula authority.
+
+    Rule authority belongs to the caller's validated workspace. The public
+    package does not bundle a repository ``rules/`` tree, so silently deriving
+    a rule hash from the source checkout would make installed and source runs
+    disagree.
+    """
     try:
         from evidence_review.math_engine.formulas import DRAWING_REGISTRY
         from evidence_review.math_engine.manifest import formula_manifest_hash
 
         formula_hash = formula_manifest_hash(DRAWING_REGISTRY.values())
-        repository_root = Path(__file__).resolve().parents[3]
-        rule_manifest = repository_root / "rules" / "manifests" / "active.json"
-        if not rule_manifest.is_file():
-            return None, formula_hash
-        return hashlib.sha256(rule_manifest.read_bytes()).hexdigest(), formula_hash
+        return None, formula_hash
     except (OSError, ValueError):
         return None, None
 

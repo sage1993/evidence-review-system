@@ -23,7 +23,7 @@ Do not create duplicate definitions for:
 - immutable attachment roles;
 - Track A/Track B next actions.
 
-Downstream work must import the shared contracts under `ansim_review.contracts` and update the shared contract through a versioned migration when a new value is required.
+Downstream work must import the shared contracts under `evidence_review.contracts` and update the shared contract through a versioned migration when a new value is required.
 
 ## Authority boundaries
 

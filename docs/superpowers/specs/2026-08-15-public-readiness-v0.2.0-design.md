@@ -114,7 +114,7 @@ Add the repository-facing material expected for public collaboration:
 - `.github/pull_request_template.md`
 - `LICENSE`
 
-The repository owner must make the final license choice before the repository is made public. Recommended default for this project is **Apache-2.0** because it is permissive and includes an explicit patent grant, but the PR must not silently choose a legal license without owner confirmation.
+The repository owner selected **Apache-2.0**. The official license text, package metadata, README, CONTRIBUTING, and release documentation must remain consistent. Repository visibility is still a separate owner action.
 
 README is rewritten as the public entrypoint. It should explain:
 
@@ -208,7 +208,7 @@ No remote image/CDN/network dependency is introduced.
 
 The project should expose one documented validation sequence for contributors. A new wrapper command is not required if the existing commands are sufficient; YAGNI applies.
 
-The official exact-HEAD validation environment is **Python 3.13 only**.
+The official exact-HEAD validation environment is **Python 3.13 only**. Actual Chrome/browser UI testing at 200% zoom is permanently removed from acceptance and release requirements; ordinary responsive viewport, keyboard, print, protected, and archival validation remains required.
 
 Required integrated-PR validation:
 
@@ -226,7 +226,7 @@ formal-review E2E
 real-browser Review Workspace acceptance
 ```
 
-Python 3.11 failures are not release blockers because Python 3.11 is no longer supported. A future Python version is added to the support matrix only through an explicit support-expansion change with dependency, wheel, and E2E verification.
+Python 3.11 is unsupported and is not run by the release gate. A future Python version is added to the support matrix only through an explicit support-expansion change with dependency, wheel, and E2E verification.
 
 GitHub Actions availability is not itself the release truth. If Actions are unavailable or blocked, the repository’s documented reproducible manual validation policy remains an accepted evidence path, with exact HEAD/interpreter/OS/command/result recorded.
 

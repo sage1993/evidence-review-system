@@ -135,7 +135,7 @@ The active tree is intended to contain only current runtime/product/developer ma
 src/               Python runtime
 web_runtime/       installation-free web runtime bootstrap
 schemas/           machine-readable contracts
-rules/             governed current Rule Engine artifacts
+tests/fixtures/    deterministic ANSIM compatibility and rule fixtures
 tests/             unit/integration/golden fixtures
 skills/            ERS Codex workflow skills
 docs/              current architecture/workflow/governance docs
@@ -189,4 +189,4 @@ Release assets should be produced from an accepted exact HEAD and published with
 
 ## License
 
-The repository owner has not yet selected the final public license. Public visibility is blocked until an intentional license is committed. The current public-readiness design recommends Apache-2.0, but that recommendation is not itself a license grant.
+Evidence Review System is licensed under the [Apache License 2.0](LICENSE). Third-party notices remain subject to their own applicable licenses.

@@ -14,7 +14,7 @@ applicable manual gates:
 - exact commit and clean worktree;
 - documentation integrity validation;
 - full pytest, Ruff, strict mypy, and compileall;
-- isolated Python 3.11 and 3.13 wheel/install smoke when the package is changed;
+- isolated Python 3.13 wheel/install smoke when the package is changed;
 - browser or other human-facing QA when the change has a UI boundary; and
 - relevant artifact SHA-256 values, platform, Python version, command, and exit
   code.
