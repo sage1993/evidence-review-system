@@ -233,7 +233,7 @@ evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 
 The detached process uses a 2-second startup timeout. Stale state cleanup and process identity checks protect management operations from acting on an unrelated reused PID.
 
-Windows lifecycle behavior must be manually accepted on the target commit. Do not infer Windows PASS from POSIX process identity tests. Issue #92 remains the lifecycle acceptance authority for this lifecycle contract.
+Windows lifecycle behavior must be manually accepted on the exact target commit. Do not infer Windows PASS from POSIX process identity tests.
 
 ## 9. Drawing evidence boundary
 
