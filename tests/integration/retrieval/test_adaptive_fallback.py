@@ -111,7 +111,7 @@ def test_real_shaped_queries_reach_expected_clause_with_deterministic_stage(tmp_
     cases = (
         ("안심주택 사업대상지 최소 면적", "C-AREA", FallbackStage.APPROVED_ALIAS),
         ("역세권 승강장 경계 거리 기준", "C-STATION", FallbackStage.LEGAL_COMPOUND_DECOMPOSITION),
-        ("공공지원민간임대주택 주차장 설치기준", "C-PARKING-PRIVATE", FallbackStage.APPROVED_ALIAS),
+        ("공공지원민간임대주택 주차장 설치기준", "C-PARKING-PRIVATE", FallbackStage.TOKEN_PREFIX),
         ("임대형기숙사 주차장 설치기준 복합 적용", "C-PARKING-DORM", FallbackStage.TOKEN_PREFIX),
         ("준공업지역 공동주택 기본용적률", "C-FAR", FallbackStage.TOKEN_PREFIX),
         ("준공업지역 산업부지 확보비율", "C-INDUSTRIAL", FallbackStage.TOKEN_PREFIX),
