@@ -163,11 +163,17 @@ def build_parser() -> argparse.ArgumentParser:
     question_stages = review_question.add_subparsers(
         dest="review_question_stage", required=True
     )
+    question_prepare_plan = question_stages.add_parser(
+        "prepare-plan", help="emit the external AI QuestionPlan handoff without retrieving evidence"
+    )
+    question_prepare_plan.add_argument("--workspace", required=True, type=Path)
+    question_prepare_plan.add_argument("--question", required=True)
     question_prepare = question_stages.add_parser(
-        "prepare", help="retrieve evidence and emit the Track A handoff"
+        "prepare", help="validate a QuestionPlan, retrieve evidence, and emit the Track A handoff"
     )
     question_prepare.add_argument("--workspace", required=True, type=Path)
     question_prepare.add_argument("--question", required=True)
+    question_prepare.add_argument("--question-plan-output", type=Path)
     question_prepare.add_argument("--expansion", action="append", default=[])
     question_prepare.add_argument(
         "--calculation-result", action="append", default=[], type=Path
