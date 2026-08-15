@@ -3,9 +3,53 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
-from evidence_review.canonical_json import sha256_json
+from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
+from evidence_review.llm_layer.question_planner import build_question_planner_bundle
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionPlannerHandoff:
+    """Immutable file paths for one external question-planner handoff."""
+
+    planning_directory: Path
+    bundle_path: Path
+    instructions_path: Path
+    expected_output_path: Path
+
+
+def _write_or_identical(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(content)
+    except FileExistsError:
+        if path.read_bytes() != content:
+            raise FileExistsError(f"existing planner artifact differs: {path.name}") from None
+
+
+def prepare_question_planner_handoff(workspace: Path, question: str) -> QuestionPlannerHandoff:
+    """Write a deterministic evidence-free handoff for an external AI planner."""
+    bundle = build_question_planner_bundle(question)
+    plan_id = f"PLAN-{sha256_json(bundle)[:20].upper()}"
+    directory = workspace / "question-planning" / plan_id
+    bundle_path = directory / "question-planner-bundle.json"
+    instructions_path = directory / "QUESTION_PLANNER_INSTRUCTIONS.md"
+    expected_output_path = directory / "question-plan-output.json"
+    template = (
+        Path(__file__).with_name("llm_layer") / "templates" / "question-planner.md"
+    ).read_bytes()
+    _write_or_identical(bundle_path, dump_bytes(bundle))
+    _write_or_identical(instructions_path, template)
+    return QuestionPlannerHandoff(
+        planning_directory=directory,
+        bundle_path=bundle_path,
+        instructions_path=instructions_path,
+        expected_output_path=expected_output_path,
+    )
 
 
 def question_plan_sha256(plan: QuestionPlan) -> str:
