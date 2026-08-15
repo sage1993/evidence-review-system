@@ -5,7 +5,7 @@ CREATE TABLE schema_meta (
     value TEXT NOT NULL
 ) STRICT;
 
-INSERT INTO schema_meta(key, value) VALUES('schema_version', '3');
+INSERT INTO schema_meta(key, value) VALUES('schema_version', '4');
 
 CREATE TABLE documents (
     id TEXT PRIMARY KEY,
@@ -117,6 +117,36 @@ CREATE VIRTUAL TABLE evidence_fts USING fts5(
     tokenize = 'unicode61'
 );
 
+CREATE TABLE clause_retrieval_records (
+    clause_id TEXT PRIMARY KEY REFERENCES clauses(id),
+    document_id TEXT NOT NULL REFERENCES documents(id),
+    revision_id TEXT NOT NULL REFERENCES revisions(id),
+    title TEXT NOT NULL,
+    chapter TEXT,
+    section TEXT,
+    clause_number TEXT,
+    raw_text TEXT NOT NULL,
+    normalized_text TEXT NOT NULL
+) STRICT;
+
+CREATE VIRTUAL TABLE clause_fts USING fts5(
+    clause_id UNINDEXED,
+    title,
+    chapter,
+    section,
+    clause_number,
+    raw_text,
+    normalized_text,
+    tokenize = 'unicode61'
+);
+
+CREATE TABLE clause_evidence_links (
+    clause_id TEXT NOT NULL REFERENCES clauses(id),
+    evidence_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    PRIMARY KEY(clause_id, evidence_id, relation_type)
+) STRICT;
+
 CREATE TABLE retrieval_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -131,3 +161,7 @@ CREATE INDEX idx_links_target ON links(target_id, relation_type);
 CREATE INDEX idx_review_flags_evidence ON review_flags(evidence_id, status);
 CREATE INDEX idx_retrieval_records_source
     ON retrieval_records(document_id, revision_id, page_id, page_number, evidence_type);
+CREATE INDEX idx_clause_retrieval_source
+    ON clause_retrieval_records(document_id, revision_id, clause_id);
+CREATE INDEX idx_clause_evidence_links_evidence
+    ON clause_evidence_links(evidence_id, clause_id, relation_type);
