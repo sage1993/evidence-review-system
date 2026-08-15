@@ -12,6 +12,7 @@ from evidence_review.rule_engine.governance_contract import (
 from evidence_review.rule_engine.governance_verify import verify_manifest_entry
 from evidence_review.rule_engine.manifest import load_governed_active_rules
 
+REPOSITORY_ROOT = Path(__file__).parents[3]
 FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "ansim"
 MANIFEST = FIXTURE_ROOT / "rules" / "manifests" / "active.json"
 EXPECTED_RULE_IDS = (
@@ -26,6 +27,11 @@ EXPECTED_RULE_IDS = (
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_ansim_rule_authority_is_fixture_scoped() -> None:
+    assert not (REPOSITORY_ROOT / "rules").exists()
+    assert MANIFEST.is_file()
 
 
 def test_ansim_rules_have_complete_passing_governance_authority() -> None:
