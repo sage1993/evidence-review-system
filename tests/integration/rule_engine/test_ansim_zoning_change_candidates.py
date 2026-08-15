@@ -9,8 +9,8 @@ from evidence_review.contracts.evidence import EvidenceRecord
 from evidence_review.rule_engine.evaluator import evaluate_rule
 from evidence_review.rule_engine.loader import load_rule
 
-ROOT = Path(__file__).parents[3]
-CANDIDATE_ROOT = ROOT / "rules" / "candidates"
+FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "ansim"
+CANDIDATE_ROOT = FIXTURE_ROOT / "rules" / "candidates"
 
 CASES = (
     (
