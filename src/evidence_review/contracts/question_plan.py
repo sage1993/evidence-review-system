@@ -261,6 +261,10 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
     anchor_values = _expect_sequence(payload.get("legal_anchors"), "legal_anchors")
     search_values = _expect_sequence(payload.get("search_requests"), "search_requests")
 
+    if not issue_values:
+        raise ValueError("issues must not be empty")
+    if not search_values:
+        raise ValueError("search_requests must not be empty")
     if len(issue_values) > MAX_ISSUES:
         raise ValueError(f"issues exceeds maximum of {MAX_ISSUES}")
     if len(anchor_values) > MAX_LEGAL_ANCHORS:
