@@ -44,7 +44,7 @@ def _plan():
 def test_query_request_from_plan_preserves_planner_lineage_and_user_expansions() -> None:
     request = query_request_from_plan(_plan(), user_expansions=("별표 2",))
 
-    assert request["question"] == "에어컨 등 가전제품 설치기준 알려줘"
+    assert request["question"] == "에어컨 설치기준"
     assert request["expansions"] == [
         {
             "text": "에어컨 설치기준",
