@@ -73,3 +73,68 @@ def test_prepare_cli_rejects_invalid_plan_before_creating_run(
     assert document["status"] == "PLANNER_FAILED"
     assert document["reason_code"] == "QUESTION_PLAN_INVALID"
     assert not (tmp_path / "runs").exists()
+
+
+def test_prepare_cli_reports_retrieval_no_evidence_after_valid_plan(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import evidence_review.question_planner_cli as planner_cli
+    from evidence_review.review_question import PreparedReviewQuestion
+
+    output = tmp_path / "plan.json"
+    output.write_text(
+        json.dumps(
+            {
+                "format": "evidence-review/question-plan",
+                "version": 1,
+                "original_question": "질문",
+                "facts": [],
+                "assumptions": [],
+                "issues": [{"id": "I1", "question": "무엇인가", "depends_on": []}],
+                "legal_anchors": [],
+                "search_requests": [
+                    {
+                        "id": "S1",
+                        "issue_ids": ["I1"],
+                        "text": "검색어",
+                        "kind": "phrase",
+                        "source": "planner",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    guidance = tmp_path / "runs" / "RUN-1" / "retrieval-guidance.json"
+    monkeypatch.setattr(
+        planner_cli,
+        "prepare_planned_review_question",
+        lambda *args, **kwargs: PreparedReviewQuestion(
+            run_id="RUN-1",
+            status="WAITING_TRACK_A",
+            next_action_path=tmp_path / "next.json",
+            resumed=False,
+            retrieval_guidance_path=guidance,
+        ),
+    )
+
+    exit_code = dispatch_question_planning(
+        [
+            "review-question",
+            "prepare",
+            "--workspace",
+            str(tmp_path),
+            "--question",
+            "질문",
+            "--question-plan-output",
+            str(output),
+        ]
+    )
+
+    assert exit_code == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["status"] == "RETRIEVAL_NO_EVIDENCE"
+    assert document["retrieval_guidance_path"] == str(guidance)
