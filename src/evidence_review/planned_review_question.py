@@ -1,4 +1,4 @@
-"""QuestionPlan-bound review preparation using the existing deterministic runtime."""
+"""QuestionPlan-bound review preparation using deterministic issue-aware retrieval."""
 
 from __future__ import annotations
 
@@ -14,9 +14,12 @@ from evidence_review.observability.run_metrics import append_stage, finish_stage
 from evidence_review.question_planning import (
     bind_question_plan_to_review_request,
     bind_retrieval_lineage_to_review_request,
+    issue_retrieval_bundle_document,
     query_request_from_plan,
 )
 from evidence_review.retrieval.bundle import build_evidence_bundle
+from evidence_review.retrieval.index import require_fresh_index
+from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
 from evidence_review.review_question import (
     PreparedReviewQuestion,
     _evidence_database,
@@ -39,9 +42,14 @@ def prepare_planned_review_question(
     rules: Sequence[object] = (),
     approved_rule_result_ids: Sequence[str] = (),
 ) -> PreparedReviewQuestion:
-    """Retrieve and prepare a run whose identity is bound to a validated QuestionPlan."""
+    """Retrieve and prepare a run whose identity is bound to a validated QuestionPlan.
+
+    Normal planned runs use the issue-aware clause-first coordinator. Explicit
+    legacy user expansion terms retain the prior retrieval path until those terms
+    gain an issue-binding contract.
+    """
     normalization_timer = start_stage()
-    query_request = query_request_from_plan(
+    legacy_query_request = query_request_from_plan(
         question_plan,
         user_expansions=user_expansions,
     )
@@ -49,7 +57,17 @@ def prepare_planned_review_question(
 
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
-        bundle = build_evidence_bundle(store.require_connection(), query_request)
+        connection = store.require_connection()
+        if user_expansions:
+            bundle = build_evidence_bundle(connection, legacy_query_request)
+        else:
+            snapshot_hash = require_fresh_index(connection)
+            issue_bundle = retrieve_issue_bundle(connection, question_plan)
+            bundle = issue_retrieval_bundle_document(
+                question_plan,
+                issue_bundle,
+                snapshot_hash=snapshot_hash,
+            )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
     request_timer = start_stage()
