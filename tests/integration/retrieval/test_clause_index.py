@@ -115,3 +115,63 @@ def test_clause_without_verified_element_link_remains_searchable(tmp_path: Path)
         assert connection.execute(
             "SELECT COUNT(*) FROM clause_evidence_links"
         ).fetchone() == (0,)
+
+
+def test_clause_evidence_link_must_match_clause_revision(tmp_path: Path) -> None:
+    snapshot = _snapshot()
+    cross_revision = EvidenceSnapshot(
+        documents=snapshot.documents,
+        revisions=(
+            *snapshot.revisions,
+            {
+                "id": "REV-2",
+                "document_id": "DOC-1",
+                "source_hash": "c" * 64,
+                "byte_size": 100,
+                "page_count": 1,
+            },
+        ),
+        pages=(
+            *snapshot.pages,
+            {
+                "id": "P-2",
+                "revision_id": "REV-2",
+                "page_number": 1,
+                "width": 595.0,
+                "height": 842.0,
+            },
+        ),
+        elements=(
+            *snapshot.elements,
+            {
+                "id": "E-2",
+                "revision_id": "REV-2",
+                "page_id": "P-2",
+                "page_number": 1,
+                "element_type": "paragraph",
+                "raw_json": {"text": "다른 개정본의 근거"},
+                "raw_text": "다른 개정본의 근거",
+                "normalized_text": "다른 개정본의 근거",
+                "raw_payload_hash": "d" * 64,
+                "bbox": [10, 20, 300, 40],
+                "parser_order": 0,
+            },
+        ),
+        clauses=snapshot.clauses,
+        links=(
+            {
+                "id": "L-X",
+                "source_id": "C-1",
+                "target_id": "E-2",
+                "relation_type": "source_element",
+            },
+        ),
+    )
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(store, cross_revision)
+        connection = store.require_connection()
+        build_fts_index(connection)
+
+        assert connection.execute(
+            "SELECT COUNT(*) FROM clause_evidence_links"
+        ).fetchone() == (0,)
