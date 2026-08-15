@@ -7,8 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.parsing.legacy_grist_qa import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.parsing.legacy_grist_qa import (
     REQUIRED_SAMPLE_KINDS,
     REQUIRED_VIEW_IDS,
 )
@@ -137,7 +137,7 @@ def _run_cli(*arguments: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parents[3] / "src")
     return subprocess.run(
-        [sys.executable, "-m", "ansim_review", *arguments],
+        [sys.executable, "-m", "evidence_review", *arguments],
         capture_output=True,
         text=True,
         env=env,

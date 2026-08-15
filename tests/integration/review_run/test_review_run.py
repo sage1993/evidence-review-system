@@ -7,11 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from ansim_review import cli
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.confidence.policy import FACTOR_WEIGHTS
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.review_run import (
+from evidence_review import cli
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.review_run import (
     TrackBContractError,
     finalize_review_run,
     prepare_review_run,

@@ -139,8 +139,7 @@ Import recomputes the current packet SHA-256, rejects mismatch, validates the en
 Static CSS/unit tests do not replace reviewer browser QA. On the exact acceptance commit verify:
 
 - 1366×768, 1920×1080, 3840×2160;
-- zoom 100%, 200%, and fit-to-page where applicable;
-- no required horizontal scroll at 200% for the stacked layout;
+- responsive layouts at 1366×768, 1920×1080, and 3840×2160 where applicable;
 - keyboard navigation and visible focus;
 - evidence link focuses the correct page/overlay;
 - print output contains result, evidence, additional review when present, and decision area without developer audit clutter;
@@ -192,7 +191,7 @@ python -m ansim_review review-run --help
 
 ## 13. Acceptance record
 
-Issue #87 acceptance evidence belongs under `docs/acceptance/issue-87/README.md`. Record exact commit, Windows version, Python version, command, exit code, browser/view matrix, timing values, and SHA-256 hashes. Any unexecuted check is `NOT_RUN`; it is not PASS.
+Record exact commit, Windows version, Python 3.13 version, command, exit code, browser/view matrix, timing values, and SHA-256 hashes in the review acceptance record. Any unexecuted check is `NOT_RUN`; it is not PASS.
 
 ## Protected formal-review handoff
 

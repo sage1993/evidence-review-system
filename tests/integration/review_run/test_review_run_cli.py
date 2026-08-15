@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ansim_review import cli
-from ansim_review.cli_parser import build_parser
-from ansim_review.review_packet.server_runtime import idle_timeout_argument
+from evidence_review import cli
+from evidence_review.cli_parser import build_parser
+from evidence_review.review_packet.server_runtime import idle_timeout_argument
 
 
 def test_review_run_prepare_cli_routes_and_outputs_status(
@@ -212,7 +212,7 @@ def test_review_run_help_commands(
     expected: str,
 ) -> None:
     completed = subprocess.run(
-        [sys.executable, "-m", "ansim_review", *arguments],
+        [sys.executable, "-m", "evidence_review", *arguments],
         check=True,
         capture_output=True,
         text=True,

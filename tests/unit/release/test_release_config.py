@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.release.config import (
+from evidence_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
     ReleaseConfig,
     resolve_attestation_record,

@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible defect in Evidence Review System
+title: "bug: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include proprietary PDFs, customer data, credentials, tokens, private URLs, or real human-decision records. Security-sensitive issues should follow SECURITY.md instead of a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Tag or exact commit SHA where the issue occurs.
+      placeholder: v0.2.0 or <commit SHA>
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: Python 3.13.x
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 / Linux distribution
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Use sanitized or synthetic fixtures only.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation already performed
+      description: List exact commands and results. Use NOT_RUN for checks you did not execute.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed proprietary/customer data and secrets from this report.
+          required: true
+        - label: This report is not a vulnerability requiring private disclosure under SECURITY.md.
+          required: true

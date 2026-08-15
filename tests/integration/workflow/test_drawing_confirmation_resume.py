@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.workflow.drawing_confirmation import (
+from evidence_review.workflow.drawing_confirmation import (
     resume_after_confirmation,
     start_drawing_confirmation,
 )
-from ansim_review.workflow.orchestrator import prepare_review_run
-from ansim_review.workflow.request import decode_review_request
+from evidence_review.workflow.orchestrator import prepare_review_run
+from evidence_review.workflow.request import decode_review_request
 
 
 def test_drawing_confirmation_is_a_pause_before_engine_entry(tmp_path: Path) -> None:

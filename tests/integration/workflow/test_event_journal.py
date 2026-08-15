@@ -12,7 +12,7 @@ from typing import Protocol
 
 import pytest
 
-from ansim_review.workflow.events import WorkflowEvent
+from evidence_review.workflow.events import WorkflowEvent
 
 
 class _BarrierLike(Protocol):
@@ -27,7 +27,7 @@ class _QueueLike(Protocol):
 
 def _events() -> ModuleType:
     try:
-        return importlib.import_module("ansim_review.workflow.events")
+        return importlib.import_module("evidence_review.workflow.events")
     except ModuleNotFoundError:
         pytest.fail("workflow event module is missing")
 
@@ -194,7 +194,7 @@ def test_windows_journal_lock_allows_owner_to_progress_while_waiter_blocks(
     if events.os.name != "nt":
         pytest.skip("Windows journal lock backend")
 
-    from ansim_review.workflow import windows_lock
+    from evidence_review.workflow import windows_lock
 
     owner_acquired = threading.Event()
     waiter_native_call_started = threading.Event()

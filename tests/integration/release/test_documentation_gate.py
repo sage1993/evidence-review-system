@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from ansim_review.release import validator
+from evidence_review.release import validator
 
 
 def _write(path: Path, text: str) -> None:

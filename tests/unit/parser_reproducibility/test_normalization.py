@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ansim_review.parser_reproducibility.normalization import (
+from evidence_review.parser_reproducibility.normalization import (
     normalize_json_artifact,
     normalize_markdown_artifact,
 )

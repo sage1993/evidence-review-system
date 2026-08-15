@@ -7,14 +7,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ansim_review.parsing.legacy_visual_manifest import LEGACY_VISUAL_HEADER
+from evidence_review.parsing.legacy_visual_manifest import LEGACY_VISUAL_HEADER
 
 
 def run_cli(*arguments: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parents[3] / "src")
     return subprocess.run(
-        [sys.executable, "-m", "ansim_review", *arguments],
+        [sys.executable, "-m", "evidence_review", *arguments],
         capture_output=True,
         text=True,
         env=env,

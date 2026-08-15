@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.schema_version import (
+from evidence_review.evidence.schema_version import (
     SchemaUpgradeRequired,
     UnsupportedSchemaVersion,
     detect_schema_version,
@@ -11,7 +11,7 @@ from ansim_review.evidence.schema_version import (
 )
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
-V2_SCHEMA = Path("src/ansim_review/evidence/schema_v2.sql")
+V2_SCHEMA = Path("src/evidence_review/evidence/schema_v2.sql")
 
 
 def create_v1_database(path: Path) -> sqlite3.Connection:
@@ -47,7 +47,7 @@ def test_exact_v2_shape_reports_version_two(tmp_path: Path) -> None:
 def test_exact_v3_shape_reports_current_version(tmp_path: Path) -> None:
     connection = sqlite3.connect(tmp_path / "v3.sqlite")
     connection.executescript(
-        Path("src/ansim_review/evidence/schema.sql").read_text(encoding="utf-8")
+        Path("src/evidence_review/evidence/schema.sql").read_text(encoding="utf-8")
     )
     try:
         assert detect_schema_version(connection) == 3

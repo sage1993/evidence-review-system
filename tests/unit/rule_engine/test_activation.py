@@ -10,8 +10,8 @@ from helpers.rule_governance import (
     build_valid_governance_tree,
 )
 
-from ansim_review.rule_engine.activation import build_active_manifest
-from ansim_review.rule_engine.governance_contract import load_active_rule_manifest_bytes
+from evidence_review.rule_engine.activation import build_active_manifest
+from evidence_review.rule_engine.governance_contract import load_active_rule_manifest_bytes
 
 
 def _load(path: Path) -> dict[str, object]:

@@ -6,13 +6,13 @@ import sqlite3
 from dataclasses import replace
 from pathlib import Path
 
-from ansim_review.evidence.lineage_contract import (
+from evidence_review.evidence.lineage_contract import (
     DocumentLineageMapping,
     LegacyLineageManifest,
     RevisionMapping,
 )
-from ansim_review.evidence.lineage_graph import plan_legacy_lineage_migration
-from ansim_review.evidence.store import EvidenceStore
+from evidence_review.evidence.lineage_graph import plan_legacy_lineage_migration
+from evidence_review.evidence.store import EvidenceStore
 
 LEGACY_DOCUMENT = "LAW3"
 CANONICAL_DOCUMENT = "DOC-ACFD68E34043268C"

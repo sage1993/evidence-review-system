@@ -2,21 +2,21 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.drawing import DrawingConfirmation, Geometry
-from ansim_review.parsing.drawing_binding import bind_confirmed_inputs
-from ansim_review.parsing.drawing_candidates import (
+from evidence_review.contracts.drawing import DrawingConfirmation, Geometry
+from evidence_review.parsing.drawing_binding import bind_confirmed_inputs
+from evidence_review.parsing.drawing_candidates import (
     create_manual_candidate,
     persist_candidate,
 )
-from ansim_review.parsing.drawing_confirmation import (
+from evidence_review.parsing.drawing_confirmation import (
     persist_confirmation,
     validate_confirmation_for_candidate,
 )
-from ansim_review.parsing.drawing_inputs import (
+from evidence_review.parsing.drawing_inputs import (
     ConfirmedInputBuildRequest,
     build_confirmed_input,
 )
-from ansim_review.parsing.drawing_source import (
+from evidence_review.parsing.drawing_source import (
     DrawingIntakePolicy,
     ingest_drawing_source,
 )

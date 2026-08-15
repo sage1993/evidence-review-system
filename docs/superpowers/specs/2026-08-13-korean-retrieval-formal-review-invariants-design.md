@@ -1,3 +1,5 @@
+> Historical design record: this document predates the current public-readiness policy. Python 3.13 is the only supported validation interpreter; any older-version references below describe past work and are not current requirements.
+
 # Korean Retrieval and Formal Review Invariants Design
 
 Issue: #95  

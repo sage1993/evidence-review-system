@@ -9,7 +9,7 @@ import zlib
 from pathlib import Path
 from time import perf_counter
 
-from ansim_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.html_renderer import render_review_html
 
 PAGE_COUNT = 20
 CITATION_COUNT = 100

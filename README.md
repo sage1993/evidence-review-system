@@ -1,204 +1,194 @@
 # Evidence Review System
 
-Codex Desktop에서 사용자가 제공한 PDF를 로컬 근거 DB로 만들고, **모든 질문을 정식 근거 검토**로 처리한 뒤 비개발자용 Review Workspace를 여는 오프라인 문서 검토 도구입니다.
+Evidence Review System (ERS) is an **offline, evidence-first document review runtime** for turning user-provided PDFs into traceable local evidence and running every question through a formal review pipeline.
 
-일반 사용자는 두 단축어만 기억하면 됩니다.
+The project is designed for cases where a result must remain tied to the original document, page, coordinates, deterministic calculations/rules, and an explicit human decision rather than a free-form model answer.
+
+## What it does
+
+```text
+PDF
+→ immutable parser artifacts
+→ source/hash binding
+→ evidence.sqlite
+→ deterministic retrieval
+→ formal review request
+→ Track A
+→ independent Track B audit
+→ immutable final-review-packet.json
+→ Review Workspace
+→ separate append-only human decision
+```
+
+The runtime does not make the final human decision. `READY_FOR_HUMAN_REVIEW` means that the evidence package is ready to inspect; it does **not** mean approved, compliant, or correct.
+
+## Core design principles
+
+- **Evidence first:** preserve the original source bytes, source hash, document/revision/page identity, and bbox/geometry provenance.
+- **Deterministic authority:** parser records, retrieval, Math Engine results, and approved Rule Engine results are validated before review output is accepted.
+- **Independent review tracks:** Track A explains the evidence; Track B audits the validated Track A claims.
+- **Human final decision:** machine output remains immutable and human decisions are stored separately as append-only packet-bound records.
+- **Fail closed:** missing parser output, stale artifacts, unsafe paths, hash mismatches, invalid rule authority, or release-validation failures stop the workflow.
+- **Offline runtime:** project/runtime code requires no remote model/API service. The protected Review Workspace uses loopback communication only.
+
+## Requirements
+
+- Python `>=3.13,<3.14`
+- Windows is the primary acceptance platform for protected-browser and Review Workspace behavior.
+- Codex Desktop is the intended assisted workflow for `$ERS_PDF` / `$ERS_REVIEW`, but the deterministic runtime and CLI are ordinary local Python code.
+- A supported local parser such as OpenDataLoader PDF is required before parser-dependent evidence can be evaluated.
+
+Runtime dependencies are declared in `pyproject.toml`.
+
+## Installation
+
+```powershell
+git clone https://github.com/sage1993/evidence-review-system.git
+Set-Location evidence-review-system
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+```
+
+For development and validation:
+
+```powershell
+python -m pip install -e ".[dev]"
+```
+
+Runtime dependencies are pinned to pypdf>=5,<6, pypdfium2>=5.12,<6, and Pillow>=12,<13.
+
+Canonical entrypoints:
+
+```text
+evidence-review --help
+python -m evidence_review --help
+```
+
+The legacy `ansim-review` name may remain temporarily as a compatibility entrypoint during the `v0.2.0` transition, but `evidence_review` is the canonical public namespace.
+
+## Quick start
+
+Codex Desktop users normally use two shortcuts:
 
 ```text
 $ERS_PDF 이 PDF 파싱해줘
 $ERS_REVIEW <검토 질문>
 ```
 
-## 1. 설치
+### 1. Prepare PDF evidence
 
-필요 항목:
+`$ERS_PDF` preserves the source, validates parser/source binding, checks parser warnings/reproducibility, builds source-batch v2, creates searchable `evidence.sqlite`, and prepares verified revision page-image cache artifacts.
 
-- Codex Desktop
-- Evidence Review System 소스 또는 배포 ZIP
-- 검토할 PDF
-- OpenDataLoader PDF 등 지원되는 로컬 parser
+Source preparation is not considered successful while required parser output or drawing confirmation is missing.
 
-런타임 Python 의존성:
+### 2. Run a formal question
 
-```text
-pypdf>=5,<6
-pypdfium2>=5.12,<6
-Pillow>=12,<13
-```
-
-`pypdfium2`/Pillow는 PDF page image를 프로세스 내부에서 생성하는 데 사용합니다. 별도 `pdftoppm` 실행 파일은 런타임 요구사항이 아닙니다. 새 오프라인 환경에 설치할 때는 위 Python wheel과 그에 필요한 native extension wheel을 미리 준비하고 manifest/hash를 함께 보존해야 합니다.
-
-소스 설치 예시:
-
-```powershell
-git clone https://github.com/sage1993/evidence-review-system.git
-Set-Location evidence-review-system
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
-```
-
-개발·검증 도구까지 설치하려면:
-
-```powershell
-python -m pip install -e ".[dev]"
-```
-
-런타임은 실행 중 외부 검색/API를 요구하지 않습니다. 애플리케이션 수준 오프라인 가드와 OS 수준 네트워크 격리는 서로 다른 보증 수준이며 자세한 내용은 `docs/OFFLINE_EXECUTION.md`를 따릅니다.
-
-## 2. PDF 준비 — `$ERS_PDF`
-
-PDF를 첨부하거나 경로를 지정한 뒤 다음처럼 요청합니다.
+All questions use the formal review flow; there is no separate quick-answer mode.
 
 ```text
-$ERS_PDF 이 PDF 파싱해줘
+question
+→ local evidence retrieval
+→ review request
+→ Track A output + validation
+→ Track B audit + validation
+→ final review packet
+→ Review Workspace
+→ human decision
 ```
 
-Codex와 ERS는 다음을 준비합니다.
+Lower-level CLI commands are documented in [Codex Workflow](docs/CODEX_WORKFLOW.md) and [Reviewer Workflow](docs/REVIEWER_WORKFLOW.md).
 
-- 원본 PDF 보존과 SHA-256 기록
-- parser artifact 및 source binding 검증
-- parser warnings와 reproducibility 확인
-- source-batch v2 검증
-- 검색 가능한 `evidence.sqlite`
-- revision 단위의 verified PDF page image cache
+## Review Workspace
 
-원본과 raw parser output은 덮어쓰지 않습니다. parser가 없거나 source hash가 맞지 않으면 성공으로 처리하지 않습니다. 도면처럼 사람 확인이 필요한 자료는 확인 전까지 계산·규칙 입력으로 사용하지 않습니다.
+The default reviewer surface prioritizes non-developer information:
 
-질문 가능한 상태가 되면 `$ERS_REVIEW <질문>`으로 넘어갑니다.
+1. **검토 결과** — status and concise conclusion
+2. **판단 근거** — source text/page/bbox and verified page image
+3. **추가 확인** — only when missing/conflicting/exception items exist
+4. **검토자 의견** — decision and notes
 
-## 3. 질문 — `$ERS_REVIEW`
+Internal IDs, hashes, confidence factors, and other audit details are retained but should not dominate the default UI.
 
-모든 질문은 하나의 정식 파이프라인을 사용합니다. 빠른 조회 모드는 없습니다.
+`review.html` is the standalone archival presentation. Protected localhost mode additionally allows packet-bound append-only human decision persistence.
+
+## Trust and security boundaries
+
+ERS separates:
+
+- application-level offline guard;
+- optional OS-level network isolation;
+- source/evidence integrity;
+- protected loopback browser security;
+- human review decisions;
+- release process attestation and release-output validation.
+
+Passing one boundary does not imply another. For example, a human release attestation cannot override a failed release ZIP/hash validation.
+
+See [Offline Execution Boundary](docs/OFFLINE_EXECUTION.md) and [Security Policy](SECURITY.md).
+
+## Repository structure
+
+The active tree is intended to contain only current runtime/product/developer material or clearly scoped deterministic fixtures.
 
 ```text
-$ERS_REVIEW 이 사업의 주차 기준 충족 여부를 근거 페이지와 함께 검토해줘
+src/                         Python runtime
+web_runtime/                 installation-free web runtime bootstrap
+schemas/                     machine-readable contracts
+tests/                       unit/integration/golden fixtures
+tests/fixtures/ansim/rules/  ANSIM-specific governed Rule Engine test data
+skills/                      current ERS Codex workflow skills
+docs/                        current architecture/workflow/governance docs
+scripts/                     current operational/developer scripts only
 ```
 
-내부 흐름:
+Runtime workspaces can still contain their own governed `rules/` tree. The repository itself does not publish ANSIM-specific rule authority as a current product default; those deterministic artifacts are retained only as explicit test fixtures.
 
-```text
-질문
-→ 로컬 근거 검색
-→ 정식 review request
-→ Track A 작성
-→ Track A 즉시 검증
-→ Track B 독립 감사
-→ Track B 검증
-→ final-review-packet.json
-→ review.html
-→ 보호 브라우저
-→ 사람 결정
-```
+Historical issue-specific acceptance output does not need to remain in the active tree because Git history and GitHub Issue/PR history already preserve it.
 
-사용자는 query JSON, review request, Track A/B 중간 파일을 손으로 작성하지 않습니다. Codex가 runtime이 만든 handoff를 따라 외부 Track 작업을 수행하고, runtime은 각 결과를 deterministic하게 검증합니다.
+## Development
 
-계산이 필요한 질문은 승인된 Math Engine 결과를, 규칙이 필요한 질문은 승인된 Rule Engine 결과를 사용합니다. 대화 중 임의 계산이나 규칙 판정을 만들어 끼워 넣지 않습니다.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
 
-## 4. Review Workspace
-
-정식 검토가 완료되면 `review.html`을 보호된 localhost 주소로 엽니다.
-
-기본 화면은 비개발자 기준으로 다음 순서입니다.
-
-1. **검토 결과** — 한국어 상태와 1문장 결론
-2. **판단 근거** — PDF 원문, 페이지, 인용 좌표(bbox)
-3. **추가 확인** — 누락·충돌·예외 등이 실제로 있을 때만 표시
-4. **검토자 의견** — 결정과 메모
-
-단일 근거 주장에서는 불필요한 항목 네비게이터를 숨깁니다. 규칙·계산이 0건이면 빈 섹션을 만들지 않습니다. run ID, citation/evidence/revision ID, hash, confidence factor/weight 등은 기본 화면에서 빼고 접힌 **감사 정보**에 보존합니다.
-
-`READY_FOR_HUMAN_REVIEW`는 사람이 검토할 준비가 되었다는 뜻이며 자동 승인이나 적합 판정이 아닙니다.
-
-## 5. 사람 결정
-
-보호 브라우저에서는 일반적으로 사용자가 입력하는 것은 다음 둘뿐입니다.
-
-- 결정
-- 검토 의견
-
-화면 결정값:
-
-| 표시 | 내부 값 |
-|---|---|
-| 내용 확인 완료 | `SATISFIED` |
-| 내용에 오류 있음 | `NOT_SATISFIED` |
-| 조건부 확인 | `CONDITIONAL` |
-| 추가 자료 필요 | `ADDITIONAL_REVIEW_REQUIRED` |
-
-검토자 ID는 보호 세션 시작 시 지정할 수 있고, packet hash는 현재 immutable packet에서 자동으로 결합됩니다. 검토 시각은 서버가 timezone이 포함된 ISO-8601 형식으로 생성합니다.
-
-결정 기록은 `human-decisions/` 아래에 **append-only 별도 파일**로 저장됩니다. machine packet과 `review.html`은 수정하지 않습니다. 유효한 결정이 생기면 화면에서 `REVIEW_COMPLETED`를 표시할 수 있습니다.
-
-## 6. 보관용 HTML
-
-`review.html`을 파일로 직접 열면 보호 서버가 없으므로 결정 저장이 되지 않습니다. 이 경우 **결정 JSON 다운로드**로 5필드 envelope를 만들 수 있습니다.
-
-HTML 파일 저장과 결정 기록 저장은 서로 다른 작업입니다. 다운로드한 envelope는 승인된 import 명령으로 현재 packet hash를 다시 검증한 뒤 append-only 기록으로 반영합니다.
+Minimum exact-HEAD validation for the current Python 3.13 support policy:
 
 ```powershell
-evidence-review review-run import-decision `
-  --workspace <workspace> `
-  --run-id <RUN-ID> `
-  --envelope <human-decision-envelope.json>
+py -3.13 -m pytest -v
+py -3.13 -m ruff check src tests web_runtime
+py -3.13 -m mypy src
+py -3.13 -m compileall -q src scripts web_runtime tests
+py -3.13 -m evidence_review documentation validate --repository-root .
 ```
 
-## 7. 성능 기록
+Packaging/release changes also require wheel/runtime smoke tests. Review Workspace changes require real-browser acceptance; static tests are not a substitute for UI/interaction validation.
 
-정식 review run은 각 단계 시간을 `run-metrics-events/`와 파생 `run-metrics.json`에 기록합니다.
+If a validation step was not executed, report it as `NOT_RUN` rather than inferring PASS. GitHub Actions availability is tracked separately from reproducible local/manual validation.
 
-- deterministic non-model hard budget: 5초
-- packet/HTML 이후 protected server + browser dispatch hard budget: 2초
-- Track A/B 외부 대기시간은 별도 집계
-- 실패 후 재시도만 retry로 집계
-
-metrics는 성능 관측용이며 Run ID나 packet hash를 바꾸지 않습니다.
-
-실제 성능 수용은 Windows Python 3.11/3.13에서 같은 단순 질문을 3회 실행하고 p50/p95를 기록해 판단합니다.
-
-## 8. Release assurance 경계
-
-개별 review decision과 release authorization은 별도입니다. Release authorization은 `evidence-review/human-attestation` 형식의 `human-attestation.json`을 사용하며, exact release candidate hash와 packet hash를 append-only process evidence로 결합합니다. 승인 상태 `REVIEWED_AND_ACCEPTED_FOR_RELEASE`는 이 process attestation 계약 안에서만 의미가 있습니다.
-
-현재 설계에서 `cryptographic_identity_verified`는 `false`입니다. 사람 이름이나 JSON 파일만으로 검토자 신원을 암호학적으로 증명하지 않습니다. Release output은 `bundle-manifest.json`과 `runtime-manifest.json`을 포함한 final ZIP 자체를 **without extracting** 검증하고, case-fold collisions, byte size, SHA-256를 재검증합니다. 이 검증 실패는 `RELEASE_OUTPUT_VALIDATION_FAILED`로 차단되며 사람 attestation으로 우회할 수 없습니다.
-
-## 9. 잘 안 될 때
-
-- **parser 결과 없음:** `$ERS_PDF` 단계에서 parser 설치·source binding을 해결합니다.
-- **근거 DB 없음:** `evidence.sqlite`가 만들어질 때까지 질문을 진행하지 않습니다.
-- **도면 확인 필요:** 사람 확인 전에는 계산·규칙 입력으로 사용하지 않습니다.
-- **Track A 검증 실패:** Track B를 시작하지 않고 Track A를 수정합니다.
-- **HTML이 열리지 않음:** packet/HTML 생성 여부와 protected server 상태를 확인합니다.
-- **결정 저장 실패:** reviewer ID, 현재 packet hash, 결정/메모, 보호 서버 상태를 확인합니다.
-- **보관 HTML:** 서버 저장 대신 결정 JSON을 다운로드해 승인 import 경로를 사용합니다.
-
-서버 상태 확인/종료:
-
-```powershell
-evidence-review review-run serve `
-  --workspace <workspace> `
-  --run-id <RUN-ID> `
-  --detach `
-  --idle-timeout-seconds 5
-```
-
-Detached protected server defaults to a 1800-second monotonic idle timeout. Valid protected requests refresh activity; rejected requests do not.
-
-```powershell
-evidence-review review-run serve-status --workspace <workspace> --run-id <RUN-ID>
-evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
-```
-
-## 10. 개발자·검토자 문서
+## Documentation
 
 - [Codex workflow](docs/CODEX_WORKFLOW.md)
 - [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)
 - [Offline execution boundary](docs/OFFLINE_EXECUTION.md)
 - [Manual acceptance policy](docs/MANUAL_ACCEPTANCE_POLICY.md)
 - [Source Batch v2](docs/SOURCE_BATCH_V2.md)
-- [Legacy lineage migration](docs/LEGACY_LINEAGE_MIGRATION.md)
-- [PDF skills](skills/README.md)
+- [Rule activation governance](docs/RULE_ACTIVATION_GOVERNANCE.md)
+- [Parser reproducibility](docs/PARSER_REPRODUCIBILITY.md)
+- [ERS skills](skills/README.md)
+- [Changelog](CHANGELOG.md)
 
-Legacy document lineage를 정리할 때는 `docs/LEGACY_LINEAGE_MIGRATION.md`의 fail-closed 절차를 따르며 CLI 진입점은 `evidence-review evidence migrate-lineage`입니다. 이 작업은 legacy visual CSV를 canonical visual manifest로 변환하지 않습니다.
+## Contributing and security
 
-Issue #87의 Windows 3.11/3.13 수동 E2E 기록은 `docs/acceptance/issue-87/README.md`에 보존합니다. 실행하지 않은 검증은 PASS로 쓰지 않고 `NOT_RUN`으로 기록합니다.
+- Contributions: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Vulnerability reporting: [SECURITY.md](SECURITY.md)
+
+Do not commit proprietary/customer PDFs, parser output derived from restricted documents, user evidence databases, page-image caches, human-decision records, credentials, tokens, private URLs, or private keys.
+
+## Releases
+
+`v0.1.0` is the historical sanitized source-only release. The current public-readiness work targets `v0.2.0`, including repository cleanup, Python 3.13-only support, namespace/CLI consolidation, Review Workspace fixes, runtime-manifest hardening, and reproducible release artifacts.
+
+Release assets should be produced from an accepted exact HEAD and published with SHA-256 values. Generated user workspaces and historical acceptance artifacts are not release assets.
+
+## License
+
+Evidence Review System is licensed under the [Apache License 2.0](LICENSE). Third-party notices remain subject to their own applicable licenses.

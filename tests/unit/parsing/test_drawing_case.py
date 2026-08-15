@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parsing.drawing_case import (
+from evidence_review.parsing.drawing_case import (
     CaseManifest,
     case_artifact_path,
     case_manifest_document,

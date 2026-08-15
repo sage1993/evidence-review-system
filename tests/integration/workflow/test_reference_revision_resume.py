@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ansim_review.workflow.orchestrator import (
+from evidence_review.workflow.orchestrator import (
     ingest_pending_references,
     prepare_review_run,
 )
-from ansim_review.workflow.request import decode_review_request
+from evidence_review.workflow.request import decode_review_request
 from tests.integration.workflow._reference_helpers import (
     FakeReferenceBackend,
     write_source,

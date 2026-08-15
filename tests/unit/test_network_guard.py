@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-import ansim_review.network_guard as network_guard
-from ansim_review.network_guard import (
+import evidence_review.network_guard as network_guard
+from evidence_review.network_guard import (
     find_forbidden_imports,
     install_network_guard,
     offline_guard_context,

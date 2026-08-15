@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.parser_reproducibility.run_manifest import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.parser_reproducibility.run_manifest import (
     build_parser_run_manifest,
     parser_run_manifest_document,
 )

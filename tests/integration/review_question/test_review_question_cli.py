@@ -7,18 +7,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from ansim_review import cli, review_question
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.retrieval.index import build_fts_index
-from ansim_review.review_question import (
+from evidence_review import cli, review_question
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.retrieval.index import build_fts_index
+from evidence_review.review_question import (
     _append_event,
     prepare_review_question,
     submit_question_track_a,
     submit_question_track_b,
 )
-from ansim_review.review_run import TrackBContractError
-from ansim_review.workflow.events import load_workflow_events
+from evidence_review.review_run import TrackBContractError
+from evidence_review.workflow.events import load_workflow_events
 
 
 def _workspace(path: Path) -> Path:
@@ -298,7 +298,7 @@ def test_prepare_completes_interrupted_finalization_from_valid_artifacts(
     submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
     track_b = _track_b(run_directory)
     _append_event(run_directory, "FINALIZING", hashlib.sha256(track_b.read_bytes()).hexdigest())
-    from ansim_review.review_run import submit_track_b
+    from evidence_review.review_run import submit_track_b
 
     submit_track_b(workspace, first.run_id, track_b)
 
@@ -338,7 +338,7 @@ def test_track_b_recovers_partial_html_while_finalizing(tmp_path: Path) -> None:
     submit_question_track_a(workspace, first.run_id, _track_a(run_directory))
     track_b = _track_b(run_directory)
     _append_event(run_directory, "FINALIZING", hashlib.sha256(track_b.read_bytes()).hexdigest())
-    from ansim_review.review_run import submit_track_b
+    from evidence_review.review_run import submit_track_b
 
     submit_track_b(workspace, first.run_id, track_b)
     (run_directory / "review.html").write_text("partial", encoding="utf-8")

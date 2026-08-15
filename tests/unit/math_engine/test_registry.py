@@ -2,8 +2,8 @@ from decimal import ROUND_HALF_UP, getcontext
 
 import pytest
 
-from ansim_review.math_engine.decimal_context import decimal_context
-from ansim_review.math_engine.registry import FormulaRegistry, FormulaSpec
+from evidence_review.math_engine.decimal_context import decimal_context
+from evidence_review.math_engine.registry import FormulaRegistry, FormulaSpec
 
 
 def test_duplicate_formula_version_is_rejected() -> None:

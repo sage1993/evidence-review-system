@@ -3,14 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.drawing import (
+from evidence_review.contracts.drawing import (
     CandidateStatus,
     DrawingConfirmation,
     Geometry,
 )
-from ansim_review.parsing.drawing_candidates import create_manual_candidate
-from ansim_review.parsing.drawing_case import CaseManifestEntry
-from ansim_review.parsing.drawing_inputs import (
+from evidence_review.parsing.drawing_candidates import create_manual_candidate
+from evidence_review.parsing.drawing_case import CaseManifestEntry
+from evidence_review.parsing.drawing_inputs import (
     ConfirmedInputBuildRequest,
     ConfirmedInputConflict,
     build_confirmed_input,

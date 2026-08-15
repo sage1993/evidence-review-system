@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parsing.source_manifest import sha256_file
-from ansim_review.parsing.visual_manifest import (
+from evidence_review.parsing.source_manifest import sha256_file
+from evidence_review.parsing.visual_manifest import (
     VisualRecord,
     load_visual_manifest,
     validate_visual_page_identity,

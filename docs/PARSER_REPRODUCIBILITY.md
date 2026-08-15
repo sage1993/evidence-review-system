@@ -86,4 +86,4 @@ python -m mypy src
 python -m compileall -q src scripts web_runtime tests
 ```
 
-Build and install wheels in isolated Python 3.11 and 3.13 environments. Run `pip check`, verify all three command entry points, and execute both parser commands from the installed wheel. Record report and wheel SHA-256 values in `docs/acceptance/issue-52/README.md`.
+Build and install the wheel in an isolated Python 3.13 environment. Run `pip check`, verify the canonical and compatibility entry points, and execute the documented parser commands from the installed wheel. Record report and wheel SHA-256 values in the release acceptance record for the exact candidate HEAD.

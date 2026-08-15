@@ -11,17 +11,17 @@ def test_evidence_review_is_importable_as_canonical_package() -> None:
     cli = importlib.import_module("evidence_review.cli")
     contracts = importlib.import_module("evidence_review.contracts.source_batch")
 
-    assert package.CANONICAL_PACKAGE == "evidence_review"
+    assert package.__name__ == "evidence_review"
     assert callable(cli.main)
+    assert contracts.__name__ == "evidence_review.contracts.source_batch"
     assert contracts.decode_source_batch is not None
 
 
-def test_canonical_and_legacy_submodules_share_identity() -> None:
-    canonical = importlib.import_module("evidence_review.contracts.source_batch")
-    legacy = importlib.import_module("ansim_review.contracts.source_batch")
+def test_canonical_submodules_are_owned_by_canonical_namespace() -> None:
+    module = importlib.import_module("evidence_review.contracts.source_batch")
 
-    assert canonical is legacy
-    assert canonical.SourceBatch is legacy.SourceBatch
+    assert module.__name__ == "evidence_review.contracts.source_batch"
+    assert module.SourceBatch.__module__.startswith("evidence_review.")
 
 
 def test_python_module_entrypoint_uses_generic_program_name() -> None:
@@ -40,7 +40,7 @@ def test_console_scripts_target_canonical_package() -> None:
 
     assert 'evidence-review = "evidence_review.cli:main"' in pyproject
     assert 'ansim-review = "evidence_review.cli:main"' in pyproject
-    assert 'files = ["src/evidence_review", "src/ansim_review"]' in pyproject
+    assert 'files = ["src/evidence_review"]' in pyproject
 
 
 def test_legacy_module_entrypoint_remains_compatible() -> None:

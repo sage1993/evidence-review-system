@@ -8,11 +8,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Final
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.contracts.common import BBox
-from ansim_review.contracts.evidence import EvidenceRecord
-from ansim_review.rule_engine.evaluator import evaluate_rule
-from ansim_review.rule_engine.governance_contract import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.contracts.common import BBox
+from evidence_review.contracts.evidence import EvidenceRecord
+from evidence_review.rule_engine.evaluator import evaluate_rule
+from evidence_review.rule_engine.governance_contract import (
     ActiveRuleEntry,
     ActiveRuleManifest,
     GoldenCaseRecord,
@@ -23,7 +23,7 @@ from ansim_review.rule_engine.governance_contract import (
     rule_activation_approval_bytes,
     rule_golden_report_bytes,
 )
-from ansim_review.rule_engine.loader import load_rule
+from evidence_review.rule_engine.loader import load_rule
 
 GOVERNANCE_MUTATIONS: Final[tuple[str, ...]] = (
     "active_manifest_bytes",
@@ -232,7 +232,7 @@ def build_valid_governance_tree(
             approved_rule_sha256=approved_hash,
             runner_version="1",
             source_commit="c" * 40,
-            command="python -m ansim_review rules run-golden",
+            command="python -m evidence_review rules run-golden",
             fixture_manifest_path=_relative(root, fixture_manifest_path),
             fixture_manifest_sha256=_sha256(fixture_manifest_path),
             case_count=1,

@@ -8,7 +8,7 @@ from threading import Thread
 
 import pytest
 
-from ansim_review.review_packet.local_server import create_review_server
+from evidence_review.review_packet.local_server import create_review_server
 
 RUN_ID = "RUN-0123456789ABCDEF0123"
 TOKEN = "a" * 43
@@ -70,6 +70,7 @@ def test_server_supplies_reviewer_hash_and_server_controlled_timestamp(tmp_path:
         assert status_code == 200
         assert status["reviewer_id"] == REVIEWER_ID
         assert status["packet_hash"] == packet_hash
+        assert status["decision_record"] is None
 
         post_code, result = _request(
             server,
@@ -92,6 +93,16 @@ def test_server_supplies_reviewer_hash_and_server_controlled_timestamp(tmp_path:
         saved = json.loads(decisions[0].read_text(encoding="utf-8"))
         assert saved["reviewed_at"] == reviewed_at
         assert saved["packet_hash"] == packet_hash
+
+        status_code, status = _request(server, "GET", base + "/decision/status")
+        assert status_code == 200
+        assert status["display_status"] == "REVIEW_COMPLETED"
+        assert status["decision_record"] == {
+            "reviewer_id": REVIEWER_ID,
+            "reviewed_at": reviewed_at,
+            "decision": "SATISFIED",
+            "notes": "근거 확인 완료",
+        }
     finally:
         server.shutdown()
         server.server_close()

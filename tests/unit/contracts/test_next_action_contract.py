@@ -7,11 +7,11 @@ import pytest
 
 
 def _attachments() -> ModuleType:
-    return importlib.import_module("ansim_review.contracts.attachments")
+    return importlib.import_module("evidence_review.contracts.attachments")
 
 
 def _next_actions() -> ModuleType:
-    return importlib.import_module("ansim_review.contracts.next_action")
+    return importlib.import_module("evidence_review.contracts.next_action")
 
 
 def _attachment(**overrides: object) -> dict[str, object]:
@@ -41,7 +41,7 @@ def _next_action(**overrides: object) -> dict[str, object]:
         "resume_command": [
             "python",
             "-m",
-            "ansim_review",
+            "evidence_review",
             "resume",
             "--run-id",
             "RUN-1",

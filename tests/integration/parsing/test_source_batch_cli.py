@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ansim_review import cli
-from ansim_review.canonical_json import dump_bytes
+from evidence_review import cli
+from evidence_review.canonical_json import dump_bytes
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ansim_review.release.builder import _automated_reason_codes
+from evidence_review.release.builder import _automated_reason_codes
 
 
 @pytest.mark.parametrize(

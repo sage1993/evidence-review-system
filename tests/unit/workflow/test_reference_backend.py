@@ -4,10 +4,10 @@ import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
-from ansim_review.contracts.attachments import ImmutableAttachment
-from ansim_review.contracts.source_batch import SourceBatch, SourceItem
-from ansim_review.workflow.reference_ingestion import SourceBatchReferenceBackend
-from ansim_review.workflow.request import decode_review_request
+from evidence_review.contracts.attachments import ImmutableAttachment
+from evidence_review.contracts.source_batch import SourceBatch, SourceItem
+from evidence_review.workflow.reference_ingestion import SourceBatchReferenceBackend
+from evidence_review.workflow.request import decode_review_request
 
 
 def test_source_batch_backend_delegates_to_existing_importer(
@@ -82,7 +82,7 @@ def test_source_batch_backend_delegates_to_existing_importer(
         )
 
     monkeypatch.setattr(
-        "ansim_review.workflow.reference_ingestion.import_source_batch",
+        "evidence_review.workflow.reference_ingestion.import_source_batch",
         fake_import,
     )
     result = SourceBatchReferenceBackend(batch).ingest(

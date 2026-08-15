@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from ansim_review.confidence.policy import FACTOR_WEIGHTS
-from ansim_review.confidence.scorer import FactorInput, score_confidence
+from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.confidence.scorer import FactorInput, score_confidence
 
 
 def _uniform(value: str):

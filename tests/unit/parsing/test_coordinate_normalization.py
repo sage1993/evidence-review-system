@@ -1,7 +1,7 @@
 import pytest
 
-from ansim_review.contracts.common import BBox
-from ansim_review.parsing.pdf_geometry import normalize_bbox, project_bbox_for_display
+from evidence_review.contracts.common import BBox
+from evidence_review.parsing.pdf_geometry import normalize_bbox, project_bbox_for_display
 
 
 def test_top_left_coordinates_become_pdf_bottom_left() -> None:

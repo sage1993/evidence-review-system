@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.release.attestation import REQUIRED_CHECK_IDS, validate_attestation
+from evidence_review.release.attestation import REQUIRED_CHECK_IDS, validate_attestation
 
 
 def _record(candidate_hash: str, packet_hash: str) -> dict[str, object]:

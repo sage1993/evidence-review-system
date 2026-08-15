@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from ansim_review.entrypoint import main
+from evidence_review.command_dispatch import main
 from tests.unit.parser_reproducibility._helpers import (
     write_config,
     write_pdf,

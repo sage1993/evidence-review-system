@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.formats import RELEASE_OUTPUT_VALIDATION_FORMAT
-from ansim_review.release.output_verifier import validate_release_output
+from evidence_review.contracts.formats import RELEASE_OUTPUT_VALIDATION_FORMAT
+from evidence_review.release.output_verifier import validate_release_output
 
 _CANDIDATE_FILES = {
     "approved-rules.zip",
@@ -80,13 +80,13 @@ def _valid_output(tmp_path: Path) -> Path:
         output / "codex-workspace.zip",
         manifest_name="bundle-manifest.json",
         format_name="evidence-review/codex-workspace",
-        member_name="src/ansim_review/__init__.py",
+        member_name="src/evidence_review/__init__.py",
     )
     _valid_archive(
         output / "chatgpt-web-runtime.zip",
         manifest_name="runtime-manifest.json",
         format_name="evidence-review/chatgpt-web-runtime",
-        member_name="ansim_review/__init__.py",
+        member_name="evidence_review/__init__.py",
     )
     return output
 

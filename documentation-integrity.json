@@ -7,23 +7,19 @@
     "docs",
     "skills"
   ],
-  "historical_roots": [
-    "docs/acceptance"
-  ],
-  "current_overrides": [
-    "docs/acceptance/issue-52/README.md"
-  ],
+  "historical_roots": [],
+  "current_overrides": [],
   "historical_overrides": [],
   "generated_documents": [
     {
       "id": "CODEX_VALIDATE",
-      "generator": "ansim_review.packaging.codex_bundle:render_validation_document",
+      "generator": "evidence_review.packaging.codex_bundle:render_validation_document",
       "virtual_path": "codex-workspace/VALIDATE.md",
       "classification": "CURRENT"
     },
     {
       "id": "WEB_PROJECT_INSTRUCTIONS",
-      "generator": "ansim_review.packaging.project_instructions:render_project_instructions",
+      "generator": "evidence_review.packaging.project_instructions:render_project_instructions",
       "virtual_path": "chatgpt-web-runtime/PROJECT_INSTRUCTIONS.md",
       "classification": "CURRENT"
     }

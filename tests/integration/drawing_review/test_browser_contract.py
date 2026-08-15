@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from importlib.resources import files
 
-from ansim_review.contracts.drawing import DrawingCandidate, Geometry
-from ansim_review.drawing_review.html_renderer import render_annotation_html
-from ansim_review.drawing_review.view_model import (
+from evidence_review.contracts.drawing import DrawingCandidate, Geometry
+from evidence_review.drawing_review.html_renderer import render_annotation_html
+from evidence_review.drawing_review.view_model import (
     DrawingPage,
     build_drawing_review_view_model,
 )
@@ -44,7 +44,7 @@ def _html() -> str:
 
 def _javascript() -> str:
     return (
-        files("ansim_review.drawing_review")
+        files("evidence_review.drawing_review")
         .joinpath("assets", "annotation.js")
         .read_text(encoding="utf-8")
     )

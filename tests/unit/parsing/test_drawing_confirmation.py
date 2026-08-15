@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.drawing import DrawingConfirmation, Geometry
-from ansim_review.parsing.drawing_candidates import create_manual_candidate
-from ansim_review.parsing.drawing_confirmation import (
+from evidence_review.contracts.drawing import DrawingConfirmation, Geometry
+from evidence_review.parsing.drawing_candidates import create_manual_candidate
+from evidence_review.parsing.drawing_confirmation import (
     load_and_verify_confirmation,
     parse_confirmation_time,
     persist_confirmation,

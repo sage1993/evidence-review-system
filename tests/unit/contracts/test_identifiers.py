@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.identifiers import (
+from evidence_review.contracts.identifiers import (
     safe_direct_child,
     validate_identifier,
     validate_version,

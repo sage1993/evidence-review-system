@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from ansim_review.abstention.finalizer import review_packet_document
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.contracts.codecs import decode_review_packet
-from ansim_review.contracts.review import ReviewPacket
+from evidence_review.abstention.finalizer import review_packet_document
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.contracts.codecs import decode_review_packet
+from evidence_review.contracts.review import ReviewPacket
 
 FIXTURES = Path(__file__).parents[2] / "golden" / "contracts"
 

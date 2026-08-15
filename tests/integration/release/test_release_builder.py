@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.release.attestation import REQUIRED_CHECK_IDS
-from ansim_review.release.builder import build_ansim_release, build_evidence_release
-from ansim_review.release.config import ReleaseConfig
+from evidence_review.release.attestation import REQUIRED_CHECK_IDS
+from evidence_review.release.builder import build_ansim_release, build_evidence_release
+from evidence_review.release.config import ReleaseConfig
 
 
 def _workspace(root: Path) -> None:
@@ -39,11 +39,11 @@ def _workspace(root: Path) -> None:
         repository_root / "tests/golden/questions/ansim_cases.json",
         root / "tests/golden/questions/ansim_cases.json",
     )
-    (root / "skills").mkdir()
-    for index in range(1, 6):
-        skill = root / f"skills/0{index}-skill"
-        skill.mkdir()
-        (skill / "SKILL.md").write_text(f"# skill {index}", encoding="utf-8")
+    for name in ("ers-pdf", "ers-review"):
+        shutil.copytree(
+            repository_root / "skills" / name,
+            root / "skills" / name,
+        )
     (root / "README.md").write_text("# Release fixture\n", encoding="utf-8")
     (root / "AGENTS.md").write_text("# agents\n", encoding="utf-8")
     (root / "docs").mkdir()
@@ -237,7 +237,7 @@ def test_release_candidate_ignores_generated_python_files(
     generated = (
         root
         / "src"
-        / "ansim_review"
+        / "evidence_review"
         / "packaging"
         / "__pycache__"
         / "generated.cpython-313.pyc"
@@ -249,7 +249,7 @@ def test_release_candidate_ignores_generated_python_files(
 
     generated.write_bytes(b"second-different-bytecode")
 
-    egg_info = root / "src" / "ansim_review" / "noise.egg-info"
+    egg_info = root / "src" / "evidence_review" / "noise.egg-info"
     egg_info.mkdir()
     (egg_info / "PKG-INFO").write_text(
         "generated metadata",
@@ -285,7 +285,7 @@ def test_release_stage_failure_leaves_no_final_output_or_stage(
     def fail_zip(source: Path, target: Path) -> None:
         raise OSError("injected build failure")
 
-    import ansim_review.release.builder as builder
+    import evidence_review.release.builder as builder
 
     monkeypatch.setattr(builder, "_zip_directory", fail_zip)
     with pytest.raises(OSError, match="injected build failure"):

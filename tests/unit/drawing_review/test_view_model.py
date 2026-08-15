@@ -4,14 +4,14 @@ import importlib
 
 import pytest
 
-from ansim_review.contracts.drawing import DrawingCandidate, Geometry
+from evidence_review.contracts.drawing import DrawingCandidate, Geometry
 
 _SOURCE_HASH = "a" * 64
 
 
 def _api():
     try:
-        module = importlib.import_module("ansim_review.drawing_review.view_model")
+        module = importlib.import_module("evidence_review.drawing_review.view_model")
     except ModuleNotFoundError:
         pytest.fail("drawing review view-model module is not implemented")
     return module.DrawingPage, module.build_drawing_review_view_model

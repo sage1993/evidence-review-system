@@ -1,14 +1,14 @@
 import sqlite3
 from pathlib import Path
 
-from ansim_review.evidence.migrations.v2_to_v3 import migrate_v2_to_v3
-from ansim_review.evidence.schema_version import detect_schema_version
+from evidence_review.evidence.migrations.v2_to_v3 import migrate_v2_to_v3
+from evidence_review.evidence.schema_version import detect_schema_version
 
 
 def _create_v2(path: Path) -> None:
     connection = sqlite3.connect(path)
     connection.executescript(
-        Path("src/ansim_review/evidence/schema_v2.sql").read_text(
+        Path("src/evidence_review/evidence/schema_v2.sql").read_text(
             encoding="utf-8"
         )
     )

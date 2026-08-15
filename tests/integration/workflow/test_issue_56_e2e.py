@@ -5,21 +5,21 @@ from pathlib import Path
 
 import pytest
 
-import ansim_review.workflow.engine_orchestration as orchestration
-from ansim_review.contracts.attachments import ImmutableAttachment
-from ansim_review.parsing.drawing_quality import (
+import evidence_review.workflow.engine_orchestration as orchestration
+from evidence_review.contracts.attachments import ImmutableAttachment
+from evidence_review.parsing.drawing_quality import (
     TrustedSourceMetadata,
     assess_drawing_quality,
 )
-from ansim_review.parsing.drawing_source import DrawingIntakePolicy
-from ansim_review.workflow.drawing_confirmation import start_drawing_confirmation
-from ansim_review.workflow.engine_orchestration import run_deterministic_stages
-from ansim_review.workflow.orchestrator import (
+from evidence_review.parsing.drawing_source import DrawingIntakePolicy
+from evidence_review.workflow.drawing_confirmation import start_drawing_confirmation
+from evidence_review.workflow.engine_orchestration import run_deterministic_stages
+from evidence_review.workflow.orchestrator import (
     ingest_pending_references,
     prepare_review_run,
     resume_review_run,
 )
-from ansim_review.workflow.request import decode_review_request
+from evidence_review.workflow.request import decode_review_request
 from tests.integration.workflow._reference_helpers import FakeReferenceBackend
 
 

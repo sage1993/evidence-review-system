@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.lineage_migration import _publish_atomically
+from evidence_review.evidence.lineage_migration import _publish_atomically
 
 
 def _paths(root: Path, prefix: str) -> tuple[Path, Path, Path]:

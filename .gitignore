@@ -1,4 +1,3 @@
-
 # Python generated files
 __pycache__/
 *.py[cod]
@@ -26,11 +25,26 @@ venv/
 
 # Local and agent-generated work products
 tmp/
+output/
+workspace/
 .superpowers/
 docs/superpowers/
 design-qa.md
 
-# User-provided evidence and generated workspace artifacts
+# User-provided source documents / legacy databases
+*.pdf
+*.grist
+
+# Current ERS workspace artifacts when a workspace is created at repository root
+/evidence/
+/page-images/
+/runs/
+/human-decisions/
+/manifests/
+/run-metrics-events/
+/run-metrics.json
+
+# Legacy user-provided evidence and generated workspace artifacts
 /01_database/
 /02_source_pdf/
 /03_extracted_images/

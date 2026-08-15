@@ -32,7 +32,7 @@ def _bundle() -> dict[str, object]:
 
 
 def test_builder_converts_retrieval_bundle_without_losing_citation_identity() -> None:
-    from ansim_review.review_question import build_review_run_request
+    from evidence_review.review_question import build_review_run_request
 
     request = build_review_run_request(_bundle())
 
@@ -58,7 +58,7 @@ def test_builder_converts_retrieval_bundle_without_losing_citation_identity() ->
 
 
 def test_builder_refuses_a_hit_without_a_traceable_citation() -> None:
-    from ansim_review.review_question import build_review_run_request
+    from evidence_review.review_question import build_review_run_request
 
     bundle = _bundle()
     bundle["hits"] = [{"evidence_id": "E1", "text": "근거"}]
@@ -68,7 +68,7 @@ def test_builder_refuses_a_hit_without_a_traceable_citation() -> None:
 
 
 def test_builder_ignores_traceable_empty_context_hits() -> None:
-    from ansim_review.review_question import build_review_run_request
+    from evidence_review.review_question import build_review_run_request
 
     bundle = _bundle()
     bundle["hits"] = [
@@ -105,7 +105,7 @@ def test_builder_ignores_traceable_empty_context_hits() -> None:
         }
     ]
 def test_explicit_expansion_uses_user_origin_not_model_origin() -> None:
-    from ansim_review.review_question import canonical_query_request
+    from evidence_review.review_question import canonical_query_request
 
     request = canonical_query_request("주차장", ["별표 2"])
 
@@ -113,7 +113,7 @@ def test_explicit_expansion_uses_user_origin_not_model_origin() -> None:
 
 
 def test_builder_preserves_supplied_calculation_and_approved_rule_bindings() -> None:
-    from ansim_review.review_question import build_review_run_request
+    from evidence_review.review_question import build_review_run_request
 
     calculation = {
         "calculation_result_id": "CALC1",
@@ -154,7 +154,7 @@ def test_builder_preserves_supplied_calculation_and_approved_rule_bindings() -> 
 
 
 def test_builder_does_not_assign_full_confidence_to_zero_evidence() -> None:
-    from ansim_review.review_question import build_review_run_request
+    from evidence_review.review_question import build_review_run_request
 
     bundle = _bundle()
     bundle["hits"] = []
@@ -172,7 +172,7 @@ def test_builder_does_not_assign_full_confidence_to_zero_evidence() -> None:
 
 
 def test_zero_evidence_only_reduces_evidence_dependent_factors() -> None:
-    from ansim_review.review_question import build_review_run_request
+    from evidence_review.review_question import build_review_run_request
 
     bundle = _bundle()
     bundle["hits"] = []
@@ -198,7 +198,7 @@ def test_zero_evidence_only_reduces_evidence_dependent_factors() -> None:
 
 
 def test_builder_keeps_full_initial_confidence_for_traceable_evidence() -> None:
-    from ansim_review.review_question import build_review_run_request
+    from evidence_review.review_question import build_review_run_request
 
     request = build_review_run_request(_bundle())
     factors = request["confidence_input"]["factors"]

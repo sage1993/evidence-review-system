@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
 
 
 def test_duplicate_element_rolls_back_entire_snapshot(tmp_path: Path) -> None:

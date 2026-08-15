@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ansim_review.review_packet import external_launcher
+from evidence_review.review_packet import external_launcher
 
 
 def test_windows_launcher_falls_back_to_registered_browser_without_waiting(

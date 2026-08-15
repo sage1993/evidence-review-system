@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.offline_policy import (
+from evidence_review.offline_policy import (
     POLICY_VERSION,
     default_offline_policy,
     is_allowed_local_address,

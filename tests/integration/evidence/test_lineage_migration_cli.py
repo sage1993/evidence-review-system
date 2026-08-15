@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review import cli
-from ansim_review.evidence.lineage_migration import LegacyLineageMigrationResult
+from evidence_review import cli
+from evidence_review.evidence.lineage_migration import LegacyLineageMigrationResult
 
 
 def _result(tmp_path: Path) -> LegacyLineageMigrationResult:

@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.schema_version import (
+from evidence_review.evidence.schema_version import (
     SCHEMA_VERSION,
     SchemaUpgradeRequired,
     UnsupportedSchemaVersion,
 )
-from ansim_review.evidence.store import EvidenceStore
+from evidence_review.evidence.store import EvidenceStore
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
 

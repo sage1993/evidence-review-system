@@ -1,9 +1,9 @@
 from decimal import Decimal
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.contracts.common import BBox
-from ansim_review.retrieval.fusion import fuse_hits, fusion_document
-from ansim_review.retrieval.models import ChannelScore, RetrievalHit
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.contracts.common import BBox
+from evidence_review.retrieval.fusion import fuse_hits, fusion_document
+from evidence_review.retrieval.models import ChannelScore, RetrievalHit
 
 
 def _hit(

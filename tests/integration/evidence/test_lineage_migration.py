@@ -8,17 +8,17 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.evidence.lineage_contract import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.evidence.lineage_contract import (
     DocumentLineageMapping,
     LegacyLineageManifest,
     RevisionMapping,
     legacy_lineage_manifest_document,
 )
-from ansim_review.evidence.lineage_migration import (
+from evidence_review.evidence.lineage_migration import (
     apply_legacy_lineage_migration,
 )
-from ansim_review.evidence.store import EvidenceStore
+from evidence_review.evidence.store import EvidenceStore
 
 LEGACY_DOCUMENT = "LAW3"
 CANONICAL_DOCUMENT = "DOC-ACFD68E34043268C"
@@ -301,7 +301,7 @@ def test_artifact_write_failure_rolls_back_every_generated_path(
     source, manifest_path, _ = _write_source_and_manifest(tmp_path / "source")
     output = tmp_path / "migrated" / "evidence.sqlite"
 
-    from ansim_review.evidence import lineage_migration
+    from evidence_review.evidence import lineage_migration
 
     original = lineage_migration._write_create_only
     calls = 0

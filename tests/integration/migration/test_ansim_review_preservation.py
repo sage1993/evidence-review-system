@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from ansim_review.migration.evidence import migrate_evidence
+from evidence_review.migration.evidence import migrate_evidence
 
 
 def _write_records(workspace: Path, records: list[dict[str, object]]) -> None:

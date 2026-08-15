@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.confidence.policy import FACTOR_WEIGHTS
-from ansim_review.review_run import prepare_review_run
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.review_run import prepare_review_run
 
 
 def _request() -> dict[str, object]:
@@ -66,7 +66,7 @@ def _prepared(tmp_path: Path):
 
 
 def test_track_a_numeric_token_error_does_not_create_track_b_action(tmp_path: Path) -> None:
-    from ansim_review.review_run import submit_track_a
+    from evidence_review.review_run import submit_track_a
 
     prepared = _prepared(tmp_path)
     output = tmp_path / "track-a.json"
@@ -80,7 +80,7 @@ def test_track_a_numeric_token_error_does_not_create_track_b_action(tmp_path: Pa
 
 
 def test_valid_track_a_creates_only_track_b_handoff(tmp_path: Path) -> None:
-    from ansim_review.review_run import submit_track_a
+    from evidence_review.review_run import submit_track_a
 
     prepared = _prepared(tmp_path)
     output = tmp_path / "track-a.json"
@@ -95,7 +95,7 @@ def test_valid_track_a_creates_only_track_b_handoff(tmp_path: Path) -> None:
 def test_valid_same_path_track_a_preserves_original_bytes_and_creates_handoff(
     tmp_path: Path,
 ) -> None:
-    from ansim_review.review_run import submit_track_a
+    from evidence_review.review_run import submit_track_a
 
     prepared = _prepared(tmp_path)
     output = prepared.run_directory / "track-a-output.json"
@@ -120,7 +120,7 @@ def test_valid_same_path_track_a_preserves_original_bytes_and_creates_handoff(
 def test_external_track_a_does_not_overwrite_conflicting_canonical_target(
     tmp_path: Path,
 ) -> None:
-    from ansim_review.review_run import submit_track_a
+    from evidence_review.review_run import submit_track_a
 
     prepared = _prepared(tmp_path)
     target = prepared.run_directory / "track-a-output.json"

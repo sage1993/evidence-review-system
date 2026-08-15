@@ -1,33 +1,33 @@
 from pathlib import Path
 
-from ansim_review.contracts.drawing import DrawingConfirmation, Geometry
-from ansim_review.parsing.drawing_binding import bind_confirmed_inputs
-from ansim_review.parsing.drawing_candidates import (
+from evidence_review.contracts.drawing import DrawingConfirmation, Geometry
+from evidence_review.parsing.drawing_binding import bind_confirmed_inputs
+from evidence_review.parsing.drawing_candidates import (
     create_manual_candidate,
     persist_candidate,
 )
-from ansim_review.parsing.drawing_case import (
+from evidence_review.parsing.drawing_case import (
     CaseManifest,
     case_manifest_document,
     write_canonical_create_only,
 )
-from ansim_review.parsing.drawing_confirmation import persist_confirmation
-from ansim_review.parsing.drawing_inputs import (
+from evidence_review.parsing.drawing_confirmation import persist_confirmation
+from evidence_review.parsing.drawing_inputs import (
     ConfirmedInputBuildRequest,
     build_confirmed_input,
     persist_confirmed_inputs,
 )
-from ansim_review.parsing.drawing_quality import (
+from evidence_review.parsing.drawing_quality import (
     TrustedSourceMetadata,
     assess_drawing_quality,
     persist_drawing_quality,
 )
-from ansim_review.parsing.drawing_source import (
+from evidence_review.parsing.drawing_source import (
     DrawingIntakePolicy,
     drawing_source_manifest_entry,
     ingest_drawing_source,
 )
-from ansim_review.parsing.drawing_workflow import (
+from evidence_review.parsing.drawing_workflow import (
     DrawingWorkflowFacts,
     project_drawing_workflow,
 )

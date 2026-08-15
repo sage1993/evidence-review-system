@@ -4,8 +4,8 @@ import importlib
 
 import pytest
 
-from ansim_review.contracts.drawing import DrawingCandidate, Geometry
-from ansim_review.drawing_review.view_model import (
+from evidence_review.contracts.drawing import DrawingCandidate, Geometry
+from evidence_review.drawing_review.view_model import (
     DrawingPage,
     build_drawing_review_view_model,
 )
@@ -15,7 +15,7 @@ _SOURCE_HASH = "a" * 64
 
 def _renderer():
     try:
-        module = importlib.import_module("ansim_review.drawing_review.html_renderer")
+        module = importlib.import_module("evidence_review.drawing_review.html_renderer")
     except ModuleNotFoundError:
         pytest.fail("drawing annotation HTML renderer is not implemented")
     return module.render_annotation_html

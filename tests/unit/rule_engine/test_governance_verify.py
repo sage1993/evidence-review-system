@@ -11,11 +11,11 @@ from helpers.rule_governance import (
     build_valid_governance_tree,
 )
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.rule_engine.governance_contract import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.rule_engine.governance_contract import (
     load_active_rule_manifest_bytes,
 )
-from ansim_review.rule_engine.governance_verify import (
+from evidence_review.rule_engine.governance_verify import (
     GovernanceVerificationError,
     resolve_governance_path,
     verify_approval,

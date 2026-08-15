@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.drawing import Geometry
-from ansim_review.parsing.drawing_candidates import (
+from evidence_review.contracts.drawing import Geometry
+from evidence_review.parsing.drawing_candidates import (
     candidate_from_raw_element,
     create_manual_candidate,
     extractor_candidate_id,
@@ -11,7 +11,7 @@ from ansim_review.parsing.drawing_candidates import (
     manual_candidate_id,
     persist_candidate,
 )
-from ansim_review.parsing.odl_adapter import RawElement
+from evidence_review.parsing.odl_adapter import RawElement
 
 
 def raw_text_element() -> RawElement:

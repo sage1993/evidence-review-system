@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from ansim_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.html_renderer import render_review_html
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
 
@@ -64,7 +64,7 @@ def test_desktop_and_responsive_workspace_contract_is_applied(tmp_path: Path) ->
     _write_page_assets(tmp_path / "pages")
     html = render_review_html(_reviewer_model(), tmp_path / "pages")
 
-    assert "grid-template-columns: 392px minmax(0, 1fr) 342px" in html
+    assert "grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(320px, 360px)" in html
     assert '"items viewer decision"' in html
     assert '"detail"' in html
     assert "position: sticky" in html

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ansim_review.documentation_integrity.discovery import DiscoveredDocument
-from ansim_review.documentation_integrity.links import DocumentationIndex, validate_links
-from ansim_review.documentation_integrity.markdown import parse_markdown
+from evidence_review.documentation_integrity.discovery import DiscoveredDocument
+from evidence_review.documentation_integrity.links import DocumentationIndex, validate_links
+from evidence_review.documentation_integrity.markdown import parse_markdown
 
 
 def _write(path: Path, text: str = "# Document\n") -> None:

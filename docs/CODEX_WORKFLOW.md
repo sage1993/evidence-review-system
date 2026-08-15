@@ -11,19 +11,15 @@ checkout HEAD, package source path, and required dependency state.
 
 ```powershell
 $Workspace = "C:\evidence-review-workspace"
-py -3.11 -m evidence_review doctor --repository-root .
-py -3.11 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
-
 py -3.13 -m evidence_review doctor --repository-root .
 py -3.13 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
 ```
 
-`SOURCE_MISMATCH` means the active interpreter is importing `ansim_review` from a
+`SOURCE_MISMATCH` means the active interpreter is importing project modules from a
 different checkout. Activate the intended interpreter and reinstall this checkout
 editable with that interpreter:
 
 ```powershell
-py -3.11 -m pip install -e ".[dev]"
 py -3.13 -m pip install -e ".[dev]"
 ```
 
@@ -237,7 +233,7 @@ evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 
 The detached process uses a 2-second startup timeout. Stale state cleanup and process identity checks protect management operations from acting on an unrelated reused PID.
 
-Windows lifecycle behavior must be manually accepted on the target commit. Do not infer Windows PASS from POSIX process identity tests. Issue #92 remains the lifecycle acceptance authority for this lifecycle contract.
+Windows lifecycle behavior must be manually accepted on the exact target commit. Do not infer Windows PASS from POSIX process identity tests.
 
 ## 9. Drawing evidence boundary
 
@@ -247,25 +243,25 @@ Browser annotation may transform pointer coordinates into declared page coordina
 
 ## 10. Acceptance verification
 
-Run from a clean checkout at the exact HEAD:
+Run from a clean checkout at the exact HEAD with Python 3.13:
 
-```bash
-evidence-review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
-pytest -v
-ruff check src tests
-mypy src
-python -m compileall -q src scripts web_runtime tests
+```powershell
+py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
+py -3.13 -m pytest -v
+py -3.13 -m ruff check src tests web_runtime
+py -3.13 -m mypy src
+py -3.13 -m compileall -q src scripts web_runtime tests
 ```
 
 Focused suites:
 
-```bash
-pytest -v tests/integration/review_question
-pytest -v tests/integration/review_packet
-pytest -v tests/integration/review_run
-pytest -v tests/unit/review_packet
+```powershell
+py -3.13 -m pytest -v tests/integration/review_question
+py -3.13 -m pytest -v tests/integration/review_packet
+py -3.13 -m pytest -v tests/integration/review_run
+py -3.13 -m pytest -v tests/unit/review_packet
 ```
 
-Issue #87 additionally requires Windows Python 3.11/3.13 E2E, three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 3840×2160, zoom 100% / 200% / fit-to-page, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
+Current release acceptance uses Python 3.13 only. It requires three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 3840×2160, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
 
 Record unexecuted gates as `NOT_RUN`. GitHub Actions must be reported separately as its actual observed state; it is not replaced by local validation.

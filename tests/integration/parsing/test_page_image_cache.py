@@ -11,7 +11,7 @@ from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 
 def test_page_image_cache_writes_and_reuses_verified_pngs(tmp_path: Path) -> None:
-    from ansim_review.parsing.page_image_cache import cache_pdf_page_images
+    from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 
     source = write_pdf_fixture(tmp_path / "source.pdf", page_sizes=((100, 200), (300, 400)))
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -44,7 +44,7 @@ def test_page_image_cache_writes_and_reuses_verified_pngs(tmp_path: Path) -> Non
 
 
 def test_page_image_cache_reuses_verified_legacy_metadata_without_rewriting(tmp_path: Path) -> None:
-    from ansim_review.parsing.page_image_cache import cache_pdf_page_images
+    from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 
     source = write_pdf_fixture(tmp_path / "legacy.pdf", page_sizes=((100, 200),))
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -62,7 +62,7 @@ def test_page_image_cache_reuses_verified_legacy_metadata_without_rewriting(tmp_
 
 
 def test_page_image_cache_renders_cropbox_and_rotation_in_process(tmp_path: Path) -> None:
-    from ansim_review.parsing.page_image_cache import cache_pdf_page_images
+    from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 
     source = write_pdf_fixture(
         tmp_path / "rotated.pdf",
@@ -91,7 +91,7 @@ def test_page_image_cache_renders_cropbox_and_rotation_in_process(tmp_path: Path
 
 
 def test_page_image_cache_rejects_tampered_existing_artifact(tmp_path: Path) -> None:
-    from ansim_review.parsing.page_image_cache import cache_pdf_page_images
+    from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 
     source = write_pdf_fixture(tmp_path / "source.pdf", page_sizes=((100, 200),))
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()

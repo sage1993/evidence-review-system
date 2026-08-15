@@ -5,15 +5,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from ansim_review.workflow.engine_orchestration import (
+from evidence_review.workflow.engine_orchestration import (
     advance_to_track_b,
     finalize_orchestration_run,
     require_track_b_acceptance,
     run_deterministic_stages,
 )
-from ansim_review.workflow.events import load_workflow_events
-from ansim_review.workflow.orchestrator import prepare_review_run
-from ansim_review.workflow.request import decode_review_request
+from evidence_review.workflow.events import load_workflow_events
+from evidence_review.workflow.orchestrator import prepare_review_run
+from evidence_review.workflow.request import decode_review_request
 
 
 def _ready_layout(tmp_path: Path):
@@ -117,7 +117,7 @@ def test_track_b_acceptance_calls_existing_finalizer(tmp_path: Path, monkeypatch
         return SimpleNamespace(status="READY_FOR_HUMAN_REVIEW")
 
     monkeypatch.setattr(
-        "ansim_review.abstention.finalizer.finalize_run",
+        "evidence_review.abstention.finalizer.finalize_run",
         fake_finalize,
     )
     packet_path = finalize_orchestration_run(

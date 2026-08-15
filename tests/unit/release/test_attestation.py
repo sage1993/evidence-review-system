@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.release.attestation import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.release.attestation import (
     PROCESS_ATTESTATION,
     REQUIRED_CHECK_IDS,
     REVIEWED_AND_ACCEPTED_FOR_RELEASE,

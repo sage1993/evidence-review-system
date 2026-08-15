@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 import pytest
 
-from ansim_review.drawing_review.actions import (
+from evidence_review.drawing_review.actions import (
     ExistingCandidateAction,
     ManualCreateAction,
     decode_annotation_action,

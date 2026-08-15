@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.formats import DOCUMENTATION_INTEGRITY_CONFIG_FORMAT
-from ansim_review.documentation_integrity.contract import DocumentationIntegrityConfig
-from ansim_review.documentation_integrity.discovery import (
+from evidence_review.contracts.formats import DOCUMENTATION_INTEGRITY_CONFIG_FORMAT
+from evidence_review.documentation_integrity.contract import DocumentationIntegrityConfig
+from evidence_review.documentation_integrity.discovery import (
     DocumentDiscoveryError,
     discover_repository_documents,
 )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ansim_review.abstention.gates import AbstentionContext, evaluate_abstention_gates
+from evidence_review.abstention.gates import AbstentionContext, evaluate_abstention_gates
 
 
 def test_unresolved_conflict_abstains_even_at_high_confidence() -> None:

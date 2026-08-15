@@ -7,16 +7,16 @@ from types import ModuleType
 
 import pytest
 
-from ansim_review.contracts.formats import DOCUMENTATION_INTEGRITY_CONFIG_FORMAT
-from ansim_review.documentation_integrity.contract import (
+from evidence_review.contracts.formats import DOCUMENTATION_INTEGRITY_CONFIG_FORMAT
+from evidence_review.documentation_integrity.contract import (
     DocumentationIntegrityConfig,
     GeneratedDocumentConfig,
 )
-from ansim_review.documentation_integrity.generated import (
+from evidence_review.documentation_integrity.generated import (
     GeneratedDocumentError,
     render_generated_documents,
 )
-from ansim_review.packaging.codex_bundle import render_validation_document
+from evidence_review.packaging.codex_bundle import render_validation_document
 
 
 def _config(*documents: GeneratedDocumentConfig) -> DocumentationIntegrityConfig:
@@ -126,9 +126,9 @@ def test_successful_render_preserves_registered_metadata(
 
 def test_codex_validation_document_contains_full_offline_sequence() -> None:
     text = render_validation_document()
-    assert "python -m ansim_review --help" in text
-    assert "python -m ansim_review source-batch --help" in text
-    assert "python -m ansim_review rules --help" in text
-    assert "python -m ansim_review documentation validate --help" in text
+    assert "python -m evidence_review --help" in text
+    assert "python -m evidence_review source-batch --help" in text
+    assert "python -m evidence_review rules --help" in text
+    assert "python -m evidence_review documentation validate --help" in text
     assert "python -m compileall -q src" in text
     assert "\r" not in text

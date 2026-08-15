@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.retrieval.bundle import build_evidence_bundle
-from ansim_review.retrieval.index import build_fts_index
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.retrieval.bundle import build_evidence_bundle
+from evidence_review.retrieval.index import build_fts_index
 
 
 def _element(

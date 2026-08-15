@@ -12,36 +12,36 @@ from pathlib import Path
 from threading import Event
 from typing import cast
 
-from ansim_review.contracts.drawing import (
+from evidence_review.contracts.drawing import (
     CoordinateSystem,
     DrawingCandidate,
     decode_drawing_candidate,
 )
-from ansim_review.contracts.validation import (
+from evidence_review.contracts.validation import (
     expect_sha256,
     expect_string,
     reject_unknown,
     require_fields,
 )
-from ansim_review.drawing_review.html_renderer import render_annotation_html
-from ansim_review.drawing_review.local_server import (
+from evidence_review.drawing_review.html_renderer import render_annotation_html
+from evidence_review.drawing_review.local_server import (
     AnnotationServer,
     serve_annotation_workspace,
 )
-from ansim_review.drawing_review.view_model import (
+from evidence_review.drawing_review.view_model import (
     DrawingPage,
     build_drawing_review_view_model,
 )
-from ansim_review.math_engine.formulas import DRAWING_REGISTRY
-from ansim_review.math_engine.manifest import formula_manifest_hash
-from ansim_review.parsing.drawing_candidates import load_candidate, persist_candidate
-from ansim_review.parsing.drawing_case import (
+from evidence_review.math_engine.formulas import DRAWING_REGISTRY
+from evidence_review.math_engine.manifest import formula_manifest_hash
+from evidence_review.parsing.drawing_candidates import load_candidate, persist_candidate
+from evidence_review.parsing.drawing_case import (
     CaseManifestEntry,
     case_artifact_path,
     decode_case_manifest,
     validate_artifact_id,
 )
-from ansim_review.parsing.drawing_source import sniff_drawing_mime, validate_source_path
+from evidence_review.parsing.drawing_source import sniff_drawing_mime, validate_source_path
 
 _REPARSE_POINT_ATTRIBUTE = 0x400
 _COORDINATE_SYSTEMS: tuple[CoordinateSystem, ...] = (

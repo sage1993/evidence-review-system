@@ -1,13 +1,13 @@
 import sqlite3
 from pathlib import Path
 
-from ansim_review.canonical_json import dumps
-from ansim_review.retrieval.bundle import build_evidence_bundle
-from ansim_review.retrieval.fusion import fusion_document
-from ansim_review.retrieval.index import build_fts_index
-from ansim_review.retrieval.structured import retrieve_structured
+from evidence_review.canonical_json import dumps
+from evidence_review.retrieval.bundle import build_evidence_bundle
+from evidence_review.retrieval.fusion import fusion_document
+from evidence_review.retrieval.index import build_fts_index
+from evidence_review.retrieval.structured import retrieve_structured
 
-SCHEMA = Path("src/ansim_review/evidence/schema.sql")
+SCHEMA = Path("src/evidence_review/evidence/schema.sql")
 
 
 def _page_only_connection() -> sqlite3.Connection:

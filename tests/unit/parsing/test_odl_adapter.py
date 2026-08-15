@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.canonical_json import sha256_json
-from ansim_review.parsing.odl_adapter import OpenDataLoaderJsonAdapter, load_raw_elements
-from ansim_review.parsing.odl_source import (
+from evidence_review.canonical_json import sha256_json
+from evidence_review.parsing.odl_adapter import OpenDataLoaderJsonAdapter, load_raw_elements
+from evidence_review.parsing.odl_source import (
     ParserPageDimensionsResult,
     parser_page_dimensions,
 )
-from ansim_review.parsing.parser_registry import ParserContext
+from evidence_review.parsing.parser_registry import ParserContext
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 

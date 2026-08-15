@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.review_packet.browser_launcher import review_server_status
+from evidence_review.review_packet.browser_launcher import review_server_status
 
 RUN_ID = "RUN-0123456789ABCDEF0123"
 TOKEN = "a" * 43
@@ -39,7 +39,7 @@ def _start_server(workspace: Path, timeout_seconds: float) -> subprocess.Popen[s
         [
             sys.executable,
             "-m",
-            "ansim_review.review_packet.server_process",
+            "evidence_review.review_packet.server_process",
             "--workspace",
             str(workspace),
             "--run-id",
@@ -205,7 +205,7 @@ def test_explicit_stop_terminates_verified_server_and_cleans_state(tmp_path: Pat
         _read_port(process)
         state_path = workspace / "runs" / RUN_ID / "review-server.json"
         assert state_path.is_file()
-        from ansim_review.review_packet.browser_launcher import stop_review_server
+        from evidence_review.review_packet.browser_launcher import stop_review_server
 
         stop_review_server(workspace, RUN_ID)
         assert _wait_for_exit(process) is not None

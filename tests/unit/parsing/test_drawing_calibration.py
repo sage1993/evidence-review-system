@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ansim_review.parsing.drawing_calibration import (
+from evidence_review.parsing.drawing_calibration import (
     CalibrationReference,
     build_calibration,
     calculate_real_length,

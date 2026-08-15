@@ -1,6 +1,6 @@
 import pytest
 
-from ansim_review.rule_engine.loader import load_rule
+from evidence_review.rule_engine.loader import load_rule
 
 
 def _base_rule() -> dict[str, object]:

@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.canonical_json import dumps
-from ansim_review.retrieval.index import build_fts_index, search_fts
+from evidence_review.canonical_json import dumps
+from evidence_review.retrieval.index import build_fts_index, search_fts
 
-SCHEMA = Path("src/ansim_review/evidence/schema.sql")
+SCHEMA = Path("src/evidence_review/evidence/schema.sql")
 
 
 def _connection() -> sqlite3.Connection:

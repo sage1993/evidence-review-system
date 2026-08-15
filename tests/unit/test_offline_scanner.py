@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.offline_scanner import OfflineFinding, scan_source_tree
+from evidence_review.offline_scanner import OfflineFinding, scan_source_tree
 
 
 def write_source(root: Path, relative: str, source: str) -> None:
@@ -57,22 +57,22 @@ def test_protected_server_launcher_is_the_only_subprocess_exception(tmp_path: Pa
     source = "import subprocess\nsubprocess.Popen(['python'])\n"
     write_source(
         tmp_path,
-        "ansim_review/review_packet/browser_launcher.py",
+        "evidence_review/review_packet/browser_launcher.py",
         source,
     )
-    write_source(tmp_path, "ansim_review/other_launcher.py", source)
+    write_source(tmp_path, "evidence_review/other_launcher.py", source)
 
     findings = scan_source_tree(tmp_path)
 
     assert findings == (
         OfflineFinding(
-            path="ansim_review/other_launcher.py",
+            path="evidence_review/other_launcher.py",
             line=1,
             kind="FORBIDDEN_IMPORT",
             symbol="subprocess",
         ),
         OfflineFinding(
-            path="ansim_review/other_launcher.py",
+            path="evidence_review/other_launcher.py",
             line=2,
             kind="FORBIDDEN_PROCESS_CALL",
             symbol="subprocess.Popen",
@@ -84,7 +84,7 @@ def test_protected_server_launcher_exception_is_stable_for_package_root(
     tmp_path: Path,
 ) -> None:
     source = "import subprocess\nsubprocess.Popen(['python'])\n"
-    package_root = tmp_path / "ansim_review"
+    package_root = tmp_path / "evidence_review"
     write_source(package_root, "review_packet/browser_launcher.py", source)
     write_source(package_root, "other_launcher.py", source)
 
@@ -109,13 +109,13 @@ def test_protected_server_launcher_exception_is_stable_for_package_root(
 def test_process_exception_does_not_allow_network_clients(tmp_path: Path) -> None:
     write_source(
         tmp_path,
-        "ansim_review/review_packet/browser_launcher.py",
+        "evidence_review/review_packet/browser_launcher.py",
         "import requests\n",
     )
 
     assert scan_source_tree(tmp_path) == (
         OfflineFinding(
-            path="ansim_review/review_packet/browser_launcher.py",
+            path="evidence_review/review_packet/browser_launcher.py",
             line=1,
             kind="FORBIDDEN_IMPORT",
             symbol="requests",

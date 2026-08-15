@@ -92,7 +92,7 @@ Selection context는 명시적 JSON object다.
 evidence-review rules select `
   --repository-root . `
   --manifest rules/manifests/active.json `
-  --context docs/acceptance/issue-48/ansim-context.json
+  --context <workspace>/review-context.json
 ```
 
 Scope 비교는 case-sensitive exact match다. Manifest 전체 권위 사슬을 먼저 검증한 뒤 일치하는 모든 규칙을 선택한다.
@@ -109,31 +109,17 @@ Scope 비교는 case-sensitive exact match다. Manifest 전체 권위 사슬을 
 
 Rule result의 `SATISFIED`와 `NOT_SATISFIED`는 constrained expression 결과다. 이는 사람의 법률적 최종 결정이 아니다. Machine packet의 `human_decision`은 항상 `null`로 유지하며, 사람 결정은 별도 append-only 기록에 남긴다.
 
-## 8. Issue #48 acceptance
+## 8. Current verification
 
-Acceptance 경로:
-
-```text
-docs/acceptance/issue-48/
-├─ activation-report.json
-├─ ansim-selection.json
-├─ non-ansim-abstention.json
-├─ MANUAL_VALIDATION.md
-└─ README.md
-```
-
-검증 명령:
+Use a sanitized workspace or the deterministic ANSIM compatibility fixtures under
+`tests/fixtures/ansim/rules/` when exercising governance tests. Runtime rule
+paths are always resolved from the supplied workspace; the repository does not
+ship a user workspace as a runtime default.
 
 ```powershell
-pytest -v
-pytest -v tests/unit/rule_engine tests/integration/rule_engine
-pytest -v tests/integration/test_workspace_validator.py
-ruff check src tests
-mypy src
-python -m compileall -q src scripts web_runtime tests
-python -m build --wheel
+py -3.13 -m pytest tests/unit/rule_engine tests/integration/rule_engine -v
+py -3.13 -m evidence_review documentation validate --repository-root .
 ```
 
-2026-08-03 Windows 격리 worktree에서 전체 수동 acceptance가 완료됐으며 상태는 `MANUAL_PASS / ACTIONS_BILLING_BLOCKED`이다. GitHub Actions는 계정의 Actions 결제·spending limit 문제로 실행되지 않았으므로 이 상태는 GitHub Actions PASS가 아니다. 상세 명령, exit code, golden 6개 fixture·13개 case, activation 6개 rule, scope selection, tamper matrix, Python 3.13·3.11 wheel 결과는 `docs/acceptance/issue-48/MANUAL_VALIDATION.md`에 기록한다.
-
-수동 acceptance는 구현과 artifact의 재현성을 검증하지만 reviewer identity의 암호학적 증명이나 사람의 최종 법률 판단을 제공하지 않는다.
+Manual or external acceptance evidence is not stored in issue-number folders and
+is never treated as GitHub Actions PASS unless the workflow actually ran.

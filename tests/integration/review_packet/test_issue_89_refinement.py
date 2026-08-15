@@ -5,7 +5,7 @@ import subprocess
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from ansim_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.html_renderer import render_review_html
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
 
@@ -38,6 +38,7 @@ def test_image_matched_workspace_contract_has_three_columns_and_reference_hierar
     assert "items viewer decision" in html
     assert '"additional additional additional"' in html
     assert "max-height: min(60vh, 640px)" in html
+    assert "max-height: none !important" in html
 
 
 def test_reference_layout_has_evidence_column_above_pdf_and_decision_column(
@@ -124,17 +125,19 @@ def test_browser_controller_contains_keyboard_evidence_and_notes_validation(tmp_
     assert completed.returncode == 0, completed.stderr
 
 
-def test_p0_frame_and_grid_match_reference_geometry_contract(tmp_path: Path) -> None:
+def test_issue_89_layout_has_no_late_fixed_frame_override(tmp_path: Path) -> None:
+    """The reviewer workspace must remain responsive instead of using a P0 frame overlay."""
     _write_page_assets(tmp_path / "pages")
     html = render_review_html(_model(), tmp_path / "pages")
 
-    assert "width: calc(100% - 16px)" in html
-    assert "max-width: 1520px" in html
-    assert "margin: 8px auto" in html
-    assert "grid-template-columns: 392px minmax(0, 1fr) 342px" in html
-    assert "column-gap: 14px" in html
-    assert "row-gap: 16px" in html
-
+    assert "/* P0 fidelity corrections for the 1536 × 1024 reference surface. */" not in html
+    assert "height: 591px" not in html
+    assert "height: 531px" not in html
+    assert "height: 491px" not in html
+    assert "grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(320px, 360px)" in html
+    assert '"items viewer decision"' in html
+    assert "max-height: min(60vh, 640px)" in html
+    assert "max-height: none !important" in html
 
 def test_p0_audit_and_footer_use_reference_labels(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
@@ -194,7 +197,8 @@ def test_evidence_card_focuses_its_pdf_page_in_browser_controller(tmp_path: Path
 
     assert "focusEvidence(item.dataset.itemId, item.dataset.evidenceId)" in controller
     focus_start = controller.index("function focusEvidence")
-    focus_end = controller.index("function setActivePage")
+    focus_end = controller.find("\n  function ", focus_start + 1)
+    assert focus_end > focus_start
     assert "setActivePage(assetKey);" in controller[focus_start:focus_end]
     assert "data-asset-key=" in render_review_html(_model(), tmp_path / "pages")
 

@@ -2,7 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from ansim_review.contracts.codecs import decode_citation, decode_review_packet
+from evidence_review.contracts.codecs import decode_citation, decode_review_packet
 
 
 def _minimal_packet() -> dict[str, object]:

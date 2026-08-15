@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import hashlib
 import http.client
 import json
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from ansim_review.contracts.drawing import DrawingCandidate, Geometry
-from ansim_review.drawing_review.local_server import serve_annotation_workspace
-from ansim_review.drawing_review.view_model import DrawingPage
-from ansim_review.parsing.drawing_candidates import persist_candidate
+from evidence_review.contracts.drawing import DrawingCandidate, Geometry
+from evidence_review.drawing_review.local_server import serve_annotation_workspace
+from evidence_review.drawing_review.view_model import DrawingPage
+from evidence_review.parsing.drawing_candidates import persist_candidate
 
 SOURCE_HASH = "a" * 64
 TOKEN = "H" * 32
+RULE_MANIFEST_SHA256 = hashlib.sha256(
+    Path("tests/fixtures/ansim/rules/manifests/active.json").read_bytes()
+).hexdigest()
 
 
 def _page() -> DrawingPage:
@@ -117,6 +121,7 @@ def test_calibration_post_is_create_only_and_returns_bound_packet_url(tmp_path: 
         candidate_entries={candidate.candidate_id: entry},
         token=TOKEN,
         page_image=b"sample-image",
+        rule_manifest_sha256=RULE_MANIFEST_SHA256,
     ) as server:
         action_request = Request(
             server.url + "/actions",

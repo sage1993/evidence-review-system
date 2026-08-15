@@ -1,13 +1,13 @@
 import pytest
 
-from ansim_review.contracts.attachments import ImmutableAttachment
-from ansim_review.parsing.drawing_quality import (
+from evidence_review.contracts.attachments import ImmutableAttachment
+from evidence_review.parsing.drawing_quality import (
     DrawingQualityResult,
     TrustedSourceMetadata,
     assess_drawing_quality,
     workflow_reason_for_quality,
 )
-from ansim_review.parsing.drawing_source import DrawingIntakePolicy
+from evidence_review.parsing.drawing_source import DrawingIntakePolicy
 
 
 def attachment(mime: str = "image/png", byte_size: int = 100) -> ImmutableAttachment:

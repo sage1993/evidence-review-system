@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest
 from helpers.rule_governance import build_valid_governance_tree
 
-from ansim_review.rule_engine.governance_contract import (
+from evidence_review.rule_engine.governance_contract import (
     RuleScope,
     RuleSelectionContext,
     load_active_rule_manifest_bytes,
 )
-from ansim_review.rule_engine.selection import (
+from evidence_review.rule_engine.selection import (
     load_rule_selection_context,
     select_active_rules,
 )

@@ -10,17 +10,17 @@ from helpers.rule_governance import (
     build_valid_governance_tree,
 )
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.rule_engine.governance_contract import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.rule_engine.governance_contract import (
     ActiveRuleManifest,
     RuleSelectionContext,
     active_rule_manifest_bytes,
 )
-from ansim_review.rule_engine.manifest import (
+from evidence_review.rule_engine.manifest import (
     load_active_rules,
     load_governed_active_rules,
 )
-from ansim_review.rule_engine.selection import load_rule_selection_context_bytes
+from evidence_review.rule_engine.selection import load_rule_selection_context_bytes
 
 _CONTEXT = RuleSelectionContext(document_family="ANSIM")
 

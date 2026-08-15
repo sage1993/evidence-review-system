@@ -123,7 +123,7 @@ The default HTML surface is intentionally simple:
 
 A single claim has no redundant item navigator. Empty rule/calculation sections do not render. Internal IDs, hashes, confidence factors/weights, and raw audit data remain available under collapsed audit details rather than the default surface.
 
-The reviewer decision panel is sticky on desktop and stacks below 1100 px. Browser QA, 200% zoom, keyboard focus, and print behavior must be manually checked for acceptance; static tests do not substitute for visual QA.
+The reviewer decision panel is sticky on desktop and stacks below 1100 px. Browser QA at the supported viewport matrix, keyboard focus, and print behavior must be manually checked for acceptance; static tests do not substitute for visual QA.
 
 ## 7. Protected browser and human decision
 
@@ -183,36 +183,36 @@ evidence-review review-run serve-stop --workspace <workspace> --run-id <RUN-ID>
 
 Detached-server startup timeout is 2 seconds. Stale state must be removed and management operations must not signal an unrelated reused PID.
 
-Do not claim Windows lifecycle acceptance until it has been exercised on the exact target commit. Issue #92 remains the authority for any unresolved lifecycle acceptance work.
+Do not claim Windows lifecycle acceptance until it has been exercised on the exact target commit using the current lifecycle acceptance contract.
 
 ## 9. Documentation and verification
 
-Current repository guidance must match executable commands. Before claiming acceptance, run from a clean checkout at the exact HEAD:
+Current repository guidance must match executable commands. Before claiming acceptance, run from a clean checkout at the exact HEAD with Python 3.13:
 
-```bash
-evidence-review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
-pytest -v
-ruff check src tests
-mypy src
-python -m compileall -q src scripts web_runtime tests
+```powershell
+py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
+py -3.13 -m pytest -v
+py -3.13 -m ruff check src tests web_runtime
+py -3.13 -m mypy src
+py -3.13 -m compileall -q src scripts web_runtime tests
 ```
 
 Focused review suites:
 
-```bash
-pytest -v tests/integration/review_question
-pytest -v tests/integration/review_packet
-pytest -v tests/integration/review_run
-pytest -v tests/unit/review_packet
+```powershell
+py -3.13 -m pytest -v tests/integration/review_question
+py -3.13 -m pytest -v tests/integration/review_packet
+py -3.13 -m pytest -v tests/integration/review_run
+py -3.13 -m pytest -v tests/unit/review_packet
 ```
 
-For issue #87 acceptance, additionally execute the Windows Python 3.11/3.13 E2E matrix, browser viewport/zoom matrix, protected/archival decision paths, server lifecycle tests, and three simple-question timing runs. Record exact artifact hashes.
+Current release acceptance uses Python 3.13 only. It still requires the supported browser viewport matrix, protected/archival decision paths, server lifecycle tests, and three simple-question timing runs. Record exact artifact hashes. Unsupported Python versions are not release gates.
 
 GitHub Actions is not the default acceptance dependency. Report its actual state precisely as `ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, `ACTIONS_BILLING_BLOCKED`, or an observed PASS. Never convert local/manual PASS into Actions PASS.
 
 ## 10. Legacy and release boundaries
 
-Grist remains a legacy compatibility path. Do not describe removed repair/export wrappers as current commands. Release process attestation, release ZIP validation, and offline assurance remain separate gates documented in `docs/OFFLINE_EXECUTION.md` and `docs/MANUAL_ACCEPTANCE_POLICY.md`.
+Grist remains a legacy compatibility path until its remaining references are removed. Do not describe removed repair/export wrappers as current commands. Release process attestation, release ZIP validation, and offline assurance remain separate gates documented in `docs/OFFLINE_EXECUTION.md` and `docs/MANUAL_ACCEPTANCE_POLICY.md`.
 
 ## 11. Prohibited completion claims
 

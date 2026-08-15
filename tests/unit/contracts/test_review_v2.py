@@ -8,7 +8,7 @@ import pytest
 
 def _review_v2() -> ModuleType:
     try:
-        return importlib.import_module("ansim_review.contracts.review_v2")
+        return importlib.import_module("evidence_review.contracts.review_v2")
     except ModuleNotFoundError:
         pytest.fail("review packet v2 contract module is missing")
 

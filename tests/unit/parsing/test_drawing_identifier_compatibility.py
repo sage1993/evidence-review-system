@@ -1,5 +1,5 @@
-from ansim_review.contracts.identifiers import validate_identifier
-from ansim_review.parsing.drawing_case import (
+from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.parsing.drawing_case import (
     CaseManifest,
     case_manifest_document,
     decode_case_manifest,

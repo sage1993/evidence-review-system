@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review import canonical_json
-from ansim_review.workflow.events import load_workflow_events
-from ansim_review.workflow.orchestrator import (
+from evidence_review import canonical_json
+from evidence_review.workflow.events import load_workflow_events
+from evidence_review.workflow.orchestrator import (
     ingest_pending_references,
     open_review_run,
     prepare_review_run,
     resume_review_run,
 )
-from ansim_review.workflow.request import decode_review_request
+from evidence_review.workflow.request import decode_review_request
 from tests.integration.workflow._reference_helpers import (
     FakeReferenceBackend,
     write_source,

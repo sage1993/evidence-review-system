@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parser_reproducibility.run_manifest import (
+from evidence_review.parser_reproducibility.run_manifest import (
     read_parser_run_metadata,
 )
-from ansim_review.parser_reproducibility.source_identity import (
+from evidence_review.parser_reproducibility.source_identity import (
     SourceIdentityAuthorityError,
     resolve_source_identity,
 )

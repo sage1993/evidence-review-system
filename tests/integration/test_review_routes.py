@@ -419,6 +419,7 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
             "display_status": "READY_FOR_HUMAN_REVIEW",
             "reviewer_id": None,
             "packet_hash": packet_hash,
+            "decision_record": None,
         }
         response = _request(
             f"{base}/runs/RUN-001/{TOKEN}/decision",
@@ -427,12 +428,12 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
             headers={"Content-Type": "application/json", "Origin": base},
         )
         assert json.loads(response)["display_status"] == "REVIEW_COMPLETED"
-        assert json.loads(
+        completed_status = json.loads(
             _request(f"{base}/runs/RUN-001/{TOKEN}/decision/status")
-        ) == {
-            "display_status": "REVIEW_COMPLETED",
-            "reviewer_id": None,
-            "packet_hash": packet_hash,
-        }
+        )
+        assert completed_status["display_status"] == "REVIEW_COMPLETED"
+        assert completed_status["reviewer_id"] is None
+        assert completed_status["packet_hash"] == packet_hash
+        assert completed_status["decision_record"]["decision"] == "SATISFIED"
     assert (run_dir / "final-review-packet.json").read_bytes() == packet
     assert (run_dir / "review.html").read_bytes() == html_before
