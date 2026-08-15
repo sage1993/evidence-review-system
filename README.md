@@ -4,7 +4,7 @@ Evidence Review System (ERS) is an **offline, evidence-first document review run
 
 The project is designed for cases where a result must remain tied to the original document, page, coordinates, deterministic calculations/rules, and an explicit human decision rather than a free-form model answer.
 
-> **비개발자라면 아래 [비개발자용 사용방법](#비개발자용-사용방법)부터 보면 됩니다.**
+> **비개발자라면 [비개발자용 설치방법](#비개발자용-설치방법) → [비개발자용 사용방법](#비개발자용-사용방법) 순서로 보면 됩니다.**
 
 ## What it does
 
@@ -23,6 +23,110 @@ PDF
 ```
 
 The runtime does not make the final human decision. `READY_FOR_HUMAN_REVIEW` means that the evidence package is ready to inspect; it does **not** mean approved, compliant, or correct.
+
+## 비개발자용 설치방법
+
+아래 절차는 **Windows에서 Codex Desktop과 함께 ERS를 사용하는 일반 사용자 기준**입니다. 개발용 테스트 도구는 설치하지 않습니다.
+
+### 준비물
+
+- Windows 10 또는 Windows 11
+- **Python 3.13**
+- Git 또는 GitHub의 **Download ZIP** 기능
+- Codex Desktop
+- PDF 파싱이 필요한 경우 지원되는 로컬 parser — 기본 지원 parser는 **OpenDataLoader PDF (`opendataloader-pdf`)**
+
+> ERS의 공식 Python 지원 범위는 `>=3.13,<3.14`입니다. Python 3.11/3.12는 현재 지원 대상이 아닙니다.
+
+### 1. Python 3.13이 설치되어 있는지 확인합니다
+
+PowerShell을 열고 다음 명령을 실행합니다.
+
+```powershell
+py -3.13 --version
+```
+
+예시:
+
+```text
+Python 3.13.x
+```
+
+`Requested Python version (3.13) not installed` 또는 비슷한 오류가 나오면 Python 3.13을 먼저 설치해야 합니다.
+
+### 2. ERS 파일을 받습니다
+
+#### 방법 A — Git 사용
+
+PowerShell에서 다음 명령을 실행합니다.
+
+```powershell
+git clone https://github.com/sage1993/evidence-review-system.git
+Set-Location evidence-review-system
+```
+
+#### 방법 B — Git을 사용하지 않는 경우
+
+1. GitHub 저장소 페이지에서 **Code → Download ZIP**을 선택합니다.
+2. ZIP 파일의 압축을 풉니다.
+3. 압축을 푼 `evidence-review-system` 폴더를 엽니다.
+4. 해당 폴더에서 PowerShell을 엽니다.
+
+### 3. 전용 Python 환경을 만들고 ERS를 설치합니다
+
+저장소 폴더에서 다음 명령을 순서대로 실행합니다.
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install .
+```
+
+이 방식은 PowerShell의 가상환경 활성화 정책과 관계없이 동작하도록 `.venv` 안의 Python을 직접 사용합니다.
+
+설치가 완료되면 다음 명령으로 확인합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m evidence_review --version
+.\.venv\Scripts\python.exe -m evidence_review --help
+```
+
+현재 버전에서는 `--version` 결과가 다음과 같이 표시되어야 합니다.
+
+```text
+0.2.0
+```
+
+### 4. PDF parser를 준비합니다
+
+`$ERS_PDF`로 PDF를 새로 파싱하려면 ERS 외에 지원되는 로컬 parser가 필요합니다. 현재 기본 지원 parser는 **OpenDataLoader PDF (`opendataloader-pdf`)**입니다.
+
+ERS 자체는 parser가 없는 상태를 정상 파싱 완료로 처리하지 않습니다. 이미 검증된 parser artifact를 사용하는 경우에는 해당 artifact와 원본 PDF의 source hash가 일치해야 합니다.
+
+parser 설치 및 실행 환경은 ERS와 별개이므로, `$ERS_PDF` 실행 시 Codex가 parser를 찾지 못하면 먼저 parser 설치 상태를 해결해야 합니다.
+
+### 5. Codex Desktop에서 저장소 폴더를 엽니다
+
+Codex Desktop에서 방금 설치한 `evidence-review-system` 폴더를 작업 폴더로 엽니다.
+
+이 저장소의 사용자용 Codex 진입점은 두 개입니다.
+
+```text
+$ERS_PDF 이 PDF 파싱해줘
+$ERS_REVIEW <검토 질문>
+```
+
+먼저 PDF를 준비한 뒤 검토 질문을 실행합니다.
+
+### 6. 설치 확인이 안 될 때
+
+- **`py -3.13`을 찾지 못함** → Python 3.13 설치 여부를 확인합니다.
+- **`git`을 찾지 못함** → Git을 설치하거나 GitHub의 **Download ZIP** 방식을 사용합니다.
+- **`No module named evidence_review`** → 현재 폴더가 저장소 루트인지 확인한 뒤 `\.venv\Scripts\python.exe -m pip install .`을 다시 실행합니다.
+- **`$ERS_PDF`에서 parser를 찾지 못함** → OpenDataLoader PDF 등 지원 parser 설치 상태를 확인합니다.
+- **설치는 됐지만 Codex가 프로젝트를 찾지 못함** → Codex Desktop에서 `evidence-review-system` 저장소 폴더 자체를 작업 폴더로 열었는지 확인합니다.
+
+개발·테스트 환경까지 구성하려는 경우 아래 [개발자용 설치 및 검증 환경](#개발자용-설치-및-검증-환경)을 참고합니다.
 
 ## 비개발자용 사용방법
 
@@ -160,7 +264,7 @@ $ERS_REVIEW 3페이지와 17페이지의 기준이 서로 충돌하는지 검토
 
 Runtime dependencies are declared in `pyproject.toml`.
 
-## Installation
+## 개발자용 설치 및 검증 환경
 
 ```powershell
 git clone https://github.com/sage1993/evidence-review-system.git
