@@ -57,6 +57,41 @@ def question_plan_sha256(plan: QuestionPlan) -> str:
     return sha256_json(question_plan_document(plan))
 
 
+def bind_question_plan_to_review_request(
+    request: dict[str, object], plan: QuestionPlan
+) -> dict[str, object]:
+    """Bind a validated plan identity and issue structure into an immutable review request."""
+    question = request.get("question")
+    if question != plan.original_question:
+        raise ValueError("review request question does not match question plan")
+    inputs_value = request.get("inputs")
+    if not isinstance(inputs_value, dict) or not all(
+        isinstance(key, str) for key in inputs_value
+    ):
+        raise ValueError("review request inputs must be an object")
+    bound = dict(request)
+    inputs = dict(inputs_value)
+    inputs["question_plan_sha256"] = question_plan_sha256(plan)
+    inputs["question_issues"] = [
+        {
+            "id": issue.id,
+            "question": issue.question,
+            "depends_on": list(issue.depends_on),
+        }
+        for issue in plan.issues
+    ]
+    inputs["question_facts"] = [
+        {"id": item.id, "text": item.text, "polarity": item.polarity}
+        for item in plan.facts
+    ]
+    inputs["question_assumptions"] = [
+        {"id": item.id, "text": item.text, "polarity": item.polarity}
+        for item in plan.assumptions
+    ]
+    bound["inputs"] = inputs
+    return bound
+
+
 def query_request_from_plan(
     plan: QuestionPlan, *, user_expansions: Sequence[str] = ()
 ) -> dict[str, object]:
