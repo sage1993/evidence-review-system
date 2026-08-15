@@ -33,6 +33,11 @@ _UNIT_CANONICAL = {
     "센티미터": "cm",
     "미터": "m",
 }
+_EXPLICIT_USER_LEGAL_CITATION = re.compile(
+    r"제\d+조(?:의\d+)?(?:\s*제\d+항)?(?:\s*제\d+호)?"
+    r"|제\d+(?:항|호)"
+    r"|별표\s*\d+"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +260,40 @@ def _numeric_literals(text: str) -> set[str]:
     return result
 
 
+def _legal_citation_key(value: str) -> str:
+    return re.sub(r"\s+", "", _normalize_text(value))
+
+
+def _explicit_user_legal_citations(text: str) -> set[str]:
+    return {
+        _legal_citation_key(match.group(0))
+        for match in _EXPLICIT_USER_LEGAL_CITATION.finditer(text)
+    }
+
+
+def _validate_user_legal_citations(
+    original_question: str,
+    legal_anchors: tuple[LegalAnchor, ...],
+) -> None:
+    required = _explicit_user_legal_citations(original_question)
+    if not required:
+        return
+    user_anchor_keys = {
+        _legal_citation_key(anchor.text)
+        for anchor in legal_anchors
+        if anchor.source == "user"
+    }
+    missing = sorted(
+        citation
+        for citation in required
+        if not any(citation in anchor for anchor in user_anchor_keys)
+    )
+    if missing:
+        raise ValueError(
+            "question_plan drops explicit user legal citation: " + ", ".join(missing)
+        )
+
+
 def _validate_numeric_preservation(
     original_question: str,
     facts: tuple[QuestionFact, ...],
@@ -374,6 +413,7 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
         if anchor.source == "user" and _normalize_text(anchor.text) not in normalized_expected:
             raise ValueError("user legal anchor is not present in original_question")
 
+    _validate_user_legal_citations(normalized_expected, legal_anchors)
     _validate_numeric_preservation(
         normalized_expected,
         facts,
