@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from evidence_review.cli_parser import build_parser
 from evidence_review.question_planner_cli import dispatch_question_planning
 
 
@@ -138,3 +139,36 @@ def test_prepare_cli_reports_retrieval_no_evidence_after_valid_plan(
     document = json.loads(capsys.readouterr().out)
     assert document["status"] == "RETRIEVAL_NO_EVIDENCE"
     assert document["retrieval_guidance_path"] == str(guidance)
+
+
+def test_shared_cli_parser_exposes_question_planner_stages(tmp_path: Path) -> None:
+    parser = build_parser()
+
+    prepare_plan = parser.parse_args(
+        [
+            "review-question",
+            "prepare-plan",
+            "--workspace",
+            str(tmp_path),
+            "--question",
+            "질문",
+        ]
+    )
+    assert prepare_plan.review_question_stage == "prepare-plan"
+    assert prepare_plan.workspace == tmp_path
+
+    plan_output = tmp_path / "question-plan-output.json"
+    prepare = parser.parse_args(
+        [
+            "review-question",
+            "prepare",
+            "--workspace",
+            str(tmp_path),
+            "--question",
+            "질문",
+            "--question-plan-output",
+            str(plan_output),
+        ]
+    )
+    assert prepare.review_question_stage == "prepare"
+    assert prepare.question_plan_output == plan_output
