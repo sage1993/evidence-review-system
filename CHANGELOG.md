@@ -14,9 +14,12 @@ The project follows semantic versioning for public releases where practical.
 - Public repository contribution, security, issue, and pull-request guidance has been added.
 - ANSIM-specific governed rule artifacts moved from the repository root into `tests/fixtures/ansim/rules/`; runtime workspaces continue to own their governed `rules/` trees.
 - Codex bundles now publish only the current `ers-pdf` and `ers-review` workflow skills.
+- Natural-language `$ERS_REVIEW` questions now pass through an external, bounded AI Question Planner handoff before deterministic retrieval. The validated QuestionPlan is immutable run input; the planner cannot decide the answer or create evidence authority.
+- Retrieval now preserves deterministic `issue → search_request → evidence` lineage without changing channel weights or fusion ranking.
 
 ### Fixed
 
+- Natural-language whole-sentence retrieval false no-evidence behavior under #112 by validating bounded semantic search requests before the existing deterministic retrieval/review pipeline.
 - Multi-document Review Workspace provenance and page navigation under #105.
 - Persisted append-only human-decision display/state under #107.
 - Protected page-image lazy delivery while preserving standalone archive HTML under #108.
@@ -28,6 +31,7 @@ The project follows semantic versioning for public releases where practical.
 
 - Added Apache License 2.0 and public vulnerability-reporting guidance.
 - Preserved loopback-only protected review and serve-time page-image verification.
+- Planner output is treated as untrusted input: unknown conclusion/decision/confidence fields, malformed issue graphs, invalid references, and unbounded plans fail closed before retrieval.
 
 ### Removed
 
@@ -39,6 +43,7 @@ The project follows semantic versioning for public releases where practical.
 ### Deprecated
 
 - `ansim-review` and `python -m ansim_review` are compatibility names only and are not the implementation namespace.
+
 ## [0.1.0] - 2026-08-12
 
 Initial sanitized source-only release. The release removed original PDFs, parser outputs, extracted images, visual artifacts, database files, and CSV exports from rewritten Git history/release archives and established the first packaged Evidence Review System release line.
