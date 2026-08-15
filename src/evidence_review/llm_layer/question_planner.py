@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
+from collections.abc import Mapping
 
 from evidence_review.contracts.question_plan import (
     QUESTION_PLAN_FORMAT,
@@ -34,5 +35,11 @@ def build_question_planner_bundle(question: str) -> dict[str, object]:
 
 
 def validate_question_planner_output(value: object, question: str) -> QuestionPlan:
-    """Fail closed on untrusted planner output before retrieval starts."""
+    """Fail closed on current external planner output before retrieval starts."""
+    if not isinstance(value, Mapping):
+        raise ValueError("question planner output must be an object")
+    if value.get("version") != QUESTION_PLAN_VERSION:
+        raise ValueError(
+            f"question planner output must use question plan version {QUESTION_PLAN_VERSION}"
+        )
     return decode_question_plan(value, question)
