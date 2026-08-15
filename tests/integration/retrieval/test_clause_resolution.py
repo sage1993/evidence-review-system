@@ -96,7 +96,7 @@ def test_clause_phrase_search_uses_semantic_clause_text_not_element_text(tmp_pat
         connection = store.require_connection()
         build_fts_index(connection)
 
-        hits = search_clause_phrase(connection, "기본용적률은 400% 이하")
+        hits = search_clause_phrase(connection, "기본용적률은 400%")
 
         assert [hit.clause_id for hit in hits] == ["C-FAR"]
         assert hits[0].title == "준공업지역 용적률"
@@ -113,7 +113,7 @@ def test_clause_search_primitives_are_deterministic(tmp_path: Path) -> None:
         assert [hit.clause_id for hit in search_clause_exact(connection, "준공업지역 용적률")] == [
             "C-FAR"
         ]
-        assert [hit.clause_id for hit in search_clause_token_and(connection, "산업부지 확보비율")] == [
+        assert [hit.clause_id for hit in search_clause_token_and(connection, "산업부지 통합심의")] == [
             "C-INDUSTRIAL"
         ]
         assert [
@@ -127,7 +127,7 @@ def test_resolver_materializes_only_verified_citation_grade_evidence(tmp_path: P
         ingest_snapshot(store, _snapshot())
         connection = store.require_connection()
         build_fts_index(connection)
-        clause_hit = search_clause_phrase(connection, "기본용적률은 400% 이하")[0]
+        clause_hit = search_clause_phrase(connection, "기본용적률은 400%")[0]
 
         evidence = resolve_clause_to_evidence(connection, clause_hit, max_source_elements=2)
 
@@ -143,7 +143,7 @@ def test_unlinked_clause_remains_searchable_but_cannot_fabricate_citation(tmp_pa
         ingest_snapshot(store, _snapshot(include_links=False))
         connection = store.require_connection()
         build_fts_index(connection)
-        clause_hit = search_clause_phrase(connection, "산업부지 확보비율")[0]
+        clause_hit = search_clause_phrase(connection, "산업부지")[0]
 
         assert clause_hit.clause_id == "C-INDUSTRIAL"
         assert resolve_clause_to_evidence(connection, clause_hit) == ()
@@ -154,6 +154,6 @@ def test_resolver_rejects_invalid_limit(tmp_path: Path) -> None:
         ingest_snapshot(store, _snapshot())
         connection = store.require_connection()
         build_fts_index(connection)
-        clause_hit = search_clause_phrase(connection, "기본용적률은 400% 이하")[0]
+        clause_hit = search_clause_phrase(connection, "기본용적률은 400%")[0]
 
         assert resolve_clause_to_evidence(connection, clause_hit, max_source_elements=0) == ()
