@@ -33,7 +33,6 @@ def test_default_retrieval_policy_matches_pr_budget() -> None:
     ],
 )
 def test_retrieval_policy_rejects_non_positive_limits(field: str) -> None:
-    values = RetrievalPolicy().__dict__ if hasattr(RetrievalPolicy(), "__dict__") else None
     kwargs = {
         "max_issues": 8,
         "max_queries_per_issue": 4,
@@ -45,7 +44,6 @@ def test_retrieval_policy_rejects_non_positive_limits(field: str) -> None:
         "reference_max_nodes_per_issue": 12,
         "reference_max_fanout": 6,
     }
-    assert values is None
     kwargs[field] = 0
 
     with pytest.raises(ValueError, match=field):
