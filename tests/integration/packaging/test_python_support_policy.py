@@ -19,10 +19,18 @@ def test_current_user_docs_do_not_require_python_311() -> None:
     current_docs = (
         ROOT / "README.md",
         ROOT / "AGENTS.md",
+        ROOT / "CONTRIBUTING.md",
         ROOT / "docs" / "CODEX_WORKFLOW.md",
         ROOT / "docs" / "OFFLINE_EXECUTION.md",
+        ROOT / "skills" / "ers-pdf" / "SKILL.md",
+        ROOT / "skills" / "ers-review" / "SKILL.md",
     )
-    prohibited = ("py -3.11", "python3.11", "Python 3.11/3.13")
+    prohibited = (
+        "py -3.11",
+        "python3.11",
+        "Python 3.11/3.13",
+        "Python 3.11 and Python 3.13",
+    )
 
     for path in current_docs:
         text = path.read_text(encoding="utf-8")
