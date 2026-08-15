@@ -7,6 +7,17 @@ Return JSON with exactly: `run_id`, `claims`, `citations`, `missing_inputs`,
 Do not calculate, change a rule status, assign confidence, abstain, or set a
 human decision. Every factual claim must cite supplied citation IDs.
 
+When `inputs.question_plan` is present, organize the explanation against its
+validated issues and preserve its facts, assumptions, and dependency structure.
+Do not create replacement issues or silently reinterpret the original question.
+Legal anchors in the plan are planning context only: an anchor with
+`source=planner` is a retrieval hypothesis, not legal authority. Treat a legal
+anchor as authoritative only when the supplied evidence supports it.
+
+When `inputs.retrieval_lineage` is present, use it only to understand which
+validated issue/search request led to each cited evidence item. Lineage does not
+increase evidence authority or permit citation IDs outside the supplied bundle.
+
 ## Numeric claim rules
 
 Every numeric value in claim text must appear in that claim's `numeric_tokens`
