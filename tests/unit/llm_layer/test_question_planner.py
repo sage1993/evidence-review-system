@@ -284,3 +284,60 @@ def test_decode_question_plan_allows_planner_inferred_anchor_not_in_question() -
     plan = decode_question_plan(raw, QUESTION)
 
     assert plan.legal_anchors[-1].source == "planner"
+
+
+def test_decode_question_plan_rejects_dropped_user_numeric_literals() -> None:
+    question = "역 승강장 경계에서 300m 떨어진 1,500㎡ 부지의 기준을 검토해줘"
+    raw = {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": question,
+        "facts": [],
+        "assumptions": [],
+        "issues": [{"id": "I1", "question": "부지 기준은 무엇인가", "depends_on": []}],
+        "legal_anchors": [],
+        "search_requests": [
+            {
+                "id": "S1",
+                "issue_ids": ["I1"],
+                "text": "부지 기준",
+                "kind": "phrase",
+                "source": "planner",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="numeric literal"):
+        decode_question_plan(raw, question)
+
+
+def test_decode_question_plan_accepts_numeric_literals_preserved_in_structure() -> None:
+    question = "역 승강장 경계에서 300m 떨어진 1,500㎡ 부지의 기준을 검토해줘"
+    raw = {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": question,
+        "facts": [
+            {"id": "F1", "text": "역 승강장 경계에서 300m 떨어져 있다", "polarity": "positive"},
+            {"id": "F2", "text": "부지 면적은 1500㎡이다", "polarity": "positive"},
+        ],
+        "assumptions": [],
+        "issues": [{"id": "I1", "question": "부지 기준은 무엇인가", "depends_on": []}],
+        "legal_anchors": [],
+        "search_requests": [
+            {
+                "id": "S1",
+                "issue_ids": ["I1"],
+                "text": "부지 기준",
+                "kind": "phrase",
+                "source": "planner",
+            }
+        ],
+    }
+
+    plan = decode_question_plan(raw, question)
+
+    assert [item.text for item in plan.facts] == [
+        "역 승강장 경계에서 300m 떨어져 있다",
+        "부지 면적은 1500㎡이다",
+    ]
