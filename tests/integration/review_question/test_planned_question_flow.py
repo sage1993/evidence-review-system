@@ -142,10 +142,7 @@ def test_planned_questions_retrieve_bounded_evidence_with_lineage(
     }
     assert set(expected_ids) <= set(hits)
 
-    planned_terms = {
-        request.text: request.id
-        for request in plan.search_requests
-    }
+    planned_terms = {request.text: request.id for request in plan.search_requests}
     query_payload = _mapping(evidence_query.get("query"), "evidence_query.query")
     terms = _sequence(query_payload.get("terms"), "evidence_query.query.terms")
     llm_terms = {
@@ -172,8 +169,20 @@ def test_planned_questions_retrieve_bounded_evidence_with_lineage(
     issues = _sequence(plan_projection.get("issues"), "track_a.inputs.question_plan.issues")
     assert len(issues) == expected_issue_count
     assert inputs.get("question_plan_sha256")
-    retrieval_lineage = _mapping(inputs.get("retrieval_lineage"), "track_a.inputs.retrieval_lineage")
-    assert set(expected_ids) <= set(retrieval_lineage)
+
+    lineage_items = _sequence(
+        inputs.get("retrieval_lineage"), "track_a.inputs.retrieval_lineage"
+    )
+    lineage_by_evidence = {
+        item["evidence_id"]: item
+        for item in (_mapping(value, "retrieval_lineage.item") for value in lineage_items)
+    }
+    assert set(expected_ids) <= set(lineage_by_evidence)
+    for evidence_id in expected_ids:
+        assert _sequence(
+            lineage_by_evidence[evidence_id].get("matches"),
+            f"retrieval_lineage.{evidence_id}.matches",
+        )
 
 
 def test_issue_112_corpus_does_not_contain_the_full_reproduction_question() -> None:
