@@ -199,10 +199,14 @@ BEGIN
     SELECT c.id, l.target_id, l.relation_type
     FROM clauses c
     JOIN links l ON l.source_id = c.id
-    JOIN retrieval_records rr ON rr.evidence_id = l.target_id
+    JOIN retrieval_records rr
+      ON rr.evidence_id = l.target_id
+     AND rr.revision_id = c.revision_id
     UNION
     SELECT c.id, l.source_id, l.relation_type
     FROM clauses c
     JOIN links l ON l.target_id = c.id
-    JOIN retrieval_records rr ON rr.evidence_id = l.source_id;
+    JOIN retrieval_records rr
+      ON rr.evidence_id = l.source_id
+     AND rr.revision_id = c.revision_id;
 END;
