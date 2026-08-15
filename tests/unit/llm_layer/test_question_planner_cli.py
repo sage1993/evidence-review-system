@@ -111,11 +111,18 @@ def test_prepare_cli_reports_retrieval_no_evidence_after_valid_plan(
         json.dumps(
             {
                 "format": "evidence-review/question-plan",
-                "version": 1,
+                "version": 2,
                 "original_question": "질문",
                 "facts": [],
                 "assumptions": [],
-                "issues": [{"id": "I1", "question": "무엇인가", "depends_on": []}],
+                "issues": [
+                    {
+                        "id": "I1",
+                        "question": "무엇인가",
+                        "depends_on": [],
+                        "required_evidence_roles": ["rule"],
+                    }
+                ],
                 "legal_anchors": [],
                 "search_requests": [
                     {
@@ -124,6 +131,7 @@ def test_prepare_cli_reports_retrieval_no_evidence_after_valid_plan(
                         "text": "검색어",
                         "kind": "phrase",
                         "source": "planner",
+                        "role": "rule",
                     }
                 ],
             },
