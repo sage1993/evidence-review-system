@@ -11,17 +11,20 @@ from pathlib import Path
 from typing import cast
 
 from evidence_review.abstention.gates import AbstentionContext, evaluate_abstention_gates
+from evidence_review.abstention.issue_policy import issue_results_require_global_abstain
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.scorer import FactorInput, score_confidence
 from evidence_review.contracts.codecs import (
     decode_calculation_result,
     decode_citation,
+    decode_issue_result,
     decode_review_packet,
     decode_rule_result,
 )
 from evidence_review.contracts.common import Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult
-from evidence_review.contracts.review import ConfidenceResult, ReviewPacket
+from evidence_review.contracts.question_plan import EvidenceRole
+from evidence_review.contracts.review import ConfidenceResult, IssueResult, ReviewPacket
 from evidence_review.llm_layer.track_a import (
     EvidenceExcerpt,
     TrackABundle,
@@ -114,12 +117,33 @@ def _decode_bundle(value: object) -> TrackABundle:
     evidence: list[EvidenceExcerpt] = []
     for index, item in enumerate(_sequence(payload.get("evidence"), "evidence")):
         evidence_payload = _mapping(item, f"evidence[{index}]")
-        if set(evidence_payload) != {"citation", "text"}:
-            raise ValueError(f"evidence[{index}] must contain citation and text")
+        allowed_evidence = {"citation", "text", "issue_ids", "role"}
+        unknown_evidence = sorted(set(evidence_payload) - allowed_evidence)
+        if unknown_evidence or not {"citation", "text"}.issubset(evidence_payload):
+            raise ValueError(
+                f"evidence[{index}] must contain citation/text and only supported lineage fields"
+            )
+        issue_ids = tuple(
+            _string(value, f"evidence[{index}].issue_ids[{item_index}]")
+            for item_index, value in enumerate(
+                _sequence(evidence_payload.get("issue_ids", []), f"evidence[{index}].issue_ids")
+            )
+        )
+        if len(issue_ids) != len(set(issue_ids)):
+            raise ValueError(f"evidence[{index}].issue_ids must be unique")
+        role_value = evidence_payload.get("role")
+        role: EvidenceRole | None = None
+        if role_value is not None:
+            role_text = _string(role_value, f"evidence[{index}].role")
+            if role_text not in {"supporting_fact", "rule"}:
+                raise ValueError(f"unsupported evidence[{index}].role: {role_text}")
+            role = cast(EvidenceRole, role_text)
         evidence.append(
             EvidenceExcerpt(
                 citation=decode_citation(evidence_payload.get("citation")),
                 text=_string(evidence_payload.get("text"), f"evidence[{index}].text"),
+                issue_ids=issue_ids,
+                role=role,
             )
         )
     rules = tuple(
@@ -227,22 +251,36 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
     }
 
 
+def _issue_result_document(result: IssueResult) -> dict[str, object]:
+    return {
+        "issue_id": result.issue_id,
+        "status": result.status,
+        "evidence_ids": list(result.evidence_ids),
+        "covered_roles": list(result.covered_roles),
+        "missing_roles": list(result.missing_roles),
+        "gap_codes": list(result.gap_codes),
+    }
+
+
 def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
     """Return the canonical final machine packet with a null human decision."""
+    claim_documents: list[dict[str, object]] = []
+    for claim in packet.claims:
+        claim_document: dict[str, object] = {
+            "claim_id": claim.claim_id,
+            "text": claim.text,
+            "citation_ids": list(claim.citation_ids),
+            "numeric_tokens": list(claim.numeric_tokens),
+        }
+        if claim.issue_ids:
+            claim_document["issue_ids"] = list(claim.issue_ids)
+        claim_documents.append(claim_document)
     document: dict[str, object] = {
         "run_id": packet.run_id,
         "status": packet.status,
         "human_decision": None,
         "question": packet.question,
-        "claims": [
-            {
-                "claim_id": claim.claim_id,
-                "text": claim.text,
-                "citation_ids": list(claim.citation_ids),
-                "numeric_tokens": list(claim.numeric_tokens),
-            }
-            for claim in packet.claims
-        ],
+        "claims": claim_documents,
         "calculations": [_calculation_document(result) for result in packet.calculations],
         "rules": [_rule_document(result) for result in packet.rules],
         "confidence": (
@@ -256,6 +294,10 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
         document["snapshot_sha256"] = packet.snapshot_sha256
     if "missing_inputs" in packet._serialized_lineage_fields:
         document["missing_inputs"] = list(packet.missing_inputs)
+    if "issue_results" in packet._serialized_lineage_fields:
+        document["issue_results"] = [
+            _issue_result_document(result) for result in packet.issue_results
+        ]
     return document
 
 
@@ -267,6 +309,20 @@ def _finding_codes(track_b_output: object) -> set[str]:
         for code in _sequence(audit.get("finding_codes", []), "finding_codes"):
             codes.add(_string(code, "finding_code"))
     return codes
+
+
+def _issue_results_from_inputs(inputs: Mapping[str, object]) -> tuple[IssueResult, ...]:
+    value = inputs.get("issue_coverage")
+    if value is None:
+        return ()
+    results = tuple(
+        decode_issue_result(item)
+        for item in _sequence(value, "inputs.issue_coverage")
+    )
+    issue_ids = [item.issue_id for item in results]
+    if len(issue_ids) != len(set(issue_ids)):
+        raise ValueError("inputs.issue_coverage must contain unique issue identifiers")
+    return results
 
 
 def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
@@ -298,11 +354,17 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
             | {item for result in bundle.rules for item in result.missing_inputs}
         )
     )
+    issue_results = _issue_results_from_inputs(bundle.inputs)
     finding_codes = _finding_codes(track_b_output)
     approved = set(bundle.approved_rule_result_ids)
+    missing_required_input = (
+        issue_results_require_global_abstain(issue_results)
+        if issue_results
+        else bool(missing_inputs)
+    )
     context = AbstentionContext(
         confidence_score=confidence.score,
-        missing_required_input=bool(missing_inputs),
+        missing_required_input=missing_required_input,
         uncited_or_unresolved_claim=audit.overall_disposition == "INCOMPLETE"
         or bool({"CITATION_MISMATCH", "UNSUPPORTED_CLAIM", "MISSING_EXCEPTION"} & finding_codes),
         unapproved_rule=any(result.rule_result_id not in approved for result in bundle.rules),
@@ -317,6 +379,9 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
     reasons = evaluate_abstention_gates(context)
     if reasons:
         confidence = replace(confidence, level="LOW", hard_gate_failures=reasons)
+    lineage_fields = ("snapshot_sha256", "missing_inputs")
+    if issue_results:
+        lineage_fields += ("issue_results",)
     packet = ReviewPacket(
         run_id=manifest_run_id,
         status="ABSTAIN" if reasons else "READY_FOR_HUMAN_REVIEW",
@@ -329,6 +394,8 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         abstention_reasons=reasons,
         snapshot_sha256=snapshot_sha256,
         missing_inputs=missing_inputs,
+        issue_results=issue_results,
+        _serialized_lineage_fields=lineage_fields,
     )
     return packet
 
