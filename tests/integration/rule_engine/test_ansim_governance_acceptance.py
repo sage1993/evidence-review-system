@@ -45,8 +45,8 @@ def test_ansim_rules_have_complete_passing_governance_authority() -> None:
         assert entry.scope.jurisdiction is None
         assert entry.scope.program is None
 
-        approval_path = FIXTURE_ROOT / entry.approval_path
-        report_path = FIXTURE_ROOT / entry.golden_report_path
+        approval_path = REPOSITORY_ROOT / entry.approval_path
+        report_path = REPOSITORY_ROOT / entry.golden_report_path
         assert _sha256(approval_path) == entry.approval_sha256
         assert _sha256(report_path) == entry.golden_report_sha256
 
@@ -57,17 +57,17 @@ def test_ansim_rules_have_complete_passing_governance_authority() -> None:
         assert report.case_count >= 2
         assert report.passed_count == report.case_count
         assert report.failed_count == 0
-        verify_manifest_entry(FIXTURE_ROOT, entry, mode="RUNTIME")
+        verify_manifest_entry(REPOSITORY_ROOT, entry, mode="RUNTIME")
 
 
 def test_ansim_scope_selects_six_and_other_scope_abstains() -> None:
     selected = load_governed_active_rules(
-        FIXTURE_ROOT,
+        REPOSITORY_ROOT,
         MANIFEST,
         RuleSelectionContext(document_family="ANSIM"),
     )
     abstained = load_governed_active_rules(
-        FIXTURE_ROOT,
+        REPOSITORY_ROOT,
         MANIFEST,
         RuleSelectionContext(document_family="OTHER"),
     )

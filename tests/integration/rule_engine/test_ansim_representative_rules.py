@@ -55,7 +55,7 @@ def _evidence(rule):
 
 def _execute_cases() -> tuple[bytes, ...]:
     loaded = load_governed_active_rules(
-        FIXTURE_ROOT,
+        REPOSITORY_ROOT,
         MANIFEST,
         RuleSelectionContext(document_family="ANSIM"),
     )

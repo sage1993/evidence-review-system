@@ -39,11 +39,11 @@ def _workspace(root: Path) -> None:
         repository_root / "tests/golden/questions/ansim_cases.json",
         root / "tests/golden/questions/ansim_cases.json",
     )
-    (root / "skills").mkdir()
-    for index in range(1, 6):
-        skill = root / f"skills/0{index}-skill"
-        skill.mkdir()
-        (skill / "SKILL.md").write_text(f"# skill {index}", encoding="utf-8")
+    for name in ("ers-pdf", "ers-review"):
+        shutil.copytree(
+            repository_root / "skills" / name,
+            root / "skills" / name,
+        )
     (root / "README.md").write_text("# Release fixture\n", encoding="utf-8")
     (root / "AGENTS.md").write_text("# agents\n", encoding="utf-8")
     (root / "docs").mkdir()
