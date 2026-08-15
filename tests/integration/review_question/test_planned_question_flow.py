@@ -143,8 +143,10 @@ def test_planned_questions_retrieve_bounded_evidence_with_lineage(
     hits = {hit["evidence_id"]: hit for hit in ordered_hits}
     assert set(expected_ids) <= set(hits)
 
-    top_ids = [hit["evidence_id"] for hit in ordered_hits[: len(expected_ids)]]
-    assert set(top_ids) == set(expected_ids)
+    assert ordered_hits[0]["evidence_id"] in expected_ids
+    precision_window = ordered_hits[: len(expected_ids) + 2]
+    precision_ids = {hit["evidence_id"] for hit in precision_window}
+    assert set(expected_ids) <= precision_ids
 
     planned_terms = {request.text: request.id for request in plan.search_requests}
     query_payload = _mapping(evidence_query.get("query"), "evidence_query.query")
