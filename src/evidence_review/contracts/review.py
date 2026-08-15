@@ -118,7 +118,7 @@ class ReviewPacket:
     missing_inputs: tuple[str, ...] = ()
     issue_results: tuple[IssueResult, ...] = ()
     _serialized_lineage_fields: tuple[str, ...] = field(
-        default=("snapshot_sha256", "missing_inputs", "issue_results"),
+        default=("snapshot_sha256", "missing_inputs"),
         compare=False,
         repr=False,
     )
