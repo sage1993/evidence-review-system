@@ -21,8 +21,13 @@ from evidence_review.question_planning import (
 )
 from evidence_review.retrieval.bundle import build_evidence_bundle
 from evidence_review.retrieval.coverage import CoverageReport, evaluate_issue_coverage
+from evidence_review.retrieval.graph import MissingReference
 from evidence_review.retrieval.index import require_fresh_index
-from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
+from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle, retrieve_issue_bundle
+from evidence_review.retrieval.reference_projection import (
+    apply_reference_lineage_to_bundle_document,
+)
+from evidence_review.retrieval.trace import retrieval_trace_document
 from evidence_review.review_question import (
     PreparedReviewQuestion,
     _evidence_database,
@@ -34,6 +39,18 @@ from evidence_review.review_question import (
     _write_or_identical,
     build_review_run_request,
 )
+
+
+def _reference_missing_by_issue(
+    bundle: IssueRetrievalBundle,
+) -> dict[str, tuple[MissingReference, ...]]:
+    grouped: dict[str, list[MissingReference]] = {}
+    for item in bundle.reference_missing:
+        grouped.setdefault(item.issue_id, []).append(item.reference)
+    return {
+        issue_id: tuple(values)
+        for issue_id, values in sorted(grouped.items())
+    }
 
 
 def prepare_planned_review_question(
@@ -59,6 +76,7 @@ def prepare_planned_review_question(
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
     coverage_report: CoverageReport | None = None
+    trace_document: dict[str, object] | None = None
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
         connection = store.require_connection()
@@ -67,11 +85,21 @@ def prepare_planned_review_question(
         else:
             snapshot_hash = require_fresh_index(connection)
             issue_bundle = retrieve_issue_bundle(connection, question_plan)
-            coverage_report = evaluate_issue_coverage(question_plan, issue_bundle)
+            coverage_report = evaluate_issue_coverage(
+                question_plan,
+                issue_bundle,
+                reference_missing_by_issue=_reference_missing_by_issue(issue_bundle),
+            )
             bundle = issue_retrieval_bundle_document(
                 question_plan,
                 issue_bundle,
                 snapshot_hash=snapshot_hash,
+            )
+            bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
+            trace_document = retrieval_trace_document(
+                question_plan,
+                issue_bundle,
+                coverage_report,
             )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
@@ -113,6 +141,8 @@ def prepare_planned_review_question(
         question_plan_document(question_plan),
     )
     _write_or_identical(run_directory / "evidence-query.json", bundle)
+    if trace_document is not None:
+        _write_or_identical(run_directory / "retrieval-trace.json", trace_document)
 
     guidance_path: Path | None = None
     query_payload = _mapping(bundle["query"], "evidence_bundle.query")
