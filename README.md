@@ -4,8 +4,6 @@ Evidence Review System (ERS) is an **offline, evidence-first document review run
 
 The project is designed for cases where a result must remain tied to the original document, page, coordinates, deterministic calculations/rules, and an explicit human decision rather than a free-form model answer.
 
-> **비개발자라면 [비개발자용 설치방법](#비개발자용-설치방법) → [비개발자용 사용방법](#비개발자용-사용방법) 순서로 보면 됩니다.**
-
 ## What it does
 
 ```text
@@ -24,9 +22,12 @@ PDF
 
 The runtime does not make the final human decision. `READY_FOR_HUMAN_REVIEW` means that the evidence package is ready to inspect; it does **not** mean approved, compliant, or correct.
 
-## 비개발자용 설치방법
+---
+
+## 설치방법
 
 아래 절차는 **Windows에서 Codex Desktop과 함께 ERS를 사용하는 일반 사용자 기준**입니다. 개발용 테스트 도구는 설치하지 않습니다.
+이 깃허브 주소 복사해서 Codex에게 설치 해달라고 하면 알아서 설치해줍니다.
 
 ### 준비물
 
@@ -128,7 +129,9 @@ $ERS_REVIEW <검토 질문>
 
 개발·테스트 환경까지 구성하려는 경우 아래 [개발자용 설치 및 검증 환경](#개발자용-설치-및-검증-환경)을 참고합니다.
 
-## 비개발자용 사용방법
+---
+
+## 사용방법
 
 일반 사용자는 내부 JSON 파일이나 Track A/B 중간 파일을 직접 만들거나 수정할 필요가 없습니다. **Codex Desktop에서 PDF를 준비한 뒤 아래 두 단축어를 사용하는 것이 기본 흐름**입니다.
 
@@ -245,6 +248,8 @@ $ERS_REVIEW 3페이지와 17페이지의 기준이 서로 충돌하는지 검토
 - **결정 저장이 안 됨** → 보호된 Review Workspace인지, 현재 packet과 reviewer session이 유효한지 확인합니다.
 
 더 자세한 절차가 필요한 경우 [Codex workflow](docs/CODEX_WORKFLOW.md)와 [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)를 참고합니다.
+
+---
 
 ## Core design principles
 
