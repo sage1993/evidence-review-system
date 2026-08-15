@@ -13,6 +13,7 @@ from evidence_review.evidence.store import EvidenceStore
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from evidence_review.question_planning import (
     bind_question_plan_to_review_request,
+    bind_retrieval_lineage_to_review_request,
     query_request_from_plan,
 )
 from evidence_review.retrieval.bundle import build_evidence_bundle
@@ -59,6 +60,7 @@ def prepare_planned_review_question(
         approved_rule_result_ids=approved_rule_result_ids,
     )
     review_request = bind_question_plan_to_review_request(review_request, question_plan)
+    review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
     request_metric = finish_stage("review-request-build", request_timer)
 
     run_id = compute_run_id_from_request(review_request)
