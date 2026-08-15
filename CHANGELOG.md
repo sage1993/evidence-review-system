@@ -8,21 +8,28 @@ The project follows semantic versioning for public releases where practical.
 
 ### Changed
 
-- Official Python support is being narrowed to `>=3.13,<3.14`.
-- The canonical implementation namespace is being consolidated under `evidence_review`.
-- Public repository documentation and contribution/security policies are being prepared.
+- Official Python support is `>=3.13,<3.14`, with Python 3.13 as the sole development and release-validation interpreter.
+- Canonical implementation ownership moved to the `evidence_review` namespace; `ansim_review` remains only as a minimal compatibility surface.
+- Runtime command routing is consolidated behind one canonical dispatcher.
+- Public repository contribution, security, issue, and pull-request guidance has been added.
+- ANSIM-specific governed rule artifacts moved from the repository root into `tests/fixtures/ansim/rules/`; runtime workspaces continue to own their governed `rules/` trees.
+- Codex bundles now publish only the current `ers-pdf` and `ers-review` workflow skills.
 
 ### Fixed
 
-- Multi-document Review Workspace provenance and page-navigation correctness are scheduled under #105.
-- Persisted human-decision display/state is scheduled under #107.
-- Protected page-image delivery performance is scheduled under #108.
-- Web runtime manifest/path validation is hardened under #109.
-- CLI dispatch consolidation is scheduled under #110.
+- Multi-document Review Workspace provenance and page navigation under #105.
+- Persisted append-only human-decision display/state under #107.
+- Protected page-image lazy delivery while preserving standalone archive HTML under #108.
+- Web runtime manifest schema, path-containment, size, and hash validation under #109.
+- CLI dispatch equivalence and compatibility routing under #110.
+- Review Workspace responsive-layout regression against the #89 canonical three-column design.
 
 ### Removed
 
-- Historical issue-specific acceptance artifacts and one-off validation scripts that no longer belong in the active source tree are being removed under #106.
+- Historical issue-specific acceptance artifacts and one-off validation scripts that no longer belong in the active source tree.
+- Legacy five-stage PDF-to-Grist skill set and stale skill-validation output.
+- Grist Desktop QA documentation and obsolete Grist export/repair scripts from the active product tree.
+- Python 3.11 support and dual-version release-validation requirements.
 
 ## [0.1.0] - 2026-08-12
 
