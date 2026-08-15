@@ -16,6 +16,13 @@ HumanDecision = Literal[
 ]
 ConfidenceLevel = Literal["HIGH", "MEDIUM", "LOW"]
 AuditDisposition = Literal["ACCEPT", "REJECT", "INCOMPLETE"]
+IssueStatus = Literal[
+    "RESOLVED",
+    "CONDITIONAL",
+    "CONFLICT",
+    "SOURCE_MISSING",
+    "UNRESOLVED",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +34,18 @@ class Claim:
     citation_ids: tuple[str, ...]
     numeric_tokens: tuple[str, ...] = ()
     issue_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class IssueResult:
+    """Final deterministic coverage state for one planned review issue."""
+
+    issue_id: str
+    status: IssueStatus
+    evidence_ids: tuple[str, ...] = ()
+    covered_roles: tuple[str, ...] = ()
+    missing_roles: tuple[str, ...] = ()
+    gap_codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +116,9 @@ class ReviewPacket:
     abstention_reasons: tuple[str, ...]
     snapshot_sha256: str | None = None
     missing_inputs: tuple[str, ...] = ()
+    issue_results: tuple[IssueResult, ...] = ()
     _serialized_lineage_fields: tuple[str, ...] = field(
-        default=("snapshot_sha256", "missing_inputs"),
+        default=("snapshot_sha256", "missing_inputs", "issue_results"),
         compare=False,
         repr=False,
     )
