@@ -1,5 +1,8 @@
 from evidence_review.contracts.question_plan import decode_question_plan
-from evidence_review.question_planning import query_request_from_plan
+from evidence_review.question_planning import (
+    bind_question_plan_to_review_request,
+    query_request_from_plan,
+)
 from evidence_review.retrieval.query import normalize_query
 
 
@@ -97,3 +100,42 @@ def test_lineage_merges_when_multiple_planner_requests_normalize_to_same_term() 
     assert term.origin == "llm"
     assert term.search_request_ids == ("S1", "S2")
     assert term.issue_ids == ("I1", "I2")
+
+
+def test_bind_question_plan_to_review_request_adds_replay_identity_and_issues() -> None:
+    plan = _plan()
+    request = {
+        "format": "evidence-review/review-run-request",
+        "version": 1,
+        "question": plan.original_question,
+        "inputs": {"snapshot_hash": "a" * 64},
+    }
+
+    bound = bind_question_plan_to_review_request(request, plan)
+
+    assert request["inputs"] == {"snapshot_hash": "a" * 64}
+    inputs = bound["inputs"]
+    assert isinstance(inputs, dict)
+    assert inputs["snapshot_hash"] == "a" * 64
+    assert len(inputs["question_plan_sha256"]) == 64
+    assert inputs["question_issues"] == [
+        {"id": "I1", "question": "에어컨 설치기준은 무엇인가", "depends_on": []},
+        {"id": "I2", "question": "실외기 설치조건은 무엇인가", "depends_on": []},
+    ]
+
+
+def test_bind_question_plan_to_review_request_rejects_question_mismatch() -> None:
+    plan = _plan()
+    request = {
+        "format": "evidence-review/review-run-request",
+        "version": 1,
+        "question": "다른 질문",
+        "inputs": {"snapshot_hash": "a" * 64},
+    }
+
+    try:
+        bind_question_plan_to_review_request(request, plan)
+    except ValueError as error:
+        assert "question" in str(error)
+    else:
+        raise AssertionError("question mismatch accepted")
