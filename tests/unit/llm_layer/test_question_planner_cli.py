@@ -172,3 +172,25 @@ def test_shared_cli_parser_exposes_question_planner_stages(tmp_path: Path) -> No
     )
     assert prepare.review_question_stage == "prepare"
     assert prepare.question_plan_output == plan_output
+
+
+def test_canonical_command_dispatch_handles_prepare_plan(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    from evidence_review.command_dispatch import main as command_main
+
+    assert command_main(
+        [
+            "review-question",
+            "prepare-plan",
+            "--workspace",
+            str(tmp_path),
+            "--question",
+            "질문",
+        ]
+    ) == 0
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["stage"] == "prepare-plan"
+    assert document["status"] == "WAITING_QUESTION_PLAN"
