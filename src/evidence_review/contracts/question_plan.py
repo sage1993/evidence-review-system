@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from typing import Literal, cast
 
 QUESTION_PLAN_FORMAT = "evidence-review/question-plan"
-QUESTION_PLAN_VERSION = 1
+QUESTION_PLAN_VERSION = 2
+LEGACY_QUESTION_PLAN_VERSION = 1
 MAX_ISSUES = 8
 MAX_SEARCH_REQUESTS = 24
 MAX_LEGAL_ANCHORS = 20
@@ -17,6 +18,7 @@ MAX_LEGAL_ANCHORS = 20
 SearchKind = Literal["phrase", "legal_anchor", "concept_relation", "counterfactual"]
 AnchorSource = Literal["user", "planner"]
 Polarity = Literal["positive", "negative"]
+EvidenceRole = Literal["supporting_fact", "rule"]
 
 _NUMERIC_LITERAL = re.compile(
     r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
@@ -56,6 +58,7 @@ class QuestionIssue:
     id: str
     question: str
     depends_on: tuple[str, ...]
+    required_evidence_roles: tuple[EvidenceRole, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +78,7 @@ class SearchRequest:
     text: str
     kind: SearchKind
     source: AnchorSource
+    role: EvidenceRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,9 +155,41 @@ def _decode_fact(value: object, field: str) -> QuestionFact:
     )
 
 
-def _decode_issue(value: object, field: str) -> QuestionIssue:
+def _decode_evidence_roles(value: object, field: str) -> tuple[EvidenceRole, ...]:
+    role_values = _expect_sequence(value, field)
+    if not role_values:
+        raise ValueError(f"{field} must not be empty")
+    roles = tuple(
+        cast(
+            EvidenceRole,
+            _expect_literal(
+                item,
+                f"{field}[{index}]",
+                ("supporting_fact", "rule"),
+            ),
+        )
+        for index, item in enumerate(role_values)
+    )
+    if len(set(roles)) != len(roles):
+        raise ValueError(f"{field} contains duplicates")
+    return roles
+
+
+def _decode_issue(value: object, field: str, *, version: int) -> QuestionIssue:
     payload = _expect_mapping(value, field)
-    _reject_unknown(payload, {"id", "question", "depends_on"}, field)
+    if version == LEGACY_QUESTION_PLAN_VERSION:
+        _reject_unknown(payload, {"id", "question", "depends_on"}, field)
+        required_evidence_roles: tuple[EvidenceRole, ...] = ("rule",)
+    else:
+        _reject_unknown(
+            payload,
+            {"id", "question", "depends_on", "required_evidence_roles"},
+            field,
+        )
+        required_evidence_roles = _decode_evidence_roles(
+            payload.get("required_evidence_roles"),
+            f"{field}.required_evidence_roles",
+        )
     dependency_values = _expect_sequence(payload.get("depends_on"), f"{field}.depends_on")
     dependencies = tuple(
         _expect_string(item, f"{field}.depends_on[{index}]")
@@ -165,6 +201,7 @@ def _decode_issue(value: object, field: str) -> QuestionIssue:
         id=_expect_string(payload.get("id"), f"{field}.id"),
         question=_expect_string(payload.get("question"), f"{field}.question"),
         depends_on=dependencies,
+        required_evidence_roles=required_evidence_roles,
     )
 
 
@@ -180,9 +217,25 @@ def _decode_legal_anchor(value: object, field: str) -> LegalAnchor:
     )
 
 
-def _decode_search_request(value: object, field: str) -> SearchRequest:
+def _decode_search_request(value: object, field: str, *, version: int) -> SearchRequest:
     payload = _expect_mapping(value, field)
-    _reject_unknown(payload, {"id", "issue_ids", "text", "kind", "source"}, field)
+    if version == LEGACY_QUESTION_PLAN_VERSION:
+        _reject_unknown(payload, {"id", "issue_ids", "text", "kind", "source"}, field)
+        role: EvidenceRole = "rule"
+    else:
+        _reject_unknown(
+            payload,
+            {"id", "issue_ids", "text", "kind", "source", "role"},
+            field,
+        )
+        role = cast(
+            EvidenceRole,
+            _expect_literal(
+                payload.get("role"),
+                f"{field}.role",
+                ("supporting_fact", "rule"),
+            ),
+        )
     issue_values = _expect_sequence(payload.get("issue_ids"), f"{field}.issue_ids")
     issue_ids = tuple(
         _expect_string(item, f"{field}.issue_ids[{index}]")
@@ -208,6 +261,7 @@ def _decode_search_request(value: object, field: str) -> SearchRequest:
             AnchorSource,
             _expect_literal(payload.get("source"), f"{field}.source", ("user", "planner")),
         ),
+        role=role,
     )
 
 
@@ -323,7 +377,7 @@ def _validate_numeric_preservation(
 
 
 def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
-    """Decode and validate untrusted planner JSON against the original question."""
+    """Decode v1/v2 planner JSON into the current immutable v2 contract."""
     payload = _expect_mapping(value, "question_plan")
     allowed = {
         "format",
@@ -339,7 +393,8 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
 
     if _expect_string(payload.get("format"), "format") != QUESTION_PLAN_FORMAT:
         raise ValueError("unsupported question plan format")
-    if _expect_int(payload.get("version"), "version") != QUESTION_PLAN_VERSION:
+    version = _expect_int(payload.get("version"), "version")
+    if version not in (LEGACY_QUESTION_PLAN_VERSION, QUESTION_PLAN_VERSION):
         raise ValueError("unsupported question plan version")
 
     normalized_expected = _normalize_text(expected_question)
@@ -372,14 +427,15 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
         for index, item in enumerate(assumption_values)
     )
     issues = tuple(
-        _decode_issue(item, f"issues[{index}]") for index, item in enumerate(issue_values)
+        _decode_issue(item, f"issues[{index}]", version=version)
+        for index, item in enumerate(issue_values)
     )
     legal_anchors = tuple(
         _decode_legal_anchor(item, f"legal_anchors[{index}]")
         for index, item in enumerate(anchor_values)
     )
     search_requests = tuple(
-        _decode_search_request(item, f"search_requests[{index}]")
+        _decode_search_request(item, f"search_requests[{index}]", version=version)
         for index, item in enumerate(search_values)
     )
 
@@ -395,12 +451,20 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
 
     _validate_issue_graph(issues)
     issue_ids = {issue.id for issue in issues}
+    issues_by_id = {issue.id: issue for issue in issues}
     for request in search_requests:
         unknown = sorted(set(request.issue_ids) - issue_ids)
         if unknown:
             raise ValueError(
                 f"search request {request.id} references unknown issue: {unknown[0]}"
             )
+        for issue_id in request.issue_ids:
+            issue = issues_by_id[issue_id]
+            if request.role not in issue.required_evidence_roles:
+                raise ValueError(
+                    f"search request {request.id} role {request.role} "
+                    f"is not required by issue {issue_id}"
+                )
 
     normalized_requests: set[tuple[str, SearchKind]] = set()
     for request in search_requests:
@@ -434,7 +498,7 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
 
 
 def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
-    """Encode a validated plan as its canonical JSON-compatible v1 document."""
+    """Encode a validated plan as its canonical JSON-compatible v2 document."""
     return {
         "format": QUESTION_PLAN_FORMAT,
         "version": QUESTION_PLAN_VERSION,
@@ -447,7 +511,12 @@ def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
             for item in plan.assumptions
         ],
         "issues": [
-            {"id": item.id, "question": item.question, "depends_on": list(item.depends_on)}
+            {
+                "id": item.id,
+                "question": item.question,
+                "depends_on": list(item.depends_on),
+                "required_evidence_roles": list(item.required_evidence_roles),
+            }
             for item in plan.issues
         ],
         "legal_anchors": [
@@ -460,6 +529,7 @@ def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
                 "text": item.text,
                 "kind": item.kind,
                 "source": item.source,
+                "role": item.role,
             }
             for item in plan.search_requests
         ],
