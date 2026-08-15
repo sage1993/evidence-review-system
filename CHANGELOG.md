@@ -34,7 +34,9 @@ The project follows semantic versioning for public releases where practical.
 - Historical issue-specific acceptance artifacts and one-off validation scripts that no longer belong in the active source tree.
 - Legacy five-stage PDF-to-Grist skill set and stale skill-validation output.
 - Grist Desktop QA documentation and obsolete Grist export/repair scripts from the active product tree.
-- Python 3.11 support and dual-version release-validation requirements.### Deprecated
+- Python 3.11 support and dual-version release-validation requirements.
+
+### Deprecated
 
 - `ansim-review` and `python -m ansim_review` are compatibility names only and are not the implementation namespace.
 ## [0.1.0] - 2026-08-12
