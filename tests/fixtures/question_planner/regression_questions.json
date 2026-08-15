@@ -1,0 +1,629 @@
+{
+  "format": "evidence-review/question-planner-regressions",
+  "version": 1,
+  "cases": [
+    {
+      "id": "ISSUE112",
+      "level": "original",
+      "question": "에어컨 등 가전제품 설치기준 알려줘",
+      "expected_issue_count": 2,
+      "expected_evidence_ids": [
+        "E-AIRCON-INSTALL",
+        "E-AIRCON-OUTDOOR",
+        "E-APPLIANCE-INSTALL"
+      ],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "에어컨 등 가전제품 설치기준 알려줘",
+        "facts": [],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "가전제품의 일반적인 설치기준은 무엇인가",
+            "depends_on": []
+          },
+          {
+            "id": "I2",
+            "question": "에어컨과 실외기 설치 시 별도로 확인할 조건은 무엇인가",
+            "depends_on": []
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "가전제품 설치기준",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S2",
+            "issue_ids": ["I2"],
+            "text": "에어컨 설치기준",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S3",
+            "issue_ids": ["I2"],
+            "text": "에어컨 실외기 설치",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "S1",
+      "level": "simple",
+      "question": "안심주택의 일반적인 사업대상지 최소 면적은 얼마야?",
+      "expected_issue_count": 1,
+      "expected_evidence_ids": ["E-SITE-MIN"],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "안심주택의 일반적인 사업대상지 최소 면적은 얼마야?",
+        "facts": [],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "사업대상지 최소 면적 기준은 무엇인가",
+            "depends_on": []
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "사업대상지 최소 면적",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "S2",
+      "level": "simple",
+      "question": "안심주택에서 역세권은 승강장 경계로부터 몇 미터까지야?",
+      "expected_issue_count": 1,
+      "expected_evidence_ids": ["E-STATION-DISTANCE"],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "안심주택에서 역세권은 승강장 경계로부터 몇 미터까지야?",
+        "facts": [],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "역세권의 승강장 경계 기준 거리는 어떻게 정하는가",
+            "depends_on": []
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "역세권 승강장 경계",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "S3",
+      "level": "simple",
+      "question": "임대형기숙사의 주차장 설치기준은 어떤 규정을 따라야 해?",
+      "expected_issue_count": 1,
+      "expected_evidence_ids": ["E-DORM-PARKING"],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "임대형기숙사의 주차장 설치기준은 어떤 규정을 따라야 해?",
+        "facts": [],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "임대형기숙사에 적용되는 주차장 설치기준은 무엇인가",
+            "depends_on": []
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "임대형기숙사 주차장 설치기준",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "M1",
+      "level": "intermediate",
+      "question": "역 승강장 경계에서 300m 떨어진 1,500㎡ 부지에서 안심주택 사업을 추진할 수 있어?",
+      "expected_issue_count": 2,
+      "expected_evidence_ids": ["E-STATION-DISTANCE", "E-SITE-MIN"],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "역 승강장 경계에서 300m 떨어진 1,500㎡ 부지에서 안심주택 사업을 추진할 수 있어?",
+        "facts": [
+          {
+            "id": "F1",
+            "text": "부지는 역 승강장 경계에서 300m 떨어져 있다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F2",
+            "text": "부지 면적은 1,500㎡이다",
+            "polarity": "positive"
+          }
+        ],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "부지가 역세권 범위에 해당하는가",
+            "depends_on": []
+          },
+          {
+            "id": "I2",
+            "question": "부지가 사업대상지 최소 면적 기준을 충족하는가",
+            "depends_on": []
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "역세권 승강장 경계",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S2",
+            "issue_ids": ["I2"],
+            "text": "사업대상지 최소 면적",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "M2",
+      "level": "intermediate",
+      "question": "임대형기숙사와 공공지원민간임대주택을 한 사업에 복합으로 계획하면 주차장 설치기준은 어떻게 적용해야 해?",
+      "expected_issue_count": 3,
+      "expected_evidence_ids": [
+        "E-DORM-PARKING",
+        "E-RENTAL-PARKING",
+        "E-COMBINED-PARKING"
+      ],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "임대형기숙사와 공공지원민간임대주택을 한 사업에 복합으로 계획하면 주차장 설치기준은 어떻게 적용해야 해?",
+        "facts": [
+          {
+            "id": "F1",
+            "text": "임대형기숙사와 공공지원민간임대주택을 한 사업에 복합으로 계획한다",
+            "polarity": "positive"
+          }
+        ],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "임대형기숙사 주차기준은 무엇인가",
+            "depends_on": []
+          },
+          {
+            "id": "I2",
+            "question": "공공지원민간임대주택 주차기준은 무엇인가",
+            "depends_on": []
+          },
+          {
+            "id": "I3",
+            "question": "두 주택유형을 복합 계획할 때 각 주차기준을 어떻게 구분 적용하는가",
+            "depends_on": ["I1", "I2"]
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "임대형기숙사 주차장 설치기준",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S2",
+            "issue_ids": ["I2"],
+            "text": "공공지원민간임대주택 주차장 설치기준",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S3",
+            "issue_ids": ["I3"],
+            "text": "주택유형별 주차기준",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "M3",
+      "level": "intermediate",
+      "question": "제2종일반주거지역을 준주거지역으로 변경해서 안심주택을 계획하려면 용도지역과 도로·인접 조건은 무엇을 충족해야 해?",
+      "expected_issue_count": 2,
+      "expected_evidence_ids": ["E-REZONING", "E-ROAD-ADJACENCY"],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "제2종일반주거지역을 준주거지역으로 변경해서 안심주택을 계획하려면 용도지역과 도로·인접 조건은 무엇을 충족해야 해?",
+        "facts": [
+          {
+            "id": "F1",
+            "text": "제2종일반주거지역을 준주거지역으로 변경하여 계획한다",
+            "polarity": "positive"
+          }
+        ],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "준주거지역으로의 용도지역 변경 요건은 무엇인가",
+            "depends_on": []
+          },
+          {
+            "id": "I2",
+            "question": "사업대상지가 충족해야 할 도로 및 인접 조건은 무엇인가",
+            "depends_on": []
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "용도지역 변경 요건",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S2",
+            "issue_ids": ["I2"],
+            "text": "도로 인접 조건",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "C1",
+      "level": "complex",
+      "question": "사업면적 1,800㎡인 제2종일반주거지역 부지가 역세권 350m 범위에 일부 걸쳐 있지만 전체 부지의 45%만 역세권 범위 안에 있다. 해당 부지를 준주거지역으로 변경하여 안심주택을 추진하려는 경우, 통합심의위원회의 예외 인정을 통해 사업대상지로 결정할 수 있는지, 용도지역 변경 요건을 충족해야 하는지, 그리고 사업계획 결정 및 인허가는 서울시와 자치구 중 어디에서 진행해야 하는지 검토해줘.",
+      "expected_issue_count": 4,
+      "expected_evidence_ids": [
+        "E-STATION-EXCEPTION",
+        "E-SITE-MIN",
+        "E-REZONING",
+        "E-PROCESS-AUTHORITY"
+      ],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "사업면적 1,800㎡인 제2종일반주거지역 부지가 역세권 350m 범위에 일부 걸쳐 있지만 전체 부지의 45%만 역세권 범위 안에 있다. 해당 부지를 준주거지역으로 변경하여 안심주택을 추진하려는 경우, 통합심의위원회의 예외 인정을 통해 사업대상지로 결정할 수 있는지, 용도지역 변경 요건을 충족해야 하는지, 그리고 사업계획 결정 및 인허가는 서울시와 자치구 중 어디에서 진행해야 하는지 검토해줘.",
+        "facts": [
+          {
+            "id": "F1",
+            "text": "사업면적은 1,800㎡이다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F2",
+            "text": "부지는 역세권 350m 범위에 일부 걸쳐 있다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F3",
+            "text": "전체 부지의 45%만 역세권 범위 안에 있다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F4",
+            "text": "제2종일반주거지역을 준주거지역으로 변경하여 안심주택을 추진한다",
+            "polarity": "positive"
+          }
+        ],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "역세권 범위에 일부만 포함된 부지가 예외 인정 대상이 될 수 있는가",
+            "depends_on": []
+          },
+          {
+            "id": "I2",
+            "question": "사업면적이 사업대상지 최소 면적 기준을 충족하는가",
+            "depends_on": []
+          },
+          {
+            "id": "I3",
+            "question": "예외 인정 여부를 전제로 준주거지역 변경 요건은 무엇인가",
+            "depends_on": ["I1"]
+          },
+          {
+            "id": "I4",
+            "question": "사업계획 결정 및 인허가의 담당 기관은 어디인가",
+            "depends_on": ["I2", "I3"]
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "역세권 예외 인정",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S2",
+            "issue_ids": ["I2"],
+            "text": "사업대상지 최소 면적",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S3",
+            "issue_ids": ["I3"],
+            "text": "용도지역 변경 요건",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S4",
+            "issue_ids": ["I4"],
+            "text": "사업계획 결정 및 인허가 기관",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "C2",
+      "level": "complex",
+      "question": "준공업지역에서 공공지원민간임대주택과 임대형기숙사를 복합한 안심주택을 계획하면서 공동주택 부분은 용적률 400% 완화를 적용하고 주차장 설치기준도 완화하려고 한다. 이 경우 각 주택유형별 주차기준을 어떻게 적용해야 하고, 400% 용적률 완화와 산업부지 확보비율, 지구단위계획에 따른 추가 주차기준 완화는 각각 어떤 요건과 절차를 거쳐야 하는지 검토해줘.",
+      "expected_issue_count": 5,
+      "expected_evidence_ids": [
+        "E-DORM-PARKING",
+        "E-RENTAL-PARKING",
+        "E-COMBINED-PARKING",
+        "E-INDUSTRIAL-FAR",
+        "E-INDUSTRIAL-SITE-RATIO",
+        "E-DISTRICT-PARKING-RELIEF"
+      ],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "준공업지역에서 공공지원민간임대주택과 임대형기숙사를 복합한 안심주택을 계획하면서 공동주택 부분은 용적률 400% 완화를 적용하고 주차장 설치기준도 완화하려고 한다. 이 경우 각 주택유형별 주차기준을 어떻게 적용해야 하고, 400% 용적률 완화와 산업부지 확보비율, 지구단위계획에 따른 추가 주차기준 완화는 각각 어떤 요건과 절차를 거쳐야 하는지 검토해줘.",
+        "facts": [
+          {
+            "id": "F1",
+            "text": "사업대상지는 준공업지역이다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F2",
+            "text": "공공지원민간임대주택과 임대형기숙사를 복합 계획한다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F3",
+            "text": "공동주택 부분에 용적률 400% 완화를 적용하려고 한다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F4",
+            "text": "주차장 설치기준 완화를 적용하려고 한다",
+            "polarity": "positive"
+          }
+        ],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "임대형기숙사와 공공지원민간임대주택의 주차기준은 각각 무엇인가",
+            "depends_on": []
+          },
+          {
+            "id": "I2",
+            "question": "복합 계획에서 주택유형별 주차기준을 어떻게 구분 적용하는가",
+            "depends_on": ["I1"]
+          },
+          {
+            "id": "I3",
+            "question": "준공업지역 용적률 완화의 적용 요건은 무엇인가",
+            "depends_on": []
+          },
+          {
+            "id": "I4",
+            "question": "산업부지 확보비율 요건은 무엇인가",
+            "depends_on": ["I3"]
+          },
+          {
+            "id": "I5",
+            "question": "지구단위계획에 따른 추가 주차기준 완화 요건과 절차는 무엇인가",
+            "depends_on": ["I1", "I2"]
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "임대형기숙사 주차장 설치기준",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S2",
+            "issue_ids": ["I1"],
+            "text": "공공지원민간임대주택 주차장 설치기준",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S3",
+            "issue_ids": ["I2"],
+            "text": "주택유형별 주차기준",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S4",
+            "issue_ids": ["I3"],
+            "text": "준공업지역 용적률 완화",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S5",
+            "issue_ids": ["I4"],
+            "text": "산업부지 확보비율",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S6",
+            "issue_ids": ["I5"],
+            "text": "지구단위계획 주차기준 완화",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "C3",
+      "level": "complex",
+      "question": "자연녹지지역에 위치한 4,800㎡ 부지가 종합병원 경계에서 300m 이내에 있고, 분양주택 없이 임대주택 전부를 어르신에게 공급하는 안심주택을 계획하려고 한다. 이 부지가 의료시설 중심지역에 해당하더라도 자연녹지지역에서 안심주택 사업대상지가 될 수 있는지, 최소 사업면적과 용도지역 변경 조건까지 고려했을 때 사업 추진이 가능한지 검토해줘.",
+      "expected_issue_count": 4,
+      "expected_evidence_ids": [
+        "E-MEDICAL-CENTER",
+        "E-ELDERLY-SUPPLY",
+        "E-NATURAL-GREEN",
+        "E-SITE-MIN",
+        "E-REZONING"
+      ],
+      "plan": {
+        "format": "evidence-review/question-plan",
+        "version": 1,
+        "original_question": "자연녹지지역에 위치한 4,800㎡ 부지가 종합병원 경계에서 300m 이내에 있고, 분양주택 없이 임대주택 전부를 어르신에게 공급하는 안심주택을 계획하려고 한다. 이 부지가 의료시설 중심지역에 해당하더라도 자연녹지지역에서 안심주택 사업대상지가 될 수 있는지, 최소 사업면적과 용도지역 변경 조건까지 고려했을 때 사업 추진이 가능한지 검토해줘.",
+        "facts": [
+          {
+            "id": "F1",
+            "text": "부지는 자연녹지지역에 위치한다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F2",
+            "text": "부지 면적은 4,800㎡이다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F3",
+            "text": "부지는 종합병원 경계에서 300m 이내에 있다",
+            "polarity": "positive"
+          },
+          {
+            "id": "F4",
+            "text": "분양주택 없이 임대주택 전부를 어르신에게 공급한다",
+            "polarity": "negative"
+          }
+        ],
+        "assumptions": [],
+        "issues": [
+          {
+            "id": "I1",
+            "question": "부지가 의료시설 중심지역에 해당하는가",
+            "depends_on": []
+          },
+          {
+            "id": "I2",
+            "question": "어르신 공급 특례의 적용 조건은 무엇인가",
+            "depends_on": []
+          },
+          {
+            "id": "I3",
+            "question": "의료시설 중심지역 해당 여부를 고려할 때 자연녹지지역 부지가 사업대상지가 될 수 있는가",
+            "depends_on": ["I1", "I2"]
+          },
+          {
+            "id": "I4",
+            "question": "최소 사업면적과 용도지역 변경 조건은 무엇인가",
+            "depends_on": ["I3"]
+          }
+        ],
+        "legal_anchors": [],
+        "search_requests": [
+          {
+            "id": "S1",
+            "issue_ids": ["I1"],
+            "text": "의료시설 중심지역",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S2",
+            "issue_ids": ["I2"],
+            "text": "어르신 공급 특례",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S3",
+            "issue_ids": ["I3"],
+            "text": "자연녹지지역 사업대상지",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S4",
+            "issue_ids": ["I4"],
+            "text": "사업대상지 최소 면적",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
+            "id": "S5",
+            "issue_ids": ["I4"],
+            "text": "용도지역 변경 요건",
+            "kind": "phrase",
+            "source": "planner"
+          }
+        ]
+      }
+    }
+  ]
+}
