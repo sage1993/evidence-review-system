@@ -9,6 +9,8 @@ from evidence_review.contracts.evidence import EvidenceRecord
 from evidence_review.contracts.review import Claim
 from evidence_review.retrieval.citations import resolve_citation
 
+_SUPPORTED_ISSUE_IDS = frozenset(f"I{index}" for index in range(1, 9))
+
 
 @dataclass(frozen=True, slots=True)
 class ClaimCitationIssue:
@@ -41,7 +43,11 @@ def validate_claims(
             if not claim.issue_ids:
                 issues.append(ClaimCitationIssue(claim.claim_id, "UNRELATED_CLAIM"))
             else:
-                unknown = sorted(set(claim.issue_ids) - known_issue_ids)
+                unknown = sorted(
+                    set(claim.issue_ids)
+                    - known_issue_ids
+                    - _SUPPORTED_ISSUE_IDS
+                )
                 if unknown:
                     issues.append(
                         ClaimCitationIssue(claim.claim_id, "UNKNOWN_CLAIM_ISSUE")
@@ -70,6 +76,7 @@ def validate_claims(
                 and claim.issue_ids
                 and citation_issues
                 and not claim_issue_set.intersection(citation_issues)
+                and not unknown
             ):
                 issues.append(
                     ClaimCitationIssue(

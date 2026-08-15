@@ -34,11 +34,17 @@ def build_question_planner_bundle(question: str) -> dict[str, object]:
     }
 
 
-def validate_question_planner_output(value: object, question: str) -> QuestionPlan:
+def validate_question_planner_output(
+    value: object,
+    question: str,
+    *,
+    allow_legacy: bool = False,
+) -> QuestionPlan:
     """Fail closed on current external planner output before retrieval starts."""
     if not isinstance(value, Mapping):
         raise ValueError("question planner output must be an object")
-    if value.get("version") != QUESTION_PLAN_VERSION:
+    version = value.get("version")
+    if version != QUESTION_PLAN_VERSION and not (allow_legacy and version == 1):
         raise ValueError(
             f"question planner output must use question plan version {QUESTION_PLAN_VERSION}"
         )

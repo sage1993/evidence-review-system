@@ -379,7 +379,7 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
     reasons = evaluate_abstention_gates(context)
     if reasons:
         confidence = replace(confidence, level="LOW", hard_gate_failures=reasons)
-    lineage_fields = ("snapshot_sha256", "missing_inputs")
+    lineage_fields: tuple[str, ...] = ("snapshot_sha256", "missing_inputs")
     if issue_results:
         lineage_fields += ("issue_results",)
     packet = ReviewPacket(

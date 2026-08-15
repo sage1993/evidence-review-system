@@ -12,6 +12,7 @@ from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.codecs import decode_review_packet
 from evidence_review.contracts.common import BBox, Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult
+from evidence_review.contracts.review import IssueResult
 from evidence_review.llm_layer.track_a import (
     EvidenceExcerpt,
     build_track_a_bundle,
@@ -27,6 +28,7 @@ def _write_run(
     *,
     snapshot_hash: str | None = None,
     missing_inputs: tuple[str, ...] = (),
+    issue_results: tuple[IssueResult, ...] = (),
 ) -> Path:
     run_dir = tmp_path / RUN_ID
     run_dir.mkdir(parents=True)
@@ -51,13 +53,32 @@ def _write_run(
         result_hash="c" * 64,
     )
     inputs = {"frontage": "30", "perimeter": "320"}
+    if issue_results:
+        inputs["issue_coverage"] = [
+            {
+                "issue_id": item.issue_id,
+                "status": item.status,
+                "evidence_ids": list(item.evidence_ids),
+                "covered_roles": list(item.covered_roles),
+                "missing_roles": list(item.missing_roles),
+                "gap_codes": list(item.gap_codes),
+            }
+            for item in issue_results
+        ]
     if snapshot_hash is not None:
         inputs["snapshot_hash"] = snapshot_hash
     bundle = build_track_a_bundle(
         run_id=RUN_ID,
         question="접면 기준 충족 여부",
         inputs=inputs,
-        evidence=(EvidenceExcerpt(citation, "접면 비율은 9.375%이다."),),
+        evidence=(
+            EvidenceExcerpt(
+                citation,
+                "접면 비율은 9.375%이다.",
+                issue_ids=("I1",) if issue_results else (),
+                role="rule" if issue_results else None,
+            ),
+        ),
         rules=(rule,),
         calculations=(calculation,),
         approved_rule_result_ids=("RULE1",),
@@ -69,6 +90,7 @@ def _write_run(
             "text": "접면 비율은 9.375%이다.",
             "citation_ids": ["C1"],
             "numeric_tokens": ["9.375%"],
+            "issue_ids": ["I1"] if issue_results else [],
             "calculation_result_ids": ["CALC1"],
             "rule_references": [
                 {
@@ -149,6 +171,43 @@ def test_final_packet_preserves_snapshot_and_missing_input_lineage(tmp_path: Pat
     )
     assert output["snapshot_sha256"] == "d" * 64
     assert output["missing_inputs"] == ["청소년문화의집 적용대상 확인"]
+
+
+def test_partial_issue_coverage_stays_ready_and_preserves_issue_results(
+    tmp_path: Path,
+) -> None:
+    packet = finalize_run(
+        _write_run(
+            tmp_path,
+            issue_results=(
+                IssueResult(
+                    "I1",
+                    "RESOLVED",
+                    evidence_ids=("E1",),
+                    covered_roles=("rule",),
+                ),
+                IssueResult(
+                    "I2",
+                    "SOURCE_MISSING",
+                    missing_roles=("rule",),
+                    gap_codes=("SOURCE_NOT_INGESTED",),
+                ),
+            ),
+        )
+    )
+
+    assert packet.status == "READY_FOR_HUMAN_REVIEW"
+    assert packet.human_decision is None
+    assert packet.claims[0].issue_ids == ("I1",)
+    assert [item.status for item in packet.issue_results] == [
+        "RESOLVED",
+        "SOURCE_MISSING",
+    ]
+    assert packet.issue_results[1].gap_codes == ("SOURCE_NOT_INGESTED",)
+    document = json.loads(
+        (tmp_path / RUN_ID / "final-review-packet.json").read_text(encoding="utf-8")
+    )
+    assert document["issue_results"][1]["issue_id"] == "I2"
 
 
 def test_legacy_packet_decode_defaults_lineage_fields(tmp_path: Path) -> None:

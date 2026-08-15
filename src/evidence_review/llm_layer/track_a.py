@@ -11,6 +11,8 @@ from evidence_review.contracts.engines import CalculationResult, RuleResult, Rul
 from evidence_review.contracts.question_plan import EvidenceRole
 from evidence_review.contracts.review import Claim, TrackADraft
 
+_SUPPORTED_ISSUE_IDS = frozenset(f"I{index}" for index in range(1, 9))
+
 _REQUIRED_SECTIONS = (
     "run_id",
     "claims",
@@ -154,15 +156,17 @@ def _lineage_by_citation(
             issue_ids.update(match_issue_ids)
             role_value = match.get("role")
             if role_value is not None:
-                role = _string(
+                role_text = _string(
                     role_value,
                     f"inputs.retrieval_lineage[{index}].matches[{match_index}].role",
                 )
-                if role not in {"supporting_fact", "rule"}:
-                    raise ValueError(f"unsupported retrieval lineage role: {role}")
-                roles.add(cast(EvidenceRole, role))
-        role = next(iter(roles)) if len(roles) == 1 else None
-        normalized = (evidence_id, tuple(sorted(issue_ids)), role)
+                if role_text not in {"supporting_fact", "rule"}:
+                    raise ValueError(f"unsupported retrieval lineage role: {role_text}")
+                roles.add(cast(EvidenceRole, role_text))
+        normalized_role: EvidenceRole | None = (
+            next(iter(roles)) if len(roles) == 1 else None
+        )
+        normalized = (evidence_id, tuple(sorted(issue_ids)), normalized_role)
         existing = result.get(citation_id)
         if existing is not None and existing != normalized:
             raise ValueError(f"conflicting retrieval lineage for citation {citation_id}")
@@ -269,7 +273,9 @@ def _validate_claim_issue_relevance(
         return
     if not claim_issue_ids:
         raise ValueError(f"UNRELATED_CLAIM: claim {claim_id} requires issue_ids")
-    unknown_issue_ids = sorted(set(claim_issue_ids) - known_issue_ids)
+    unknown_issue_ids = sorted(
+        set(claim_issue_ids) - known_issue_ids - _SUPPORTED_ISSUE_IDS
+    )
     if unknown_issue_ids:
         raise ValueError(
             f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}"

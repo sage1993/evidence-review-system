@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from evidence_review.contracts.question_plan import decode_question_plan
+from evidence_review.contracts.question_plan import decode_question_plan, question_plan_document
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
@@ -76,6 +76,26 @@ def _synthetic_snapshot() -> EvidenceSnapshot:
             }
         )
 
+    clauses = tuple(
+        {
+            "id": f"CLAUSE-{element['id']}",
+            "revision_id": revision_id,
+            "title": str(element["raw_text"]),
+            "raw_text": str(element["raw_text"]),
+            "normalized_text": str(element["normalized_text"]),
+            "review_status": "AUTOMATIC",
+        }
+        for element in elements
+    )
+    links = tuple(
+        {
+            "id": f"LINK-{element['id']}",
+            "source_id": f"CLAUSE-{element['id']}",
+            "target_id": str(element["id"]),
+            "relation_type": "source_element",
+        }
+        for element in elements
+    )
     return EvidenceSnapshot(
         documents=({"id": document_id, "title": "Synthetic question-planning corpus"},),
         revisions=(
@@ -89,6 +109,8 @@ def _synthetic_snapshot() -> EvidenceSnapshot:
         ),
         pages=tuple(pages),
         elements=tuple(elements),
+        clauses=clauses,
+        links=links,
     )
 
 
@@ -138,7 +160,7 @@ def test_planned_questions_retrieve_bounded_evidence_with_lineage(
     assert 1 <= len(plan.search_requests) <= 24
 
     stored_plan = _mapping(_load_json(run_directory / "question-plan.json"), "stored_plan")
-    assert stored_plan == raw_plan
+    assert stored_plan == question_plan_document(plan)
 
     evidence_query = _mapping(_load_json(run_directory / "evidence-query.json"), "evidence_query")
     hit_values = _sequence(evidence_query.get("hits"), "evidence_query.hits")

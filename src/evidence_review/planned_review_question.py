@@ -110,6 +110,7 @@ def prepare_planned_review_question(
         rules=rules,
         approved_rule_result_ids=approved_rule_result_ids,
     )
+    review_request["question"] = question_plan.original_question
     review_request = bind_question_plan_to_review_request(review_request, question_plan)
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
     if coverage_report is not None:

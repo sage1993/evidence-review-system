@@ -609,6 +609,13 @@
             "source": "planner"
           },
           {
+            "id": "S6",
+            "issue_ids": ["I1"],
+            "text": "종합병원 경계",
+            "kind": "phrase",
+            "source": "planner"
+          },
+          {
             "id": "S4",
             "issue_ids": ["I4"],
             "text": "사업대상지 최소 면적",

@@ -11,6 +11,10 @@ from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.llm_layer.question_planner import build_question_planner_bundle
 from evidence_review.retrieval.issue_bundle import IssueClauseCandidate, IssueRetrievalBundle
+from evidence_review.retrieval.korean_variants import (
+    derive_korean_compound_variants,
+    derive_korean_query_variants,
+)
 from evidence_review.retrieval.models import RetrievalHit
 
 
@@ -145,6 +149,14 @@ def issue_retrieval_bundle_document(
         for hit in candidate.evidence:
             candidate_by_evidence.setdefault(hit.evidence_id, []).append(candidate)
 
+    primary_request = next(
+        (request for request in plan.search_requests if request.role == "rule"),
+        plan.search_requests[0],
+    )
+    derived_compound = derive_korean_compound_variants(primary_request.text)
+    derived_variants = derive_korean_query_variants(primary_request.text)
+    entity_variants = derived_variants.entity or derived_compound
+
     hit_documents: list[dict[str, object]] = []
     for hit in bundle.selected_evidence:
         candidates = candidate_by_evidence.get(hit.evidence_id, [])
@@ -203,6 +215,12 @@ def issue_retrieval_bundle_document(
                 {"text": request.text, "origin": "llm"}
                 for request in plan.search_requests
             ],
+            "derived_variants": {
+                "compound": list(derived_compound),
+                "entity": list(entity_variants),
+                "numeric": list(derived_variants.numeric),
+                "concept": list(derived_variants.concept),
+            },
         },
         "hits": hit_documents,
         "budget_drops": [
