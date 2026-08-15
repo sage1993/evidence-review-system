@@ -10,6 +10,7 @@ from typing import cast
 from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.llm_layer.question_planner import build_question_planner_bundle
+from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +80,7 @@ def bind_question_plan_to_review_request(
                 "id": issue.id,
                 "question": issue.question,
                 "depends_on": list(issue.depends_on),
+                "required_evidence_roles": list(issue.required_evidence_roles),
             }
             for issue in plan.issues
         ],
@@ -93,20 +95,151 @@ def bind_question_plan_to_review_request(
         "legal_anchors": [
             {"text": item.text, "source": item.source} for item in plan.legal_anchors
         ],
+        "search_requests": [
+            {
+                "id": item.id,
+                "issue_ids": list(item.issue_ids),
+                "text": item.text,
+                "kind": item.kind,
+                "source": item.source,
+                "role": item.role,
+            }
+            for item in plan.search_requests
+        ],
     }
     bound["inputs"] = inputs
     return bound
 
 
+def _citation_document(hit: object) -> dict[str, object]:
+    citation = hit.citation()
+    return {
+        "citation_id": citation.citation_id,
+        "document_id": citation.document_id,
+        "revision_id": citation.revision_id,
+        "page_number": citation.page_number,
+        "evidence_id": citation.evidence_id,
+        "bbox": [
+            citation.bbox.left,
+            citation.bbox.bottom,
+            citation.bbox.right,
+            citation.bbox.top,
+        ],
+        "source_hash": citation.source_hash,
+    }
+
+
+def issue_retrieval_bundle_document(
+    plan: QuestionPlan,
+    bundle: IssueRetrievalBundle,
+    *,
+    snapshot_hash: str,
+) -> dict[str, object]:
+    """Project issue-aware retrieval into the stable review-request bundle shape."""
+    if len(snapshot_hash) != 64:
+        raise ValueError("snapshot_hash must be a SHA-256")
+
+    candidate_by_evidence: dict[str, list[object]] = {}
+    for candidate in bundle.candidates:
+        for hit in candidate.evidence:
+            candidate_by_evidence.setdefault(hit.evidence_id, []).append(candidate)
+
+    hit_documents: list[dict[str, object]] = []
+    for hit in bundle.selected_evidence:
+        candidates = candidate_by_evidence.get(hit.evidence_id, [])
+        match_documents: dict[
+            tuple[str, str, str, str, str, str], dict[str, object]
+        ] = {}
+        issue_ids: set[str] = set()
+        roles: set[str] = set()
+        for candidate in candidates:
+            for match in candidate.matches:
+                issue_ids.add(match.issue_id)
+                roles.add(match.role)
+                key = (
+                    match.search_request_id,
+                    match.issue_id,
+                    match.query_text,
+                    match.retrieval_query,
+                    match.role,
+                    match.fallback_stage.value,
+                )
+                match_documents[key] = {
+                    "search_request_id": match.search_request_id,
+                    "issue_ids": [match.issue_id],
+                    "query_text": match.query_text,
+                    "retrieval_query": match.retrieval_query,
+                    "origin": "llm",
+                    "role": match.role,
+                    "fallback_stage": match.fallback_stage.value,
+                }
+        hit_documents.append(
+            {
+                "evidence_id": hit.evidence_id,
+                "text": hit.text,
+                "citation": _citation_document(hit),
+                "issue_ids": sorted(issue_ids),
+                "roles": sorted(roles),
+                "matches": [match_documents[key] for key in sorted(match_documents)],
+            }
+        )
+
+    return {
+        "snapshot_hash": snapshot_hash,
+        "query": {
+            "primary": plan.original_question,
+            "terms": [
+                {
+                    "text": request.text,
+                    "origin": "llm",
+                    "search_request_ids": [request.id],
+                    "issue_ids": list(request.issue_ids),
+                    "role": request.role,
+                }
+                for request in plan.search_requests
+            ],
+            "attempted_terms": [
+                {"text": request.text, "origin": "llm"}
+                for request in plan.search_requests
+            ],
+        },
+        "hits": hit_documents,
+        "budget_drops": [
+            {
+                "issue_id": item.issue_id,
+                "search_request_id": item.search_request_id,
+                "reason": item.reason,
+                "clause_id": item.clause_id,
+            }
+            for item in bundle.budget_drops
+        ],
+        "fallback_traces": [
+            {
+                "issue_id": item.issue_id,
+                "search_request_id": item.search_request_id,
+                "role": item.role,
+                "stage": item.stage.value,
+                "input_query": item.input_query,
+                "derived_query": item.derived_query,
+                "hit_count": item.hit_count,
+            }
+            for item in bundle.fallback_traces
+        ],
+    }
+
+
 def _retrieval_match_sort_key(
     item: dict[str, object],
-) -> tuple[str, tuple[str, ...], str, str]:
+) -> tuple[str, tuple[str, ...], str, str, str, str, str]:
     """Return a strict deterministic sort key for one validated lineage match."""
     return (
         cast(str, item["search_request_id"]),
         tuple(cast(list[str], item["issue_ids"])),
         cast(str, item["query_text"]),
         cast(str, item["origin"]),
+        cast(str, item.get("role", "")),
+        cast(str, item.get("fallback_stage", "")),
+        cast(str, item.get("retrieval_query", "")),
     )
 
 
@@ -155,8 +288,9 @@ def bind_retrieval_lineage_to_review_request(
                 raise ValueError(
                     f"hits[{index}].matches[{match_index}] must be an object"
                 )
-            allowed = {"search_request_id", "issue_ids", "query_text", "origin"}
-            if set(match_value) != allowed:
+            required = {"search_request_id", "issue_ids", "query_text", "origin"}
+            optional = {"role", "fallback_stage", "retrieval_query"}
+            if not required.issubset(match_value) or set(match_value) - required - optional:
                 raise ValueError(
                     f"hits[{index}].matches[{match_index}] has invalid fields"
                 )
@@ -176,14 +310,19 @@ def bind_retrieval_lineage_to_review_request(
                 raise ValueError("retrieval match query_text must be non-empty")
             if origin not in {"primary", "approved_synonym", "user", "llm"}:
                 raise ValueError("retrieval match origin is unsupported")
-            matches.append(
-                {
-                    "search_request_id": search_request_id,
-                    "issue_ids": sorted(set(issue_ids)),
-                    "query_text": query_text,
-                    "origin": origin,
-                }
-            )
+            match_document: dict[str, object] = {
+                "search_request_id": search_request_id,
+                "issue_ids": sorted(set(issue_ids)),
+                "query_text": query_text,
+                "origin": origin,
+            }
+            for field in ("role", "fallback_stage", "retrieval_query"):
+                value = match_value.get(field)
+                if value is not None:
+                    if not isinstance(value, str) or not value:
+                        raise ValueError(f"retrieval match {field} must be non-empty")
+                    match_document[field] = value
+            matches.append(match_document)
         matches.sort(key=_retrieval_match_sort_key)
         lineage.append(
             {
@@ -203,12 +342,10 @@ def bind_retrieval_lineage_to_review_request(
 def query_request_from_plan(
     plan: QuestionPlan, *, user_expansions: Sequence[str] = ()
 ) -> dict[str, object]:
-    """Convert a validated plan to the existing bounded retrieval request contract.
+    """Convert a validated plan to the legacy bounded retrieval request contract.
 
-    The original user question remains part of the immutable QuestionPlan and review
-    request. Retrieval uses a validated SearchRequest as its primary text so user
-    fact values do not re-enter lexical/derived search merely because they appeared
-    in the original question.
+    Kept for compatibility and tests. Planned review execution now uses the
+    issue-aware retrieval coordinator directly.
     """
     primary_request = next(
         (request for request in plan.search_requests if request.role == "rule"),
