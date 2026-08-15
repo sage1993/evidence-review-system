@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
@@ -97,6 +98,23 @@ def bind_question_plan_to_review_request(
     return bound
 
 
+def _retrieval_match_sort_key(
+    item: dict[str, object],
+) -> tuple[str, tuple[str, ...], str, str]:
+    """Return a strict deterministic sort key for one validated lineage match."""
+    return (
+        cast(str, item["search_request_id"]),
+        tuple(cast(list[str], item["issue_ids"])),
+        cast(str, item["query_text"]),
+        cast(str, item["origin"]),
+    )
+
+
+def _retrieval_lineage_sort_key(item: dict[str, object]) -> tuple[str, str]:
+    """Return a strict deterministic sort key for one evidence-lineage entry."""
+    return cast(str, item["evidence_id"]), cast(str, item["citation_id"])
+
+
 def bind_retrieval_lineage_to_review_request(
     request: dict[str, object], bundle: dict[str, object]
 ) -> dict[str, object]:
@@ -166,14 +184,7 @@ def bind_retrieval_lineage_to_review_request(
                     "origin": origin,
                 }
             )
-        matches.sort(
-            key=lambda item: (
-                item["search_request_id"],
-                item["issue_ids"],
-                item["query_text"],
-                item["origin"],
-            )
-        )
+        matches.sort(key=_retrieval_match_sort_key)
         lineage.append(
             {
                 "evidence_id": evidence_id,
@@ -184,9 +195,7 @@ def bind_retrieval_lineage_to_review_request(
 
     bound = dict(request)
     inputs = dict(inputs_value)
-    inputs["retrieval_lineage"] = sorted(
-        lineage, key=lambda item: (item["evidence_id"], item["citation_id"])
-    )
+    inputs["retrieval_lineage"] = sorted(lineage, key=_retrieval_lineage_sort_key)
     bound["inputs"] = inputs
     return bound
 
