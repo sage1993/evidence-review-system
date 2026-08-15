@@ -41,18 +41,24 @@ def _rule_plan():
     )
 
 
-def test_original_question_is_preserved_but_not_used_as_retrieval_primary() -> None:
+def test_original_question_is_preserved_in_plan_but_not_used_as_retrieval_primary() -> None:
     plan = _rule_plan()
 
     request = query_request_from_plan(plan)
     normalized, *_ = _normalize_request(request)
 
-    assert request["question"] == plan.original_question
-    assert request["primary_query"] == "역세권 승강장 경계 거리 기준"
+    assert plan.original_question == (
+        "역 승강장 경계에서 300m 떨어진 1,500㎡ 부지에서 사업을 추진할 수 있어?"
+    )
+    assert request["question"] == "역세권 승강장 경계 거리 기준"
     assert normalized.primary == "역세권 승강장 경계 거리 기준"
     assert "300m" not in normalized.primary
     assert "1,500㎡" not in normalized.primary
     assert all(term.text != plan.original_question for term in normalized.terms)
+    primary_term = next(term for term in normalized.terms if term.text == normalized.primary)
+    assert primary_term.origin == "llm"
+    assert primary_term.search_request_ids == ("S1",)
+    assert primary_term.issue_ids == ("I1",)
 
 
 def test_rule_request_is_preferred_for_primary_over_supporting_fact_request() -> None:
@@ -97,7 +103,7 @@ def test_rule_request_is_preferred_for_primary_over_supporting_fact_request() ->
 
     request = query_request_from_plan(plan)
 
-    assert request["primary_query"] == "사업대상지 적용 기준"
+    assert request["question"] == "사업대상지 적용 기준"
 
 
 def test_supporting_fact_only_plan_uses_first_search_request_as_primary() -> None:
@@ -134,7 +140,7 @@ def test_supporting_fact_only_plan_uses_first_search_request_as_primary() -> Non
 
     request = query_request_from_plan(plan)
 
-    assert request["primary_query"] == "대상지 지정 현황"
+    assert request["question"] == "대상지 지정 현황"
 
 
 def test_explicit_user_expansion_may_still_contain_user_fact_value() -> None:
