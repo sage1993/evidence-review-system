@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
+from evidence_review.confidence.coverage import apply_issue_coverage_factors
 from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
@@ -85,6 +86,10 @@ def prepare_planned_review_question(
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
     if coverage_report is not None:
         review_request = bind_issue_coverage_to_review_request(
+            review_request,
+            coverage_report,
+        )
+        review_request = apply_issue_coverage_factors(
             review_request,
             coverage_report,
         )
