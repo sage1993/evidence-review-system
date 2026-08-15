@@ -25,23 +25,43 @@ def apply_reference_lineage_to_bundle_document(
             raise ValueError(f"hits[{index}].evidence_id must be non-empty")
         hit["issue_ids"] = list(hit.get("issue_ids", []))
         hit["roles"] = list(hit.get("roles", []))
-        hit["matches"] = [dict(item) for item in hit.get("matches", [])]
+        matches_value = hit.get("matches", [])
+        if not isinstance(matches_value, list):
+            raise ValueError("projected hit matches must be an array")
+        match_documents: list[dict[str, object]] = []
+        for match_index, match_value in enumerate(matches_value):
+            if not isinstance(match_value, dict):
+                raise ValueError(
+                    f"hits[{index}].matches[{match_index}] must be an object"
+                )
+            match_documents.append(dict(match_value))
+        hit["matches"] = match_documents
         projected_hits.append(hit)
         by_evidence[evidence_id] = hit
 
     for reference in retrieval.reference_matches:
-        hit = by_evidence.get(reference.evidence_id)
-        if hit is None:
+        reference_hit = by_evidence.get(reference.evidence_id)
+        if reference_hit is None:
             raise ValueError(
                 f"reference evidence is not selected: {reference.evidence_id}"
             )
-        issue_ids = set(hit["issue_ids"])
-        roles = set(hit["roles"])
+        issue_values = reference_hit.get("issue_ids", [])
+        role_values = reference_hit.get("roles", [])
+        if not isinstance(issue_values, list) or not all(
+            isinstance(item, str) for item in issue_values
+        ):
+            raise ValueError("projected hit issue_ids must be an array of strings")
+        if not isinstance(role_values, list) or not all(
+            isinstance(item, str) for item in role_values
+        ):
+            raise ValueError("projected hit roles must be an array of strings")
+        issue_ids = set(issue_values)
+        roles = set(role_values)
         issue_ids.add(reference.issue_id)
         roles.add(reference.role)
-        hit["issue_ids"] = sorted(issue_ids)
-        hit["roles"] = sorted(roles)
-        matches = hit["matches"]
+        reference_hit["issue_ids"] = sorted(issue_ids)
+        reference_hit["roles"] = sorted(roles)
+        matches = reference_hit["matches"]
         if not isinstance(matches, list):
             raise ValueError("projected hit matches must be an array")
         match = {

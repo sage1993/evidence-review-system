@@ -138,3 +138,6 @@ def test_retrieval_trace_reconstructs_candidate_reference_coverage_and_citations
     assert issue["references"][0]["path"][0]["target_id"] == "E2"
     assert issue["budget_drops"][0]["reason"] == "QUERY_BUDGET"
     assert trace["selected_evidence"][1]["citation_id"] == "CIT-E2"
+    assert trace["selected_evidence"][1]["evidence_type"] == "clause"
+    assert trace["selected_evidence"][1]["bbox"] == [0, 0, 10, 10]
+    assert trace["selected_evidence"][1]["source_hash"] == "a" * 64

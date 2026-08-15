@@ -4,7 +4,9 @@ from evidence_review.contracts.common import BBox
 from evidence_review.retrieval.graph import ReferencePath, ReferenceStep
 from evidence_review.retrieval.issue_bundle import IssueReferenceMatch, IssueRetrievalBundle
 from evidence_review.retrieval.models import ChannelScore, RetrievalHit
-from evidence_review.retrieval.reference_projection import apply_reference_lineage_to_bundle_document
+from evidence_review.retrieval.reference_projection import (
+    apply_reference_lineage_to_bundle_document,
+)
 
 
 def _hit(evidence_id: str) -> RetrievalHit:

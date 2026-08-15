@@ -36,6 +36,11 @@ _EXPECTED_USER_TABLES = {
     "retrieval_meta",
     "evidence_fts",
 }
+_EXPECTED_V4_EXTRA_TABLES = {
+    "clause_retrieval_records",
+    "clause_evidence_links",
+    "clause_fts",
+}
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -160,16 +165,22 @@ def _schema_is_supported(connection: sqlite3.Connection) -> bool:
         ).fetchone()
     except sqlite3.Error:
         return False
-    if row is None or str(row[0]) not in {"2", "3"}:
+    if row is None or str(row[0]) not in {"2", "3", "4"}:
         return False
+    version = str(row[0])
+    expected = (
+        _EXPECTED_USER_TABLES
+        if version in {"2", "3"}
+        else _EXPECTED_USER_TABLES | _EXPECTED_V4_EXTRA_TABLES
+    )
     tables = _user_tables(connection)
     unexpected = {
         table
         for table in tables
-        if table not in _EXPECTED_USER_TABLES
-        and not table.startswith("evidence_fts_")
+        if table not in expected
+        and not table.startswith(("evidence_fts_", "clause_fts_"))
     }
-    missing = _EXPECTED_USER_TABLES - tables
+    missing = expected - tables
     return not unexpected and not missing
 
 

@@ -136,9 +136,18 @@ def retrieval_trace_document(
                 "selection_rank": index,
                 "evidence_id": hit.evidence_id,
                 "citation_id": citation.citation_id,
+                "evidence_type": hit.evidence_type,
                 "document_id": hit.document_id,
                 "revision_id": hit.revision_id,
                 "page_number": hit.page_number,
+                "bbox": [
+                    citation.bbox.left,
+                    citation.bbox.bottom,
+                    citation.bbox.right,
+                    citation.bbox.top,
+                ],
+                "source_hash": hit.source_hash,
+                "score": format(hit.final_score, "f"),
                 "final_score": format(hit.final_score, "f"),
                 "kept": True,
             }

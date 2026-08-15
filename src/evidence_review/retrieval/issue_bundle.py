@@ -19,6 +19,7 @@ from evidence_review.retrieval.clause_resolution import (
 from evidence_review.retrieval.fallback import (
     FallbackStage,
     FallbackTrace,
+    legal_compound_queries,
     search_clause_with_fallback,
 )
 from evidence_review.retrieval.graph import (
@@ -26,6 +27,7 @@ from evidence_review.retrieval.graph import (
     ReferencePath,
     traverse_relations_with_provenance,
 )
+from evidence_review.retrieval.index import search_fts_token_prefix_and
 from evidence_review.retrieval.models import ChannelScore, RetrievalHit
 from evidence_review.retrieval.policy import RetrievalPolicy
 
@@ -301,6 +303,59 @@ def _bucket_candidates(
         )
         traces.extend(_bind_fallback_trace(issue, request, trace) for trace in result.traces)
         if result.success_stage is None or result.successful_query is None:
+            legacy_queries = (request.text, *legal_compound_queries(request.text))
+            legacy_hits: tuple[RetrievalHit, ...] = ()
+            legacy_query = request.text
+            for candidate_query in legacy_queries:
+                legacy_hits = search_fts_token_prefix_and(
+                    connection,
+                    candidate_query,
+                    limit=policy.per_issue_role_limit,
+                )
+                if legacy_hits:
+                    legacy_query = candidate_query
+                    break
+            if not legacy_hits:
+                continue
+            traces.append(
+                IssueFallbackTrace(
+                    issue_id=issue.id,
+                    search_request_id=request.id,
+                    role=role,
+                    stage=FallbackStage.LEGACY_ELEMENT,
+                    input_query=request.text,
+                    derived_query=legacy_query,
+                    hit_count=len(legacy_hits),
+                )
+            )
+            for legacy_hit in legacy_hits:
+                candidate = IssueClauseCandidate(
+                    clause=ClauseRetrievalHit(
+                        clause_id=legacy_hit.evidence_id,
+                        document_id=legacy_hit.document_id,
+                        revision_id=legacy_hit.revision_id,
+                        title=legacy_hit.title,
+                        text=legacy_hit.text,
+                        channel_scores=legacy_hit.channel_scores,
+                    ),
+                    matches=(
+                        IssueCandidateMatch(
+                            search_request_id=request.id,
+                            issue_id=issue.id,
+                            role=role,
+                            query_text=request.text,
+                            retrieval_query=legacy_query,
+                            fallback_stage=FallbackStage.LEGACY_ELEMENT,
+                        ),
+                    ),
+                    evidence=(legacy_hit,),
+                )
+                current = by_clause.get(candidate.clause.clause_id)
+                by_clause[candidate.clause.clause_id] = (
+                    candidate
+                    if current is None
+                    else _merge_candidate(current, candidate)
+                )
             continue
         for clause_hit in result.hits:
             candidate = IssueClauseCandidate(
@@ -377,10 +432,14 @@ def _materialize_evidence(
     final_candidates: list[IssueClauseCandidate] = []
 
     for candidate in candidates:
-        resolved = resolve_clause_to_evidence(
-            connection,
-            candidate.clause,
-            max_source_elements=policy.max_source_elements_per_clause,
+        resolved = (
+            candidate.evidence
+            if candidate.evidence
+            else resolve_clause_to_evidence(
+                connection,
+                candidate.clause,
+                max_source_elements=policy.max_source_elements_per_clause,
+            )
         )
         candidate_evidence: list[RetrievalHit] = []
         budget_limited = False

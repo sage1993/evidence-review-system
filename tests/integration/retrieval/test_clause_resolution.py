@@ -73,8 +73,14 @@ def _snapshot(*, include_links: bool = True) -> EvidenceSnapshot:
                 "id": "C-FAR",
                 "revision_id": "REV-1",
                 "title": "준공업지역 용적률",
-                "raw_text": "준공업지역에서 공동주택을 포함하는 경우 기본용적률은 400% 이하로 정할 수 있다.",
-                "normalized_text": "준공업지역에서 공동주택을 포함하는 경우 기본용적률은 400% 이하로 정할 수 있다.",
+                "raw_text": (
+                    "준공업지역에서 공동주택을 포함하는 경우 "
+                    "기본용적률은 400% 이하로 정할 수 있다."
+                ),
+                "normalized_text": (
+                    "준공업지역에서 공동주택을 포함하는 경우 "
+                    "기본용적률은 400% 이하로 정할 수 있다."
+                ),
                 "review_status": "AUTOMATIC",
             },
             {
@@ -113,7 +119,10 @@ def test_clause_search_primitives_are_deterministic(tmp_path: Path) -> None:
         assert [hit.clause_id for hit in search_clause_exact(connection, "준공업지역 용적률")] == [
             "C-FAR"
         ]
-        assert [hit.clause_id for hit in search_clause_token_and(connection, "산업부지 통합심의")] == [
+        assert [
+            hit.clause_id
+            for hit in search_clause_token_and(connection, "산업부지 통합심의")
+        ] == [
             "C-INDUSTRIAL"
         ]
         assert [

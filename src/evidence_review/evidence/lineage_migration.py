@@ -192,6 +192,27 @@ def _delete_legacy_graph(
             (legacy_id,),
         )
 
+    derived_clause_tables = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    }
+    if "clause_retrieval_records" in derived_clause_tables:
+        for clause_id in sorted(mapping.legacy_id for mapping in grouped.get("clauses", ())):
+            connection.execute(
+                "DELETE FROM clause_fts WHERE clause_id = ?",
+                (clause_id,),
+            )
+            connection.execute(
+                "DELETE FROM clause_evidence_links WHERE clause_id = ?",
+                (clause_id,),
+            )
+            connection.execute(
+                "DELETE FROM clause_retrieval_records WHERE clause_id = ?",
+                (clause_id,),
+            )
+
     for table in _DELETE_ORDER:
         key = _TABLE_KEYS[table]
         for mapping in grouped.get(table, ()):

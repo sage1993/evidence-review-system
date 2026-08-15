@@ -6,7 +6,7 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Protocol
 
 from evidence_review.retrieval.clause_resolution import (
@@ -20,7 +20,7 @@ from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.models import ChannelScore
 
 
-class FallbackStage(str, Enum):
+class FallbackStage(StrEnum):
     EXACT_CLAUSE = "EXACT_CLAUSE"
     PHRASE = "PHRASE"
     TOKEN_AND = "TOKEN_AND"
@@ -29,6 +29,7 @@ class FallbackStage(str, Enum):
     LEGAL_COMPOUND_DECOMPOSITION = "LEGAL_COMPOUND_DECOMPOSITION"
     HEADING_SCOPED = "HEADING_SCOPED"
     REFERENCE_EXPANSION = "REFERENCE_EXPANSION"
+    LEGACY_ELEMENT = "LEGACY_ELEMENT"
 
 
 class ClauseSearch(Protocol):
@@ -97,14 +98,20 @@ def _tokenize(value: str) -> tuple[str, ...]:
 def _approved_alias_queries(value: str) -> tuple[str, ...]:
     tokens = _tokenize(value)
     queries: list[str] = []
-    token_set = set(tokens)
     for source, replacement in _APPROVED_TOKEN_ALIASES:
-        if not set(source).issubset(token_set):
-            continue
-        remaining = [token for token in tokens if token not in source]
-        derived = _normalize_text(" ".join((*remaining, *replacement)))
-        if derived and derived != _normalize_text(value) and derived not in queries:
-            queries.append(derived)
+        source_length = len(source)
+        for start in range(len(tokens) - source_length + 1):
+            if tuple(tokens[start:start + source_length]) != source:
+                continue
+            derived_tokens = [
+                *tokens[:start],
+                *replacement,
+                *tokens[start + source_length:],
+            ]
+            derived = _normalize_text(" ".join(derived_tokens))
+            if derived and derived != _normalize_text(value) and derived not in queries:
+                queries.append(derived)
+            break
     return tuple(queries)
 
 
@@ -121,6 +128,20 @@ def _compound_decomposition_queries(value: str) -> tuple[str, ...]:
     return (derived,)
 
 
+def approved_alias_queries(value: str) -> tuple[str, ...]:
+    normalized = _normalize_text(value)
+    if not normalized:
+        raise ValueError("query must be non-empty")
+    return _approved_alias_queries(normalized)
+
+
+def legal_compound_queries(value: str) -> tuple[str, ...]:
+    normalized = _normalize_text(value)
+    if not normalized:
+        raise ValueError("query must be non-empty")
+    return _compound_decomposition_queries(normalized)
+
+
 def _heading_scoped_search(
     connection: sqlite3.Connection,
     query: str,
@@ -134,8 +155,8 @@ def _heading_scoped_search(
     rows = connection.execute(
         """
         SELECT r.clause_id, r.document_id, r.revision_id, r.title,
-               r.chapter, r.section, r.clause_number, r.normalized_text,
-               r.source_element_ids_json
+               r.chapter, r.section, r.clause_number, r.raw_text,
+               r.normalized_text
         FROM clause_retrieval_records AS r
         WHERE " " || r.normalized_text || " " LIKE ?
            OR " " || r.title || " " LIKE ?
@@ -156,12 +177,21 @@ def _heading_scoped_search(
     for index, row in enumerate(rows):
         score = Decimal(limit - index) / Decimal(max(limit, 1))
         hits.append(
-            ClauseRetrievalHit.from_row(
-                row,
-                channel=ChannelScore(
-                    "clause_heading_scoped",
-                    score,
-                    f"heading-token:{tokens[0]}",
+            ClauseRetrievalHit(
+                clause_id=str(row[0]),
+                document_id=str(row[1]),
+                revision_id=str(row[2]),
+                title=str(row[3]),
+                chapter=None if row[4] is None else str(row[4]),
+                section=None if row[5] is None else str(row[5]),
+                clause_number=None if row[6] is None else str(row[6]),
+                text=str(row[8] or row[7] or ""),
+                channel_scores=(
+                    ChannelScore(
+                        "clause_heading_scoped",
+                        score,
+                        f"heading-token:{tokens[0]}",
+                    ),
                 ),
             )
         )
@@ -192,7 +222,11 @@ def search_clause_with_fallback(
         for derived in _approved_alias_queries(normalized)
     )
     attempts.extend(
-        (FallbackStage.LEGAL_COMPOUND_DECOMPOSITION, derived, search_clause_token_and)
+        (
+            FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
+            derived,
+            search_clause_token_prefix_and,
+        )
         for derived in _compound_decomposition_queries(normalized)
     )
 

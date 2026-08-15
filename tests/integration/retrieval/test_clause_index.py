@@ -49,7 +49,10 @@ def _snapshot() -> EvidenceSnapshot:
                 "revision_id": "REV-1",
                 "title": "사업대상지 일반기준",
                 "raw_text": "안심주택 사업대상지는 원칙적으로 대지면적 1,000㎡ 이상이어야 한다.",
-                "normalized_text": "안심주택 사업대상지는 원칙적으로 대지면적 1,000㎡ 이상이어야 한다.",
+                "normalized_text": (
+                    "안심주택 사업대상지는 원칙적으로 대지면적 "
+                    "1,000㎡ 이상이어야 한다."
+                ),
                 "review_status": "AUTOMATIC",
             },
         ),

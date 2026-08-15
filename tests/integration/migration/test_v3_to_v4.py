@@ -37,7 +37,10 @@ def _create_v3(path: Path) -> None:
         connection.execute(
             """
             INSERT INTO clauses(id, revision_id, title, raw_text, normalized_text, review_status)
-            VALUES('C-1', 'REV-1', '제1조', '최소면적은 1,000㎡이다.', '최소면적은 1,000㎡이다.', 'AUTOMATIC')
+            VALUES(
+                'C-1', 'REV-1', '제1조', '최소면적은 1,000㎡이다.',
+                '최소면적은 1,000㎡이다.', 'AUTOMATIC'
+            )
             """
         )
         connection.execute(
