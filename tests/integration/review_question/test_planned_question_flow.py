@@ -119,7 +119,10 @@ def test_planned_questions_retrieve_bounded_evidence_with_lineage(
     expected_issue_count = case.get("expected_issue_count")
     if not isinstance(case_id, str) or not isinstance(question, str):
         raise AssertionError("case id/question must be strings")
-    if not isinstance(expected_ids, list) or not all(isinstance(item, str) for item in expected_ids):
+    if (
+        not isinstance(expected_ids, list)
+        or not all(isinstance(item, str) for item in expected_ids)
+    ):
         raise AssertionError("expected_evidence_ids must be an array of strings")
     if not isinstance(expected_issue_count, int):
         raise AssertionError("expected_issue_count must be an integer")
