@@ -13,7 +13,11 @@ def _rule_plan():
             "version": 2,
             "original_question": question,
             "facts": [
-                {"id": "F1", "text": "역 승강장 경계에서 300m 떨어져 있다.", "polarity": "positive"},
+                {
+                    "id": "F1",
+                    "text": "역 승강장 경계에서 300m 떨어져 있다.",
+                    "polarity": "positive",
+                },
                 {"id": "F2", "text": "부지 면적은 1,500㎡이다.", "polarity": "positive"},
             ],
             "assumptions": [],

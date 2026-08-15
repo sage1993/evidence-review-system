@@ -144,7 +144,10 @@ def test_v2_rejects_search_role_not_required_by_linked_issue() -> None:
     assert isinstance(requests, list)
     requests[0]["role"] = "supporting_fact"
 
-    with pytest.raises(ValueError, match="search request S1 role supporting_fact is not required by issue I1"):
+    with pytest.raises(
+        ValueError,
+        match="search request S1 role supporting_fact is not required by issue I1",
+    ):
         decode_question_plan(payload, QUESTION)
 
 

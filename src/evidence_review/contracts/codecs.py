@@ -187,8 +187,12 @@ def decode_issue_result(value: object) -> IssueResult:
         issue_id=_expect_string(payload.get("issue_id"), "issue_id"),
         status=_expect_literal(payload.get("status"), "status", _ISSUE_STATUSES),
         evidence_ids=_expect_unique_string_tuple(payload.get("evidence_ids", []), "evidence_ids"),
-        covered_roles=_expect_unique_string_tuple(payload.get("covered_roles", []), "covered_roles"),
-        missing_roles=_expect_unique_string_tuple(payload.get("missing_roles", []), "missing_roles"),
+        covered_roles=_expect_unique_string_tuple(
+            payload.get("covered_roles", []), "covered_roles"
+        ),
+        missing_roles=_expect_unique_string_tuple(
+            payload.get("missing_roles", []), "missing_roles"
+        ),
         gap_codes=_expect_unique_string_tuple(payload.get("gap_codes", []), "gap_codes"),
     )
 
