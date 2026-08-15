@@ -38,8 +38,8 @@ def _synthetic_snapshot() -> EvidenceSnapshot:
     elements_payload = _sequence(corpus.get("elements"), "corpus.elements")
     document_id = "DOC-QUESTION-PLANNER-SYNTHETIC"
     revision_id = "REV-QUESTION-PLANNER-SYNTHETIC"
-    page_id = "PAGE-QUESTION-PLANNER-SYNTHETIC"
 
+    pages: list[dict[str, object]] = []
     elements: list[dict[str, object]] = []
     for index, item in enumerate(elements_payload):
         element = _mapping(item, f"corpus.elements[{index}]")
@@ -49,19 +49,30 @@ def _synthetic_snapshot() -> EvidenceSnapshot:
             raise AssertionError("synthetic evidence id must be a non-empty string")
         if not isinstance(text, str) or not text:
             raise AssertionError("synthetic evidence text must be a non-empty string")
+        page_number = index + 1
+        page_id = f"REV-QUESTION-PLANNER-SYNTHETIC-P{page_number:04d}"
+        pages.append(
+            {
+                "id": page_id,
+                "revision_id": revision_id,
+                "page_number": page_number,
+                "width": 595.0,
+                "height": 842.0,
+            }
+        )
         elements.append(
             {
                 "id": evidence_id,
                 "revision_id": revision_id,
                 "page_id": page_id,
-                "page_number": 1,
+                "page_number": page_number,
                 "element_type": "clause",
                 "raw_json": {"text": text},
                 "raw_text": text,
                 "normalized_text": text,
                 "raw_payload_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                "bbox": [10.0, float(index), 500.0, float(index + 1)],
-                "parser_order": index,
+                "bbox": [10.0, 10.0, 500.0, 30.0],
+                "parser_order": 0,
             }
         )
 
@@ -73,18 +84,10 @@ def _synthetic_snapshot() -> EvidenceSnapshot:
                 "document_id": document_id,
                 "source_hash": hashlib.sha256(b"synthetic-question-planning-corpus").hexdigest(),
                 "byte_size": 1000,
-                "page_count": 1,
+                "page_count": len(pages),
             },
         ),
-        pages=(
-            {
-                "id": page_id,
-                "revision_id": revision_id,
-                "page_number": 1,
-                "width": 595.0,
-                "height": 842.0,
-            },
-        ),
+        pages=tuple(pages),
         elements=tuple(elements),
     )
 
@@ -136,11 +139,12 @@ def test_planned_questions_retrieve_bounded_evidence_with_lineage(
 
     evidence_query = _mapping(_load_json(run_directory / "evidence-query.json"), "evidence_query")
     hit_values = _sequence(evidence_query.get("hits"), "evidence_query.hits")
-    hits = {
-        hit["evidence_id"]: hit
-        for hit in (_mapping(item, "evidence_query.hit") for item in hit_values)
-    }
+    ordered_hits = [_mapping(item, "evidence_query.hit") for item in hit_values]
+    hits = {hit["evidence_id"]: hit for hit in ordered_hits}
     assert set(expected_ids) <= set(hits)
+
+    top_ids = [hit["evidence_id"] for hit in ordered_hits[: len(expected_ids)]]
+    assert set(top_ids) == set(expected_ids)
 
     planned_terms = {request.text: request.id for request in plan.search_requests}
     query_payload = _mapping(evidence_query.get("query"), "evidence_query.query")
