@@ -5,7 +5,9 @@ from __future__ import annotations
 import sqlite3
 import unicodedata
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import Enum
+from typing import Protocol
 
 from evidence_review.retrieval.clause_resolution import (
     ClauseRetrievalHit,
@@ -14,6 +16,7 @@ from evidence_review.retrieval.clause_resolution import (
     search_clause_token_and,
     search_clause_token_prefix_and,
 )
+from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.models import ChannelScore
 
 
@@ -25,6 +28,16 @@ class FallbackStage(str, Enum):
     APPROVED_ALIAS = "APPROVED_ALIAS"
     LEGAL_COMPOUND_DECOMPOSITION = "LEGAL_COMPOUND_DECOMPOSITION"
     HEADING_SCOPED = "HEADING_SCOPED"
+
+
+class ClauseSearch(Protocol):
+    def __call__(
+        self,
+        connection: sqlite3.Connection,
+        query: str,
+        *,
+        limit: int = 20,
+    ) -> tuple[ClauseRetrievalHit, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,8 +60,7 @@ class FallbackResult:
     successful_query: str | None
 
 
-# These are linguistic/legal-document aliases, not document-specific authorities.
-# They are intentionally small and bounded; new pairs require regression coverage.
+# Linguistic/legal-document aliases only. Do not add document-specific authorities.
 _APPROVED_TOKEN_ALIASES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("최소", "면적"), ("대지면적",)),
     (("주차장", "설치기준"), ("주차기준",)),
@@ -147,8 +159,6 @@ def _row_to_heading_hit(
     query: str,
     rank: int,
 ) -> ClauseRetrievalHit:
-    from decimal import Decimal
-
     return ClauseRetrievalHit(
         clause_id=str(row[0]),
         document_id=str(row[1]),
@@ -175,12 +185,11 @@ def search_clause_heading_scoped(
     limit: int = 20,
 ) -> tuple[ClauseRetrievalHit, ...]:
     """Search title/chapter/section/clause-number fields after text fallback fails."""
+    require_fresh_index(connection)
     normalized = _normalize(query)
     if limit < 1:
         return ()
     tokens = tuple(normalized.split())
-    if not tokens:
-        return ()
     heading_expression = (
         "title || ' ' || COALESCE(chapter, '') || ' ' || "
         "COALESCE(section, '') || ' ' || COALESCE(clause_number, '')"
@@ -209,12 +218,10 @@ def _run_queries(
     input_query: str,
     stage: FallbackStage,
     queries: tuple[str, ...],
-    search: object,
+    search: ClauseSearch,
     limit: int,
     traces: list[FallbackTrace],
 ) -> FallbackResult | None:
-    if not callable(search):
-        raise TypeError("search must be callable")
     for derived_query in queries:
         hits = search(connection, derived_query, limit=limit)
         traces.append(
@@ -247,7 +254,7 @@ def search_clause_with_fallback(
         return FallbackResult((), (), None, None)
     traces: list[FallbackTrace] = []
 
-    strict_stages = (
+    strict_stages: tuple[tuple[FallbackStage, ClauseSearch], ...] = (
         (FallbackStage.EXACT_CLAUSE, search_clause_exact),
         (FallbackStage.PHRASE, search_clause_phrase),
         (FallbackStage.TOKEN_AND, search_clause_token_and),
@@ -292,9 +299,7 @@ def search_clause_with_fallback(
     if result is not None:
         return result
 
-    heading_queries = _ordered_unique(
-        [normalized, *alias_queries, *compound_queries]
-    )
+    heading_queries = _ordered_unique([normalized, *alias_queries, *compound_queries])
     result = _run_queries(
         connection,
         input_query=normalized,
