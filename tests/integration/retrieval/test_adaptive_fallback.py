@@ -138,8 +138,9 @@ def test_fallback_stops_after_first_successful_stage(tmp_path: Path) -> None:
 
         result = search_clause_with_fallback(connection, "산업부지 확보비율", limit=5)
 
-    assert result.success_stage == FallbackStage.TOKEN_PREFIX
-    assert result.traces[-1].hit_count > 0
+    assert result.success_stage == FallbackStage.EXACT_CLAUSE
+    assert len(result.traces) == 1
+    assert result.traces[0].hit_count > 0
     assert FallbackStage.APPROVED_ALIAS not in {trace.stage for trace in result.traces}
     assert FallbackStage.LEGAL_COMPOUND_DECOMPOSITION not in {
         trace.stage for trace in result.traces
