@@ -27,25 +27,26 @@ def _workspace(root: Path) -> None:
         "{}", encoding="utf-8"
     )
     (root / "AGENTS.md").write_text("# agents", encoding="utf-8")
-    for index in range(1, 6):
-        skill = root / f"skills/0{index}-skill"
-        skill.mkdir(parents=True)
-        (skill / "SKILL.md").write_text(f"# skill {index}", encoding="utf-8")
     for name in ("ers-pdf", "ers-review"):
         skill = root / f"skills/{name}"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text(f"# {name}", encoding="utf-8")
 
 
-def test_codex_bundle_includes_user_facing_ers_skills(tmp_path: Path) -> None:
+def test_codex_bundle_includes_only_user_facing_ers_skills(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     _workspace(root)
     output = tmp_path / "bundle"
 
-    build_codex_bundle(root, output)
+    manifest = build_codex_bundle(root, output)
 
     assert (output / ".agents/skills/ers-pdf/SKILL.md").is_file()
     assert (output / ".agents/skills/ers-review/SKILL.md").is_file()
+    assert not (output / "skills").exists()
+    manifest_paths = {entry["path"] for entry in manifest["files"]}
+    assert ".agents/skills/ers-pdf/SKILL.md" in manifest_paths
+    assert ".agents/skills/ers-review/SKILL.md" in manifest_paths
+    assert not any(path.startswith("skills/") for path in manifest_paths)
     agents = (output / "AGENTS.md").read_text(encoding="utf-8")
     assert "$ERS_PDF" in agents
     assert "$ERS_REVIEW" in agents
