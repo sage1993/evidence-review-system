@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ MAX_LEGAL_ANCHORS = 20
 SearchKind = Literal["phrase", "legal_anchor", "concept_relation", "counterfactual"]
 AnchorSource = Literal["user", "planner"]
 Polarity = Literal["positive", "negative"]
+
+_NUMERIC_LITERAL = re.compile(r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?")
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +231,39 @@ def _validate_issue_graph(issues: tuple[QuestionIssue, ...]) -> None:
         visit(issue.id)
 
 
+def _numeric_literals(text: str) -> set[str]:
+    """Extract normalized user numeric literals while preserving percent semantics."""
+    return {match.group(0).replace(",", "") for match in _NUMERIC_LITERAL.finditer(text)}
+
+
+def _validate_numeric_preservation(
+    original_question: str,
+    facts: tuple[QuestionFact, ...],
+    assumptions: tuple[QuestionFact, ...],
+    issues: tuple[QuestionIssue, ...],
+    legal_anchors: tuple[LegalAnchor, ...],
+    search_requests: tuple[SearchRequest, ...],
+) -> None:
+    required = _numeric_literals(original_question)
+    if not required:
+        return
+    structured_text = " ".join(
+        [
+            *(item.text for item in facts),
+            *(item.text for item in assumptions),
+            *(item.question for item in issues),
+            *(item.text for item in legal_anchors),
+            *(item.text for item in search_requests),
+        ]
+    )
+    present = _numeric_literals(structured_text)
+    missing = sorted(required - present)
+    if missing:
+        raise ValueError(
+            "question_plan drops user numeric literal: " + ", ".join(missing)
+        )
+
+
 def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
     """Decode and validate untrusted planner JSON against the original question."""
     payload = _expect_mapping(value, "question_plan")
@@ -318,6 +354,15 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
     for anchor in legal_anchors:
         if anchor.source == "user" and _normalize_text(anchor.text) not in normalized_expected:
             raise ValueError("user legal anchor is not present in original_question")
+
+    _validate_numeric_preservation(
+        normalized_expected,
+        facts,
+        assumptions,
+        issues,
+        legal_anchors,
+        search_requests,
+    )
 
     return QuestionPlan(
         original_question=normalized_expected,
