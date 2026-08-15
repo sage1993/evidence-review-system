@@ -60,7 +60,7 @@ def question_plan_sha256(plan: QuestionPlan) -> str:
 def bind_question_plan_to_review_request(
     request: dict[str, object], plan: QuestionPlan
 ) -> dict[str, object]:
-    """Bind a validated plan identity and issue structure into an immutable review request."""
+    """Bind a validated plan identity and canonical projection into a review request."""
     question = request.get("question")
     if question != plan.original_question:
         raise ValueError("review request question does not match question plan")
@@ -72,22 +72,27 @@ def bind_question_plan_to_review_request(
     bound = dict(request)
     inputs = dict(inputs_value)
     inputs["question_plan_sha256"] = question_plan_sha256(plan)
-    inputs["question_issues"] = [
-        {
-            "id": issue.id,
-            "question": issue.question,
-            "depends_on": list(issue.depends_on),
-        }
-        for issue in plan.issues
-    ]
-    inputs["question_facts"] = [
-        {"id": item.id, "text": item.text, "polarity": item.polarity}
-        for item in plan.facts
-    ]
-    inputs["question_assumptions"] = [
-        {"id": item.id, "text": item.text, "polarity": item.polarity}
-        for item in plan.assumptions
-    ]
+    inputs["question_plan"] = {
+        "issues": [
+            {
+                "id": issue.id,
+                "question": issue.question,
+                "depends_on": list(issue.depends_on),
+            }
+            for issue in plan.issues
+        ],
+        "facts": [
+            {"id": item.id, "text": item.text, "polarity": item.polarity}
+            for item in plan.facts
+        ],
+        "assumptions": [
+            {"id": item.id, "text": item.text, "polarity": item.polarity}
+            for item in plan.assumptions
+        ],
+        "legal_anchors": [
+            {"text": item.text, "source": item.source} for item in plan.legal_anchors
+        ],
+    }
     bound["inputs"] = inputs
     return bound
 
