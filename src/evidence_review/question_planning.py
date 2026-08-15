@@ -10,7 +10,7 @@ from typing import cast
 from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.llm_layer.question_planner import build_question_planner_bundle
-from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
+from evidence_review.retrieval.issue_bundle import IssueClauseCandidate, IssueRetrievalBundle
 from evidence_review.retrieval.models import RetrievalHit
 
 
@@ -140,7 +140,7 @@ def issue_retrieval_bundle_document(
     if len(snapshot_hash) != 64:
         raise ValueError("snapshot_hash must be a SHA-256")
 
-    candidate_by_evidence: dict[str, list[object]] = {}
+    candidate_by_evidence: dict[str, list[IssueClauseCandidate]] = {}
     for candidate in bundle.candidates:
         for hit in candidate.evidence:
             candidate_by_evidence.setdefault(hit.evidence_id, []).append(candidate)
@@ -153,8 +153,7 @@ def issue_retrieval_bundle_document(
         ] = {}
         issue_ids: set[str] = set()
         roles: set[str] = set()
-        for candidate_object in candidates:
-            candidate = cast("IssueClauseCandidate", candidate_object)
+        for candidate in candidates:
             for match in candidate.matches:
                 issue_ids.add(match.issue_id)
                 roles.add(match.role)
@@ -346,8 +345,8 @@ def query_request_from_plan(
 ) -> dict[str, object]:
     """Convert a validated plan to the legacy bounded retrieval request contract.
 
-    Kept for compatibility and tests. Planned review execution now uses the
-    issue-aware retrieval coordinator directly.
+    Kept for compatibility and tests. Planned review execution uses the issue-aware
+    coordinator when no explicit user expansion terms are supplied.
     """
     primary_request = next(
         (request for request in plan.search_requests if request.role == "rule"),
