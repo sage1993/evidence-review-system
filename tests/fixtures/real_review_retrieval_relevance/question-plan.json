@@ -1,6 +1,6 @@
 {
   "format": "evidence-review/question-plan",
-  "version": 1,
+  "version": 2,
   "original_question": "안심주택의 일반적인 사업대상지 최소 면적은 얼마야? 역 승강장 경계에서 300m 떨어진 1,500㎡ 부지에서 안심주택 사업을 추진할 수 있어? 준공업지역에서 공공지원민간임대주택과 임대형기숙사를 복합한 안심주택을 계획하면서 공동주택 부분은 용적률 400% 완화를 적용하고 주차장 설치기준도 완화하려고 한다. 이 경우 각 주택유형별 주차기준을 어떻게 적용해야 하고, 400% 용적률 완화와 산업부지 확보비율, 지구단위계획에 따른 추가 주차기준 완화는 각각 어떤 요건과 절차를 거쳐야 하는지 검토해줘.",
   "facts": [
     {
@@ -24,37 +24,44 @@
     {
       "id": "I1",
       "question": "안심주택의 일반 사업대상지 최소 면적 기준은 무엇인가?",
-      "depends_on": []
+      "depends_on": [],
+      "required_evidence_roles": ["rule"]
     },
     {
       "id": "I2",
       "question": "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 조건부 검토 대상이 되는가?",
-      "depends_on": []
+      "depends_on": [],
+      "required_evidence_roles": ["rule"]
     },
     {
       "id": "I3",
       "question": "공공지원민간임대주택에 적용할 주차장 설치기준은 무엇인가?",
-      "depends_on": []
+      "depends_on": [],
+      "required_evidence_roles": ["rule"]
     },
     {
       "id": "I4",
       "question": "임대형기숙사에 적용할 주차장 설치기준과 복합 시 적용 방식은 무엇인가?",
-      "depends_on": []
+      "depends_on": [],
+      "required_evidence_roles": ["rule"]
     },
     {
       "id": "I5",
       "question": "준공업지역 공동주택 부분에 용적률 400% 기준을 적용할 수 있는가?",
-      "depends_on": []
+      "depends_on": [],
+      "required_evidence_roles": ["rule"]
     },
     {
       "id": "I6",
       "question": "준공업지역 안심주택의 산업부지 확보비율에는 어떤 기준과 완화 절차가 적용되는가?",
-      "depends_on": []
+      "depends_on": [],
+      "required_evidence_roles": ["rule"]
     },
     {
       "id": "I7",
       "question": "지구단위계획으로 주차장 설치기준을 추가 완화할 수 있는가?",
-      "depends_on": []
+      "depends_on": [],
+      "required_evidence_roles": ["rule"]
     }
   ],
   "legal_anchors": [],
@@ -64,49 +71,56 @@
       "issue_ids": ["I1"],
       "text": "안심주택 사업대상지 최소 면적",
       "kind": "concept_relation",
-      "source": "planner"
+      "source": "planner",
+      "role": "rule"
     },
     {
       "id": "S2",
       "issue_ids": ["I2"],
       "text": "역세권 승강장 경계 거리 기준",
       "kind": "concept_relation",
-      "source": "planner"
+      "source": "planner",
+      "role": "rule"
     },
     {
       "id": "S3",
       "issue_ids": ["I3"],
       "text": "공공지원민간임대주택 주차장 설치기준",
       "kind": "concept_relation",
-      "source": "planner"
+      "source": "planner",
+      "role": "rule"
     },
     {
       "id": "S4",
       "issue_ids": ["I4"],
       "text": "임대형기숙사 주차장 설치기준 복합 적용",
       "kind": "concept_relation",
-      "source": "planner"
+      "source": "planner",
+      "role": "rule"
     },
     {
       "id": "S5",
       "issue_ids": ["I5"],
       "text": "준공업지역 공동주택 기본용적률",
       "kind": "concept_relation",
-      "source": "planner"
+      "source": "planner",
+      "role": "rule"
     },
     {
       "id": "S6",
       "issue_ids": ["I6"],
       "text": "준공업지역 산업부지 확보비율",
       "kind": "concept_relation",
-      "source": "planner"
+      "source": "planner",
+      "role": "rule"
     },
     {
       "id": "S7",
       "issue_ids": ["I7"],
       "text": "지구단위계획 주차장 설치기준 완화",
       "kind": "concept_relation",
-      "source": "planner"
+      "source": "planner",
+      "role": "rule"
     }
   ]
 }
