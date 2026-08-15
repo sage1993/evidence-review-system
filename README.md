@@ -4,6 +4,8 @@ Evidence Review System (ERS) is an **offline, evidence-first document review run
 
 The project is designed for cases where a result must remain tied to the original document, page, coordinates, deterministic calculations/rules, and an explicit human decision rather than a free-form model answer.
 
+> **비개발자라면 아래 [비개발자용 사용방법](#비개발자용-사용방법)부터 보면 됩니다.**
+
 ## What it does
 
 ```text
@@ -21,6 +23,124 @@ PDF
 ```
 
 The runtime does not make the final human decision. `READY_FOR_HUMAN_REVIEW` means that the evidence package is ready to inspect; it does **not** mean approved, compliant, or correct.
+
+## 비개발자용 사용방법
+
+일반 사용자는 내부 JSON 파일이나 Track A/B 중간 파일을 직접 만들거나 수정할 필요가 없습니다. **Codex Desktop에서 PDF를 준비한 뒤 아래 두 단축어를 사용하는 것이 기본 흐름**입니다.
+
+```text
+$ERS_PDF 이 PDF 파싱해줘
+$ERS_REVIEW <검토 질문>
+```
+
+### 1. PDF를 준비합니다
+
+검토할 PDF를 Codex Desktop 대화에 첨부하거나 로컬 파일 경로를 알려준 뒤 다음처럼 요청합니다.
+
+```text
+$ERS_PDF 이 PDF 파싱해줘
+```
+
+ERS는 이 단계에서 다음 작업을 준비·검증합니다.
+
+- 원본 PDF와 파일 해시 보존
+- parser 결과와 원본 PDF의 연결 확인
+- parser 경고 및 재현성 확인
+- 검색 가능한 근거 DB(`evidence.sqlite`) 생성
+- 근거 페이지를 바로 확인할 수 있는 검증된 page image 준비
+
+**PDF 준비가 정상 완료되기 전에는 질문 검토 단계로 넘어가지 않습니다.** parser 결과가 없거나 원본과 parser 결과의 연결이 맞지 않으면 성공으로 처리하지 않습니다. 도면처럼 사람 확인이 필요한 자료도 확인 전에는 계산이나 규칙 판정의 확정 입력으로 사용하지 않습니다.
+
+### 2. 검토할 내용을 질문합니다
+
+PDF 준비가 끝나면 평소 질문하듯 `$ERS_REVIEW` 뒤에 검토 내용을 작성합니다.
+
+```text
+$ERS_REVIEW 이 사업의 주차 기준 충족 여부를 근거 페이지와 함께 검토해줘
+```
+
+```text
+$ERS_REVIEW 이 문서에서 용적률 완화 조건과 예외사항을 검토해줘
+```
+
+```text
+$ERS_REVIEW 3페이지와 17페이지의 기준이 서로 충돌하는지 검토해줘
+```
+
+모든 질문은 같은 **정식 검토 파이프라인**을 사용합니다. 간단한 질문이라고 해서 근거 확인을 생략하는 별도 빠른 답변 모드는 사용하지 않습니다.
+
+```text
+질문
+→ 로컬 근거 검색
+→ Track A 근거 검토
+→ Track B 독립 감사
+→ 결과 검증
+→ final-review-packet.json
+→ Review Workspace
+→ 사람 최종 확인
+```
+
+사용자는 `review request`, Track A/B JSON, packet 같은 중간 파일을 손으로 작성하지 않습니다. Codex가 정해진 handoff를 따라 처리하고, ERS runtime이 단계별 결과를 검증합니다.
+
+### 3. Review Workspace에서 결과를 확인합니다
+
+정식 검토가 완료되면 Review Workspace에서 결과를 확인합니다. 기본 화면은 개발자 정보보다 실제 검토에 필요한 내용을 우선합니다.
+
+1. **검토 결과** — 현재 상태와 간단한 결론
+2. **판단 근거** — 인용 원문, 문서, 페이지, 위치(bbox), 검증된 PDF 페이지 이미지
+3. **추가 확인** — 누락·충돌·예외·추가 자료가 필요한 경우에만 표시
+4. **검토자 의견** — 사람이 최종 결정과 메모를 기록
+
+여러 PDF를 함께 검토한 경우에는 문서와 근거 페이지를 전환하면서 확인할 수 있습니다. 내부 Run ID, hash, evidence ID, confidence 세부값 등은 기본 화면을 복잡하게 만들지 않도록 감사 정보 영역에 보존됩니다.
+
+`READY_FOR_HUMAN_REVIEW`는 **사람이 검토할 자료가 준비되었다는 뜻**입니다. 자동 승인, 법적 적합 판정, 최종 의사결정을 의미하지 않습니다.
+
+### 4. 근거 페이지를 직접 확인합니다
+
+결론만 읽고 끝내지 말고 **판단 근거에 표시된 원문과 PDF 페이지를 함께 확인**하는 것을 기본 사용 방식으로 합니다.
+
+특히 다음 경우에는 `추가 확인` 내용까지 확인해야 합니다.
+
+- 필요한 근거가 부족한 경우
+- 서로 다른 문서나 페이지의 내용이 충돌하는 경우
+- 예외 조건이 있는 경우
+- 계산 또는 Rule Engine 입력이 부족한 경우
+- 시스템이 충분한 근거를 확보하지 못해 판단을 보류한 경우
+
+### 5. 최종 결정과 의견을 기록합니다
+
+보호된 localhost Review Workspace에서는 보통 아래 두 가지만 입력하면 됩니다.
+
+- **결정**
+- **검토 의견**
+
+| 화면 표시 | 의미 |
+|---|---|
+| 내용 확인 완료 | 표시된 근거와 검토 내용을 확인함 |
+| 내용에 오류 있음 | 결과 또는 근거에 오류가 있어 수정이 필요함 |
+| 조건부 확인 | 조건 또는 전제가 충족되는 범위에서 확인함 |
+| 추가 자료 필요 | 현재 자료만으로 결정하기 어려움 |
+
+결정 기록은 machine review 결과와 분리된 **append-only 기록**으로 저장됩니다. 이미 기록된 결정을 덮어쓰지 않고, 필요한 경우 추가 결정을 새 기록으로 남깁니다.
+
+### 6. `review.html`을 파일로 보관할 수 있습니다
+
+각 검토 결과의 `review.html`은 독립적인 보관용 HTML입니다. 다른 사람에게 검토 근거 화면을 전달하거나 나중에 다시 확인하는 용도로 사용할 수 있습니다.
+
+다만 `review.html`을 파일로 직접 열면 보호 서버와 연결되지 않으므로 **결정을 서버에 바로 저장할 수 없습니다.** 이 경우 화면의 **결정 JSON 다운로드** 기능을 사용한 뒤 승인된 import 경로로 기록할 수 있습니다.
+
+비개발자 사용자는 일반적으로 Codex Desktop에서 보호된 Review Workspace를 열어 결정하는 방식을 권장합니다.
+
+### 7. 잘 안 될 때 확인할 항목
+
+- **PDF 파싱이 완료되지 않음** → 지원 parser 설치 여부와 parser 결과가 원본 PDF와 정상 연결되어 있는지 확인합니다.
+- **질문을 시작할 수 없음** → `evidence.sqlite` 등 PDF 준비 단계가 완료되었는지 확인합니다.
+- **도면이 근거로 사용되지 않음** → 사람 확인이 필요한 drawing evidence인지 확인합니다.
+- **검토가 중간에서 멈춤** → 근거 부족, Track 검증 실패, 규칙/계산 입력 누락 등 화면 또는 Codex가 표시한 차단 사유를 확인합니다.
+- **Review Workspace가 열리지 않음** → 검토 결과 생성 자체는 완료됐는지 확인한 뒤 Codex에 `Review Workspace 다시 열어줘`라고 요청합니다.
+- **결정 저장이 안 됨** → 보호된 Review Workspace인지, 현재 packet과 reviewer session이 유효한지 확인합니다.
+
+더 자세한 절차가 필요한 경우 [Codex workflow](docs/CODEX_WORKFLOW.md)와 [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)를 참고합니다.
 
 ## Core design principles
 
