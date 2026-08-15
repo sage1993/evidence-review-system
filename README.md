@@ -11,6 +11,8 @@ PDF
 → immutable parser artifacts
 → source/hash binding
 → evidence.sqlite
+→ external AI Question Planner
+→ fail-closed QuestionPlan validation
 → deterministic retrieval
 → formal review request
 → Track A
@@ -19,6 +21,8 @@ PDF
 → Review Workspace
 → separate append-only human decision
 ```
+
+The Question Planner decides **what evidence to look for**, not the answer. Project Python code does not call a model API; Codex or another external AI supplies a bounded QuestionPlan at a validated file handoff. Planner-inferred legal citations are search hypotheses only until retrieved evidence supports them.
 
 The runtime does not make the final human decision. `READY_FOR_HUMAN_REVIEW` means that the evidence package is ready to inspect; it does **not** mean approved, compliant, or correct.
 
@@ -133,7 +137,7 @@ $ERS_REVIEW <검토 질문>
 
 ## 사용방법
 
-일반 사용자는 내부 JSON 파일이나 Track A/B 중간 파일을 직접 만들거나 수정할 필요가 없습니다. **Codex Desktop에서 PDF를 준비한 뒤 아래 두 단축어를 사용하는 것이 기본 흐름**입니다.
+일반 사용자는 QuestionPlan이나 Track A/B 중간 JSON을 직접 만들거나 수정할 필요가 없습니다. **Codex Desktop에서 PDF를 준비한 뒤 아래 두 단축어를 사용하는 것이 기본 흐름**입니다.
 
 ```text
 $ERS_PDF 이 PDF 파싱해줘
@@ -178,6 +182,8 @@ $ERS_REVIEW 3페이지와 17페이지의 기준이 서로 충돌하는지 검토
 
 ```text
 질문
+→ AI Question Planner
+→ QuestionPlan 검증
 → 로컬 근거 검색
 → Track A 근거 검토
 → Track B 독립 감사
@@ -187,7 +193,11 @@ $ERS_REVIEW 3페이지와 17페이지의 기준이 서로 충돌하는지 검토
 → 사람 최종 확인
 ```
 
-사용자는 `review request`, Track A/B JSON, packet 같은 중간 파일을 손으로 작성하지 않습니다. Codex가 정해진 handoff를 따라 처리하고, ERS runtime이 단계별 결과를 검증합니다.
+Question Planner는 질문의 사실·숫자·부정조건·예외를 보존하면서 검토 쟁점과 최소 검색 요청을 구조화합니다. 이 단계에서 답변, 적합성 판정, confidence를 만들 수 없습니다. 검증되지 않은 Plan은 retrieval 단계로 넘어가지 않습니다.
+
+사용자는 `question-plan-output`, review request, Track A/B JSON, packet 같은 중간 파일을 손으로 작성하지 않습니다. Codex가 정해진 handoff를 따라 처리하고, ERS runtime이 단계별 결과를 검증합니다.
+
+Planner 실패는 `PLANNER_FAILED`, 유효한 Plan으로 검색했지만 근거가 없는 경우는 `RETRIEVAL_NO_EVIDENCE`, 최종 검토에서 근거가 충분하지 않은 경우는 기존 `ABSTAIN`으로 서로 구분됩니다.
 
 ### 3. Review Workspace에서 결과를 확인합니다
 
@@ -241,24 +251,27 @@ $ERS_REVIEW 3페이지와 17페이지의 기준이 서로 충돌하는지 검토
 ### 7. 잘 안 될 때 확인할 항목
 
 - **PDF 파싱이 완료되지 않음** → 지원 parser 설치 여부와 parser 결과가 원본 PDF와 정상 연결되어 있는지 확인합니다.
+- **Question Planner가 중단됨** → `PLANNER_FAILED` reason과 `QUESTION_PLANNER_INSTRUCTIONS.md` 계약을 확인합니다.
+- **검색 결과가 없음** → 유효 Plan 이후 `RETRIEVAL_NO_EVIDENCE`인지 확인하고 임의의 광범위 검색어로 우회하지 않습니다.
 - **질문을 시작할 수 없음** → `evidence.sqlite` 등 PDF 준비 단계가 완료되었는지 확인합니다.
 - **도면이 근거로 사용되지 않음** → 사람 확인이 필요한 drawing evidence인지 확인합니다.
 - **검토가 중간에서 멈춤** → 근거 부족, Track 검증 실패, 규칙/계산 입력 누락 등 화면 또는 Codex가 표시한 차단 사유를 확인합니다.
 - **Review Workspace가 열리지 않음** → 검토 결과 생성 자체는 완료됐는지 확인한 뒤 Codex에 `Review Workspace 다시 열어줘`라고 요청합니다.
 - **결정 저장이 안 됨** → 보호된 Review Workspace인지, 현재 packet과 reviewer session이 유효한지 확인합니다.
 
-더 자세한 절차가 필요한 경우 [Codex workflow](docs/CODEX_WORKFLOW.md)와 [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)를 참고합니다.
+더 자세한 절차가 필요한 경우 [Question planning](docs/question-planning.md), [Codex workflow](docs/CODEX_WORKFLOW.md), [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)를 참고합니다.
 
 ---
 
 ## Core design principles
 
 - **Evidence first:** preserve the original source bytes, source hash, document/revision/page identity, and bbox/geometry provenance.
+- **Validated question planning:** natural-language interpretation is preserved as an immutable, bounded, fail-closed QuestionPlan before retrieval; planner output itself is not evidence.
 - **Deterministic authority:** parser records, retrieval, Math Engine results, and approved Rule Engine results are validated before review output is accepted.
 - **Independent review tracks:** Track A explains the evidence; Track B audits the validated Track A claims.
 - **Human final decision:** machine output remains immutable and human decisions are stored separately as append-only packet-bound records.
-- **Fail closed:** missing parser output, stale artifacts, unsafe paths, hash mismatches, invalid rule authority, or release-validation failures stop the workflow.
-- **Offline runtime:** project/runtime code requires no remote model/API service. The protected Review Workspace uses loopback communication only.
+- **Fail closed:** missing planner/parser output, stale artifacts, unsafe paths, hash mismatches, invalid rule authority, or release-validation failures stop the workflow.
+- **Offline runtime:** project/runtime code requires no remote model/API service. External AI reasoning occurs only at explicit handoffs; the protected Review Workspace uses loopback communication only.
 
 ## Requirements
 
@@ -317,6 +330,8 @@ All questions use the formal review flow; there is no separate quick-answer mode
 
 ```text
 question
+→ external AI Question Planner
+→ validated QuestionPlan
 → local evidence retrieval
 → review request
 → Track A output + validation
@@ -326,7 +341,7 @@ question
 → human decision
 ```
 
-Lower-level CLI commands are documented in [Codex Workflow](docs/CODEX_WORKFLOW.md) and [Reviewer Workflow](docs/REVIEWER_WORKFLOW.md).
+Lower-level CLI commands and the deterministic replay boundary are documented in [Question Planning](docs/question-planning.md), [Codex Workflow](docs/CODEX_WORKFLOW.md), and [Reviewer Workflow](docs/REVIEWER_WORKFLOW.md).
 
 ## Review Workspace
 
@@ -345,6 +360,7 @@ Internal IDs, hashes, confidence factors, and other audit details are retained b
 
 ERS separates:
 
+- external Question Planner authority from evidence authority;
 - application-level offline guard;
 - optional OS-level network isolation;
 - source/evidence integrity;
@@ -352,9 +368,9 @@ ERS separates:
 - human review decisions;
 - release process attestation and release-output validation.
 
-Passing one boundary does not imply another. For example, a human release attestation cannot override a failed release ZIP/hash validation.
+Passing one boundary does not imply another. For example, a planner-inferred legal anchor is not authority until supported by retrieved evidence, and a human release attestation cannot override a failed release ZIP/hash validation.
 
-See [Offline Execution Boundary](docs/OFFLINE_EXECUTION.md) and [Security Policy](SECURITY.md).
+See [Question Planning](docs/question-planning.md), [Offline Execution Boundary](docs/OFFLINE_EXECUTION.md), and [Security Policy](SECURITY.md).
 
 ## Repository structure
 
@@ -389,12 +405,13 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 py -3.13 -m evidence_review documentation validate --repository-root .
 ```
 
-Packaging/release changes also require wheel/runtime smoke tests. Review Workspace changes require real-browser acceptance; static tests are not a substitute for UI/interaction validation.
+Question Planner changes additionally require the planned-question integration matrix and staged CLI flow tests. Packaging/release changes require wheel/runtime smoke tests and confirmation that the planner instruction template is included in package data. Review Workspace changes require real-browser acceptance; static tests are not a substitute for UI/interaction validation.
 
 If a validation step was not executed, report it as `NOT_RUN` rather than inferring PASS. GitHub Actions availability is tracked separately from reproducible local/manual validation.
 
 ## Documentation
 
+- [Question planning](docs/question-planning.md)
 - [Codex workflow](docs/CODEX_WORKFLOW.md)
 - [Reviewer workflow](docs/REVIEWER_WORKFLOW.md)
 - [Offline execution boundary](docs/OFFLINE_EXECUTION.md)
