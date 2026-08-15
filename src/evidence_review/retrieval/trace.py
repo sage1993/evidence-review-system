@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from evidence_review.contracts.question_plan import QuestionPlan
 from evidence_review.retrieval.coverage import CoverageReport
+from evidence_review.retrieval.graph import ReferencePath
 from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
 
 
-def _reference_path_document(path: object) -> list[dict[str, object]]:
-    steps = getattr(path, "steps")
+def _reference_path_document(path: ReferencePath) -> list[dict[str, object]]:
     return [
         {
             "source_id": step.source_id,
@@ -16,7 +16,7 @@ def _reference_path_document(path: object) -> list[dict[str, object]]:
             "relation_type": step.relation_type,
             "depth": step.depth,
         }
-        for step in steps
+        for step in path.steps
     ]
 
 
@@ -103,6 +103,7 @@ def retrieval_trace_document(
                 "reason": item.reason,
                 "clause_id": item.clause_id,
                 "evidence_id": item.evidence_id,
+                "kept": False,
             }
             for item in bundle.budget_drops
             if item.issue_id == issue.id
@@ -139,6 +140,7 @@ def retrieval_trace_document(
                 "revision_id": hit.revision_id,
                 "page_number": hit.page_number,
                 "final_score": format(hit.final_score, "f"),
+                "kept": True,
             }
         )
 
