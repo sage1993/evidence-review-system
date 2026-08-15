@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from evidence_review.contracts.common import Citation
@@ -123,6 +123,85 @@ def _unique_string_tuple(value: object, field: str) -> tuple[str, ...]:
     return items
 
 
+def _lineage_by_citation(
+    inputs: Mapping[str, object],
+) -> dict[str, tuple[str, tuple[str, ...], EvidenceRole | None]]:
+    value = inputs.get("retrieval_lineage")
+    if value is None:
+        return {}
+    result: dict[str, tuple[str, tuple[str, ...], EvidenceRole | None]] = {}
+    for index, item in enumerate(_sequence(value, "inputs.retrieval_lineage")):
+        entry = _mapping(item, f"inputs.retrieval_lineage[{index}]")
+        evidence_id = _string(
+            entry.get("evidence_id"), f"inputs.retrieval_lineage[{index}].evidence_id"
+        )
+        citation_id = _string(
+            entry.get("citation_id"), f"inputs.retrieval_lineage[{index}].citation_id"
+        )
+        issue_ids: set[str] = set()
+        roles: set[EvidenceRole] = set()
+        for match_index, match_value in enumerate(
+            _sequence(entry.get("matches", []), f"inputs.retrieval_lineage[{index}].matches")
+        ):
+            match = _mapping(
+                match_value,
+                f"inputs.retrieval_lineage[{index}].matches[{match_index}]",
+            )
+            match_issue_ids = _unique_string_tuple(
+                match.get("issue_ids", []),
+                f"inputs.retrieval_lineage[{index}].matches[{match_index}].issue_ids",
+            )
+            issue_ids.update(match_issue_ids)
+            role_value = match.get("role")
+            if role_value is not None:
+                role = _string(
+                    role_value,
+                    f"inputs.retrieval_lineage[{index}].matches[{match_index}].role",
+                )
+                if role not in {"supporting_fact", "rule"}:
+                    raise ValueError(f"unsupported retrieval lineage role: {role}")
+                roles.add(cast(EvidenceRole, role))
+        role = next(iter(roles)) if len(roles) == 1 else None
+        normalized = (evidence_id, tuple(sorted(issue_ids)), role)
+        existing = result.get(citation_id)
+        if existing is not None and existing != normalized:
+            raise ValueError(f"conflicting retrieval lineage for citation {citation_id}")
+        result[citation_id] = normalized
+    return result
+
+
+def _enrich_evidence_from_lineage(
+    evidence: tuple[EvidenceExcerpt, ...],
+    inputs: Mapping[str, object],
+) -> tuple[EvidenceExcerpt, ...]:
+    lineage = _lineage_by_citation(inputs)
+    if not lineage:
+        return evidence
+    enriched: list[EvidenceExcerpt] = []
+    for index, item in enumerate(evidence):
+        entry = lineage.get(item.citation.citation_id)
+        if entry is None:
+            enriched.append(item)
+            continue
+        evidence_id, issue_ids, role = entry
+        if evidence_id != item.citation.evidence_id:
+            raise ValueError(
+                f"evidence[{index}] retrieval lineage evidence_id does not match citation"
+            )
+        if item.issue_ids and tuple(sorted(item.issue_ids)) != issue_ids:
+            raise ValueError(f"evidence[{index}] issue lineage conflicts with request inputs")
+        if item.role is not None and role is not None and item.role != role:
+            raise ValueError(f"evidence[{index}] role conflicts with request inputs")
+        enriched.append(
+            replace(
+                item,
+                issue_ids=issue_ids or item.issue_ids,
+                role=role if role is not None else item.role,
+            )
+        )
+    return tuple(enriched)
+
+
 def build_track_a_bundle(
     *,
     run_id: str,
@@ -136,7 +215,7 @@ def build_track_a_bundle(
     """Build an immutable Track A input bundle without invoking a model."""
     if not run_id or not question:
         raise ValueError("run_id and question are required")
-    evidence_items = tuple(evidence)
+    evidence_items = _enrich_evidence_from_lineage(tuple(evidence), inputs)
     citation_ids = [item.citation.citation_id for item in evidence_items]
     if len(citation_ids) != len(set(citation_ids)):
         raise ValueError("evidence citation IDs must be unique")
