@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
+from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.evidence.store import EvidenceStore
@@ -26,7 +27,6 @@ from evidence_review.review_question import (
     _write_or_identical,
     build_review_run_request,
 )
-from evidence_review.contracts.next_action import next_action_document
 
 
 def prepare_planned_review_question(
