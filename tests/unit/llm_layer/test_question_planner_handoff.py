@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import pytest
 
 from evidence_review.llm_layer.question_planner import (
@@ -14,11 +16,18 @@ QUESTION = "에어컨 등 가전제품 설치기준 알려줘"
 def _plan() -> dict[str, object]:
     return {
         "format": "evidence-review/question-plan",
-        "version": 1,
+        "version": 2,
         "original_question": QUESTION,
         "facts": [],
         "assumptions": [],
-        "issues": [{"id": "I1", "question": "설치기준은 무엇인가", "depends_on": []}],
+        "issues": [
+            {
+                "id": "I1",
+                "question": "설치기준은 무엇인가",
+                "depends_on": [],
+                "required_evidence_roles": ["rule"],
+            }
+        ],
         "legal_anchors": [],
         "search_requests": [
             {
@@ -27,6 +36,7 @@ def _plan() -> dict[str, object]:
                 "text": "에어컨 설치기준",
                 "kind": "phrase",
                 "source": "planner",
+                "role": "rule",
             }
         ],
     }
@@ -40,7 +50,7 @@ def test_build_question_planner_bundle_contains_only_question_and_contract_metad
         "version": 1,
         "original_question": QUESTION,
         "question_plan_format": "evidence-review/question-plan",
-        "question_plan_version": 1,
+        "question_plan_version": 2,
     }
     assert "evidence" not in bundle
     assert "answer" not in bundle
@@ -53,6 +63,20 @@ def test_validate_question_planner_output_fails_closed() -> None:
     raw = _plan()
     raw["answer"] = "forbidden"
     with pytest.raises(ValueError, match="unknown fields"):
+        validate_question_planner_output(raw, QUESTION)
+
+
+def test_current_external_planner_rejects_legacy_v1_output() -> None:
+    raw = copy.deepcopy(_plan())
+    raw["version"] = 1
+    issues = raw["issues"]
+    requests = raw["search_requests"]
+    assert isinstance(issues, list)
+    assert isinstance(requests, list)
+    issues[0].pop("required_evidence_roles")
+    requests[0].pop("role")
+
+    with pytest.raises(ValueError, match="must use question plan version 2"):
         validate_question_planner_output(raw, QUESTION)
 
 
