@@ -3,7 +3,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-from ansim_review.release.validator import blocked_network, validate_release_workspace
+from evidence_review.release.validator import blocked_network, validate_release_workspace
 
 
 def _workspace(root: Path) -> None:

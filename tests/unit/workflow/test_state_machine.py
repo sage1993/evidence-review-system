@@ -8,7 +8,7 @@ import pytest
 
 def _state_machine() -> ModuleType:
     try:
-        return importlib.import_module("ansim_review.workflow.state_machine")
+        return importlib.import_module("evidence_review.workflow.state_machine")
     except ModuleNotFoundError:
         pytest.fail("workflow state-machine module is missing")
 

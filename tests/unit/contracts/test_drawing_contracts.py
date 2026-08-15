@@ -8,7 +8,7 @@ import pytest
 
 def _drawing() -> ModuleType:
     try:
-        return importlib.import_module("ansim_review.contracts.drawing")
+        return importlib.import_module("evidence_review.contracts.drawing")
     except ModuleNotFoundError:
         pytest.fail("drawing contract module is missing")
 

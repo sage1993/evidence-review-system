@@ -3,13 +3,13 @@ from __future__ import annotations
 import hashlib
 from types import SimpleNamespace
 
-from ansim_review.review_packet import browser_launcher
+from evidence_review.review_packet import browser_launcher
 
 
 def test_windows_server_process_identity_uses_command_line(monkeypatch) -> None:
     token = "server-token"
     command_line = (
-        "C:\\Python\\python.exe -m ansim_review.review_packet.server_process "
+        "C:\\Python\\python.exe -m evidence_review.review_packet.server_process "
         "--workspace C:\\workspace --run-id RUN-123 --token server-token"
     )
     calls = []

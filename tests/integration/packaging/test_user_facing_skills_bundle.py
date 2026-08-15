@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 
-from ansim_review.packaging.codex_bundle import build_codex_bundle
+from evidence_review.packaging.codex_bundle import build_codex_bundle
 
 
 def _workspace(root: Path) -> None:

@@ -5,10 +5,10 @@ import json
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from ansim_review.contracts.drawing import DrawingCandidate, Geometry
-from ansim_review.drawing_review.local_server import serve_annotation_workspace
-from ansim_review.drawing_review.view_model import DrawingPage
-from ansim_review.parsing.drawing_candidates import persist_candidate
+from evidence_review.contracts.drawing import DrawingCandidate, Geometry
+from evidence_review.drawing_review.local_server import serve_annotation_workspace
+from evidence_review.drawing_review.view_model import DrawingPage
+from evidence_review.parsing.drawing_candidates import persist_candidate
 
 SOURCE_HASH = "a" * 64
 TOKEN = "H" * 32

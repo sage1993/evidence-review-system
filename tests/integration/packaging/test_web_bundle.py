@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.packaging.web_bundle import build_web_runtime_zip
+from evidence_review.packaging.web_bundle import build_web_runtime_zip
 
 
 def _workspace(root: Path) -> None:
@@ -86,18 +86,18 @@ def test_web_runtime_zip_is_install_free_offline_and_reproducible(
     assert completed.stdout.strip() == "WEB_RUNTIME_SELF_TEST_PASS"
     assert not (
         extracted
-        / "ansim_review"
+        / "evidence_review"
         / "__pycache__"
         / "generated.cpython-313.pyc"
     ).exists()
     assert not (
         extracted
-        / "ansim_review"
+        / "evidence_review"
         / "noise.egg-info"
     ).exists()
     assert (extracted / "evidence" / "evidence.sqlite").is_file()
     assert (extracted / "evidence_review" / "__main__.py").is_file()
-    assert (extracted / "ansim_review" / "__main__.py").is_file()
+    assert (extracted / "evidence_review" / "__main__.py").is_file()
     assert (extracted / "examples" / "golden-cases.json").is_file()
     assert (extracted / "rules" / "approved" / "R1.json").is_file()
 

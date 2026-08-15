@@ -5,9 +5,9 @@ import sys
 import zipfile
 from pathlib import Path
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.golden_cases import run_golden_case
-from ansim_review.packaging.web_bundle import build_web_runtime_zip
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.golden_cases import run_golden_case
+from evidence_review.packaging.web_bundle import build_web_runtime_zip
 
 
 def _workspace(root: Path) -> None:

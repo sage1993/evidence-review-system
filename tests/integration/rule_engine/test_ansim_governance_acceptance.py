@@ -3,14 +3,14 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from ansim_review.rule_engine.governance_contract import (
+from evidence_review.rule_engine.governance_contract import (
     RuleSelectionContext,
     load_active_rule_manifest_bytes,
     load_rule_activation_approval_bytes,
     load_rule_golden_report_bytes,
 )
-from ansim_review.rule_engine.governance_verify import verify_manifest_entry
-from ansim_review.rule_engine.manifest import load_governed_active_rules
+from evidence_review.rule_engine.governance_verify import verify_manifest_entry
+from evidence_review.rule_engine.manifest import load_governed_active_rules
 
 ROOT = Path(__file__).parents[3]
 MANIFEST = ROOT / "rules" / "manifests" / "active.json"

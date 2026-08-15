@@ -8,7 +8,7 @@ import pytest
 
 def _workflow() -> ModuleType:
     try:
-        return importlib.import_module("ansim_review.contracts.workflow")
+        return importlib.import_module("evidence_review.contracts.workflow")
     except ModuleNotFoundError:
         pytest.fail("workflow contract module is missing")
 

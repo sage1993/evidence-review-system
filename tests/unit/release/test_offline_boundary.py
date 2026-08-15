@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.offline_policy import APPLICATION_OFFLINE_GUARD, POLICY_VERSION
-from ansim_review.release.offline_boundary import (
+from evidence_review.offline_policy import APPLICATION_OFFLINE_GUARD, POLICY_VERSION
+from evidence_review.release.offline_boundary import (
     resolve_manifest_member,
     source_policy_checks,
     validate_manifest_path_containment,
@@ -64,7 +64,7 @@ def test_manifest_containment_rejects_escape_before_member_read(tmp_path: Path) 
 
 
 def test_source_policy_checks_report_shared_policy(tmp_path: Path) -> None:
-    source = tmp_path / "src" / "ansim_review"
+    source = tmp_path / "src" / "evidence_review"
     source.mkdir(parents=True)
     (source / "safe.py").write_text("value = 1\n", encoding="utf-8")
 
@@ -76,7 +76,7 @@ def test_source_policy_checks_report_shared_policy(tmp_path: Path) -> None:
 
 
 def test_source_policy_checks_report_process_capability(tmp_path: Path) -> None:
-    source = tmp_path / "src" / "ansim_review"
+    source = tmp_path / "src" / "evidence_review"
     source.mkdir(parents=True)
     (source / "unsafe.py").write_text(
         "import os\nos.system('whoami')\n",

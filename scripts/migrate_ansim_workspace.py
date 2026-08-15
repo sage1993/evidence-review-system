@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ansim_review.migration.ansim_workspace import inventory_and_backup
-from ansim_review.migration.evidence import migrate_evidence
+from evidence_review.migration.ansim_workspace import inventory_and_backup
+from evidence_review.migration.evidence import migrate_evidence
 
 
 def main() -> None:

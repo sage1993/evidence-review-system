@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.retrieval.index import (
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.retrieval.index import (
     StaleRetrievalIndexError,
     build_fts_index,
     search_fts,

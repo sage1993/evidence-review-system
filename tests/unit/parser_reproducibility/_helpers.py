@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
 
-from ansim_review.parser_reproducibility.contract import ReproducibilityConfig
+from evidence_review.parser_reproducibility.contract import ReproducibilityConfig
 
 
 def config() -> ReproducibilityConfig:

@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.retrieval.graph import traverse_relations
-from ansim_review.retrieval.index import build_fts_index
-from ansim_review.retrieval.structured import (
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.retrieval.graph import traverse_relations
+from evidence_review.retrieval.index import build_fts_index
+from evidence_review.retrieval.structured import (
     retrieve_clause_ids,
     retrieve_structured,
 )

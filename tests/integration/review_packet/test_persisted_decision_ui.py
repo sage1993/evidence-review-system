@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ansim_review.review_packet.render_decision import render_decision_form
+from evidence_review.review_packet.render_decision import render_decision_form
 
 
 def _model() -> dict[str, object]:
@@ -36,7 +36,7 @@ def test_decision_panel_has_readonly_persisted_state_and_explicit_append_action(
 def test_review_script_hydrates_persisted_decision_and_refreshes_conflict() -> None:
     repository_root = Path(__file__).parents[3]
     script = (
-        repository_root / "src" / "ansim_review" / "review_packet" / "assets" / "review.js"
+        repository_root / "src" / "evidence_review" / "review_packet" / "assets" / "review.js"
     ).read_text(encoding="utf-8")
 
     assert "renderPersistedDecision" in script

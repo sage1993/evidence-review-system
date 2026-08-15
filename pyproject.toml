@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evidence-review-system"
-version = "0.1.0"
+version = "0.2.0"
 description = "Evidence-first review runtime for arbitrary user-provided documents"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -31,10 +31,10 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"ansim_review.evidence" = ["schema.sql", "schema_v2.sql"]
-"ansim_review.llm_layer" = ["templates/*.md"]
-"ansim_review.review_packet" = ["assets/*.css", "assets/*.js"]
-"ansim_review.drawing_review" = ["assets/*.css", "assets/*.js"]
+"evidence_review.evidence" = ["schema.sql", "schema_v2.sql"]
+"evidence_review.llm_layer" = ["templates/*.md"]
+"evidence_review.review_packet" = ["assets/*.css", "assets/*.js"]
+"evidence_review.drawing_review" = ["assets/*.css", "assets/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -52,4 +52,4 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src/evidence_review", "src/ansim_review"]
+files = ["src/evidence_review"]

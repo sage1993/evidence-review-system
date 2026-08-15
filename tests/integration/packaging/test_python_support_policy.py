@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tomllib
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -10,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_python_support_policy_is_313_only() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
+    assert data["project"]["version"] == "0.2.0"
     assert data["project"]["requires-python"] == ">=3.13,<3.14"
     assert data["tool"]["ruff"]["target-version"] == "py313"
     assert data["tool"]["mypy"]["python_version"] == "3.13"

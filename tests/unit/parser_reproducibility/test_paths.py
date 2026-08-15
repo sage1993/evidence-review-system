@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parser_reproducibility.paths import (
+from evidence_review.parser_reproducibility.paths import (
     canonical_relative_path,
     resolve_run_artifact,
 )

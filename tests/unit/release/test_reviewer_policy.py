@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ansim_review.release.config import ReleaseConfig
+from evidence_review.release.config import ReleaseConfig
 
 
 def test_release_config_rejects_blank_expected_reviewer_id() -> None:

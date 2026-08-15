@@ -15,7 +15,7 @@ def test_runtime_diagnostics_to_document_is_stable() -> None:
         working_directory=Path("C:/repo"),
         repository_root=Path("C:/repo"),
         repository_head="a" * 40,
-        package_root=Path("C:/repo/src/ansim_review"),
+        package_root=Path("C:/repo/src/evidence_review"),
         package_checkout_match=True,
         dependencies=(
             DependencyDiagnostic("pypdf", "pypdf", "OK", "5.9.0"),
@@ -38,10 +38,9 @@ def test_runtime_diagnostics_to_document_is_stable() -> None:
 
 def test_source_mismatch_has_priority(monkeypatch, tmp_path: Path) -> None:
     checkout = tmp_path / "checkout-a"
-    expected_package = checkout / "src" / "ansim_review"
-    actual_package = tmp_path / "checkout-b" / "src" / "ansim_review"
+    expected_package = checkout / "src" / "evidence_review"
+    actual_package = tmp_path / "checkout-b" / "src" / "evidence_review"
     expected_package.mkdir(parents=True)
-    (checkout / "src" / "evidence_review").mkdir(parents=True)
     (checkout / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
     actual_package.mkdir(parents=True)
 
@@ -55,13 +54,12 @@ def test_source_mismatch_has_priority(monkeypatch, tmp_path: Path) -> None:
 
 def test_missing_dependency_is_structured(monkeypatch, tmp_path: Path) -> None:
     checkout = tmp_path / "checkout"
-    (checkout / "src" / "ansim_review").mkdir(parents=True)
     (checkout / "src" / "evidence_review").mkdir(parents=True)
     (checkout / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
     monkeypatch.setattr(
         diagnostics,
         "_package_root",
-        lambda _name: checkout / "src" / "ansim_review",
+        lambda _name: checkout / "src" / "evidence_review",
     )
     monkeypatch.setattr(
         diagnostics,

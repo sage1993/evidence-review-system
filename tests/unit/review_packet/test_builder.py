@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.review_packet.builder import build_review_view_model
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.review_packet.builder import build_review_view_model
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
 

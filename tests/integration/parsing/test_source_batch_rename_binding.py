@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.source_batch import ParserBinding, SourceBatch, SourceItem
-from ansim_review.parsing.source_batch_importer import import_source_batch
-from ansim_review.parsing.source_manifest import sha256_file
+from evidence_review.contracts.source_batch import ParserBinding, SourceBatch, SourceItem
+from evidence_review.parsing.source_batch_importer import import_source_batch
+from evidence_review.parsing.source_manifest import sha256_file
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 _PAGE_SIZE = ((595.0, 842.0),)

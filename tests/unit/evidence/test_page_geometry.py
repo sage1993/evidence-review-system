@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.common import BBox
-from ansim_review.evidence.page_geometry import (
+from evidence_review.contracts.common import BBox
+from evidence_review.evidence.page_geometry import (
     PageGeometry,
     load_page_geometry,
     validate_bbox_within_page,
 )
-from ansim_review.evidence.store import EvidenceStore
+from evidence_review.evidence.store import EvidenceStore
 
 
 def page() -> PageGeometry:

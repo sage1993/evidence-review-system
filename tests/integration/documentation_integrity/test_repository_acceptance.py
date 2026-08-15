@@ -6,8 +6,8 @@ import shutil
 import tomllib
 from pathlib import Path
 
-from ansim_review.documentation_integrity.contract import report_bytes
-from ansim_review.documentation_integrity.validator import validate_documentation
+from evidence_review.documentation_integrity.contract import report_bytes
+from evidence_review.documentation_integrity.validator import validate_documentation
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 

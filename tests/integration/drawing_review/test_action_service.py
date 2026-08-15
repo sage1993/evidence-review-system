@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.drawing import DrawingCandidate, Geometry
-from ansim_review.drawing_review.actions import (
+from evidence_review.contracts.drawing import DrawingCandidate, Geometry
+from evidence_review.drawing_review.actions import (
     ExistingCandidateAction,
     ManualCreateAction,
 )
-from ansim_review.drawing_review.service import record_annotation_action
-from ansim_review.drawing_review.view_model import DrawingPage
-from ansim_review.parsing.drawing_candidates import load_candidate, persist_candidate
-from ansim_review.parsing.drawing_confirmation import load_and_verify_confirmation
+from evidence_review.drawing_review.service import record_annotation_action
+from evidence_review.drawing_review.view_model import DrawingPage
+from evidence_review.parsing.drawing_candidates import load_candidate, persist_candidate
+from evidence_review.parsing.drawing_confirmation import load_and_verify_confirmation
 
 SOURCE_HASH = "a" * 64
 

@@ -1,8 +1,8 @@
 """Regression tests for shared CLI parser construction."""
 
-from ansim_review.cli import build_parser as legacy_build_parser
-from ansim_review.cli_parser import build_parser
 from evidence_review.cli import build_parser as canonical_build_parser
+from evidence_review.cli import build_parser as legacy_build_parser
+from evidence_review.cli_parser import build_parser
 
 
 def test_parser_builder_is_shared_and_existing_commands_remain() -> None:

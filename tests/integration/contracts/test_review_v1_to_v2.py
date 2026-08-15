@@ -7,9 +7,9 @@ from types import ModuleType
 
 import pytest
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.contracts.codecs import decode_review_packet
-from ansim_review.contracts.review_v2 import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.contracts.codecs import decode_review_packet
+from evidence_review.contracts.review_v2 import (
     ReviewPacketV2,
     decode_review_packet_v2,
     review_packet_v2_document,
@@ -20,7 +20,7 @@ FIXTURES = Path(__file__).parents[2] / "golden" / "contracts"
 
 def _adapter() -> ModuleType:
     return importlib.import_module(
-        "ansim_review.contracts.adapters.review_v1_to_v2"
+        "evidence_review.contracts.adapters.review_v1_to_v2"
     )
 
 

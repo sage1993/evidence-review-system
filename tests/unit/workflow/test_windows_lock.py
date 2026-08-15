@@ -9,7 +9,7 @@ import pytest
 if os.name != "nt":
     pytest.skip("Windows file-lock backend", allow_module_level=True)
 
-from ansim_review.workflow import windows_lock
+from evidence_review.workflow import windows_lock
 
 
 def test_acquire_uses_blocking_exclusive_one_byte_range(

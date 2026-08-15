@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.golden_cases import run_golden_case
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.golden_cases import run_golden_case
 
 
 def test_ansim_golden_cases_match_outputs_and_are_byte_reproducible() -> None:

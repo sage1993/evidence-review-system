@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ansim_review.release.attestation import REQUIRED_CHECK_IDS
+from evidence_review.release.attestation import REQUIRED_CHECK_IDS
 
 
 def _document(candidate_hash: str, packet_hash: str) -> dict[str, object]:
@@ -31,7 +31,7 @@ def _document(candidate_hash: str, packet_hash: str) -> dict[str, object]:
 
 def _run(*arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "ansim_review", *arguments],
+        [sys.executable, "-m", "evidence_review", *arguments],
         check=False,
         capture_output=True,
         text=True,

@@ -1,7 +1,7 @@
 import pytest
 
-from ansim_review.parsing.odl_source import normalize_odl_pdf_bbox
-from ansim_review.parsing.pdf_page_geometry import PdfPageGeometry
+from evidence_review.parsing.odl_source import normalize_odl_pdf_bbox
+from evidence_review.parsing.pdf_page_geometry import PdfPageGeometry
 
 
 def _a4_page() -> PdfPageGeometry:

@@ -68,7 +68,7 @@ def _detect_repository_root(start: Path) -> Path | None:
     for candidate in (start.resolve(), *start.resolve().parents):
         if (
             (candidate / "pyproject.toml").is_file()
-            and (candidate / "src" / "ansim_review").is_dir()
+            and (candidate / "src" / "evidence_review").is_dir()
             and (candidate / "src" / "evidence_review").is_dir()
         ):
             return candidate
@@ -139,12 +139,12 @@ def collect_runtime_diagnostics(
         if repository_root is not None
         else _detect_repository_root(working_directory)
     )
-    package_root = _package_root("ansim_review")
+    package_root = _package_root("evidence_review")
     dependencies = _dependency_diagnostics()
 
     package_checkout_match: bool | None = None
     if detected is not None:
-        expected = (detected / "src" / "ansim_review").resolve()
+        expected = (detected / "src" / "evidence_review").resolve()
         package_checkout_match = package_root == expected
 
     if (

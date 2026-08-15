@@ -6,21 +6,21 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from ansim_review.contracts.drawing import DrawingCandidate, Geometry
-from ansim_review.drawing_review.html_renderer import render_annotation_html
-from ansim_review.drawing_review.local_server import serve_annotation_workspace
-from ansim_review.drawing_review.view_model import (
+from evidence_review.contracts.drawing import DrawingCandidate, Geometry
+from evidence_review.drawing_review.html_renderer import render_annotation_html
+from evidence_review.drawing_review.local_server import serve_annotation_workspace
+from evidence_review.drawing_review.view_model import (
     DrawingPage,
     build_drawing_review_view_model,
 )
-from ansim_review.parsing.drawing_binding import bind_confirmed_inputs
-from ansim_review.parsing.drawing_candidates import load_candidate, persist_candidate
-from ansim_review.parsing.drawing_confirmation import load_and_verify_confirmation
-from ansim_review.parsing.drawing_inputs import (
+from evidence_review.parsing.drawing_binding import bind_confirmed_inputs
+from evidence_review.parsing.drawing_candidates import load_candidate, persist_candidate
+from evidence_review.parsing.drawing_confirmation import load_and_verify_confirmation
+from evidence_review.parsing.drawing_inputs import (
     ConfirmedInputBuildRequest,
     build_confirmed_input,
 )
-from ansim_review.parsing.drawing_source import (
+from evidence_review.parsing.drawing_source import (
     DrawingIntakePolicy,
     ingest_drawing_source,
 )

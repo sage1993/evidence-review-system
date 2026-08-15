@@ -4,12 +4,12 @@ import csv
 import json
 from pathlib import Path
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.parsing.legacy_visual_manifest import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.parsing.legacy_visual_manifest import (
     LEGACY_VISUAL_HEADER,
     inspect_legacy_visual_manifest,
 )
-from ansim_review.parsing.source_manifest import sha256_file
+from evidence_review.parsing.source_manifest import sha256_file
 
 GOLDEN = Path("tests/golden/legacy_visual/inspection.json")
 

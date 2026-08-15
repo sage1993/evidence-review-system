@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.documentation_integrity.commands import (
+from evidence_review.documentation_integrity.commands import (
     CommandLine,
     normalize_command_block,
     validate_cli_tokens,
     validate_command_lines,
 )
-from ansim_review.documentation_integrity.discovery import DiscoveredDocument
-from ansim_review.documentation_integrity.markdown import CommandBlock
+from evidence_review.documentation_integrity.discovery import DiscoveredDocument
+from evidence_review.documentation_integrity.markdown import CommandBlock
 
 
 def _document(
@@ -123,7 +123,7 @@ def test_text_blocks_ignore_unrecognized_executables() -> None:
         (
             "python",
             "-m",
-            "ansim_review",
+            "evidence_review",
             "rules",
             "select",
             "--repository-root",

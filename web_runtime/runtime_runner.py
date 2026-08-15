@@ -6,8 +6,8 @@ import json
 import sys
 from pathlib import Path
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.golden_cases import run_golden_case
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.golden_cases import run_golden_case
 
 ROOT = Path(__file__).resolve().parent
 

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parsing.parser_models import NormalizedParserContribution
-from ansim_review.parsing.parser_registry import (
+from evidence_review.parsing.parser_models import NormalizedParserContribution
+from evidence_review.parsing.parser_registry import (
     ParserContext,
     ParserRegistry,
 )

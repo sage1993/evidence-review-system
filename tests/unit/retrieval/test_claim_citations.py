@@ -1,7 +1,7 @@
-from ansim_review.contracts.common import BBox, Citation
-from ansim_review.contracts.evidence import EvidenceRecord
-from ansim_review.contracts.review import Claim
-from ansim_review.retrieval.claims import validate_claims
+from evidence_review.contracts.common import BBox, Citation
+from evidence_review.contracts.evidence import EvidenceRecord
+from evidence_review.contracts.review import Claim
+from evidence_review.retrieval.claims import validate_claims
 
 
 def _evidence() -> EvidenceRecord:

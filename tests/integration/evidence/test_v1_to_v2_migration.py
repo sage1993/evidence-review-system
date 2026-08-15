@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.canonical_json import dumps
-from ansim_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
-from ansim_review.evidence.schema_version import detect_schema_version
-from ansim_review.evidence.snapshot import compute_logical_snapshot_hash
-from ansim_review.evidence.store import EvidenceStore
+from evidence_review.canonical_json import dumps
+from evidence_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
+from evidence_review.evidence.schema_version import detect_schema_version
+from evidence_review.evidence.snapshot import compute_logical_snapshot_hash
+from evidence_review.evidence.store import EvidenceStore
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
 

@@ -1,6 +1,6 @@
 import pytest
 
-from ansim_review.review_packet.decision_record import validate_human_decision_request
+from evidence_review.review_packet.decision_record import validate_human_decision_request
 
 _PACKET_HASH = "b" * 64
 

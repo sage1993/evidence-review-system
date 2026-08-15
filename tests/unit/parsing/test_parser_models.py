@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ansim_review.parsing.parser_models import (
+from evidence_review.parsing.parser_models import (
     NormalizedParserContribution,
     PageDimensions,
     ParsedElement,

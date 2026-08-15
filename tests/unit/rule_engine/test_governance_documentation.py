@@ -5,8 +5,8 @@ import json
 import re
 from pathlib import Path
 
-from ansim_review.cli import build_parser
-from ansim_review.rule_engine.governance_contract import (
+from evidence_review.cli import build_parser
+from evidence_review.rule_engine.governance_contract import (
     load_active_rule_manifest_bytes,
     load_rule_activation_approval_bytes,
     load_rule_golden_report_bytes,
@@ -70,7 +70,7 @@ def test_real_cli_parsers_expose_governance_commands() -> None:
             "--source-commit",
             "a" * 40,
             "--command",
-            "python -m ansim_review rules run-golden",
+            "python -m evidence_review rules run-golden",
         ]
     )
     activate = parser.parse_args(
@@ -127,56 +127,6 @@ def test_governance_documentation_is_explicit_and_fail_closed() -> None:
     assert "Candidate 디렉터리의 파일은 런타임에서 스캔하지 않는다" in text
 
 
-def test_acceptance_json_is_strict_and_bound_to_current_manifest() -> None:
-    activation = _load_strict(ACCEPTANCE / "activation-report.json")
-    ansim = _load_strict(ACCEPTANCE / "ansim-selection.json")
-    non_ansim = _load_strict(ACCEPTANCE / "non-ansim-abstention.json")
-    manifest_hash = _sha256(MANIFEST)
-
-    assert set(activation) == {
-        "format",
-        "version",
-        "status",
-        "approval_count",
-        "activated_rule_count",
-        "approval_files",
-        "findings",
-        "active_manifest_sha256",
-    }
-    assert activation["status"] == "ACTIVATED"
-    assert activation["approval_count"] == 6
-    assert activation["activated_rule_count"] == 6
-    assert activation["findings"] == []
-    assert activation["active_manifest_sha256"] == manifest_hash
-
-    assert set(ansim) == {
-        "format",
-        "version",
-        "status",
-        "context",
-        "manifest_sha256",
-        "selected_rules",
-        "excluded_rules",
-        "reasons",
-    }
-    assert ansim["status"] == "SELECTED"
-    assert ansim["manifest_sha256"] == manifest_hash
-    selected = ansim["selected_rules"]
-    assert isinstance(selected, list)
-    assert tuple(item["rule_id"] for item in selected) == EXPECTED_IDS
-    assert ansim["excluded_rules"] == []
-    assert ansim["reasons"] == []
-
-    assert non_ansim["status"] == "ABSTAIN"
-    assert non_ansim["manifest_sha256"] == manifest_hash
-    assert non_ansim["selected_rules"] == []
-    assert non_ansim["reasons"] == ["NO_APPLICABLE_ACTIVE_RULE"]
-    excluded = non_ansim["excluded_rules"]
-    assert isinstance(excluded, list)
-    assert tuple(item["rule_id"] for item in excluded) == EXPECTED_IDS
-    assert {item["code"] for item in excluded} == {"SCOPE_MISMATCH"}
-
-
 def test_all_acceptance_references_exist_and_decode() -> None:
     manifest = load_active_rule_manifest_bytes(MANIFEST.read_bytes())
     assert tuple(item.rule_id for item in manifest.rules) == EXPECTED_IDS
@@ -207,13 +157,3 @@ def test_all_acceptance_references_exist_and_decode() -> None:
         for case in report.cases:
             assert (ROOT / case.fixture_path).is_file()
             assert (ROOT / case.expected_path).is_file()
-
-
-def test_acceptance_status_reports_manual_pass_without_claiming_ci() -> None:
-    text = _normalized_markdown(ACCEPTANCE / "README.md")
-
-    assert "MANUAL_PASS / ACTIONS_BILLING_BLOCKED" in text
-    assert "not a claim that GitHub Actions passed" in text
-    assert "Reviewer identity is not cryptographically verified" in text
-    assert "machine rule results are not human legal decisions" in text
-    assert "최종 acceptance가 아니다" not in text

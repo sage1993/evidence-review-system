@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from ansim_review.contracts.formats import DOCUMENTATION_INTEGRITY_CONFIG_FORMAT
-from ansim_review.documentation_integrity.classification import (
+from evidence_review.contracts.formats import DOCUMENTATION_INTEGRITY_CONFIG_FORMAT
+from evidence_review.documentation_integrity.classification import (
     DocumentClassificationError,
     classify_document,
 )
-from ansim_review.documentation_integrity.contract import DocumentationIntegrityConfig
+from evidence_review.documentation_integrity.contract import DocumentationIntegrityConfig
 
 
 def make_config(

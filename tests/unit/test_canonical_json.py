@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from ansim_review.canonical_json import dump_bytes, dumps, sha256_json
+from evidence_review.canonical_json import dump_bytes, dumps, sha256_json
 
 
 def test_order_independent_json() -> None:

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parsing.odl_adapter import OpenDataLoaderJsonAdapter
-from ansim_review.parsing.parser_registry import ParserContext
-from ansim_review.parsing.source_manifest import sha256_file
+from evidence_review.parsing.odl_adapter import OpenDataLoaderJsonAdapter
+from evidence_review.parsing.parser_registry import ParserContext
+from evidence_review.parsing.source_manifest import sha256_file
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 _PAGE_SIZE = ((595.0, 842.0),)

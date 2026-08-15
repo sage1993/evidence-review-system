@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ansim_review.documentation_integrity.contract import report_bytes
-from ansim_review.documentation_integrity.validator import validate_documentation
+from evidence_review.documentation_integrity.contract import report_bytes
+from evidence_review.documentation_integrity.validator import validate_documentation
 
 
 def _write(path: Path, text: str) -> None:
@@ -51,7 +51,7 @@ def test_warning_only_repository_passes_with_exact_counts(tmp_path: Path) -> Non
     config = _config(
         tmp_path,
         generator=(
-            "ansim_review.packaging.project_instructions:"
+            "evidence_review.packaging.project_instructions:"
             "render_project_instructions"
         ),
     )

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.contracts.source_batch import decode_source_batch
-from ansim_review.parsing.source_batch_importer import (
+from evidence_review.contracts.source_batch import decode_source_batch
+from evidence_review.parsing.source_batch_importer import (
     PendingParserOutputError,
     import_source_batch,
     prepare_source_batch,

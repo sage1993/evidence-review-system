@@ -5,7 +5,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-from ansim_review.parsing.ansim_workspace_adapter import import_ansim_workspace
+from evidence_review.parsing.ansim_workspace_adapter import import_ansim_workspace
 
 
 def _write_workspace(root: Path) -> None:

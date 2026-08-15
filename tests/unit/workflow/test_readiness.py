@@ -6,8 +6,8 @@ from types import ModuleType
 
 def _modules() -> tuple[ModuleType, ModuleType]:
     return (
-        importlib.import_module("ansim_review.workflow.request"),
-        importlib.import_module("ansim_review.workflow.readiness"),
+        importlib.import_module("evidence_review.workflow.request"),
+        importlib.import_module("evidence_review.workflow.readiness"),
     )
 
 

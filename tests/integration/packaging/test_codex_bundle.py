@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ansim_review.packaging.codex_bundle import build_codex_bundle
+from evidence_review.packaging.codex_bundle import build_codex_bundle
 
 
 def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
@@ -57,21 +57,21 @@ def test_codex_bundle_contains_runtime_evidence_rules_skills_and_validation(
     assert not (
         output
         / "src"
-        / "ansim_review"
+        / "evidence_review"
         / "__pycache__"
         / "generated.cpython-313.pyc"
     ).exists()
     assert not (
         output
         / "src"
-        / "ansim_review"
+        / "evidence_review"
         / "noise.egg-info"
     ).exists()
     assert (output / "evidence" / "evidence.sqlite").is_file()
     assert (output / "rules" / "approved" / "R1.json").is_file()
     assert (output / "rules" / "manifests" / "active.json").is_file()
     validation = (output / "VALIDATE.md").read_text(encoding="utf-8")
-    assert "python -m ansim_review --help" in validation
+    assert "python -m evidence_review --help" in validation
     data = json.loads(
         (output / "bundle-manifest.json").read_text(encoding="utf-8")
     )

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.observability.run_metrics import (
+from evidence_review.observability.run_metrics import (
     append_stage,
     assert_hard_budgets,
     load_run_metrics,
@@ -77,7 +77,7 @@ def test_external_wait_restarts_after_latest_failed_validation(
         ),
     )
     monkeypatch.setattr(
-        "ansim_review.observability.run_metrics.utc_now",
+        "evidence_review.observability.run_metrics.utc_now",
         lambda: _at(8),
     )
 

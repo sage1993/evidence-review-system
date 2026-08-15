@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ansim_review.documentation_integrity.cli import run_documentation_validation
+from evidence_review.documentation_integrity.cli import run_documentation_validation
 
 
 def _write(path: Path, text: str) -> None:

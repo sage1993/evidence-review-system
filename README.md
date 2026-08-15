@@ -56,11 +56,13 @@ For development and validation:
 python -m pip install -e ".[dev]"
 ```
 
+Runtime dependencies are pinned to pypdf>=5,<6, pypdfium2>=5.12,<6, and Pillow>=12,<13.
+
 Canonical entrypoints:
 
 ```text
-evidence-review ...
-python -m evidence_review ...
+evidence-review --help
+python -m evidence_review --help
 ```
 
 The legacy `ansim-review` name may remain temporarily as a compatibility entrypoint during the `v0.2.0` transition, but `evidence_review` is the canonical public namespace.

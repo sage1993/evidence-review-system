@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ansim_review.review_packet.drawing_evidence import render_drawing_evidence
+from evidence_review.review_packet.drawing_evidence import render_drawing_evidence
 
 
 def _candidate(candidate_id: str, geometry: dict[str, object]) -> dict[str, object]:

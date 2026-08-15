@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 from subprocess import run
 
-from ansim_review.cli import _result_exit_code
-from ansim_review.contracts.engines import CalculationResult
+from evidence_review.cli import _result_exit_code
+from evidence_review.contracts.engines import CalculationResult
 
 
 def _environment() -> dict[str, str]:
@@ -35,7 +35,7 @@ def test_math_cli_is_byte_reproducible(tmp_path: Path) -> None:
     command = [
         sys.executable,
         "-m",
-        "ansim_review",
+        "evidence_review",
         "math-run",
         "--request",
         str(request),
@@ -70,7 +70,7 @@ def test_math_cli_refuses_overwrite(tmp_path: Path) -> None:
     command = [
         sys.executable,
         "-m",
-        "ansim_review",
+        "evidence_review",
         "math-run",
         "--request",
         str(request),
@@ -95,7 +95,7 @@ def test_math_cli_uses_declared_error_exit_codes(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "ansim_review",
+            "evidence_review",
             "math-run",
             "--request",
             str(invalid_request),

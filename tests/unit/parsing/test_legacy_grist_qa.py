@@ -4,8 +4,8 @@ from copy import deepcopy
 
 import pytest
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.parsing.legacy_grist_qa import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.parsing.legacy_grist_qa import (
     GRIST_QA_FORMAT,
     REQUIRED_SAMPLE_KINDS,
     REQUIRED_VIEW_IDS,

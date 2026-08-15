@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parsing.drawing_source import (
+from evidence_review.parsing.drawing_source import (
     DrawingIntakePolicy,
     ingest_drawing_source,
     sniff_drawing_mime,

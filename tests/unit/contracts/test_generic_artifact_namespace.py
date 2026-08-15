@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SOURCE_ROOT = Path("src/ansim_review")
+SOURCE_ROOT = Path("src/evidence_review")
 LEGACY_FILE = SOURCE_ROOT / "contracts" / "legacy_formats.py"
 LEGACY_READERS = {
     SOURCE_ROOT / "parsing" / "legacy_visual_manifest.py",

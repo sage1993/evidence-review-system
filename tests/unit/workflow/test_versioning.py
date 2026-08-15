@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.workflow.request import ReviewRequest, decode_review_request
-from ansim_review.workflow.versioning import (
+from evidence_review.workflow.request import ReviewRequest, decode_review_request
+from evidence_review.workflow.versioning import (
     compute_versioned_run_id,
     prepare_versioned_review_run,
 )

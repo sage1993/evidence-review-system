@@ -9,7 +9,7 @@ import pytest
 
 def _request_module() -> ModuleType:
     try:
-        return importlib.import_module("ansim_review.workflow.request")
+        return importlib.import_module("evidence_review.workflow.request")
     except ModuleNotFoundError:
         pytest.fail("workflow request module is missing")
 

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ansim_review.parser_reproducibility.opendataloader import (
+from evidence_review.parser_reproducibility.opendataloader import (
     decode_opendataloader_json,
 )
 

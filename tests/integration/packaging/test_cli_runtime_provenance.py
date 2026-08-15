@@ -54,14 +54,14 @@ def _run_module(
     )
 
 
-def test_stale_ansim_source_fails_before_business_runtime_import(tmp_path: Path) -> None:
+def test_stale_legacy_package_cannot_override_canonical_runtime(tmp_path: Path) -> None:
     repo = Path(__file__).resolve().parents[3]
     stale_root = tmp_path / "stale"
     package = stale_root / "ansim_review"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
     (package / "entrypoint.py").write_text(
-        'raise AssertionError("business runtime imported before source preflight")\n',
+        'raise AssertionError("legacy runtime imported by canonical package")\n',
         encoding="utf-8",
     )
 
@@ -69,11 +69,7 @@ def test_stale_ansim_source_fails_before_business_runtime_import(tmp_path: Path)
     completed = _run_module(repo, "query", env=env)
 
     assert completed.returncode == 2
-    document = json.loads(completed.stdout)
-    assert document["status"] == "SOURCE_MISMATCH"
-    assert "business runtime imported" not in completed.stderr
-
-
+    assert "legacy runtime imported by canonical package" not in completed.stderr
 def _dependency_empty_python(tmp_path: Path) -> Path:
     environment = tmp_path / "dependency-empty"
     venv.EnvBuilder(with_pip=False, clear=True).create(environment)

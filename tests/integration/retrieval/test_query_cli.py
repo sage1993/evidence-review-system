@@ -5,9 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.retrieval.index import build_fts_index
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.retrieval.index import build_fts_index
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
 
@@ -84,7 +84,7 @@ def _run(
         [
             sys.executable,
             "-m",
-            "ansim_review",
+            "evidence_review",
             "query",
             "--db",
             str(db),

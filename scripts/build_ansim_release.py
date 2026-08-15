@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ansim_review.release.builder import build_ansim_release
+from evidence_review.release.builder import build_ansim_release
 
 
 def main() -> None:

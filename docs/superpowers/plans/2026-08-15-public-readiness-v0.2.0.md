@@ -19,7 +19,7 @@
 - Python 3.11 compatibility and 3.11 validation are not release requirements.
 - Canonical Python namespace: `evidence_review`.
 - Canonical CLI: `evidence-review` and `python -m evidence_review`.
-- `ansim-review` and `python -m ansim_review` may remain only as thin v0.2.0 compatibility entrypoints; they must not own implementation or alternate dispatch logic.
+- `ansim-review` and `python -m ansim_review --help` may remain only as thin v0.2.0 compatibility entrypoints; they must not own implementation or alternate dispatch logic.
 - Runtime remains offline by default; no new remote service/CDN/API dependency.
 - Existing source/rule/page/release verification remains fail-closed.
 - `final-review-packet.json` remains immutable machine output.
@@ -349,8 +349,8 @@ Test:
 
 ```text
 evidence_review.cli.main
-python -m evidence_review
-python -m ansim_review
+python -m evidence_review --help
+python -m ansim_review --help
 console script evidence-review
 console script ansim-review
 ```
@@ -380,7 +380,7 @@ The import occurs only after diagnostic/preflight success.
 
 - [ ] **Step 6: Convert legacy entrypoints to thin delegation**
 
-`python -m ansim_review` and `ansim-review` call `evidence_review.cli.main`; no alternate parser/dispatcher remains.
+`python -m ansim_review --help` and `ansim-review` call `evidence_review.cli.main`; no alternate parser/dispatcher remains.
 
 - [ ] **Step 7: Move production CLI integration tests to the canonical path**
 

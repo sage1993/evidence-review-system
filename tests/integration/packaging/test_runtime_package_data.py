@@ -9,10 +9,10 @@ def test_runtime_templates_styles_and_scripts_are_declared_as_package_data() -> 
         (root / "pyproject.toml").read_text(encoding="utf-8")
     )
     package_data = configuration["tool"]["setuptools"]["package-data"]
-    assert "schema.sql" in package_data["ansim_review.evidence"]
-    assert "templates/*.md" in package_data["ansim_review.llm_layer"]
-    assert "assets/*.css" in package_data["ansim_review.review_packet"]
-    assert "assets/*.js" in package_data["ansim_review.review_packet"]
+    assert "schema.sql" in package_data["evidence_review.evidence"]
+    assert "templates/*.md" in package_data["evidence_review.llm_layer"]
+    assert "assets/*.css" in package_data["evidence_review.review_packet"]
+    assert "assets/*.js" in package_data["evidence_review.review_packet"]
 
 
 def test_canonical_namespace_can_read_runtime_package_data() -> None:

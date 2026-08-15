@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from ansim_review.migration.ansim_workspace import inventory_and_backup, tree_inventory
+from evidence_review.migration.ansim_workspace import inventory_and_backup, tree_inventory
 
 
 def test_source_tree_hashes_are_identical_before_and_after_migration(

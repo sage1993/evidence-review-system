@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ansim_review.parser_reproducibility.contract import (
+from evidence_review.parser_reproducibility.contract import (
     decode_parser_run_metadata,
     decode_reproducibility_config,
 )

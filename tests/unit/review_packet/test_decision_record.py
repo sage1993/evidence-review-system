@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.review_packet.decision_record import (
+from evidence_review.review_packet.decision_record import (
     build_human_decision_envelope,
     import_human_decision_envelope,
     validate_human_decision_envelope,

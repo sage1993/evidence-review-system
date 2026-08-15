@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.rule_engine.governance_contract import (
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.rule_engine.governance_contract import (
     ActiveRuleManifest,
     RuleActivationApproval,
     RuleGoldenReport,
@@ -43,7 +43,7 @@ def _golden_payload() -> dict[str, object]:
         "approved_rule_sha256": "b" * 64,
         "runner_version": "1",
         "source_commit": "c" * 40,
-        "command": "python -m ansim_review rules run-golden",
+        "command": "python -m evidence_review rules run-golden",
         "fixture_manifest_path": "rules/golden/fixtures/TEST-RULE@1.0.0.json",
         "fixture_manifest_sha256": "d" * 64,
         "case_count": 1,

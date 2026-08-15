@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import ansim_review.parsing.source_batch_importer as source_batch_importer
-from ansim_review.contracts.source_batch import decode_source_batch
+import evidence_review.parsing.source_batch_importer as source_batch_importer
+from evidence_review.contracts.source_batch import decode_source_batch
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 

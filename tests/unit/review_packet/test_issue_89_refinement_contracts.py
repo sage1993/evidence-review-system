@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.review_packet.builder import build_review_view_model
-from ansim_review.review_packet.decision_record import validate_human_decision_request
-from ansim_review.review_packet.presentation import conclusion_text
+from evidence_review.review_packet.builder import build_review_view_model
+from evidence_review.review_packet.decision_record import validate_human_decision_request
+from evidence_review.review_packet.presentation import conclusion_text
 
 from .test_builder import _db, _packet
 

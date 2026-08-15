@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from pypdf import PdfWriter
 
-import ansim_review.parser_reproducibility.report as report_module
-from ansim_review.parser_reproducibility.report import (
+import evidence_review.parser_reproducibility.report as report_module
+from evidence_review.parser_reproducibility.report import (
     report_bytes,
     validate_opendataloader_reproducibility,
 )

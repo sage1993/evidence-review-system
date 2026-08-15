@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from helpers.rule_governance import GovernanceTree, build_valid_governance_tree
 
-from ansim_review.canonical_json import dump_bytes
-from ansim_review.rule_engine.golden import run_rule_golden
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.rule_engine.golden import run_rule_golden
 
 SOURCE_COMMIT = "d" * 40
-COMMAND = "python -m ansim_review rules run-golden"
+COMMAND = "python -m evidence_review rules run-golden"
 
 
 def _load_object(path: Path) -> dict[str, object]:

@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import hashlib
 import json
 import os
 import sqlite3
 import stat
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-
 
 _MANIFEST_FORMAT = "evidence-review/chatgpt-web-runtime"
 _MANIFEST_VERSION = 1

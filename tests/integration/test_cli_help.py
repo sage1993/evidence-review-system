@@ -1,12 +1,12 @@
 import sys
 from subprocess import run
 
-from ansim_review.cli_parser import build_parser
+from evidence_review.cli_parser import build_parser
 
 
 def test_module_help() -> None:
     result = run(
-        [sys.executable, "-m", "ansim_review", "--help"],
+        [sys.executable, "-m", "evidence_review", "--help"],
         capture_output=True,
         text=True,
     )

@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from ansim_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.html_renderer import render_review_html
 
 from .test_html_renderer import _model, _write_page_assets
 

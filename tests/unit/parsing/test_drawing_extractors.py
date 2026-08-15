@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from ansim_review.canonical_json import sha256_json
-from ansim_review.contracts.drawing import DrawingQualityAssessment
-from ansim_review.parsing.drawing_extractors import extract_drawing_candidates
-from ansim_review.parsing.odl_adapter import RawElement
+from evidence_review.canonical_json import sha256_json
+from evidence_review.contracts.drawing import DrawingQualityAssessment
+from evidence_review.parsing.drawing_extractors import extract_drawing_candidates
+from evidence_review.parsing.odl_adapter import RawElement
 
 SOURCE_HASH = "b" * 64
 

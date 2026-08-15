@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.release.attestation import REQUIRED_CHECK_IDS, validate_attestation
+from evidence_review.release.attestation import REQUIRED_CHECK_IDS, validate_attestation
 
 
 def _document() -> dict[str, object]:

@@ -5,7 +5,7 @@ from copy import deepcopy
 
 import pytest
 
-from ansim_review.evidence.lineage_contract import (
+from evidence_review.evidence.lineage_contract import (
     decode_legacy_lineage_manifest,
     legacy_lineage_manifest_document,
 )

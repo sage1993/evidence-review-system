@@ -3,7 +3,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from ansim_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.html_renderer import render_review_html
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
 
@@ -196,7 +196,7 @@ def test_reviewer_layout_and_viewer_labels_are_applied_by_controller(tmp_path: P
 
     assert "applyReviewerLayout" not in controller
     assert "reviewer-layout-refinement" not in controller
-    assert "grid-template-columns: 392px minmax(0, 1fr) 342px" in html
+    assert "grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(320px, 360px)" in html
     assert "max-height: min(60vh, 640px)" in html
     assert "#evidence-zoom" in html and "min-height: 44px" in html
     assert 'original: "원문"' in controller

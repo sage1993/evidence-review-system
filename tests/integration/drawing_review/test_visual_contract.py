@@ -143,7 +143,7 @@ def _assert_annotation_viewport_budget(css: str) -> None:
 
 def test_annotation_css_matches_issue_5_visual_contract() -> None:
     css = (
-        files("ansim_review.drawing_review")
+        files("evidence_review.drawing_review")
         .joinpath("assets", "annotation.css")
         .read_text(encoding="utf-8")
     )
@@ -154,7 +154,7 @@ def test_annotation_css_matches_issue_5_visual_contract() -> None:
 
 def test_annotation_css_freezes_concrete_viewport_budgets_and_print_flow() -> None:
     css = (
-        files("ansim_review.drawing_review")
+        files("evidence_review.drawing_review")
         .joinpath("assets", "annotation.css")
         .read_text(encoding="utf-8")
     )
@@ -163,7 +163,7 @@ def test_annotation_css_freezes_concrete_viewport_budgets_and_print_flow() -> No
 
 def test_annotation_print_full_flow_rejects_selector_mutations() -> None:
     css = (
-        files("ansim_review.drawing_review")
+        files("evidence_review.drawing_review")
         .joinpath("assets", "annotation.css")
         .read_text(encoding="utf-8")
     )

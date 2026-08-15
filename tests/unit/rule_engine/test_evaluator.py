@@ -1,7 +1,7 @@
-from ansim_review.contracts.common import BBox
-from ansim_review.contracts.evidence import EvidenceRecord
-from ansim_review.rule_engine.evaluator import evaluate_rule
-from ansim_review.rule_engine.loader import load_rule
+from evidence_review.contracts.common import BBox
+from evidence_review.contracts.evidence import EvidenceRecord
+from evidence_review.rule_engine.evaluator import evaluate_rule
+from evidence_review.rule_engine.loader import load_rule
 
 
 def _rule():

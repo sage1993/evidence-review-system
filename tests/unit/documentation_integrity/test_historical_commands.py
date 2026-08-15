@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
-from ansim_review.documentation_integrity.commands import (
+from evidence_review.documentation_integrity.commands import (
     normalize_command_block,
     validate_command_lines,
 )
-from ansim_review.documentation_integrity.discovery import DiscoveredDocument
-from ansim_review.documentation_integrity.markdown import CommandBlock
+from evidence_review.documentation_integrity.discovery import DiscoveredDocument
+from evidence_review.documentation_integrity.markdown import CommandBlock
 
 
 def test_obsolete_historical_cli_command_is_not_reinterpreted(tmp_path: Path) -> None:

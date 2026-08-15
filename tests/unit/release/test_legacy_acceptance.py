@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.release.acceptance import validate_acceptance_record
-from ansim_review.release.attestation import validate_attestation
-from ansim_review.release.legacy_acceptance import inspect_legacy_acceptance
+from evidence_review.release.acceptance import validate_acceptance_record
+from evidence_review.release.attestation import validate_attestation
+from evidence_review.release.legacy_acceptance import inspect_legacy_acceptance
 
 
 def _legacy(candidate_hash: str = "a" * 64, packet_hash: str = "b" * 64) -> dict[str, object]:

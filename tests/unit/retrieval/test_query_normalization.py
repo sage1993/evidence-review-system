@@ -1,6 +1,6 @@
 import pytest
 
-from ansim_review.retrieval.query import normalize_query
+from evidence_review.retrieval.query import normalize_query
 
 
 def test_normalization_collapses_whitespace_nfc_and_tracks_origins() -> None:

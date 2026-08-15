@@ -8,7 +8,7 @@ from threading import Thread
 
 import pytest
 
-from ansim_review.review_packet.local_server import create_review_server
+from evidence_review.review_packet.local_server import create_review_server
 
 RUN_ID = "RUN-0123456789ABCDEF0123"
 TOKEN = "a" * 43

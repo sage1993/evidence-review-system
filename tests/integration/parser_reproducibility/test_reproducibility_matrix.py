@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parser_reproducibility.report import (
+from evidence_review.parser_reproducibility.report import (
     validate_opendataloader_reproducibility,
 )
 from tests.unit.parser_reproducibility._helpers import config, write_pdf, write_run

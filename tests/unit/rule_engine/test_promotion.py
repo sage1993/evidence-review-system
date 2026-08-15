@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.rule_engine.promotion import approve_candidate, promote_candidate
+from evidence_review.rule_engine.promotion import approve_candidate, promote_candidate
 
 
 def _candidate() -> dict[str, object]:

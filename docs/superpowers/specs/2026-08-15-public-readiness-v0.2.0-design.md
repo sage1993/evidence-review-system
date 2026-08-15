@@ -92,8 +92,8 @@ instead of the current split where `evidence_review` is the public facade while 
 The canonical user/developer entrypoints become:
 
 ```text
-evidence-review ...
-python -m evidence_review ...
+evidence-review --help
+python -m evidence_review --help
 ```
 
 There must be exactly one post-preflight business-command dispatcher.

@@ -1,6 +1,6 @@
 import pytest
 
-from ansim_review.retrieval.korean_variants import (
+from evidence_review.retrieval.korean_variants import (
     derive_korean_compound_variants,
     derive_korean_query_variants,
 )

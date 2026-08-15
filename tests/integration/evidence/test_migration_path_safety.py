@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
+from evidence_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
 

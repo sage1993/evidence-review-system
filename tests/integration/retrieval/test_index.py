@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
-from ansim_review.retrieval.index import build_fts_index
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.retrieval.index import build_fts_index
 
 
 def test_index_derives_page_metadata_from_page_id(tmp_path: Path) -> None:

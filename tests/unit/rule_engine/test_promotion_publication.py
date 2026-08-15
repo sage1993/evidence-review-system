@@ -7,8 +7,8 @@ from typing import BinaryIO
 
 import pytest
 
-from ansim_review.rule_engine import promotion
-from ansim_review.rule_engine.promotion import approve_candidate
+from evidence_review.rule_engine import promotion
+from evidence_review.rule_engine.promotion import approve_candidate
 
 
 class _ReplaceOnExit:

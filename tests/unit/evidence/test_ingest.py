@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from ansim_review.evidence.store import EvidenceStore
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
 
 
 def base_snapshot(**overrides) -> EvidenceSnapshot:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.html_renderer import render_review_html
 
 
 def _model() -> dict[str, object]:

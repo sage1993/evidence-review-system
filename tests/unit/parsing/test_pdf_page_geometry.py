@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ansim_review.parsing.pdf_page_geometry import read_pdf_page_geometries
+from evidence_review.parsing.pdf_page_geometry import read_pdf_page_geometries
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 

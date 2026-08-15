@@ -43,7 +43,7 @@ evidence-review review-run finalize `
 The local deterministic finalizer validates both untrusted outputs. A ChatGPT response is not accepted merely because it is well-formed; citation, calculation, rule, confidence, and Track B integrity checks must all pass.
 
 ```bash smoke
-python -c "from ansim_review.packaging.project_instructions import render_project_instructions; assert 'human_decision' in render_project_instructions()"
+python -c "from evidence_review.packaging.project_instructions import render_project_instructions; assert 'human_decision' in render_project_instructions()"
 ```
 
 A ready case and an abstention case use the same deterministic sequence. The final machine packet never contains a selected human decision.

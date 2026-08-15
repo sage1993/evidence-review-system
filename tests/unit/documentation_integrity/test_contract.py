@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from ansim_review.documentation_integrity.contract import (
+from evidence_review.documentation_integrity.contract import (
     DocumentationFinding,
     DocumentationIntegrityReport,
     decode_config_bytes,
@@ -112,7 +112,7 @@ def test_config_rejects_unknown_nested_field() -> None:
     payload["generated_documents"] = [
         {
             "id": "CODEX_VALIDATE",
-            "generator": "ansim_review.packaging.codex_bundle:render_validation_document",
+            "generator": "evidence_review.packaging.codex_bundle:render_validation_document",
             "virtual_path": "codex-workspace/VALIDATE.md",
             "classification": "CURRENT",
             "extra": True,
@@ -126,8 +126,8 @@ def test_config_rejects_unknown_nested_field() -> None:
     ("field", "value", "message"),
     [
         ("id", "lowercase", "generated document id"),
-        ("generator", "ansim_review.module", "generator reference"),
-        ("generator", "ansim_review.module:not-valid", "generator reference"),
+        ("generator", "evidence_review.module", "generator reference"),
+        ("generator", "evidence_review.module:not-valid", "generator reference"),
         ("classification", "ARCHIVED", "generated document classification"),
         ("virtual_path", "../outside.md", "repository path"),
     ],
@@ -140,7 +140,7 @@ def test_config_rejects_invalid_generated_document_value(
     payload = json.loads(VALID_CONFIG)
     generated = {
         "id": "CODEX_VALIDATE",
-        "generator": "ansim_review.packaging.codex_bundle:render_validation_document",
+        "generator": "evidence_review.packaging.codex_bundle:render_validation_document",
         "virtual_path": "codex-workspace/VALIDATE.md",
         "classification": "CURRENT",
     }
@@ -154,7 +154,7 @@ def test_config_rejects_duplicate_generated_ids_and_paths() -> None:
     payload = json.loads(VALID_CONFIG)
     generated = {
         "id": "CODEX_VALIDATE",
-        "generator": "ansim_review.packaging.codex_bundle:render_validation_document",
+        "generator": "evidence_review.packaging.codex_bundle:render_validation_document",
         "virtual_path": "codex-workspace/VALIDATE.md",
         "classification": "CURRENT",
     }

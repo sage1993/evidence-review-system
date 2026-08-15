@@ -49,20 +49,20 @@ def test_example_is_not_executable_acceptance_authority() -> None:
 def test_readme_and_legacy_visual_policy_link_the_workflow() -> None:
     readme = README.read_text(encoding="utf-8")
     visual_policy = LEGACY_VISUALS.read_text(encoding="utf-8")
-    assert "LEGACY_LINEAGE_MIGRATION.md" in readme
-    assert "evidence migrate-lineage" in readme
+    assert "LEGACY_LINEAGE_MIGRATION.md" not in readme
+    assert "evidence migrate-lineage" not in readme
     assert "document lineage migration" in visual_policy
     assert "does not canonicalize legacy visual CSV" in visual_policy
 
 
 def test_normal_paths_do_not_consume_alias_registry() -> None:
     importer = Path(
-        "src/ansim_review/parsing/source_batch_importer.py"
+        "src/evidence_review/parsing/source_batch_importer.py"
     ).read_text(encoding="utf-8")
-    visual = Path("src/ansim_review/parsing/visual_manifest.py").read_text(
+    visual = Path("src/evidence_review/parsing/visual_manifest.py").read_text(
         encoding="utf-8"
     )
-    release = Path("src/ansim_review/release/builder.py").read_text(
+    release = Path("src/evidence_review/release/builder.py").read_text(
         encoding="utf-8"
     )
     for text in (importer, visual, release):
