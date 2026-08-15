@@ -21,10 +21,19 @@ from evidence_review.retrieval.fallback import (
     FallbackTrace,
     search_clause_with_fallback,
 )
+from evidence_review.retrieval.graph import (
+    MissingReference,
+    ReferencePath,
+    traverse_relations_with_provenance,
+)
 from evidence_review.retrieval.models import ChannelScore, RetrievalHit
 from evidence_review.retrieval.policy import RetrievalPolicy
 
-BudgetDropReason = Literal["QUERY_BUDGET", "CANDIDATE_BUDGET"]
+BudgetDropReason = Literal[
+    "QUERY_BUDGET",
+    "CANDIDATE_BUDGET",
+    "REFERENCE_EVIDENCE_BUDGET",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +44,7 @@ class BudgetDrop:
     search_request_id: str
     reason: BudgetDropReason
     clause_id: str | None = None
+    evidence_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,13 +95,37 @@ class IssueClauseCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class IssueReferenceMatch:
+    """Issue/query lineage for one evidence record reached through a legal link."""
+
+    evidence_id: str
+    issue_id: str
+    search_request_id: str
+    role: EvidenceRole
+    query_text: str
+    retrieval_query: str
+    source_evidence_id: str
+    path: ReferencePath
+
+
+@dataclass(frozen=True, slots=True)
+class IssueReferenceMissing:
+    """One unresolved reference target attributed to the issue traversal that found it."""
+
+    issue_id: str
+    reference: MissingReference
+
+
+@dataclass(frozen=True, slots=True)
 class IssueRetrievalBundle:
-    """Bounded semantic candidates plus citation-grade evidence."""
+    """Bounded semantic candidates plus citation-grade evidence and reference lineage."""
 
     candidates: tuple[IssueClauseCandidate, ...]
     selected_evidence: tuple[RetrievalHit, ...]
     budget_drops: tuple[BudgetDrop, ...]
     fallback_traces: tuple[IssueFallbackTrace, ...] = ()
+    reference_matches: tuple[IssueReferenceMatch, ...] = ()
+    reference_missing: tuple[IssueReferenceMissing, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,12 +146,25 @@ def _match_sort_key(match: IssueCandidateMatch) -> tuple[str, str, str, str, str
     )
 
 
-def _drop_sort_key(drop: BudgetDrop) -> tuple[str, str, str, str]:
+def _drop_sort_key(drop: BudgetDrop) -> tuple[str, str, str, str, str]:
     return (
         drop.issue_id,
         drop.search_request_id,
         drop.reason,
         drop.clause_id or "",
+        drop.evidence_id or "",
+    )
+
+
+def _reference_match_sort_key(
+    match: IssueReferenceMatch,
+) -> tuple[str, str, str, str, str]:
+    return (
+        match.issue_id,
+        match.search_request_id,
+        match.evidence_id,
+        match.source_evidence_id,
+        match.role,
     )
 
 
@@ -279,7 +326,6 @@ def _bucket_candidates(
             key=lambda item: (-item.clause.score, item.clause.clause_id),
         )[: policy.per_issue_role_limit]
     )
-    # Preserve actual attempt order for audit/replay. Do not sort fallback traces.
     return candidates, tuple(traces)
 
 
@@ -359,6 +405,124 @@ def _materialize_evidence(
     return tuple(final_candidates), tuple(selected_evidence.values())
 
 
+def _seed_lineage(
+    candidates: tuple[IssueClauseCandidate, ...],
+) -> dict[str, dict[str, tuple[IssueCandidateMatch, ...]]]:
+    by_issue: dict[str, dict[str, list[IssueCandidateMatch]]] = {}
+    for candidate in candidates:
+        for evidence in candidate.evidence:
+            for match in candidate.matches:
+                by_issue.setdefault(match.issue_id, {}).setdefault(
+                    evidence.evidence_id,
+                    [],
+                ).append(match)
+    return {
+        issue_id: {
+            evidence_id: tuple(sorted(matches, key=_match_sort_key))
+            for evidence_id, matches in seeds.items()
+        }
+        for issue_id, seeds in by_issue.items()
+    }
+
+
+def _expand_references(
+    connection: sqlite3.Connection,
+    candidates: tuple[IssueClauseCandidate, ...],
+    selected_evidence: tuple[RetrievalHit, ...],
+    policy: RetrievalPolicy,
+) -> tuple[
+    tuple[RetrievalHit, ...],
+    tuple[IssueReferenceMatch, ...],
+    tuple[IssueReferenceMissing, ...],
+    tuple[BudgetDrop, ...],
+]:
+    if policy.reference_max_depth == 0:
+        return selected_evidence, (), (), ()
+
+    lineage = _seed_lineage(candidates)
+    selected = {hit.evidence_id: hit for hit in selected_evidence}
+    reference_matches: dict[
+        tuple[str, str, str, str, str], IssueReferenceMatch
+    ] = {}
+    missing: list[IssueReferenceMissing] = []
+    drops: list[BudgetDrop] = []
+
+    for issue_id in sorted(lineage):
+        seeds = lineage[issue_id]
+        if not seeds:
+            continue
+        result = traverse_relations_with_provenance(
+            connection,
+            tuple(sorted(seeds)),
+            depth=policy.reference_max_depth,
+            max_nodes=policy.reference_max_nodes_per_issue,
+            max_fanout=policy.reference_max_fanout,
+        )
+        paths = {path.target_id: path for path in result.paths}
+        for hit in result.hits:
+            path = paths[hit.evidence_id]
+            if not path.steps:
+                continue
+            source_evidence_id = path.steps[0].source_id
+            source_matches = seeds.get(source_evidence_id, ())
+            if not source_matches:
+                continue
+            if hit.evidence_id not in selected:
+                if len(selected) >= policy.max_selected_evidence:
+                    drops.extend(
+                        BudgetDrop(
+                            issue_id=match.issue_id,
+                            search_request_id=match.search_request_id,
+                            reason="REFERENCE_EVIDENCE_BUDGET",
+                            evidence_id=hit.evidence_id,
+                        )
+                        for match in source_matches
+                    )
+                    continue
+                selected[hit.evidence_id] = hit
+            for match in source_matches:
+                reference = IssueReferenceMatch(
+                    evidence_id=hit.evidence_id,
+                    issue_id=match.issue_id,
+                    search_request_id=match.search_request_id,
+                    role=match.role,
+                    query_text=match.query_text,
+                    retrieval_query=match.retrieval_query,
+                    source_evidence_id=source_evidence_id,
+                    path=path,
+                )
+                key = (
+                    reference.issue_id,
+                    reference.search_request_id,
+                    reference.evidence_id,
+                    reference.source_evidence_id,
+                    reference.role,
+                )
+                reference_matches[key] = reference
+        missing.extend(
+            IssueReferenceMissing(issue_id=issue_id, reference=item)
+            for item in result.missing
+        )
+
+    return (
+        tuple(selected.values()),
+        tuple(sorted(reference_matches.values(), key=_reference_match_sort_key)),
+        tuple(
+            sorted(
+                missing,
+                key=lambda item: (
+                    item.issue_id,
+                    item.reference.depth,
+                    item.reference.source_id,
+                    item.reference.target_id,
+                    item.reference.reason_code,
+                ),
+            )
+        ),
+        tuple(sorted(drops, key=_drop_sort_key)),
+    )
+
+
 def retrieve_issue_bundle(
     connection: sqlite3.Connection,
     plan: QuestionPlan,
@@ -410,9 +574,18 @@ def retrieve_issue_bundle(
         semantic_candidates,
         effective_policy,
     )
+    evidence, reference_matches, reference_missing, reference_drops = _expand_references(
+        connection,
+        candidates,
+        evidence,
+        effective_policy,
+    )
+    budget_drops.extend(reference_drops)
     return IssueRetrievalBundle(
         candidates=candidates,
         selected_evidence=evidence,
         budget_drops=tuple(sorted(budget_drops, key=_drop_sort_key)),
         fallback_traces=tuple(fallback_traces),
+        reference_matches=reference_matches,
+        reference_missing=reference_missing,
     )
