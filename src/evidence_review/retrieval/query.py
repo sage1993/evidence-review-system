@@ -4,7 +4,7 @@ from __future__ import annotations
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal
 
 QueryOrigin = Literal["primary", "approved_synonym", "llm", "user"]
 
@@ -63,7 +63,7 @@ def _merge_term(existing: QueryTerm, incoming: QueryTerm) -> QueryTerm:
         origin = incoming.origin
     return QueryTerm(
         text=existing.text,
-        origin=cast(QueryOrigin, origin),
+        origin=origin,
         search_request_ids=tuple(
             sorted(set(existing.search_request_ids).union(incoming.search_request_ids))
         ),
