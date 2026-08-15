@@ -65,6 +65,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(_source_version())
         return 0
 
+    if arguments in (["--help"], ["-h"]):
+        from evidence_review.cli_parser import build_parser
+
+        build_parser().print_help()
+        return 0
+
     if arguments and arguments[0] == "doctor":
         doctor = _doctor_parser().parse_args(arguments[1:])
         result = collect_runtime_diagnostics(doctor.repository_root)

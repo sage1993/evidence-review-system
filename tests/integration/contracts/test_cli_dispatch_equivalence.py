@@ -33,3 +33,14 @@ def test_legacy_and_canonical_module_entrypoints_have_same_help_contract() -> No
 
     assert canonical.stdout == legacy.stdout
     assert canonical.stderr == legacy.stderr
+
+
+def test_help_is_available_before_dependency_preflight(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        evidence_review.cli,
+        "preflight_runtime",
+        lambda: pytest.fail("help must not require dependency preflight"),
+    )
+
+    assert evidence_review.cli.main(["--help"]) == 0
+    assert "usage:" in capsys.readouterr().out
