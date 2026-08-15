@@ -23,6 +23,8 @@ PDF 준비 단계는 다음 책임을 가집니다.
 
 ```text
 질문
+→ AI Question Planner handoff
+→ fail-closed QuestionPlan 검증
 → 로컬 근거 검색
 → formal review request
 → Track A 작성/검증
@@ -32,7 +34,11 @@ PDF 준비 단계는 다음 책임을 가집니다.
 → 사람 결정
 ```
 
-사용자가 query JSON, Track handoff metadata, packet hash, timestamp를 직접 작성하도록 요구하지 않습니다.
+Question Planner는 답변이나 적합성 판정을 만들지 않습니다. 원래 질문의 사실·숫자·부정조건·예외를 보존하면서 검토 쟁점과 최소 검색 요청만 구조화합니다. Planner가 추정한 법령·조문은 검색 가설일 뿐, evidence store에서 검색·인용되기 전에는 권위 근거가 아닙니다.
+
+`PLANNER_FAILED`, 유효 Plan 이후의 `RETRIEVAL_NO_EVIDENCE`, 최종 검토의 `ABSTAIN`은 서로 다른 상태로 유지합니다.
+
+사용자가 QuestionPlan, query JSON, Track handoff metadata, packet hash, timestamp를 직접 작성하도록 요구하지 않습니다. Codex가 `question-planner-bundle.json`과 지침을 읽어 외부 planner output을 작성하고 runtime 검증을 거친 뒤 다음 단계로 진행합니다.
 
 ## 공통 원칙
 
@@ -40,6 +46,7 @@ PDF 준비 단계는 다음 책임을 가집니다.
 - 원시 근거와 정규화·요약·해석 자료를 분리합니다.
 - 문서, revision, 페이지, 좌표, source hash를 유지합니다.
 - parser 결과를 법적 해석이나 사실 확정으로 취급하지 않습니다.
+- QuestionPlan 자체를 evidence로 취급하지 않습니다.
 - 계산은 승인된 Math Engine 결과를 사용합니다.
 - 규칙 판정은 승인된 Rule Engine 결과를 사용합니다.
 - `READY_FOR_HUMAN_REVIEW`는 사람 검토 준비 상태이며 최종 승인 결과가 아닙니다.

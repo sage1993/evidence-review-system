@@ -92,5 +92,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     if "serve_review_run" in globals():
         setattr(runtime_dispatch, "serve_review_server", globals()["serve_review_run"])  # noqa: B010
 
-
     return runtime_main(arguments)

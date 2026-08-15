@@ -14,6 +14,7 @@ from evidence_review.retrieval.index import (
     search_fts_literal,
     search_fts_phrase,
     search_fts_token_and,
+    search_fts_token_prefix_and,
 )
 from evidence_review.retrieval.korean_variants import (
     derive_korean_compound_variants,
@@ -23,12 +24,11 @@ from evidence_review.retrieval.models import (
     ChannelScore,
     CitationUnavailableError,
     RetrievalHit,
+    RetrievalMatch,
+    RetrievalOrigin,
 )
-from evidence_review.retrieval.query import NormalizedQuery, normalize_query
-from evidence_review.retrieval.structured import (
-    retrieve_clause_ids,
-    retrieve_structured,
-)
+from evidence_review.retrieval.query import NormalizedQuery, QueryTerm, normalize_query
+from evidence_review.retrieval.structured import retrieve_clause_ids, retrieve_structured
 
 _GROUPED_CONTEXT_CHANNELS = frozenset(
     {"fts_entity", "fts_numeric", "fts_concept", "fts_korean_compound"}
@@ -36,18 +36,13 @@ _GROUPED_CONTEXT_CHANNELS = frozenset(
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(
-        isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise ValueError(f"{field} must be an object")
     return cast(Mapping[str, object], value)
 
 
 def _sequence(value: object, field: str) -> Sequence[object]:
-    if isinstance(value, (str, bytes, bytearray)) or not isinstance(
-        value,
-        Sequence,
-    ):
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
         raise ValueError(f"{field} must be an array")
     return cast(Sequence[object], value)
 
@@ -57,9 +52,7 @@ def _strings(value: object, field: str) -> tuple[str, ...]:
     result: list[str] = []
     for index, item in enumerate(items):
         if not isinstance(item, str) or not item:
-            raise ValueError(
-                f"{field}[{index}] must be a non-empty string"
-            )
+            raise ValueError(f"{field}[{index}] must be a non-empty string")
         result.append(item)
     return tuple(result)
 
@@ -76,10 +69,7 @@ def _synonyms(value: object) -> dict[str, tuple[str, ...]]:
 
 def _expansions(value: object) -> tuple[Mapping[str, object], ...]:
     items = _sequence(value, "expansions")
-    return tuple(
-        _mapping(item, f"expansions[{index}]")
-        for index, item in enumerate(items)
-    )
+    return tuple(_mapping(item, f"expansions[{index}]") for index, item in enumerate(items))
 
 
 def _normalize_request(
@@ -105,9 +95,7 @@ def _normalize_request(
     }
     unknown = sorted(set(request) - allowed)
     if unknown:
-        raise ValueError(
-            f"request has unknown fields: {', '.join(unknown)}"
-        )
+        raise ValueError(f"request has unknown fields: {', '.join(unknown)}")
     question = request.get("question")
     if not isinstance(question, str):
         raise ValueError("question must be a string")
@@ -125,14 +113,7 @@ def _normalize_request(
         raise ValueError("graph_depth must be an integer")
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
-    return (
-        normalized,
-        filters,
-        clause_ids,
-        seed_ids,
-        graph_depth,
-        limit,
-    )
+    return normalized, filters, clause_ids, seed_ids, graph_depth, limit
 
 
 def _trace_hits(
@@ -140,9 +121,12 @@ def _trace_hits(
     *,
     origin: str,
     term: str,
+    search_request_ids: tuple[str, ...] = (),
+    issue_ids: tuple[str, ...] = (),
 ) -> tuple[RetrievalHit, ...]:
-    return tuple(
-        replace(
+    traced: list[RetrievalHit] = []
+    for hit in hits:
+        item = replace(
             hit,
             channel_scores=(
                 ChannelScore(
@@ -152,8 +136,17 @@ def _trace_hits(
                 ),
             ),
         )
-        for hit in hits
-    )
+        for search_request_id in search_request_ids:
+            item = item.with_match(
+                RetrievalMatch(
+                    search_request_id=search_request_id,
+                    issue_ids=issue_ids,
+                    query_text=term,
+                    origin=cast(RetrievalOrigin, origin),
+                )
+            )
+        traced.append(item)
+    return tuple(traced)
 
 
 def _origin_hits(
@@ -170,6 +163,8 @@ def _origin_hits(
                 phrase_hits,
                 origin=term.origin,
                 term=term.text,
+                search_request_ids=term.search_request_ids,
+                issue_ids=term.issue_ids,
             )
         )
         channels.append(
@@ -177,8 +172,21 @@ def _origin_hits(
                 token_hits,
                 origin=term.origin,
                 term=term.text,
+                search_request_ids=term.search_request_ids,
+                issue_ids=term.issue_ids,
             )
         )
+        if term.search_request_ids:
+            prefix_hits = search_fts_token_prefix_and(connection, term.text, limit)
+            channels.append(
+                _trace_hits(
+                    prefix_hits,
+                    origin=term.origin,
+                    term=term.text,
+                    search_request_ids=term.search_request_ids,
+                    issue_ids=term.issue_ids,
+                )
+            )
     return tuple(channels)
 
 
@@ -203,6 +211,7 @@ def _compound_variant_hits(
             )
         )
     return tuple(channels)
+
 
 def _derived_variant_hits(
     connection: sqlite3.Connection,
@@ -235,10 +244,7 @@ def _derived_variant_hits(
 
 
 def _is_grouped_context_seed(hit: RetrievalHit) -> bool:
-    return any(
-        score.channel in _GROUPED_CONTEXT_CHANNELS
-        for score in hit.channel_scores
-    )
+    return any(score.channel in _GROUPED_CONTEXT_CHANNELS for score in hit.channel_scores)
 
 
 def _citation_document(hit: RetrievalHit) -> dict[str, object]:
@@ -259,20 +265,22 @@ def _citation_document(hit: RetrievalHit) -> dict[str, object]:
     }
 
 
+def _query_term_document(term: QueryTerm) -> dict[str, object]:
+    document: dict[str, object] = {"text": term.text, "origin": term.origin}
+    if term.search_request_ids:
+        document["search_request_ids"] = list(term.search_request_ids)
+    if term.issue_ids:
+        document["issue_ids"] = list(term.issue_ids)
+    return document
+
+
 def build_evidence_bundle(
     connection: sqlite3.Connection,
     request_payload: object,
 ) -> dict[str, object]:
     """Execute all deterministic retrieval channels and return a bundle."""
     snapshot_hash = require_fresh_index(connection)
-    (
-        query,
-        filters,
-        clause_ids,
-        seed_ids,
-        graph_depth,
-        limit,
-    ) = _normalize_request(request_payload)
+    query, filters, clause_ids, seed_ids, graph_depth, limit = _normalize_request(request_payload)
     compound_variants = derive_korean_compound_variants(query.primary)
     variants = derive_korean_query_variants(query.primary)
     attempted_terms: list[dict[str, str]] = []
@@ -299,9 +307,7 @@ def build_evidence_bundle(
             if candidate not in attempted_seen:
                 attempted_seen.add(candidate)
                 attempted_terms.append({"text": derived_term, "origin": f"derived:{group}"})
-    channels: list[Sequence[RetrievalHit]] = list(
-        _origin_hits(connection, query, limit)
-    )
+    channels: list[Sequence[RetrievalHit]] = list(_origin_hits(connection, query, limit))
     channels.extend(_compound_variant_hits(connection, query.primary, limit))
     channels.extend(_derived_variant_hits(connection, query.primary, limit))
     if filters:
@@ -309,9 +315,7 @@ def build_evidence_bundle(
     if clause_ids:
         channels.append(retrieve_clause_ids(connection, clause_ids))
     if seed_ids:
-        channels.append(
-            traverse_relations(connection, seed_ids, graph_depth)
-        )
+        channels.append(traverse_relations(connection, seed_ids, graph_depth))
 
     direct_fused = fuse_hits(tuple(channels))[:limit]
     channels.extend(
@@ -336,10 +340,7 @@ def build_evidence_bundle(
         "snapshot_hash": snapshot_hash,
         "query": {
             "primary": query.primary,
-            "terms": [
-                {"text": term.text, "origin": term.origin}
-                for term in query.terms
-            ],
+            "terms": [_query_term_document(term) for term in query.terms],
             "attempted_terms": attempted_terms,
             "derived_variants": {
                 "compound": list(compound_variants),

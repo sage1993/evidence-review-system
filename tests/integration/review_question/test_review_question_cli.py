@@ -67,11 +67,59 @@ def _workspace(path: Path) -> Path:
     return path
 
 
+def _question_plan_output(
+    path: Path,
+    *,
+    question: str,
+    search_text: str,
+    issue_question: str | None = None,
+    facts: list[dict[str, str]] | None = None,
+) -> Path:
+    path.write_text(
+        json.dumps(
+            {
+                "format": "evidence-review/question-plan",
+                "version": 1,
+                "original_question": question,
+                "facts": [] if facts is None else facts,
+                "assumptions": [],
+                "issues": [
+                    {
+                        "id": "I1",
+                        "question": issue_question or question,
+                        "depends_on": [],
+                    }
+                ],
+                "legal_anchors": [],
+                "search_requests": [
+                    {
+                        "id": "S1",
+                        "issue_ids": ["I1"],
+                        "text": search_text,
+                        "kind": "phrase",
+                        "source": "planner",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_review_question_prepare_hides_question_and_evidence_from_stdout(
     capsys,
     tmp_path: Path,
 ) -> None:
     workspace = _workspace(tmp_path / "workspace")
+    question = "주차장 설치 기준"
+    plan_output = _question_plan_output(
+        tmp_path / "question-plan-output.json",
+        question=question,
+        search_text="주차장",
+        issue_question="주차장 설치 기준은 무엇인가",
+    )
 
     assert cli.main(
         [
@@ -80,7 +128,9 @@ def test_review_question_prepare_hides_question_and_evidence_from_stdout(
             "--workspace",
             str(workspace),
             "--question",
-            "주차장 설치 기준",
+            question,
+            "--question-plan-output",
+            str(plan_output),
             "--expansion",
             "별표 2",
         ]
@@ -89,9 +139,16 @@ def test_review_question_prepare_hides_question_and_evidence_from_stdout(
     document = json.loads(capsys.readouterr().out)
     assert document["status"] == "WAITING_TRACK_A"
     assert document["resumed"] is False
-    assert "주차장 설치 기준" not in json.dumps(document, ensure_ascii=False)
+    assert question not in json.dumps(document, ensure_ascii=False)
     action = json.loads(Path(document["next_action_path"]).read_text(encoding="utf-8"))
     assert action["action"] == "PRODUCE_TRACK_A"
+    evidence_query = json.loads(
+        (workspace / "runs" / document["run_id"] / "evidence-query.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    user_term = next(item for item in evidence_query["query"]["terms"] if item["text"] == "별표 2")
+    assert user_term["origin"] == "user"
 
 
 def test_review_question_submit_track_b_open_returns_review_html_and_protected_url(
@@ -143,13 +200,22 @@ def test_review_question_prepare_resumes_the_same_immutable_request(
     tmp_path: Path,
 ) -> None:
     workspace = _workspace(tmp_path / "workspace")
+    question = "주차장 설치 기준"
+    plan_output = _question_plan_output(
+        tmp_path / "question-plan-output.json",
+        question=question,
+        search_text="주차장",
+        issue_question="주차장 설치 기준은 무엇인가",
+    )
     arguments = [
         "review-question",
         "prepare",
         "--workspace",
         str(workspace),
         "--question",
-        "주차장 설치 기준",
+        question,
+        "--question-plan-output",
+        str(plan_output),
     ]
 
     assert cli.main(arguments) == 0
@@ -416,6 +482,7 @@ def test_finalizing_retry_rejects_different_track_b_before_finalizer(
     assert caught.value.reason_code == "TRACK_B_RETRY_MISMATCH"
     assert called is False
 
+
 def test_invalid_track_b_keeps_the_run_waiting_for_track_b(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path / "workspace")
     first = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
@@ -558,6 +625,19 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
         "청소년 문화의집은 면적이 "
         "1500제곱미터 이상이어야 한다."
     )
+    plan_output = _question_plan_output(
+        tmp_path / "question-plan-output.json",
+        question=question,
+        search_text="청소년 문화의집",
+        issue_question="청소년 문화의집의 면적 기준은 무엇인가",
+        facts=[
+            {
+                "id": "F1",
+                "text": "면적이 1500제곱미터 이상이어야 한다",
+                "polarity": "positive",
+            }
+        ],
+    )
 
     arguments = [
         "review-question",
@@ -566,6 +646,8 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
         str(workspace),
         "--question",
         question,
+        "--question-plan-output",
+        str(plan_output),
     ]
 
     assert cli.main(arguments) == 0
@@ -578,60 +660,38 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
     review_request_path = run_directory / "review-request.json"
     track_a_bundle_path = run_directory / "track-a-bundle.json"
 
-    evidence_query = json.loads(
-        evidence_query_path.read_text(encoding="utf-8")
-    )
-    review_request = json.loads(
-        review_request_path.read_text(encoding="utf-8")
-    )
-    track_a_bundle = json.loads(
-        track_a_bundle_path.read_text(encoding="utf-8")
-    )
+    evidence_query = json.loads(evidence_query_path.read_text(encoding="utf-8"))
+    review_request = json.loads(review_request_path.read_text(encoding="utf-8"))
+    track_a_bundle = json.loads(track_a_bundle_path.read_text(encoding="utf-8"))
 
     assert evidence_query["hits"]
 
-    evidence_ids = {
-        item["evidence_id"]
-        for item in evidence_query["hits"]
-    }
+    evidence_ids = {item["evidence_id"] for item in evidence_query["hits"]}
 
     assert "E-YOUTH-CENTER-1500" in evidence_ids
     assert "E-CULTURE-HOUSE" in evidence_ids
 
-    texts = [
-        item["text"]
-        for item in review_request["evidence"]
+    texts = [item["text"] for item in review_request["evidence"]]
+
+    assert any("청소년문화의집" in text for text in texts)
+    assert any("1,500제곱미터" in text for text in texts)
+    assert any("청소년수련관" in text for text in texts)
+
+    assert review_request["inputs"]["snapshot_hash"] == snapshot_hash
+    assert track_a_bundle["inputs"]["snapshot_hash"] == snapshot_hash
+    assert review_request["inputs"]["question_plan_sha256"]
+    assert track_a_bundle["inputs"]["question_plan"]["facts"] == [
+        {
+            "id": "F1",
+            "text": "면적이 1500제곱미터 이상이어야 한다",
+            "polarity": "positive",
+        }
     ]
 
-    assert any(
-        "청소년문화의집" in text
-        for text in texts
-    )
-    assert any(
-        "1,500제곱미터" in text
-        for text in texts
-    )
-    assert any(
-        "청소년수련관" in text
-        for text in texts
-    )
-
-    assert (
-        review_request["inputs"]["snapshot_hash"]
-        == snapshot_hash
-    )
-    assert (
-        track_a_bundle["inputs"]["snapshot_hash"]
-        == snapshot_hash
-    )
-
-    assert (
-        evidence_query["query"]["derived_variants"]["entity"]
-        == [
-            "청소년 문화의집",
-            "청소년문화의집",
-        ]
-    )
+    assert evidence_query["query"]["derived_variants"]["entity"] == [
+        "청소년 문화의집",
+        "청소년문화의집",
+    ]
 
     artifacts_before = {
         item.name: item.read_bytes()
@@ -659,6 +719,7 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
     }
 
     assert artifacts_after == artifacts_before
+
 
 def test_review_question_submit_track_b_open_preserves_finalization_on_display_failure(
     monkeypatch,
@@ -707,6 +768,7 @@ def test_review_question_submit_track_b_open_preserves_finalization_on_display_f
     assert "browser dispatch failed" in document["display_error"]
     assert "url" not in document
 
+
 def test_prepare_zero_hit_emits_guidance_but_keeps_authoritative_evidence_empty(
     tmp_path: Path,
 ) -> None:
@@ -754,6 +816,8 @@ def test_reported_korean_question_prepares_with_authoritative_evidence_without_e
     assert request["evidence"]
     assert request["inputs"]["snapshot_hash"] == snapshot_hash
     assert prepared.retrieval_guidance_path is None
+
+
 def test_korean_formal_review_traverses_to_protected_handoff(
     monkeypatch,
     capsys,

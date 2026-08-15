@@ -1,23 +1,20 @@
 # Codex Workflow
 
-Use local evidence only. Project Python code does not call a model or remote API. Codex supplies the external Track A/Track B reasoning at deterministic file handoffs; runtime code validates those outputs before the workflow can advance.
+Use local evidence only. Project Python code does not call a model or remote API. Codex supplies the external Question Planner, Track A, and Track B reasoning at deterministic file handoffs; runtime code validates those outputs before the workflow can advance.
 
-Shared status and contract governance is documented in `docs/CONTRACT_GOVERNANCE.md`.
+Shared status and contract governance is documented in `docs/CONTRACT_GOVERNANCE.md`. Question planning and its trust boundary are documented in `docs/question-planning.md`.
+
 ## 0. Prove runtime provenance before business commands
 
-Use the interpreter-pinned module entrypoint before every acceptance or review run. The
-stdlib-only diagnostic surface runs before heavy runtime imports and reports the
-checkout HEAD, package source path, and required dependency state.
+Use the interpreter-pinned module entrypoint before every acceptance or review run. The stdlib-only diagnostic surface runs before heavy runtime imports and reports the checkout HEAD, package source path, and required dependency state.
 
 ```powershell
 $Workspace = "C:\evidence-review-workspace"
 py -3.13 -m evidence_review doctor --repository-root .
-py -3.13 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
+py -3.13 -m evidence_review review-question prepare-plan --workspace $Workspace --question "<question>"
 ```
 
-`SOURCE_MISMATCH` means the active interpreter is importing project modules from a
-different checkout. Activate the intended interpreter and reinstall this checkout
-editable with that interpreter:
+`SOURCE_MISMATCH` means the active interpreter is importing project modules from a different checkout. Activate the intended interpreter and reinstall this checkout editable with that interpreter:
 
 ```powershell
 py -3.13 -m pip install -e ".[dev]"
@@ -46,12 +43,64 @@ The PDF preparation flow also establishes reusable verified page image cache art
 
 The current user-facing workflow is `review-question`. Do not use a separate quick retrieval mode and do not ask the user to hand-author intermediate JSON.
 
-### 2.1 Prepare
+Every natural-language question follows this authority chain:
+
+```text
+question
+→ external AI Question Planner
+→ fail-closed QuestionPlan validation
+→ deterministic local retrieval
+→ immutable review request
+→ Track A
+→ Track B
+→ finalizer
+→ human review
+```
+
+The Python core never calls the planner model. Codex is the external planner at a deterministic file handoff.
+
+### 2.1 Prepare the Question Planner handoff
+
+```powershell
+evidence-review review-question prepare-plan `
+  --workspace <workspace> `
+  --question "<question>"
+```
+
+Expected status: `WAITING_QUESTION_PLAN`.
+
+The command creates a deterministic planning directory containing:
+
+```text
+question-planner-bundle.json
+QUESTION_PLANNER_INSTRUCTIONS.md
+question-plan-output.json   # expected external output
+```
+
+Codex must read the bundle and instructions before writing `question-plan-output.json`. The planner receives the original question and contract identity, not evidence, and must not answer the question.
+
+The QuestionPlan must:
+
+- preserve the normalized original question;
+- preserve user-stated facts, assumptions, numbers, negations, exceptions, names, and explicit citations;
+- split issues only when independent evidence is required;
+- generate the minimum bounded search requests needed for evidence collection;
+- mark citations copied from the question as `source=user` and inferred citations as `source=planner`;
+- contain no answer, conclusion, decision, compliance/eligibility judgment, confidence, or rule status.
+
+There is no runtime SIMPLE/COMPOUND/COMPLEX classifier. Small questions should naturally produce small plans; complex questions may contain multiple issues and dependency edges.
+
+Planner-inferred legal anchors are search hypotheses only. They are not legal authority until matching evidence is retrieved and cited.
+
+### 2.2 Validate the Plan, retrieve evidence, and prepare the Run
+
+After Codex writes `question-plan-output.json`:
 
 ```powershell
 evidence-review review-question prepare `
   --workspace <workspace> `
-  --question "<question>"
+  --question "<question>" `
+  --question-plan-output <question-plan-output.json>
 ```
 
 Optional inputs:
@@ -63,13 +112,42 @@ Optional inputs:
 --approved-rule-result-id <rule-result-id>
 ```
 
-`--expansion` is not a model-generated query rewrite. Calculation and RuleResult artifacts must already be authoritative deterministic outputs.
+`--expansion` is reserved for an explicit user search term. Do not duplicate planner search requests through `--expansion`. If a user expansion normalizes to a planner term, user origin remains higher priority while planner issue/search lineage is retained.
 
-Preparation performs request normalization, local retrieval, canonical review-request construction, immutable run preparation, and Track A handoff creation. It writes an append-only workflow event journal. Repeating an identical deterministic request resumes the same Run ID from its last valid state.
+Calculation and RuleResult artifacts must already be authoritative deterministic outputs.
 
-### 2.2 Produce and validate Track A immediately
+The runtime validates the external Plan **before retrieval**. Invalid/missing planner output produces `PLANNER_FAILED`; it must not create a retrieval run and must not be reported as `RETRIEVAL_NO_EVIDENCE` or final `ABSTAIN`.
+
+A valid Plan is converted to bounded `origin=llm` retrieval terms. Preparation writes or binds:
+
+```text
+question-plan.json
+evidence-query.json
+review-request.json
+track-a-bundle.json
+next-action-track-a.json
+```
+
+The review request includes `question_plan_sha256`, canonical plan context, and evidence-level retrieval lineage. `issue → search_request → evidence` lineage is diagnostic context only; it does not add retrieval score or citation authority.
+
+The deterministic replay boundary is:
+
+```text
+same validated QuestionPlan
++ same evidence snapshot
++ same deterministic rule/math inputs
+=> same deterministic retrieval/review preparation result
+```
+
+Do not claim that repeated external AI planning of the same question necessarily produces the same Plan.
+
+If a valid Plan produces zero authoritative hits, preparation reports `RETRIEVAL_NO_EVIDENCE` and writes retrieval guidance. Do not broaden the query arbitrarily. Continue only through the formal next-action boundary so the existing finalizer can determine whether the run must end as `ABSTAIN`.
+
+### 2.3 Produce and validate Track A immediately
 
 Read only the run's `track-a-bundle.json` and `TRACK_A_INSTRUCTIONS.md`. Track A explains provided evidence, approved calculation results, and rule results. It cannot create evidence, alter numeric tokens, change rule status, assign a human decision, or bypass citations.
+
+When `inputs.question_plan` is present, Track A must organize the explanation against validated issues while preserving facts, assumptions, and dependency structure. `inputs.retrieval_lineage` explains why an evidence item was retrieved; it does not authorize new evidence or make planner-inferred legal anchors authoritative.
 
 After writing `track-a-output.json`, validate it before doing any Track B work:
 
@@ -82,7 +160,7 @@ evidence-review review-question submit-track-a `
 
 A failed validation keeps the workflow at Track A. Correct Track A and retry. Do not spend a Track B pass auditing a Track A output that has not passed this gate.
 
-### 2.3 Produce Track B exactly once over the validated claims
+### 2.4 Produce Track B exactly once over the validated claims
 
 Track B independently audits every validated Track A claim. It may accept/reject claims according to its contract but does not rewrite Track A or make the human decision.
 
@@ -103,6 +181,8 @@ Lower-level `review-run prepare` / `review-run finalize` remain compatibility an
 The event journal is the state authority for the formal question flow. It preserves ordered transitions through Track A, Track B, finalization, and ready-for-review states. Immutable artifacts are revalidated on resume. Interrupted or partially written restartable outputs are cleaned only when they can be safely regenerated; differing immutable artifacts fail closed.
 
 A resume must never silently roll a completed Track A validation back to an earlier stage. Tampered artifacts or mismatching retry input stop the run.
+
+The exact validated `question-plan.json` is part of the reproducibility boundary for planned question runs. A retry must not silently substitute a different Plan for an existing immutable run.
 
 ## 4. Performance telemetry
 
@@ -127,9 +207,11 @@ runs/<RUN-ID>/run-metrics-events/
 - protected server start;
 - browser dispatch.
 
+Planner generation occurs outside the deterministic runtime. Planner/Track A/Track B external wait is excluded from deterministic runtime totals.
+
 Telemetry is intentionally non-authoritative: it is excluded from Run ID, run manifest, final packet, and evidence hashes.
 
-`deterministic_total_ms` excludes Track A/B external wait. `retry_count` counts a new attempt only when the preceding attempt of the same stage failed. Failed stages retain a reason code.
+`deterministic_total_ms` excludes external model waits. `retry_count` counts a new attempt only when the preceding attempt of the same stage failed. Failed stages retain a reason code.
 
 Acceptance budgets:
 
@@ -253,14 +335,22 @@ py -3.13 -m mypy src
 py -3.13 -m compileall -q src scripts web_runtime tests
 ```
 
-Focused suites:
+Focused suites for Question Planner and formal review:
 
 ```powershell
+py -3.13 -m pytest -v tests/unit/llm_layer/test_question_planner.py
+py -3.13 -m pytest -v tests/unit/llm_layer/test_question_planner_cli.py
+py -3.13 -m pytest -v tests/unit/llm_layer/test_question_planner_safety.py
+py -3.13 -m pytest -v tests/unit/retrieval tests/integration/retrieval
+py -3.13 -m pytest -v tests/integration/review_question/test_planned_question_flow.py
+py -3.13 -m pytest -v tests/integration/review_question/test_question_planner_cli_flow.py
 py -3.13 -m pytest -v tests/integration/review_question
 py -3.13 -m pytest -v tests/integration/review_packet
 py -3.13 -m pytest -v tests/integration/review_run
 py -3.13 -m pytest -v tests/unit/review_packet
 ```
+
+Packaging/release acceptance additionally requires a Python 3.13 wheel/runtime smoke test and confirmation that `evidence_review.llm_layer/templates/question-planner.md` is included as package data.
 
 Current release acceptance uses Python 3.13 only. It requires three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 3840×2160, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
 

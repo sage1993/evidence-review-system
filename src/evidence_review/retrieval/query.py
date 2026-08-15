@@ -13,6 +13,8 @@ QueryOrigin = Literal["primary", "approved_synonym", "llm", "user"]
 class QueryTerm:
     text: str
     origin: QueryOrigin
+    search_request_ids: tuple[str, ...] = ()
+    issue_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,12 +43,40 @@ def _normalized_synonyms(
     return tuple(sorted(synonyms))
 
 
+def _lineage_ids(value: object, field: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise ValueError(f"{field} must be an array")
+    items: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item:
+            raise ValueError(f"{field}[{index}] must be a non-empty string")
+        items.append(item)
+    return tuple(sorted(set(items)))
+
+
+def _merge_term(existing: QueryTerm, incoming: QueryTerm) -> QueryTerm:
+    priority = {"primary": 0, "approved_synonym": 1, "user": 2, "llm": 3}
+    origin = existing.origin
+    if priority[incoming.origin] < priority[existing.origin]:
+        origin = incoming.origin
+    return QueryTerm(
+        text=existing.text,
+        origin=origin,
+        search_request_ids=tuple(
+            sorted(set(existing.search_request_ids).union(incoming.search_request_ids))
+        ),
+        issue_ids=tuple(sorted(set(existing.issue_ids).union(incoming.issue_ids))),
+    )
+
+
 def normalize_query(
     primary: str,
     expansions: Sequence[Mapping[str, object]],
     synonym_manifest: Mapping[str, Sequence[str]],
 ) -> NormalizedQuery:
-    """Build a deterministic query while keeping trusted origins separate."""
+    """Build a deterministic query while keeping trusted origins and lineage separate."""
     normalized_primary = normalize_text(primary)
     if not normalized_primary:
         raise ValueError("primary query must not be empty")
@@ -58,7 +88,6 @@ def normalize_query(
         if text != normalized_primary:
             by_text[text] = QueryTerm(text, "approved_synonym")
 
-    expansion_terms: dict[str, QueryOrigin] = {}
     for index, expansion in enumerate(expansions):
         origin = expansion.get("origin")
         if origin not in {"llm", "user"}:
@@ -67,14 +96,23 @@ def normalize_query(
         if not isinstance(text_value, str):
             raise ValueError(f"expansions[{index}].text must be a string")
         normalized = normalize_text(text_value)
-        if normalized:
-            normalized_origin: QueryOrigin = "user" if origin == "user" else "llm"
-            existing = expansion_terms.get(normalized)
-            if existing is None or normalized_origin == "user":
-                expansion_terms[normalized] = normalized_origin
-    for text, origin in sorted(expansion_terms.items()):
-        if text not in by_text:
-            by_text[text] = QueryTerm(text, origin)
+        if not normalized:
+            continue
+        normalized_origin: QueryOrigin = "user" if origin == "user" else "llm"
+        incoming = QueryTerm(
+            text=normalized,
+            origin=normalized_origin,
+            search_request_ids=_lineage_ids(
+                expansion.get("search_request_ids"),
+                f"expansions[{index}].search_request_ids",
+            ),
+            issue_ids=_lineage_ids(
+                expansion.get("issue_ids"),
+                f"expansions[{index}].issue_ids",
+            ),
+        )
+        existing = by_text.get(normalized)
+        by_text[normalized] = incoming if existing is None else _merge_term(existing, incoming)
 
     priority = {"primary": 0, "approved_synonym": 1, "user": 2, "llm": 3}
     terms = tuple(

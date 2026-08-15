@@ -192,6 +192,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Dispatch strict commands and delegate the remaining legacy-compatible CLI."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     install_network_guard()
+
+    if len(arguments) >= 2 and arguments[0] == "review-question":
+        from evidence_review.question_planner_cli import dispatch_question_planning
+
+        planned_result = dispatch_question_planning(arguments)
+        if planned_result is not None:
+            return planned_result
+
     if len(arguments) >= 2 and arguments[:2] == ["documentation", "validate"]:
         args = runtime_handlers.build_parser().parse_args(arguments)
         return _documentation_validate(args)

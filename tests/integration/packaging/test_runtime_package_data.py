@@ -21,7 +21,9 @@ def test_canonical_namespace_can_read_runtime_package_data() -> None:
 
     templates = files("evidence_review.llm_layer").joinpath("templates")
     assert templates.is_dir()
-    assert any(item.name.endswith(".md") for item in templates.iterdir())
+    assert templates.joinpath("question-planner.md").is_file()
+    assert templates.joinpath("track-a.md").is_file()
+    assert templates.joinpath("track-b.md").is_file()
 
     assets = files("evidence_review.review_packet").joinpath("assets")
     assert assets.is_dir()

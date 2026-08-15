@@ -4,8 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import StrEnum
+from typing import Literal
 
 from evidence_review.contracts.common import BBox, Citation
+
+RetrievalOrigin = Literal["primary", "approved_synonym", "llm", "user"]
 
 
 class CitationQuality(StrEnum):
@@ -21,9 +24,7 @@ class CitationUnavailableError(RuntimeError):
     def __init__(self, reason_code: str, evidence_id: str) -> None:
         self.reason_code = reason_code
         self.evidence_id = evidence_id
-        super().__init__(
-            f"{reason_code}: exact citation unavailable for {evidence_id}"
-        )
+        super().__init__(f"{reason_code}: exact citation unavailable for {evidence_id}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,16 @@ class ChannelScore:
     channel: str
     score: Decimal
     detail: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalMatch:
+    """One trace from a planned search request to an evidence hit."""
+
+    search_request_id: str
+    issue_ids: tuple[str, ...]
+    query_text: str
+    origin: RetrievalOrigin
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +57,7 @@ class RetrievalHit:
     text: str
     channel_scores: tuple[ChannelScore, ...] = ()
     final_score: Decimal = Decimal("0")
+    matches: tuple[RetrievalMatch, ...] = ()
 
     @property
     def citation_quality(self) -> CitationQuality:
@@ -77,6 +89,32 @@ class RetrievalHit:
         return replace(
             self,
             channel_scores=tuple(scores[name] for name in sorted(scores)),
+        )
+
+    def with_match(self, match: RetrievalMatch) -> RetrievalHit:
+        """Merge one retrieval-plan match without affecting channel scores."""
+        by_key: dict[tuple[str, str, RetrievalOrigin], RetrievalMatch] = {
+            (item.search_request_id, item.query_text, item.origin): item for item in self.matches
+        }
+        key = (match.search_request_id, match.query_text, match.origin)
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = RetrievalMatch(
+                search_request_id=match.search_request_id,
+                issue_ids=tuple(sorted(set(match.issue_ids))),
+                query_text=match.query_text,
+                origin=match.origin,
+            )
+        else:
+            by_key[key] = RetrievalMatch(
+                search_request_id=existing.search_request_id,
+                issue_ids=tuple(sorted(set(existing.issue_ids).union(match.issue_ids))),
+                query_text=existing.query_text,
+                origin=existing.origin,
+            )
+        return replace(
+            self,
+            matches=tuple(by_key[key] for key in sorted(by_key)),
         )
 
     def with_final_score(self, score: Decimal) -> RetrievalHit:

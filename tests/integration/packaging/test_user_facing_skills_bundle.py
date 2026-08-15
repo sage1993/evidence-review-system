@@ -43,6 +43,28 @@ def test_repository_publishes_only_current_ers_skill_directories() -> None:
     assert not (skills_root / "VALIDATION.json").exists()
 
 
+def test_repository_ers_review_skill_requires_question_planner() -> None:
+    repository_root = Path(__file__).parents[3]
+    skill = (repository_root / "skills/ers-review/SKILL.md").read_text(encoding="utf-8")
+
+    assert "review-question prepare-plan" in skill
+    assert "--question-plan-output" in skill
+    assert "PLANNER_FAILED" in skill
+    assert "RETRIEVAL_NO_EVIDENCE" in skill
+    assert "Question Planner를 건너뛰고" in skill
+
+
+def test_repository_agents_requires_question_planner_before_retrieval() -> None:
+    repository_root = Path(__file__).parents[3]
+    agents = (repository_root / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert "review-question prepare-plan" in agents
+    assert "--question-plan-output" in agents
+    assert "QuestionPlan" in agents
+    assert "PLANNER_FAILED" in agents
+    assert "RETRIEVAL_NO_EVIDENCE" in agents
+
+
 def test_codex_bundle_includes_only_user_facing_ers_skills(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     _workspace(root)

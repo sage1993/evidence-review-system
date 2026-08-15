@@ -49,6 +49,7 @@ def _fts_search_text(value: str) -> str:
     values = [normalized, *aliases]
     return " ".join(dict.fromkeys(value for value in values if value))
 
+
 def _bbox(value: str | None) -> BBox | None:
     if value is None:
         return None
@@ -252,6 +253,11 @@ def _token_and_match_expression(query: str) -> str:
     return " AND ".join(_quoted_literal(token) for token in tokens)
 
 
+def _token_prefix_and_match_expression(query: str) -> str:
+    tokens = _normalized_query(query).split(" ")
+    return " AND ".join(f"{_quoted_literal(token)}*" for token in tokens)
+
+
 def _indexed_bbox(value: str) -> BBox | None:
     payload = json.loads(value)
     if payload is None:
@@ -342,6 +348,21 @@ def search_fts_token_and(
         query,
         match_expression=_token_and_match_expression(query),
         channel="fts_token_and",
+        limit=limit,
+    )
+
+
+def search_fts_token_prefix_and(
+    connection: sqlite3.Connection,
+    query: str,
+    limit: int = 20,
+) -> tuple[RetrievalHit, ...]:
+    """Return suffix-tolerant hits requiring a prefix match for every query token."""
+    return _search_fts(
+        connection,
+        query,
+        match_expression=_token_prefix_and_match_expression(query),
+        channel="fts_token_prefix_and",
         limit=limit,
     )
 
