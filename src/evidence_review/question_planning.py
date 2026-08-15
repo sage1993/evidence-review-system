@@ -203,7 +203,17 @@ def bind_retrieval_lineage_to_review_request(
 def query_request_from_plan(
     plan: QuestionPlan, *, user_expansions: Sequence[str] = ()
 ) -> dict[str, object]:
-    """Convert a validated plan to the existing bounded retrieval request contract."""
+    """Convert a validated plan to the existing bounded retrieval request contract.
+
+    The original user question remains part of the immutable QuestionPlan and review
+    request. Retrieval uses a validated SearchRequest as its primary text so user
+    fact values do not re-enter lexical/derived search merely because they appeared
+    in the original question.
+    """
+    primary_request = next(
+        (request for request in plan.search_requests if request.role == "rule"),
+        plan.search_requests[0],
+    )
     expansions: list[dict[str, object]] = [
         {
             "text": request.text,
@@ -218,7 +228,7 @@ def query_request_from_plan(
             raise ValueError(f"user_expansions[{index}] must be a non-empty string")
         expansions.append({"text": term, "origin": "user"})
     return {
-        "question": plan.original_question,
+        "question": primary_request.text,
         "expansions": expansions,
         "synonym_manifest": {},
         "filters": {},
