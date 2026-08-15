@@ -14,6 +14,7 @@ from evidence_review.retrieval.index import (
     search_fts_literal,
     search_fts_phrase,
     search_fts_token_and,
+    search_fts_token_prefix_and,
 )
 from evidence_review.retrieval.korean_variants import (
     derive_korean_compound_variants,
@@ -175,6 +176,17 @@ def _origin_hits(
                 issue_ids=term.issue_ids,
             )
         )
+        if term.search_request_ids:
+            prefix_hits = search_fts_token_prefix_and(connection, term.text, limit)
+            channels.append(
+                _trace_hits(
+                    prefix_hits,
+                    origin=term.origin,
+                    term=term.text,
+                    search_request_ids=term.search_request_ids,
+                    issue_ids=term.issue_ids,
+                )
+            )
     return tuple(channels)
 
 
