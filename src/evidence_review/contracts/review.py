@@ -20,12 +20,13 @@ AuditDisposition = Literal["ACCEPT", "REJECT", "INCOMPLETE"]
 
 @dataclass(frozen=True, slots=True)
 class Claim:
-    """Track A factual claim tied to citation identifiers."""
+    """Track A factual claim tied to citation and optional issue identifiers."""
 
     claim_id: str
     text: str
     citation_ids: tuple[str, ...]
     numeric_tokens: tuple[str, ...] = ()
+    issue_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
