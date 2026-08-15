@@ -104,11 +104,53 @@ def _upgrade_schema(connection: sqlite3.Connection) -> None:
             ON clause_retrieval_records(document_id, revision_id, clause_id);
         CREATE INDEX idx_clause_evidence_links_evidence
             ON clause_evidence_links(evidence_id, clause_id, relation_type);
+
+        CREATE TRIGGER rebuild_clause_index_after_retrieval_publish
+        AFTER INSERT ON retrieval_meta
+        WHEN NEW.key = 'snapshot_hash'
+        BEGIN
+            DELETE FROM clause_fts;
+            DELETE FROM clause_evidence_links;
+            DELETE FROM clause_retrieval_records;
+
+            INSERT INTO clause_retrieval_records(
+                clause_id, document_id, revision_id, title, chapter, section,
+                clause_number, raw_text, normalized_text
+            )
+            SELECT c.id, r.document_id, c.revision_id, c.title,
+                   NULL, NULL, NULL,
+                   COALESCE(c.raw_text, ''),
+                   COALESCE(c.normalized_text, c.raw_text, '')
+            FROM clauses c
+            JOIN revisions r ON r.id = c.revision_id
+            WHERE COALESCE(c.normalized_text, c.raw_text, '') <> ''
+            ORDER BY c.id;
+
+            INSERT INTO clause_fts(
+                clause_id, title, chapter, section, clause_number, raw_text,
+                normalized_text
+            )
+            SELECT clause_id, title, chapter, section, clause_number, raw_text,
+                   normalized_text
+            FROM clause_retrieval_records
+            ORDER BY clause_id;
+
+            INSERT OR IGNORE INTO clause_evidence_links(
+                clause_id, evidence_id, relation_type
+            )
+            SELECT c.id, l.target_id, l.relation_type
+            FROM clauses c
+            JOIN links l ON l.source_id = c.id
+            JOIN retrieval_records rr ON rr.evidence_id = l.target_id
+            UNION
+            SELECT c.id, l.source_id, l.relation_type
+            FROM clauses c
+            JOIN links l ON l.target_id = c.id
+            JOIN retrieval_records rr ON rr.evidence_id = l.source_id;
+        END;
         """
     )
-    connection.execute(
-        "DELETE FROM retrieval_meta WHERE key = 'snapshot_hash'"
-    )
+    connection.execute("DELETE FROM retrieval_meta WHERE key = 'snapshot_hash'")
     connection.execute(
         "UPDATE schema_meta SET value = '4' WHERE key = 'schema_version'"
     )
