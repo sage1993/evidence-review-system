@@ -82,6 +82,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_json(result.to_document())
         return 2
 
+    from evidence_review.question_planner_cli import dispatch_question_planning
+
+    planned_result = dispatch_question_planning(arguments)
+    if planned_result is not None:
+        return planned_result
+
     import evidence_review.command_dispatch as runtime_dispatch
     from evidence_review import cli_handlers as runtime_handlers
     from evidence_review.command_dispatch import main as runtime_main
@@ -91,6 +97,5 @@ def main(argv: Sequence[str] | None = None) -> int:
             setattr(runtime_handlers, hook_name, globals()[hook_name])
     if "serve_review_run" in globals():
         setattr(runtime_dispatch, "serve_review_server", globals()["serve_review_run"])  # noqa: B010
-
 
     return runtime_main(arguments)
