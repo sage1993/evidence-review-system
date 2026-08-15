@@ -8,6 +8,7 @@ import pytest
 from evidence_review.evidence.schema_version import (
     SCHEMA_VERSION,
     SchemaUpgradeRequired,
+    UnsupportedSchemaVersion,
     detect_schema_version,
     require_current_schema,
 )
@@ -55,7 +56,7 @@ def test_v4_shape_rejects_missing_clause_relation_table(tmp_path: Path) -> None:
     connection = _create(tmp_path / "invalid-v4.sqlite", CURRENT_SCHEMA)
     connection.execute("DROP TABLE clause_evidence_links")
     try:
-        with pytest.raises(Exception, match="shape"):
+        with pytest.raises(UnsupportedSchemaVersion, match="shape"):
             detect_schema_version(connection)
     finally:
         connection.close()
