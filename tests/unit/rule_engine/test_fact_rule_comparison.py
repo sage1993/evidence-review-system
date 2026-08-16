@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from evidence_review.retrieval.facets import FacetCoverageReport, IssueFacetCoverage
 from evidence_review.rule_engine.fact_rule_comparison import (
+    FactRuleComparison,
     compare_fact_to_threshold,
+    conditional_issue_ids_from_comparisons,
 )
 
 
@@ -83,3 +86,62 @@ def test_comparison_hash_is_reproducible() -> None:
 
     assert left == right
     assert left.result_hash == right.result_hash
+
+
+def _comparison(facet_id: str, satisfied: bool) -> FactRuleComparison:
+    return FactRuleComparison(
+        comparison_id=f"CMP-{facet_id}",
+        issue_id="I2",
+        facet_id=facet_id,
+        operator=">=" if facet_id == "minimum-area-threshold" else "<=",
+        fact_value="1500" if facet_id == "minimum-area-threshold" else "300",
+        threshold_value=(
+            "1000"
+            if facet_id == "minimum-area-threshold"
+            else "250"
+            if facet_id == "distance-normal-threshold"
+            else "350"
+        ),
+        unit="area_m2" if facet_id == "minimum-area-threshold" else "length_m",
+        satisfied=satisfied,
+        evidence_ids=(f"E-{facet_id}",),
+        result_hash="a" * 64,
+    )
+
+
+def _compound_distance_coverage() -> FacetCoverageReport:
+    facets = (
+        "minimum-area-threshold",
+        "distance-normal-threshold",
+        "distance-conditional-threshold",
+    )
+    return FacetCoverageReport(
+        issues=(
+            IssueFacetCoverage(
+                issue_id="I2",
+                covered_facet_ids=facets,
+                missing_facet_ids=(),
+                evidence_by_facet=tuple((facet_id, (f"E-{facet_id}",)) for facet_id in facets),
+            ),
+        )
+    )
+
+
+def test_conditional_status_requires_other_required_numeric_facets_to_pass() -> None:
+    coverage = _compound_distance_coverage()
+    distance_only = (
+        _comparison("distance-normal-threshold", False),
+        _comparison("distance-conditional-threshold", True),
+    )
+    failed_area = (
+        _comparison("minimum-area-threshold", False),
+        *distance_only,
+    )
+    passing = (
+        _comparison("minimum-area-threshold", True),
+        *distance_only,
+    )
+
+    assert conditional_issue_ids_from_comparisons(distance_only, coverage) == ()
+    assert conditional_issue_ids_from_comparisons(failed_area, coverage) == ()
+    assert conditional_issue_ids_from_comparisons(passing, coverage) == ("I2",)
