@@ -5,6 +5,9 @@ from __future__ import annotations
 import sqlite3
 
 from evidence_review.evidence.clause_materialization import derive_legal_clauses
+from evidence_review.evidence.reference_materialization import (
+    materialize_legal_reference_links,
+)
 from evidence_review.retrieval.index import build_fts_index, require_fresh_index
 
 
@@ -87,11 +90,12 @@ def _insert_derived_clauses(connection: sqlite3.Connection) -> int:
 
 
 def ensure_clause_index(connection: sqlite3.Connection) -> bool:
-    """Backfill missing derived clauses/indexes without changing parser evidence.
+    """Backfill missing clause/index/reference artifacts without touching parser truth.
 
     Returns ``True`` only when new clause records were derived. Existing explicit
-    clauses are never replaced. The current schema-v4 index trigger is reused to
-    publish ``clause_retrieval_records``, ``clause_fts`` and citation links.
+    clauses are never replaced. The current schema-v4 index trigger publishes the
+    semantic clause index; explicit legal citations are then projected to bounded
+    evidence-level reference links.
     """
     if _count(connection, "elements") == 0:
         require_fresh_index(connection)
@@ -108,4 +112,7 @@ def ensure_clause_index(connection: sqlite3.Connection) -> bool:
         build_fts_index(connection)
     else:
         require_fresh_index(connection)
+
+    if clause_count > 0:
+        materialize_legal_reference_links(connection)
     return changed
