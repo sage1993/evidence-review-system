@@ -142,6 +142,7 @@ def materialize_legal_reference_links(connection: sqlite3.Connection) -> int:
                     reference.annex,
                 )
             )
+            targets: tuple[str, ...]
             if document_id is None:
                 target_id = _stable_id("MISSING-SOURCE", reference_key)
                 relation_type = "source_not_ingested"
