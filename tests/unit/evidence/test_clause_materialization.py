@@ -61,11 +61,23 @@ def test_derives_article_paragraphs_and_source_lineage_from_parser_elements() ->
         "source_element",
         "next_sibling",
         "previous_sibling",
+        "cited_clause",
     }
     assert any(
         link.source_id == result.clauses[1].id
         and link.target_id == "E-3"
         and link.relation_type == "source_element"
+        for link in result.links
+    )
+    assert {
+        link.target_id
+        for link in result.links
+        if link.source_id == "E-4" and link.relation_type == "cited_clause"
+    } == {"E-2", "E-3"}
+    assert not any(
+        link.source_id == "E-2"
+        and link.target_id == "E-3"
+        and link.relation_type in {"next_sibling", "previous_sibling"}
         for link in result.links
     )
 
