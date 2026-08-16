@@ -45,6 +45,7 @@ def test_claim_validator_rejects_cross_issue_citation() -> None:
         (_citation("CIT-2", "E-2"),),
         (_record("E-2"),),
         citation_issue_ids={"CIT-2": ("I2",)},
+        valid_issue_ids=("I1", "I2"),
     )
     assert [issue.code for issue in issues] == ["CROSS_ISSUE_CITATION"]
 
@@ -55,6 +56,7 @@ def test_claim_validator_rejects_unknown_claim_issue() -> None:
         (_citation("CIT-1", "E-1"),),
         (_record("E-1"),),
         citation_issue_ids={"CIT-1": ("I1",)},
+        valid_issue_ids=("I1", "I2"),
     )
     assert [issue.code for issue in issues] == ["UNKNOWN_CLAIM_ISSUE"]
 
@@ -65,5 +67,6 @@ def test_claim_validator_accepts_overlapping_issue_lineage() -> None:
         (_citation("CIT-1", "E-1"),),
         (_record("E-1"),),
         citation_issue_ids={"CIT-1": ("I1", "I2")},
+        valid_issue_ids=("I1", "I2"),
     )
     assert issues == ()
