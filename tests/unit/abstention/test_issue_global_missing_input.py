@@ -14,7 +14,8 @@ def test_deterministic_missing_input_remains_global_hard_gate_with_partial_cover
     )
 
 
-def test_issue_local_gap_does_not_force_global_abstain_without_deterministic_missing_input() -> None:
+def test_issue_local_gap_does_not_force_global_abstain_without_deterministic_missing_input(
+) -> None:
     issue_results = (
         IssueResult(issue_id="I1", status="RESOLVED"),
         IssueResult(issue_id="I2", status="SOURCE_MISSING"),
