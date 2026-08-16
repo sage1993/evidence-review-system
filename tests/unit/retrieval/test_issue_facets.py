@@ -95,7 +95,10 @@ def _bundle(text: str, *, title: str = "검토 기준") -> IssueRetrievalBundle:
 
 def test_compiles_distance_issue_into_normal_and_conditional_threshold_facets() -> None:
     plan = _plan(
-        "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 조건부 검토 대상이 되는가?",
+        (
+            "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 "
+            "조건부 검토 대상이 되는가?"
+        ),
         "역세권 승강장 경계 거리 기준",
     )
 
@@ -109,10 +112,16 @@ def test_compiles_distance_issue_into_normal_and_conditional_threshold_facets() 
 
 def test_generic_distance_rule_does_not_resolve_issue_without_required_threshold_facets() -> None:
     plan = _plan(
-        "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 조건부 검토 대상이 되는가?",
+        (
+            "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 "
+            "조건부 검토 대상이 되는가?"
+        ),
         "역세권 승강장 경계 거리 기준",
     )
-    bundle = _bundle("역세권은 승강장 경계와의 거리 기준을 적용한다.", title="역세권 범위")
+    bundle = _bundle(
+        "역세권은 승강장 경계와의 거리 기준을 적용한다.",
+        title="역세권 범위",
+    )
 
     facet_report = evaluate_facet_coverage(plan, bundle)
     coverage = evaluate_issue_coverage(plan, bundle, facet_report=facet_report)
@@ -130,11 +139,15 @@ def test_generic_distance_rule_does_not_resolve_issue_without_required_threshold
 
 def test_distance_clause_with_250_and_conditional_350_covers_both_facets() -> None:
     plan = _plan(
-        "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 조건부 검토 대상이 되는가?",
+        (
+            "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 "
+            "조건부 검토 대상이 되는가?"
+        ),
         "역세권 승강장 경계 거리 기준",
     )
     bundle = _bundle(
-        "역세권은 승강장 경계로부터 250m 이내를 원칙으로 하며 통합심의를 거치는 경우 350m 이내까지 검토할 수 있다.",
+        "역세권은 승강장 경계로부터 250m 이내를 원칙으로 하며 통합심의를 거치는 "
+        "경우 350m 이내까지 검토할 수 있다.",
         title="역세권 범위",
     )
 
@@ -149,7 +162,10 @@ def test_distance_clause_with_250_and_conditional_350_covers_both_facets() -> No
 
 def test_facet_evidence_ids_exclude_unrelated_source_elements_from_same_clause() -> None:
     plan = _plan(
-        "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 조건부 검토 대상이 되는가?",
+        (
+            "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 "
+            "조건부 검토 대상이 되는가?"
+        ),
         "역세권 승강장 경계 거리 기준",
     )
     rule_text = (
