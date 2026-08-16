@@ -52,6 +52,22 @@ def _plan(issue_question: str, query: str):
     )
 
 
+def _hit(evidence_id: str, text: str, *, title: str = "검토 기준") -> RetrievalHit:
+    return RetrievalHit(
+        evidence_id=evidence_id,
+        evidence_type="paragraph",
+        document_id="DOC-1",
+        revision_id="REV-1",
+        page_number=1,
+        bbox=BBox(10.0, 10.0, 100.0, 20.0),
+        source_hash="a" * 64,
+        title=title,
+        text=text,
+        channel_scores=(ChannelScore("clause_citation", Decimal("1"), "C-1"),),
+        final_score=Decimal("1"),
+    )
+
+
 def _bundle(text: str, *, title: str = "검토 기준") -> IssueRetrievalBundle:
     clause = ClauseRetrievalHit(
         clause_id="C-1",
@@ -69,19 +85,7 @@ def _bundle(text: str, *, title: str = "검토 기준") -> IssueRetrievalBundle:
         retrieval_query="query",
         fallback_stage=FallbackStage.PHRASE,
     )
-    hit = RetrievalHit(
-        evidence_id="E-1",
-        evidence_type="paragraph",
-        document_id="DOC-1",
-        revision_id="REV-1",
-        page_number=1,
-        bbox=BBox(10.0, 10.0, 100.0, 20.0),
-        source_hash="a" * 64,
-        title=title,
-        text=text,
-        channel_scores=(ChannelScore("clause_citation", Decimal("1"), "C-1"),),
-        final_score=Decimal("1"),
-    )
+    hit = _hit("E-1", text, title=title)
     return IssueRetrievalBundle(
         candidates=(IssueClauseCandidate(clause=clause, matches=(match,), evidence=(hit,)),),
         selected_evidence=(hit,),
@@ -140,6 +144,57 @@ def test_distance_clause_with_250_and_conditional_350_covers_both_facets() -> No
     assert facet_report.by_issue_id("I1").covered_facet_ids == (
         "distance-normal-threshold",
         "distance-conditional-threshold",
+    )
+
+
+def test_facet_evidence_ids_exclude_unrelated_source_elements_from_same_clause() -> None:
+    plan = _plan(
+        "역 승강장 경계에서 300m 떨어진 부지가 역세권 거리 기준을 충족하거나 조건부 검토 대상이 되는가?",
+        "역세권 승강장 경계 거리 기준",
+    )
+    rule_text = (
+        "역세권은 승강장 경계로부터 250m 이내를 원칙으로 하며 "
+        "통합심의를 거치는 경우 350m 이내까지 검토할 수 있다."
+    )
+    clause = ClauseRetrievalHit(
+        clause_id="C-1",
+        document_id="DOC-1",
+        revision_id="REV-1",
+        title="역세권 범위",
+        text=rule_text,
+        channel_scores=(ChannelScore("clause_phrase", Decimal("1"), rule_text),),
+    )
+    match = IssueCandidateMatch(
+        search_request_id="S1",
+        issue_id="I1",
+        role="rule",
+        query_text="역세권 승강장 경계 거리 기준",
+        retrieval_query="역세권 승강장 경계 거리 기준",
+        fallback_stage=FallbackStage.PHRASE,
+    )
+    direct = _hit("E-DIRECT", rule_text, title="역세권 범위")
+    unrelated = _hit(
+        "E-CONTEXT",
+        "통합심의 신청서류와 제출 절차를 정한다.",
+        title="심의 절차",
+    )
+    bundle = IssueRetrievalBundle(
+        candidates=(
+            IssueClauseCandidate(
+                clause=clause,
+                matches=(match,),
+                evidence=(direct, unrelated),
+            ),
+        ),
+        selected_evidence=(direct, unrelated),
+        budget_drops=(),
+    )
+
+    issue = evaluate_facet_coverage(plan, bundle).by_issue_id("I1")
+
+    assert issue.evidence_by_facet == (
+        ("distance-normal-threshold", ("E-DIRECT",)),
+        ("distance-conditional-threshold", ("E-DIRECT",)),
     )
 
 
