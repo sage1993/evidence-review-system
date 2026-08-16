@@ -92,11 +92,12 @@ def evaluate_issue_clause_relevance(
     clause: ClauseRetrievalHit,
 ) -> RelevanceDecision:
     """Reject only deterministic subject conflicts or missing strong anchors."""
-    query = _normalize(f"{issue_question} {query_text}")
+    issue_query = _normalize(f"{issue_question} {query_text}")
+    request_query = _normalize(query_text)
     candidate = _searchable_clause_text(clause)
     reasons: list[str] = []
 
-    if _subject_conflict(query, candidate):
+    if _subject_conflict(issue_query, candidate):
         return RelevanceDecision(
             issue_id=issue_id,
             search_request_id=search_request_id,
@@ -104,7 +105,7 @@ def evaluate_issue_clause_relevance(
             accepted=False,
             reason_codes=("REJECT_SUBJECT_CONFLICT",),
         )
-    if _required_anchor_missing(query, candidate):
+    if _required_anchor_missing(request_query, candidate):
         return RelevanceDecision(
             issue_id=issue_id,
             search_request_id=search_request_id,
@@ -114,12 +115,12 @@ def evaluate_issue_clause_relevance(
         )
 
     if any(
-        _normalize(anchor) in query and _normalize(anchor) in candidate
+        _normalize(anchor) in issue_query and _normalize(anchor) in candidate
         for group in _SUBJECT_GROUPS
         for anchor in group
     ):
         reasons.append("ACCEPT_SUBJECT_MATCH")
-    if clause.title and _normalize(clause.title) in query:
+    if clause.title and _normalize(clause.title) in issue_query:
         reasons.append("ACCEPT_SECTION_MATCH")
     if not reasons:
         reasons.append("ACCEPT_NO_DETERMINISTIC_CONFLICT")
