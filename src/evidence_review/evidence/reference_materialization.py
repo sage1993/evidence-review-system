@@ -9,6 +9,12 @@ import unicodedata
 
 from evidence_review.evidence.legal_references import LegalReference, extract_legal_references
 
+_DERIVED_REFERENCE_RELATIONS = (
+    "rule_source",
+    "source_not_ingested",
+    "reference_target_missing",
+)
+
 
 def _stable_id(prefix: str, *parts: str) -> str:
     digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:24].upper()
@@ -111,8 +117,20 @@ def _source_clauses(connection: sqlite3.Connection) -> tuple[tuple[str, str, str
     return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
 
 
+def _delete_derived_reference_links(connection: sqlite3.Connection) -> None:
+    placeholders = ", ".join("?" for _ in _DERIVED_REFERENCE_RELATIONS)
+    connection.execute(
+        f"""
+        DELETE FROM links
+        WHERE id GLOB 'AUTO-REF-LINK-*'
+          AND relation_type IN ({placeholders})
+        """,
+        _DERIVED_REFERENCE_RELATIONS,
+    )
+
+
 def materialize_legal_reference_links(connection: sqlite3.Connection) -> int:
-    """Link explicit cited authorities to ingested evidence or typed missing targets."""
+    """Rebuild explicit legal citation links from the current ingested source set."""
     links: dict[tuple[str, str, str], tuple[str, str, str, str]] = {}
     for clause_id, text, source_evidence_id in _source_clauses(connection):
         for reference in extract_legal_references(text):
@@ -156,15 +174,21 @@ def materialize_legal_reference_links(connection: sqlite3.Connection) -> int:
                     relation_type,
                 )
 
-    if not links:
-        return 0
     before = connection.total_changes
-    connection.executemany(
-        """
-        INSERT OR IGNORE INTO links(id, source_id, target_id, relation_type)
-        VALUES(?, ?, ?, ?)
-        """,
-        tuple(links.values()),
-    )
-    connection.commit()
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        _delete_derived_reference_links(connection)
+        if links:
+            connection.executemany(
+                """
+                INSERT INTO links(id, source_id, target_id, relation_type)
+                VALUES(?, ?, ?, ?)
+                """,
+                tuple(links.values()),
+            )
+    except BaseException:
+        connection.rollback()
+        raise
+    else:
+        connection.commit()
     return connection.total_changes - before
