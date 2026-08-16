@@ -44,7 +44,7 @@ def _plan():
             "legal_anchors": [],
             "search_requests": [
                 {"id": "S1", "issue_ids": ["I1"], "text": "사업대상지 최소 면적", "kind": "concept_relation", "source": "planner", "role": "rule"},
-                {"id": "S2", "issue_ids": ["I2"], "text": "사업대상지 최소 면적", "kind": "concept_relation", "source": "planner", "role": "rule"},
+                {"id": "S2", "issue_ids": ["I2"], "text": "1,500㎡ 부지 최소 면적 충족", "kind": "concept_relation", "source": "planner", "role": "rule"},
             ],
         },
         question,
