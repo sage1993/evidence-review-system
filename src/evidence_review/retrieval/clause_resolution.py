@@ -240,7 +240,10 @@ def _locality_sort_key(
     relation_type = str(row[1])
     raw_text = "" if row[2] is None else str(row[2])
     normalized_text = "" if row[3] is None else str(row[3])
-    parser_order = 2**31 - 1 if row[4] is None else int(row[4])
+    parser_order_value = row[4]
+    parser_order = (
+        2**31 - 1 if parser_order_value is None else int(str(parser_order_value))
+    )
     searchable = _normalized_locality_text(normalized_text or raw_text)
     phrase_match = any(phrase in searchable for phrase in phrases)
     query_tokens = frozenset(token for phrase in phrases for token in _tokens(phrase))
