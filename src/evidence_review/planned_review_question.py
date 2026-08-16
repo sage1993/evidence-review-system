@@ -17,10 +17,8 @@ from evidence_review.question_planning import (
     bind_question_plan_to_review_request,
     bind_retrieval_lineage_to_review_request,
     issue_retrieval_bundle_document,
-    query_request_from_plan,
 )
-from evidence_review.retrieval.bundle import build_evidence_bundle
-from evidence_review.retrieval.coverage import CoverageReport, evaluate_issue_coverage
+from evidence_review.retrieval.coverage import evaluate_issue_coverage
 from evidence_review.retrieval.graph import MissingReference
 from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle, retrieve_issue_bundle
@@ -64,43 +62,40 @@ def prepare_planned_review_question(
 ) -> PreparedReviewQuestion:
     """Retrieve and prepare a run whose identity is bound to a validated QuestionPlan.
 
-    Normal planned runs use the issue-aware clause-first coordinator. Explicit
-    legacy user expansion terms retain the prior retrieval path until those terms
-    gain an issue-binding contract.
+    Planned review execution is always issue-aware. Free-form ``user_expansions``
+    are rejected until they have an explicit issue/role binding contract; silently
+    switching to the legacy global retrieval path would bypass issue lineage and
+    relevance gates.
     """
+    if user_expansions:
+        raise ValueError(
+            "planned review user_expansions must be issue-bound in QuestionPlan search_requests"
+        )
+
     normalization_timer = start_stage()
-    legacy_query_request = query_request_from_plan(
-        question_plan,
-        user_expansions=user_expansions,
-    )
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
-    coverage_report: CoverageReport | None = None
-    trace_document: dict[str, object] | None = None
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
         connection = store.require_connection()
-        if user_expansions:
-            bundle = build_evidence_bundle(connection, legacy_query_request)
-        else:
-            snapshot_hash = require_fresh_index(connection)
-            issue_bundle = retrieve_issue_bundle(connection, question_plan)
-            coverage_report = evaluate_issue_coverage(
-                question_plan,
-                issue_bundle,
-                reference_missing_by_issue=_reference_missing_by_issue(issue_bundle),
-            )
-            bundle = issue_retrieval_bundle_document(
-                question_plan,
-                issue_bundle,
-                snapshot_hash=snapshot_hash,
-            )
-            bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
-            trace_document = retrieval_trace_document(
-                question_plan,
-                issue_bundle,
-                coverage_report,
-            )
+        snapshot_hash = require_fresh_index(connection)
+        issue_bundle = retrieve_issue_bundle(connection, question_plan)
+        coverage_report = evaluate_issue_coverage(
+            question_plan,
+            issue_bundle,
+            reference_missing_by_issue=_reference_missing_by_issue(issue_bundle),
+        )
+        bundle = issue_retrieval_bundle_document(
+            question_plan,
+            issue_bundle,
+            snapshot_hash=snapshot_hash,
+        )
+        bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
+        trace_document = retrieval_trace_document(
+            question_plan,
+            issue_bundle,
+            coverage_report,
+        )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
     request_timer = start_stage()
@@ -113,15 +108,14 @@ def prepare_planned_review_question(
     review_request["question"] = question_plan.original_question
     review_request = bind_question_plan_to_review_request(review_request, question_plan)
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
-    if coverage_report is not None:
-        review_request = bind_issue_coverage_to_review_request(
-            review_request,
-            coverage_report,
-        )
-        review_request = apply_issue_coverage_factors(
-            review_request,
-            coverage_report,
-        )
+    review_request = bind_issue_coverage_to_review_request(
+        review_request,
+        coverage_report,
+    )
+    review_request = apply_issue_coverage_factors(
+        review_request,
+        coverage_report,
+    )
     request_metric = finish_stage("review-request-build", request_timer)
 
     run_id = compute_run_id_from_request(review_request)
@@ -142,8 +136,7 @@ def prepare_planned_review_question(
         question_plan_document(question_plan),
     )
     _write_or_identical(run_directory / "evidence-query.json", bundle)
-    if trace_document is not None:
-        _write_or_identical(run_directory / "retrieval-trace.json", trace_document)
+    _write_or_identical(run_directory / "retrieval-trace.json", trace_document)
 
     guidance_path: Path | None = None
     query_payload = _mapping(bundle["query"], "evidence_bundle.query")
