@@ -201,6 +201,19 @@ def _merge_clause_hit(
     )
 
 
+def _merge_retrieval_hit(left: RetrievalHit, right: RetrievalHit) -> RetrievalHit:
+    if left.evidence_id != right.evidence_id:
+        raise ValueError("cannot merge different evidence ids")
+    merged = left
+    for channel in right.channel_scores:
+        merged = merged.with_channel(channel)
+    for match in right.matches:
+        merged = merged.with_match(match)
+    if right.final_score > merged.final_score:
+        merged = merged.with_final_score(right.final_score)
+    return merged
+
+
 def _merge_candidate(
     left: IssueClauseCandidate,
     right: IssueClauseCandidate,
@@ -218,9 +231,22 @@ def _merge_candidate(
         ): match
         for match in (*left.matches, *right.matches)
     }
+    evidence_by_id = {item.evidence_id: item for item in left.evidence}
+    evidence_order = [item.evidence_id for item in left.evidence]
+    for item in right.evidence:
+        current = evidence_by_id.get(item.evidence_id)
+        if current is None:
+            evidence_by_id[item.evidence_id] = item
+            evidence_order.append(item.evidence_id)
+        else:
+            evidence_by_id[item.evidence_id] = _merge_retrieval_hit(current, item)
     return IssueClauseCandidate(
         clause=_merge_clause_hit(left.clause, right.clause),
         matches=tuple(sorted(matches.values(), key=_match_sort_key)),
+        evidence=tuple(evidence_by_id[evidence_id] for evidence_id in evidence_order),
+        evidence_budget_limited=(
+            left.evidence_budget_limited or right.evidence_budget_limited
+        ),
     )
 
 
