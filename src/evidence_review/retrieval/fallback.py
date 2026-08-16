@@ -101,6 +101,12 @@ _NUMERIC_TOKEN = re.compile(
     r"(?P<unit>m2|m²|㎡|m3|㎥|km|mm|cm|m|%|퍼센트|미터|제곱미터)?$",
     re.IGNORECASE,
 )
+_NUMERIC_SCAN = re.compile(
+    r"(?<![\d,])(?P<number>\d[\d,]*(?:\.\d+)?)\s*"
+    r"(?P<unit>m2|m²|㎡|m3|㎥|km|mm|cm|m|%|퍼센트|미터|제곱미터)"
+    r"(?![a-z0-9])",
+    re.IGNORECASE,
+)
 _UNIT_KEYS = {
     "m": "length_m",
     "미터": "length_m",
@@ -164,25 +170,34 @@ def _clean_token(value: str) -> str:
     return value.strip(".,!?;:()[]{}<>\\\"'“”‘’")
 
 
+def _numeric_key_parts(number_text: str, unit_text: str) -> str | None:
+    try:
+        number = Decimal(number_text.replace(",", ""))
+    except InvalidOperation:
+        return None
+    number_key = format(number.normalize(), "f")
+    unit = unicodedata.normalize("NFKC", unit_text).casefold()
+    unit_key = _UNIT_KEYS.get(unit, unit)
+    return f"{number_key}:{unit_key}"
+
+
 def _numeric_key(value: str) -> str | None:
     normalized = unicodedata.normalize("NFKC", value).casefold()
     match = _NUMERIC_TOKEN.fullmatch(normalized)
     if match is None:
         return None
-    try:
-        number = Decimal(match.group("number").replace(",", ""))
-    except InvalidOperation:
-        return None
-    number_key = format(number.normalize(), "f")
-    unit = match.group("unit") or ""
-    unit_key = _UNIT_KEYS.get(unit, unit)
-    return f"{number_key}:{unit_key}"
+    return _numeric_key_parts(match.group("number"), match.group("unit") or "")
 
 
 def _numeric_values(texts: Sequence[str]) -> frozenset[str]:
     values: set[str] = set()
     for text in texts:
-        for token in _tokenize(text):
+        normalized = _normalize_text(text).casefold()
+        for match in _NUMERIC_SCAN.finditer(normalized):
+            key = _numeric_key_parts(match.group("number"), match.group("unit"))
+            if key is not None:
+                values.add(key)
+        for token in normalized.split(" "):
             key = _numeric_key(_clean_token(token))
             if key is not None:
                 values.add(key)
