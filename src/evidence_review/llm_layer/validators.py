@@ -37,13 +37,39 @@ def _calculation_map(bundle: TrackABundle) -> dict[str, CalculationResult]:
     return {result.calculation_result_id: result for result in bundle.calculations}
 
 
+def _citation_issue_ids(bundle: TrackABundle) -> dict[str, frozenset[str]]:
+    return {
+        item.citation.citation_id: frozenset(item.issue_ids)
+        for item in bundle.evidence
+    }
+
+
+def _require_claim_issue_coverage(
+    claim_id: str,
+    claim_issue_ids: tuple[str, ...],
+    citation_ids: tuple[str, ...],
+    citation_issue_ids: dict[str, frozenset[str]],
+) -> None:
+    if not claim_issue_ids or not any(citation_issue_ids.values()):
+        return
+    supported: set[str] = set()
+    for citation_id in citation_ids:
+        supported.update(citation_issue_ids.get(citation_id, ()))
+    missing = sorted(set(claim_issue_ids) - supported)
+    if missing:
+        raise ValueError(
+            f"UNSUPPORTED_CLAIM_ISSUE: claim {claim_id}: {', '.join(missing)}"
+        )
+
+
 def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle) -> None:
-    """Reject LLM-authored numbers and altered deterministic result references."""
+    """Reject unsupported claim lineage, numbers, and deterministic references."""
     if validated.draft.run_id != bundle.run_id:
         raise ValueError("track_a run_id does not match bundle")
     evidence_by_citation = {
         item.citation.citation_id: item.text for item in bundle.evidence
     }
+    citation_issue_ids = _citation_issue_ids(bundle)
     calculation_by_id = _calculation_map(bundle)
     rule_by_id = _rule_map(bundle)
     references_by_claim = {
@@ -51,6 +77,12 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
     }
 
     for claim in validated.draft.claims:
+        _require_claim_issue_coverage(
+            claim.claim_id,
+            claim.issue_ids,
+            claim.citation_ids,
+            citation_issue_ids,
+        )
         tokens = scan_numeric_tokens(claim.text)
         reject_unsupported_numeric_syntax(claim.text, tokens)
         extracted = tuple(token.text for token in tokens)
