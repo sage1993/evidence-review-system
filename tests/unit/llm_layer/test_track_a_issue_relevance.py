@@ -113,15 +113,12 @@ def test_track_a_integrity_rejects_multi_issue_claim_with_partial_citation_cover
         validate_track_a_integrity(validated, bundle)
 
 
-def test_track_a_integrity_rejects_issue_claim_without_citations() -> None:
-    bundle = _bundle()
-    validated = validate_track_a_output(
-        _payload(issue_ids=["I1"], citation_ids=[]),
-        bundle,
-    )
-
-    with pytest.raises(ValueError, match="UNSUPPORTED_CLAIM_ISSUE.*I1"):
-        validate_track_a_integrity(validated, bundle)
+def test_track_a_rejects_issue_claim_without_citations_at_structure_boundary() -> None:
+    with pytest.raises(ValueError, match="claim CL-1 requires at least one citation"):
+        validate_track_a_output(
+            _payload(issue_ids=["I1"], citation_ids=[]),
+            _bundle(),
+        )
 
 
 def test_track_a_integrity_accepts_multi_issue_claim_when_each_issue_is_cited() -> None:
