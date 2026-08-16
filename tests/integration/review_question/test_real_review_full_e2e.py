@@ -37,7 +37,12 @@ def _element(evidence_id: str, text: str, parser_order: int) -> dict[str, object
         "raw_text": text,
         "normalized_text": text,
         "raw_payload_hash": hash_char * 64,
-        "bbox": [10.0, float(parser_order * 10), 500.0, float(parser_order * 10 + 8)],
+        "bbox": [
+            10.0,
+            float(parser_order * 10),
+            500.0,
+            float(parser_order * 10 + 8),
+        ],
         "parser_order": parser_order,
     }
 
@@ -121,7 +126,10 @@ def _prepare_workspace(
     workspace = tmp_path / "workspace"
     evidence_directory = workspace / "evidence"
     evidence_directory.mkdir(parents=True)
-    with EvidenceStore(evidence_directory / "evidence.sqlite", create=True) as store:
+    with EvidenceStore(
+        evidence_directory / "evidence.sqlite",
+        create=True,
+    ) as store:
         ingest_snapshot(
             store,
             _snapshot(evidence_fixture, omit_issue_ids=omit_issue_ids),
@@ -141,7 +149,8 @@ def _track_a_output(
         (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
     )
     evidence_by_id = {
-        item["citation"]["evidence_id"]: item for item in bundle["evidence"]
+        item["citation"]["evidence_id"]: item
+        for item in bundle["evidence"]
     }
 
     claims: list[dict[str, object]] = []
@@ -222,7 +231,8 @@ def _assert_claim_issue_lineage(run_directory: Path, packet) -> None:
         (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
     )
     evidence_by_citation = {
-        item["citation"]["citation_id"]: item for item in bundle["evidence"]
+        item["citation"]["citation_id"]: item
+        for item in bundle["evidence"]
     }
     for claim in packet.claims:
         assert claim.issue_ids
@@ -245,6 +255,13 @@ def test_real_review_full_pipeline_reaches_finalizer_with_issue_safe_claims(
     assert len(packet.claims) == 7
     by_issue = {item.issue_id: item for item in packet.issue_results}
     assert by_issue["I2"].status == "CONDITIONAL"
+    assert by_issue["I2"].covered_facet_ids == (
+        "minimum-area-threshold",
+        "distance-normal-threshold",
+        "distance-conditional-threshold",
+    )
+    assert by_issue["I2"].missing_facet_ids == ()
+    assert len(by_issue["I2"].comparison_ids) == 3
     assert all(
         by_issue[f"I{index}"].status == "RESOLVED"
         for index in (1, 3, 4, 5, 6, 7)
@@ -254,14 +271,31 @@ def test_real_review_full_pipeline_reaches_finalizer_with_issue_safe_claims(
     }
     _assert_claim_issue_lineage(run_directory, packet)
 
+    stored = json.loads(
+        (run_directory / "final-review-packet.json").read_text(encoding="utf-8")
+    )
+    stored_by_issue = {
+        item["issue_id"]: item for item in stored["issue_results"]
+    }
+    assert stored_by_issue["I2"]["covered_facet_ids"] == list(
+        by_issue["I2"].covered_facet_ids
+    )
+    assert stored_by_issue["I2"]["missing_facet_ids"] == []
+    assert stored_by_issue["I2"]["comparison_ids"] == list(
+        by_issue["I2"].comparison_ids
+    )
+
     forbidden_ids = {
-        str(item["evidence_id"]) for item in evidence_fixture["forbidden"]
+        str(item["evidence_id"])
+        for item in evidence_fixture["forbidden"]
     }
     bundle = json.loads(
         (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
     )
     cited_ids = {
-        citation for claim in packet.claims for citation in claim.citation_ids
+        citation
+        for claim in packet.claims
+        for citation in claim.citation_ids
     }
     cited_evidence_ids = {
         item["citation"]["evidence_id"]
