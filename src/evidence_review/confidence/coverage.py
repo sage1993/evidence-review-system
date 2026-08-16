@@ -13,6 +13,7 @@ _SOURCE_GAPS = {
     "REFERENCE_TARGET_MISSING",
     "RETRIEVAL_MISS",
 }
+_COMPLETE_STATUSES = {"RESOLVED", "CONDITIONAL"}
 
 
 def _ratio(numerator: int, denominator: int) -> str:
@@ -30,8 +31,8 @@ def apply_issue_coverage_factors(
 
     The review request is prepared before a human decision exists, so human
     review status is explicitly pending rather than optimistically complete.
-    Retrieval/source gaps also reduce source completeness instead of being
-    hidden behind the fact that the source batch itself was ingested.
+    Retrieval/source gaps reduce completeness even when a local citing rule was
+    found, because the issue still lacks the authority needed for a full answer.
     """
     if not report.issues:
         raise ValueError("issue coverage report must not be empty")
@@ -63,9 +64,15 @@ def apply_issue_coverage_factors(
         not (_SOURCE_GAPS & set(item.gap_codes)) for item in report.issues
     )
     traceable = sum(
-        bool(item.covered_roles) and not item.missing_roles for item in report.issues
+        item.status in _COMPLETE_STATUSES
+        and bool(item.covered_roles)
+        and not item.missing_roles
+        for item in report.issues
     )
-    complete_inputs = sum(not item.missing_roles for item in report.issues)
+    complete_inputs = sum(
+        item.status in _COMPLETE_STATUSES and not item.missing_roles
+        for item in report.issues
+    )
     parse_gap_free = sum("PARSE_GAP" not in item.gap_codes for item in report.issues)
     conflicts = sum(item.status == "CONFLICT" for item in report.issues)
     covered_roles = sum(len(item.covered_roles) for item in report.issues)
