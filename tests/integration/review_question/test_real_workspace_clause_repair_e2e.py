@@ -19,7 +19,9 @@ _FIXTURE_DIR = (
 
 
 def _load_plan_payload() -> dict[str, Any]:
-    payload = json.loads((_FIXTURE_DIR / "question-plan.json").read_text(encoding="utf-8"))
+    payload = json.loads(
+        (_FIXTURE_DIR / "question-plan.json").read_text(encoding="utf-8")
+    )
     assert isinstance(payload, dict)
     search_requests = payload["search_requests"]
     assert isinstance(search_requests, list)
@@ -135,10 +137,19 @@ def _snapshot() -> EvidenceSnapshot:
     )
     return EvidenceSnapshot(
         documents=(
-            {"id": "DOC-LOCAL", "title": "서울특별시 안심주택 공급 지원에 관한 조례"},
+            {
+                "id": "DOC-LOCAL",
+                "title": "서울특별시 안심주택 공급 지원에 관한 조례",
+            },
             {"id": "DOC-KHC", "title": "주택건설기준 등에 관한 규정"},
-            {"id": "DOC-PARKING", "title": "서울특별시 주차장 설치 및 관리 조례"},
-            {"id": "DOC-PLANNING", "title": "국토의 계획 및 이용에 관한 법률 시행령"},
+            {
+                "id": "DOC-PARKING",
+                "title": "서울특별시 주차장 설치 및 관리 조례",
+            },
+            {
+                "id": "DOC-PLANNING",
+                "title": "국토의 계획 및 이용에 관한 법률 시행령",
+            },
         ),
         revisions=(
             {
@@ -296,9 +307,13 @@ def test_element_only_real_workspace_reaches_finalizer_with_all_issue_lineage(
         (run_directory / "retrieval-trace.json").read_text(encoding="utf-8")
     )
     issue_rows = {item["issue_id"]: item for item in retrieval_trace["issues"]}
-    assert all(issue_rows[f"I{index}"]["evidence_ids"] for index in range(1, 8))
     assert all(
-        "RETRIEVAL_MISS" not in issue_rows[f"I{index}"]["gap_codes"]
+        issue_rows[f"I{index}"]["coverage"]["evidence_ids"]
+        for index in range(1, 8)
+    )
+    assert all(
+        "RETRIEVAL_MISS"
+        not in issue_rows[f"I{index}"]["coverage"]["gap_codes"]
         for index in range(1, 8)
     )
 
@@ -310,7 +325,9 @@ def test_element_only_real_workspace_reaches_finalizer_with_all_issue_lineage(
         for issue_id in item.get("issue_ids", []):
             if issue_id in issue_text:
                 issue_text[issue_id].append(item["text"])
-    assert any("250미터" in text and "350미터" in text for text in issue_text["I2"])
+    assert any(
+        "250미터" in text and "350미터" in text for text in issue_text["I2"]
+    )
     assert any("임대형기숙사" in text for text in issue_text["I4"])
     assert any("복합" in text for text in issue_text["I4"])
 
