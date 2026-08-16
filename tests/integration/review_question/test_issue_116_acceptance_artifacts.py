@@ -34,7 +34,12 @@ def _element(record: dict[str, Any], parser_order: int) -> dict[str, object]:
         "raw_text": text,
         "normalized_text": text,
         "raw_payload_hash": format(parser_order % 16, "x") * 64,
-        "bbox": [10.0, float(parser_order * 10), 500.0, float(parser_order * 10 + 8)],
+        "bbox": [
+            10.0,
+            float(parser_order * 10),
+            500.0,
+            float(parser_order * 10 + 8),
+        ],
         "parser_order": parser_order,
     }
 
@@ -99,7 +104,10 @@ def _prepare(tmp_path: Path) -> tuple[dict[str, Any], Path]:
     plan = decode_question_plan(plan_payload, original_question)
     workspace = tmp_path / "workspace"
     (workspace / "evidence").mkdir(parents=True)
-    with EvidenceStore(workspace / "evidence" / "evidence.sqlite", create=True) as store:
+    with EvidenceStore(
+        workspace / "evidence" / "evidence.sqlite",
+        create=True,
+    ) as store:
         ingest_snapshot(store, _snapshot(fixture))
         build_fts_index(store.require_connection())
     prepared = prepare_planned_review_question(workspace, plan)
@@ -111,9 +119,15 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     tmp_path: Path,
 ) -> None:
     fixture, run_directory = _prepare(tmp_path)
-    bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
-    trace = json.loads((run_directory / "retrieval-trace.json").read_text(encoding="utf-8"))
-    compiled_plan = json.loads((run_directory / "question-plan.json").read_text(encoding="utf-8"))
+    bundle = json.loads(
+        (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
+    )
+    trace = json.loads(
+        (run_directory / "retrieval-trace.json").read_text(encoding="utf-8")
+    )
+    compiled_plan = json.loads(
+        (run_directory / "question-plan.json").read_text(encoding="utf-8")
+    )
 
     inputs = bundle["inputs"]
     provenance = inputs["evidence_snapshot_provenance"]
@@ -142,7 +156,10 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     )
 
     facets = {item["issue_id"]: item for item in inputs["facet_coverage"]}
-    assert all(not facets[f"I{index}"]["missing_facet_ids"] for index in range(1, 8))
+    assert all(
+        not facets[f"I{index}"]["missing_facet_ids"]
+        for index in range(1, 8)
+    )
     assert facets["I2"]["covered_facet_ids"] == [
         "minimum-area-threshold",
         "distance-normal-threshold",
@@ -185,9 +202,23 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     assert far["fact_value"] == "400"
     assert far["threshold_value"] == "400"
     assert far["satisfied"] is True
-    assert all(len(item["result_hash"]) == 64 for item in comparisons.values())
+    assert all(
+        len(item["result_hash"]) == 64 for item in comparisons.values()
+    )
 
-    trace_by_issue = {item["issue_id"]: item for item in trace["issues"]}
+    assert coverage["I2"]["covered_facet_ids"] == facets["I2"][
+        "covered_facet_ids"
+    ]
+    assert coverage["I2"]["missing_facet_ids"] == []
+    assert set(coverage["I2"]["comparison_ids"]) == {
+        minimum_area["comparison_id"],
+        normal_distance["comparison_id"],
+        conditional_distance["comparison_id"],
+    }
+
+    trace_by_issue = {
+        item["issue_id"]: item for item in trace["issues"]
+    }
     assert trace_by_issue["I2"]["comparisons"]
     assert trace_by_issue["I2"]["facet_coverage"]
 
@@ -198,6 +229,7 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     assert "2분의 1까지" in evidence_by_id["E-INDUSTRIAL-SITE"]["text"]
 
     forbidden_ids = {
-        str(item["evidence_id"]) for item in fixture["forbidden"]
+        str(item["evidence_id"])
+        for item in fixture["forbidden"]
     }
     assert set(evidence_by_id).isdisjoint(forbidden_ids)
