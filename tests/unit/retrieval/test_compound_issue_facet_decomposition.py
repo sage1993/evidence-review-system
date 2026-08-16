@@ -63,6 +63,52 @@ def _plan():
     )
 
 
+def _shared_numeric_sentence_plan():
+    question = (
+        "준공업지역에서 공공지원민간임대주택과 임대형기숙사를 복합한 안심주택을 "
+        "계획하면서 공동주택 부분은 용적률 400% 완화를 적용하고 주차장 설치기준도 "
+        "완화하려고 한다. 이 경우 400% 용적률 완화와 산업부지 확보비율, "
+        "지구단위계획에 따른 추가 주차기준 완화는 각각 어떤 요건과 절차를 "
+        "거쳐야 하는지 검토해줘."
+    )
+    issue_question = "준공업지역 공동주택 부분에 용적률 400% 기준을 적용할 수 있는가?"
+    return decode_question_plan(
+        {
+            "format": "evidence-review/question-plan",
+            "version": 2,
+            "original_question": question,
+            "facts": [
+                {
+                    "id": "F1",
+                    "text": "계획안은 공동주택 부분에 용적률 400% 완화를 적용하려 한다.",
+                    "polarity": "positive",
+                }
+            ],
+            "assumptions": [],
+            "issues": [
+                {
+                    "id": "I5",
+                    "question": issue_question,
+                    "depends_on": [],
+                    "required_evidence_roles": ["rule"],
+                }
+            ],
+            "legal_anchors": [],
+            "search_requests": [
+                {
+                    "id": "S5",
+                    "issue_ids": ["I5"],
+                    "text": "준공업지역 공동주택 기본용적률",
+                    "kind": "concept_relation",
+                    "source": "planner",
+                    "role": "rule",
+                }
+            ],
+        },
+        question,
+    )
+
+
 def test_compound_site_issue_requires_area_and_both_distance_facets() -> None:
     facets = compile_required_facets(_plan()).by_issue_id("I2")
 
@@ -70,6 +116,14 @@ def test_compound_site_issue_requires_area_and_both_distance_facets() -> None:
         "minimum-area-threshold",
         "distance-normal-threshold",
         "distance-conditional-threshold",
+    ]
+
+
+def test_numeric_context_does_not_import_unrelated_facets_from_same_sentence() -> None:
+    facets = compile_required_facets(_shared_numeric_sentence_plan()).by_issue_id("I5")
+
+    assert [item.facet_id for item in facets.required_facets] == [
+        "semi-industrial-far-threshold",
     ]
 
 
