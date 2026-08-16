@@ -9,8 +9,6 @@ from evidence_review.contracts.evidence import EvidenceRecord
 from evidence_review.contracts.review import Claim
 from evidence_review.retrieval.citations import resolve_citation
 
-_SUPPORTED_ISSUE_IDS = frozenset(f"I{index}" for index in range(1, 9))
-
 
 @dataclass(frozen=True, slots=True)
 class ClaimCitationIssue:
@@ -25,29 +23,35 @@ def validate_claims(
     evidence_records: Sequence[EvidenceRecord],
     *,
     citation_issue_ids: Mapping[str, Sequence[str]] | None = None,
+    valid_issue_ids: Sequence[str] | None = None,
 ) -> tuple[ClaimCitationIssue, ...]:
-    """Return deterministic citation and issue-lineage failures for claims."""
+    """Return deterministic citation and issue-lineage failures for claims.
+
+    When ``valid_issue_ids`` is supplied it is the authoritative QuestionPlan issue
+    set. Legacy callers without a plan fall back to the issue ids present in cited
+    evidence lineage.
+    """
     citation_map = {citation.citation_id: citation for citation in citations}
     evidence_map = {record.evidence_id: record for record in evidence_records}
     issue_map = {
         citation_id: tuple(sorted(set(issue_ids)))
         for citation_id, issue_ids in (citation_issue_ids or {}).items()
     }
-    known_issue_ids = {
+    evidence_issue_ids = {
         issue_id for issue_ids in issue_map.values() for issue_id in issue_ids
     }
+    authoritative_issue_ids = (
+        set(valid_issue_ids) if valid_issue_ids is not None else evidence_issue_ids
+    )
 
     issues: list[ClaimCitationIssue] = []
     for claim in claims:
+        unknown: list[str] = []
         if issue_map:
             if not claim.issue_ids:
                 issues.append(ClaimCitationIssue(claim.claim_id, "UNRELATED_CLAIM"))
             else:
-                unknown = sorted(
-                    set(claim.issue_ids)
-                    - known_issue_ids
-                    - _SUPPORTED_ISSUE_IDS
-                )
+                unknown = sorted(set(claim.issue_ids) - authoritative_issue_ids)
                 if unknown:
                     issues.append(
                         ClaimCitationIssue(claim.claim_id, "UNKNOWN_CLAIM_ISSUE")
