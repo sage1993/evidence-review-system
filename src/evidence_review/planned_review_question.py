@@ -19,10 +19,10 @@ from evidence_review.question_planning import (
     bind_retrieval_lineage_to_review_request,
     issue_retrieval_bundle_document,
 )
+from evidence_review.retrieval.conditional import infer_conditional_issue_ids
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
-from evidence_review.retrieval.graph import MissingReference
 from evidence_review.retrieval.index import require_fresh_index
-from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle, retrieve_issue_bundle
+from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
 from evidence_review.retrieval.reference_projection import (
     apply_reference_lineage_to_bundle_document,
 )
@@ -42,18 +42,6 @@ from evidence_review.user_expansions import (
     apply_search_request_origins,
     plan_with_user_expansions,
 )
-
-
-def _reference_missing_by_issue(
-    bundle: IssueRetrievalBundle,
-) -> dict[str, tuple[MissingReference, ...]]:
-    grouped: dict[str, list[MissingReference]] = {}
-    for item in bundle.reference_missing:
-        grouped.setdefault(item.issue_id, []).append(item.reference)
-    return {
-        issue_id: tuple(values)
-        for issue_id, values in sorted(grouped.items())
-    }
 
 
 def prepare_planned_review_question(
@@ -81,10 +69,14 @@ def prepare_planned_review_question(
         ensure_clause_index(connection)
         snapshot_hash = require_fresh_index(connection)
         issue_bundle = retrieve_issue_bundle(connection, effective_plan)
+        conditional_issue_ids = infer_conditional_issue_ids(
+            effective_plan,
+            issue_bundle,
+        )
         coverage_report = evaluate_issue_coverage(
             effective_plan,
             issue_bundle,
-            reference_missing_by_issue=_reference_missing_by_issue(issue_bundle),
+            conditional_issue_ids=conditional_issue_ids,
         )
         bundle = issue_retrieval_bundle_document(
             effective_plan,
