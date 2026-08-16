@@ -8,7 +8,7 @@ from decimal import Decimal
 from evidence_review.canonical_json import sha256_json
 from evidence_review.contracts.question_plan import QuestionPlan
 from evidence_review.retrieval.conditional import Measure, extract_measures
-from evidence_review.retrieval.facets import FacetCoverageReport
+from evidence_review.retrieval.facets import FacetCoverageReport, issue_context_text
 from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
 
 
@@ -152,8 +152,9 @@ def _fact_text_for_issue_dimension(
     issue_question: str,
     dimension: str,
 ) -> str | None:
+    context = issue_context_text(plan, issue_question)
     issue_values = {
-        measure.value for measure in _measures_for_dimension(issue_question, dimension)
+        measure.value for measure in _measures_for_dimension(context, dimension)
     }
     if not issue_values:
         return None
@@ -173,7 +174,7 @@ def evaluate_fact_rule_comparisons(
     bundle: IssueRetrievalBundle,
     facet_report: FacetCoverageReport,
 ) -> tuple[FactRuleComparison, ...]:
-    """Build comparison artifacts only when an issue preserves the user fact value."""
+    """Build comparison artifacts only when an issue has a uniquely bound user fact."""
     results: list[FactRuleComparison] = []
     for issue in plan.issues:
         facet_issue = facet_report.by_issue_id(issue.id)
