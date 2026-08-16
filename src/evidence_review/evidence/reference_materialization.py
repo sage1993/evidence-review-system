@@ -56,20 +56,17 @@ def _matches_structural_clause(
     if article is None:
         return False
     candidates = (title, normalized_text, raw_text)
-    for value in candidates:
-        if not _starts_with_structural_anchor(value, article):
-            continue
-        if reference.paragraph is None:
-            return True
-        compact = _compact_structural_text(value)
-        paragraph = re.sub(
-            r"\s+",
-            "",
-            unicodedata.normalize("NFKC", reference.paragraph),
-        )
-        if paragraph in compact:
-            return True
-    return False
+    if not any(_starts_with_structural_anchor(value, article) for value in candidates):
+        return False
+    if reference.paragraph is None:
+        return True
+    combined = " ".join(_compact_structural_text(value) for value in candidates)
+    paragraph = re.sub(
+        r"\s+",
+        "",
+        unicodedata.normalize("NFKC", reference.paragraph),
+    )
+    return paragraph in combined
 
 
 def _document_id(connection: sqlite3.Connection, authority_title: str) -> str | None:
