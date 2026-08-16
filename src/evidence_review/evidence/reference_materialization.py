@@ -38,23 +38,23 @@ def _document_id(connection: sqlite3.Connection, authority_title: str) -> str | 
     return contained[0] if len(contained) == 1 else None
 
 
-def _like_token(value: str) -> str:
-    return value.replace("%", "\\%").replace("_", "\\_")
-
-
 def _target_evidence_ids(
     connection: sqlite3.Connection,
     document_id: str,
     reference: LegalReference,
 ) -> tuple[str, ...]:
     if reference.annex is not None:
-        token = f"%{_like_token(reference.annex)}%"
+        compact_annex = reference.annex.replace(" ", "")
+        token = f"%{compact_annex}%"
         rows = connection.execute(
             """
             SELECT evidence_id
             FROM retrieval_records
             WHERE document_id = ?
-              AND (normalized_text LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')
+              AND (
+                    REPLACE(normalized_text, ' ', '') LIKE ?
+                    OR REPLACE(title, ' ', '') LIKE ?
+                  )
             ORDER BY evidence_id
             LIMIT 5
             """,
@@ -64,14 +64,14 @@ def _target_evidence_ids(
             return tuple(str(row[0]) for row in rows)
 
     if reference.article is not None:
-        article = f"%{_like_token(reference.article)}%"
+        article = f"%{reference.article}%"
         parameters: list[object] = [document_id, article, article, article]
         paragraph_sql = ""
         if reference.paragraph is not None:
-            paragraph = f"%{_like_token(reference.paragraph)}%"
+            paragraph = f"%{reference.paragraph}%"
             paragraph_sql = (
-                " AND (cr.title LIKE ? ESCAPE '\\' OR cr.raw_text LIKE ? ESCAPE '\\' "
-                "OR cr.normalized_text LIKE ? ESCAPE '\\')"
+                " AND (cr.title LIKE ? OR cr.raw_text LIKE ? "
+                "OR cr.normalized_text LIKE ?)"
             )
             parameters.extend((paragraph, paragraph, paragraph))
         rows = connection.execute(
@@ -80,8 +80,11 @@ def _target_evidence_ids(
             FROM clause_retrieval_records cr
             JOIN clause_evidence_links cel ON cel.clause_id = cr.clause_id
             WHERE cr.document_id = ?
-              AND (cr.title LIKE ? ESCAPE '\\' OR cr.raw_text LIKE ? ESCAPE '\\'
-                   OR cr.normalized_text LIKE ? ESCAPE '\\')
+              AND (
+                    cr.title LIKE ?
+                    OR cr.raw_text LIKE ?
+                    OR cr.normalized_text LIKE ?
+                  )
               {paragraph_sql}
             ORDER BY cel.evidence_id
             LIMIT 5
@@ -134,7 +137,9 @@ def materialize_legal_reference_links(connection: sqlite3.Connection) -> int:
                     targets = resolved
                 else:
                     relation_type = "reference_target_missing"
-                    targets = (_stable_id("MISSING-REFERENCE", document_id, reference_key),)
+                    targets = (
+                        _stable_id("MISSING-REFERENCE", document_id, reference_key),
+                    )
 
             for target_id in targets:
                 key = (source_evidence_id, target_id, relation_type)
