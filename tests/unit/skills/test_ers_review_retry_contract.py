@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 _SKILL = Path(__file__).parents[3] / ".agents" / "skills" / "ers-review" / "SKILL.md"
 
 
