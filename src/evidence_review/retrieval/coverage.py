@@ -118,9 +118,13 @@ def evaluate_issue_coverage(
 ) -> CoverageReport:
     """Classify every planned issue after retrieval/fallback/reference expansion.
 
-    Precedence is fail-closed and deterministic:
-    conflict > ambiguity > source/reference missing > required facet > parse gap
-    > retrieval miss > complete evidence (resolved/conditional).
+    Precedence is fail-closed and diagnostic:
+    conflict > ambiguity > source/reference missing > retrieval/parse failure
+    > required facet completeness > complete evidence (resolved/conditional).
+
+    A required facet is only meaningful after the required evidence role has
+    citation-grade support. When no candidate exists, retain ``RETRIEVAL_MISS``
+    rather than masking the retrieval failure as ``MISSING_REQUIRED_FACET``.
     """
     reference_missing = (
         _bundle_reference_missing(bundle)
@@ -186,9 +190,6 @@ def evaluate_issue_coverage(
 
             if gaps:
                 status = "SOURCE_MISSING"
-            elif missing_facets:
-                status = "UNRESOLVED"
-                gaps.append("MISSING_REQUIRED_FACET")
             elif missing:
                 if missing & semantic_roles:
                     status = "UNRESOLVED"
@@ -196,6 +197,9 @@ def evaluate_issue_coverage(
                 else:
                     status = "UNRESOLVED"
                     gaps.append("RETRIEVAL_MISS")
+            elif missing_facets:
+                status = "UNRESOLVED"
+                gaps.append("MISSING_REQUIRED_FACET")
             elif issue.id in conditional:
                 status = "CONDITIONAL"
             else:

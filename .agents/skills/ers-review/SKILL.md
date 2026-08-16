@@ -98,28 +98,48 @@ Codex는 `track-a-bundle.json`과 `TRACK_A_INSTRUCTIONS.md`만 사용해 Track A
 
 `inputs.question_plan`이 있으면 검증된 issue/fact/assumption/dependency 구조를 유지한다. `inputs.retrieval_lineage`는 어떤 search request가 어떤 evidence로 이어졌는지 설명하는 추적 정보일 뿐 evidence 권위를 높이지 않는다. Planner의 `source=planner` legal anchor를 근거처럼 인용하지 않는다.
 
+각 외부 생성 시도는 run 디렉터리의 canonical 파일이 아닌 attempt 전용 경로에 작성한다.
+
+```text
+track-a-attempt-<N>.json
+```
+
+모델이나 orchestration은 canonical `track-a-output.json`을 직접 생성·덮어쓰기하지 않는다. attempt 파일을 `submit-track-a`에 전달하고, 검증에 성공한 결과만 runtime이 canonical output으로 고정한다.
+
 작성 직후 Track B를 시작하기 전에 반드시 검증한다.
 
 ```powershell
 evidence-review review-question submit-track-a `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --track-a-output <track-a-output.json>
+  --track-a-output <track-a-attempt-N.json>
 ```
 
-검증 실패 시 같은 단계에서 수정한다. Track A가 검증되기 전에 Track B를 작성하지 않는다.
+검증 실패 시 **새 attempt 경로**에서 같은 단계를 수정한다. 검증 실패한 attempt를 canonical 파일로 재사용하지 않는다. `FILEEXISTSERROR`는 정상적인 모델 retry 신호가 아니며, canonical output 소유권을 침범했거나 이미 다음 상태로 진행한 orchestration 오류로 처리한다.
+
+`submit-track-a`가 성공해 workflow가 `WAITING_TRACK_B`로 전환되면 해당 stage는 완료된 것이다. **Track A 외부 호출을 다시 수행하지 않는다.** 이후 오류는 Track B 또는 finalization 단계에서 복구하며 Track A를 다시 생성하지 않는다.
 
 ### 4. Track B 독립 감사
 
 Track B는 검증된 Track A의 **모든 claim을 한 번씩** 독립 감사한다. Track A를 재작성하거나 사람 판정을 만들지 않는다.
 
+Track B도 external attempt 전용 경로를 사용한다.
+
+```text
+track-b-attempt-<N>.json
+```
+
+모델이나 orchestration은 canonical `track-b-output.json`을 직접 생성·덮어쓰기하지 않는다. attempt 파일을 runtime에 제출하고 검증된 결과만 canonical output으로 고정한다.
+
 ```powershell
 evidence-review review-question submit-track-b `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --track-b-output <track-b-output.json> `
+  --track-b-output <track-b-attempt-N.json> `
   --publish
 ```
+
+Track B 검증을 통과해 finalization이 시작되거나 최종 packet이 생성되면 **Track B 외부 호출을 다시 수행하지 않는다.** `READY_FOR_HUMAN_REVIEW` 또는 `ABSTAIN`이 반환된 뒤에는 같은 run에 대해 모델을 다시 호출하지 않고 기존 immutable artifact를 사용한다.
 
 Track B 검증을 통과하면 기존 finalizer가 `final-review-packet.json`과 `review.html`을 만든다. `READY_FOR_HUMAN_REVIEW`는 자동 승인 상태가 아니다. `ABSTAIN`은 기록된 사유를 유지한다.
 
@@ -190,6 +210,7 @@ evidence-review review-run import-decision `
 - packet/HTML 이후 protected server + browser dispatch hard budget: 2초
 - Question Planner/Track A/Track B 외부 대기시간은 deterministic total과 분리
 - 실패 후 재시도만 retry로 집계
+- 검증 성공 후 같은 stage의 외부 호출은 0회여야 하며, 성공 이후 호출은 retry가 아니라 orchestration 오류다.
 
 실제 수용 판정은 Windows Python 3.13에서 3회 timing과 p50/p95를 기록한 뒤 한다.
 
@@ -203,8 +224,10 @@ evidence-review review-run import-decision `
 | QuestionPlan 검증 실패 | `PLANNER_FAILED`, retrieval/Track A 시작 금지 |
 | 유효 Plan의 검색 결과 0건 | `RETRIEVAL_NO_EVIDENCE`를 유지하고 임의 검색 확장 금지 |
 | 필요한 승인 계산/규칙 없음 | 추정하지 않고 추가 입력 요구 또는 `ABSTAIN` |
-| Track A 검증 실패 | Track B 시작 금지 |
-| Track B 검증 실패 | finalization 금지 |
+| Track A 검증 실패 | Track B 시작 금지; 새 attempt 경로에서만 수정 |
+| Track A 검증 성공 / `WAITING_TRACK_B` | Track A 외부 호출 금지 |
+| Track B 검증 실패 | finalization 금지; 새 attempt 경로에서만 수정 |
+| Track B 검증 성공 / finalization 진입 | Track B 외부 호출 금지 |
 | packet/HTML 누락 | 브라우저 완료 주장 금지 |
 | protected URL 실패 | URL/browser handoff 실패로 보고 |
 | packet hash mismatch | 결정 저장/import 거부 |
@@ -216,6 +239,8 @@ evidence-review review-run import-decision `
 - quick mode 또는 정식 검토 우회
 - 사용자에게 중간 JSON 수작업 요구
 - 모델이 숫자·규칙 결과·citation을 새로 만드는 행위
+- 모델이 canonical `track-a-output.json` 또는 canonical `track-b-output.json`을 직접 작성·덮어쓰기
+- 검증 성공한 Track A/Track B stage에 대해 외부 AI를 다시 호출
 - `READY_FOR_HUMAN_REVIEW`를 승인으로 표현
 - machine packet의 `human_decision` 수정
 - metrics를 권위 해시에 포함
