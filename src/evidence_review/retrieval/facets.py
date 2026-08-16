@@ -151,16 +151,40 @@ def _required_facet_ids(question: str) -> tuple[str, ...]:
     return tuple(facets)
 
 
+def _required_facet_ids_for_issue(
+    plan: QuestionPlan,
+    issue_question: str,
+) -> tuple[str, ...]:
+    """Compile issue-local facets and recover only a co-occurring site-area fact."""
+    facets = list(_required_facet_ids(issue_question))
+    if "minimum-area-threshold" in facets:
+        return tuple(facets)
+
+    normalized = _normalize(issue_question)
+    has_distance_anchor = any(
+        measure.dimension == "length_m"
+        for measure in extract_measures(issue_question)
+    )
+    if (
+        "부지" in normalized
+        and has_distance_anchor
+        and _has_area_fact_in_issue(issue_context_text(plan, issue_question))
+    ):
+        facets.insert(0, "minimum-area-threshold")
+    return tuple(facets)
+
+
 def compile_required_facets(plan: QuestionPlan) -> FacetPlan:
-    """Compile stable sub-questions from issue wording and numeric original context."""
+    """Compile issue-local facets with bounded compound numeric context recovery."""
     return FacetPlan(
         issues=tuple(
             IssueFacetPlan(
                 issue_id=issue.id,
                 required_facets=tuple(
                     FacetRequirement(facet_id=value)
-                    for value in _required_facet_ids(
-                        issue_context_text(plan, issue.question)
+                    for value in _required_facet_ids_for_issue(
+                        plan,
+                        issue.question,
                     )
                 ),
             )
