@@ -15,12 +15,27 @@ def _snapshot() -> EvidenceSnapshot:
     texts = (
         "2-1-2. 역세권 사업대상지",
         "역의 각 승강장 경계로부터 직각으로 250미터 이내로 한다.",
-        "통합심의위원회의 심의를 거쳐 역의 각 승강장 경계 및 출입구로부터 350미터 이내의 토지를 사업대상지로 지정할 수 있다.",
+        (
+            "통합심의위원회의 심의를 거쳐 역의 각 승강장 경계 및 출입구로부터 "
+            "350미터 이내의 토지를 사업대상지로 지정할 수 있다."
+        ),
         "제13조(주차장 설치기준 완화)",
-        "① 사업시행자는 임대형기숙사를 제외한 안심주택인 경우 주택건설기준 등에 관한 규정에 따라 주차장을 설치하여야 한다.",
-        "② 사업시행자는 임대형기숙사인 경우 서울특별시 주차장 설치 및 관리 조례 별표 2에 따라 주차장을 설치하여야 한다.",
-        "③ 안심주택을 복합으로 계획하는 경우 주택용도에 따라 제1항 및 제2항을 각각 적용한다.",
-        "④ 시장은 원활한 교통소통 또는 보행환경 조성을 위하여 지구단위계획으로 주차장 설치기준을 완화하여 적용할 수 있다.",
+        (
+            "① 사업시행자는 임대형기숙사를 제외한 안심주택인 경우 "
+            "주택건설기준 등에 관한 규정에 따라 주차장을 설치하여야 한다."
+        ),
+        (
+            "② 사업시행자는 임대형기숙사인 경우 서울특별시 주차장 설치 및 "
+            "관리 조례 별표 2에 따라 주차장을 설치하여야 한다."
+        ),
+        (
+            "③ 안심주택을 복합으로 계획하는 경우 주택용도에 따라 "
+            "제1항 및 제2항을 각각 적용한다."
+        ),
+        (
+            "④ 시장은 원활한 교통소통 또는 보행환경 조성을 위하여 "
+            "지구단위계획으로 주차장 설치기준을 완화하여 적용할 수 있다."
+        ),
     )
     return EvidenceSnapshot(
         documents=({"id": "DOC-1", "title": "서울특별시 안심주택 기준"},),
@@ -152,12 +167,21 @@ def test_element_only_workspace_recovers_real_retrieval_gaps(tmp_path: Path) -> 
         assert support.evidence_ids
         assert "RETRIEVAL_MISS" not in support.gap_codes
 
-    i2_traces = [trace for trace in bundle.fallback_traces if trace.issue_id == "I2"]
-    assert i2_traces[0].derived_query == "역세권 승강장 경계 300m 사업대상지 면적 기준"
-    assert any("300m" not in trace.derived_query and trace.hit_count > 0 for trace in i2_traces)
+    i2_traces = [
+        trace for trace in bundle.fallback_traces if trace.issue_id == "I2"
+    ]
+    assert i2_traces[0].derived_query == (
+        "역세권 승강장 경계 300m 사업대상지 면적 기준"
+    )
+    assert any(
+        "300m" not in trace.derived_query and trace.hit_count > 0
+        for trace in i2_traces
+    )
 
     i4_evidence = {
-        hit.text for hit in bundle.selected_evidence if "임대형기숙사" in hit.text or "복합" in hit.text
+        hit.text
+        for hit in bundle.selected_evidence
+        if "임대형기숙사" in hit.text or "복합" in hit.text
     }
     assert any("임대형기숙사" in text for text in i4_evidence)
     assert any("복합" in text for text in i4_evidence)
