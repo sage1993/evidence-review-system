@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -20,6 +20,7 @@ from evidence_review.retrieval.clause_resolution import (
 )
 from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.models import ChannelScore
+from evidence_review.retrieval.relevance import query_clause_is_relevant
 
 
 class FallbackStage(StrEnum):
@@ -44,6 +45,9 @@ class ClauseSearch(Protocol):
         *,
         limit: int = 20,
     ) -> tuple[ClauseRetrievalHit, ...]: ...
+
+
+HitFilter = Callable[[ClauseRetrievalHit], bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,14 +364,30 @@ def _heading_scoped_search(
     return tuple(hits)
 
 
+def _accepted_hits(
+    original_query: str,
+    hits: Sequence[ClauseRetrievalHit],
+    hit_filter: HitFilter | None,
+) -> tuple[ClauseRetrievalHit, ...]:
+    accepted: list[ClauseRetrievalHit] = []
+    for hit in hits:
+        if not query_clause_is_relevant(original_query, hit):
+            continue
+        if hit_filter is not None and not hit_filter(hit):
+            continue
+        accepted.append(hit)
+    return tuple(accepted)
+
+
 def search_clause_with_fallback(
     connection: sqlite3.Connection,
     query: str,
     *,
     fact_texts: Sequence[str] = (),
     limit: int = 20,
+    hit_filter: HitFilter | None = None,
 ) -> FallbackResult:
-    """Search clauses through a deterministic bounded, fact-safe fallback ladder."""
+    """Search clauses through a bounded, relevance-aware, fact-safe ladder."""
     normalized = _normalize_text(query)
     if not normalized:
         raise ValueError("query must be non-empty")
@@ -443,7 +463,8 @@ def search_clause_with_fallback(
         if key in seen:
             continue
         seen.add(key)
-        hits = search(connection, derived_query, limit=limit)
+        raw_hits = search(connection, derived_query, limit=limit)
+        hits = _accepted_hits(normalized, raw_hits, hit_filter)
         traces.append(
             FallbackTrace(
                 stage=stage,
@@ -461,7 +482,7 @@ def search_clause_with_fallback(
             )
 
     heading_query = decontaminated or normalized
-    heading_hits = (
+    raw_heading_hits = (
         ()
         if protected_numerics
         else _heading_scoped_search(
@@ -471,6 +492,7 @@ def search_clause_with_fallback(
             limit=limit,
         )
     )
+    heading_hits = _accepted_hits(normalized, raw_heading_hits, hit_filter)
     traces.append(
         FallbackTrace(
             stage=FallbackStage.HEADING_SCOPED,
