@@ -87,7 +87,10 @@ def _expect_literal[T: str](value: object, field: str, allowed: tuple[T, ...]) -
 
 def _expect_string_tuple(value: object, field: str) -> tuple[str, ...]:
     items = _expect_sequence(value, field)
-    return tuple(_expect_string(item, f"{field}[{index}]") for index, item in enumerate(items))
+    return tuple(
+        _expect_string(item, f"{field}[{index}]")
+        for index, item in enumerate(items)
+    )
 
 
 def _expect_unique_string_tuple(value: object, field: str) -> tuple[str, ...]:
@@ -165,14 +168,20 @@ def decode_claim(value: object) -> Claim:
     return Claim(
         claim_id=_expect_string(payload.get("claim_id"), "claim_id"),
         text=_expect_string(payload.get("text"), "text"),
-        citation_ids=_expect_string_tuple(payload.get("citation_ids"), "citation_ids"),
-        numeric_tokens=_expect_string_tuple(payload.get("numeric_tokens", []), "numeric_tokens"),
-        issue_ids=_expect_unique_string_tuple(payload.get("issue_ids", []), "issue_ids"),
+        citation_ids=_expect_string_tuple(
+            payload.get("citation_ids"), "citation_ids"
+        ),
+        numeric_tokens=_expect_string_tuple(
+            payload.get("numeric_tokens", []), "numeric_tokens"
+        ),
+        issue_ids=_expect_unique_string_tuple(
+            payload.get("issue_ids", []), "issue_ids"
+        ),
     )
 
 
 def decode_issue_result(value: object) -> IssueResult:
-    """Decode one deterministic planned-issue coverage result."""
+    """Decode one deterministic planned-issue coverage and lineage result."""
     payload = _expect_mapping(value, "issue_result")
     allowed = {
         "issue_id",
@@ -181,19 +190,35 @@ def decode_issue_result(value: object) -> IssueResult:
         "covered_roles",
         "missing_roles",
         "gap_codes",
+        "covered_facet_ids",
+        "missing_facet_ids",
+        "comparison_ids",
     }
     _reject_unknown(payload, allowed, "issue_result")
     return IssueResult(
         issue_id=_expect_string(payload.get("issue_id"), "issue_id"),
         status=_expect_literal(payload.get("status"), "status", _ISSUE_STATUSES),
-        evidence_ids=_expect_unique_string_tuple(payload.get("evidence_ids", []), "evidence_ids"),
+        evidence_ids=_expect_unique_string_tuple(
+            payload.get("evidence_ids", []), "evidence_ids"
+        ),
         covered_roles=_expect_unique_string_tuple(
             payload.get("covered_roles", []), "covered_roles"
         ),
         missing_roles=_expect_unique_string_tuple(
             payload.get("missing_roles", []), "missing_roles"
         ),
-        gap_codes=_expect_unique_string_tuple(payload.get("gap_codes", []), "gap_codes"),
+        gap_codes=_expect_unique_string_tuple(
+            payload.get("gap_codes", []), "gap_codes"
+        ),
+        covered_facet_ids=_expect_unique_string_tuple(
+            payload.get("covered_facet_ids", []), "covered_facet_ids"
+        ),
+        missing_facet_ids=_expect_unique_string_tuple(
+            payload.get("missing_facet_ids", []), "missing_facet_ids"
+        ),
+        comparison_ids=_expect_unique_string_tuple(
+            payload.get("comparison_ids", []), "comparison_ids"
+        ),
     )
 
 
@@ -218,7 +243,13 @@ def decode_calculation_result(value: object) -> CalculationResult:
     status = _expect_literal(
         payload.get("status"),
         "status",
-        ("SUCCESS", "INVALID_INPUT", "DIVISION_BY_ZERO", "FORMULA_NOT_FOUND", "ENGINE_ERROR"),
+        (
+            "SUCCESS",
+            "INVALID_INPUT",
+            "DIVISION_BY_ZERO",
+            "FORMULA_NOT_FOUND",
+            "ENGINE_ERROR",
+        ),
     )
     comparison_value = payload.get("comparison")
     comparison: CalculationComparison | None
@@ -246,17 +277,29 @@ def decode_calculation_result(value: object) -> CalculationResult:
         ),
         status=cast(CalculationStatus, status),
         formula_id=_expect_string(payload.get("formula_id"), "formula_id"),
-        formula_version=_expect_string(payload.get("formula_version"), "formula_version"),
+        formula_version=_expect_string(
+            payload.get("formula_version"), "formula_version"
+        ),
         inputs=_expect_string_dict(payload.get("inputs", {}), "inputs"),
-        substitution=_expect_optional_string(payload.get("substitution"), "substitution"),
-        raw_result=_expect_optional_string(payload.get("raw_result"), "raw_result"),
-        display_result=_expect_optional_string(payload.get("display_result"), "display_result"),
+        substitution=_expect_optional_string(
+            payload.get("substitution"), "substitution"
+        ),
+        raw_result=_expect_optional_string(
+            payload.get("raw_result"), "raw_result"
+        ),
+        display_result=_expect_optional_string(
+            payload.get("display_result"), "display_result"
+        ),
         comparison=comparison,
         formula_manifest_hash=_expect_optional_string(
             payload.get("formula_manifest_hash"), "formula_manifest_hash"
         ),
-        result_hash=_expect_optional_string(payload.get("result_hash"), "result_hash"),
-        error_codes=_expect_string_tuple(payload.get("error_codes", []), "error_codes"),
+        result_hash=_expect_optional_string(
+            payload.get("result_hash"), "result_hash"
+        ),
+        error_codes=_expect_string_tuple(
+            payload.get("error_codes", []), "error_codes"
+        ),
     )
 
 
@@ -282,20 +325,34 @@ def decode_rule_result(value: object) -> RuleResult:
     status = _expect_literal(
         payload.get("status"),
         "status",
-        ("SATISFIED", "NOT_SATISFIED", "INDETERMINATE", "NOT_APPLICABLE", "ENGINE_ERROR"),
+        (
+            "SATISFIED",
+            "NOT_SATISFIED",
+            "INDETERMINATE",
+            "NOT_APPLICABLE",
+            "ENGINE_ERROR",
+        ),
     )
     return RuleResult(
-        rule_result_id=_expect_string(payload.get("rule_result_id"), "rule_result_id"),
+        rule_result_id=_expect_string(
+            payload.get("rule_result_id"), "rule_result_id"
+        ),
         rule_id=_expect_string(payload.get("rule_id"), "rule_id"),
         rule_version=_expect_string(payload.get("rule_version"), "rule_version"),
         status=cast(RuleStatus, status),
         citations=citations,
-        missing_inputs=_expect_string_tuple(payload.get("missing_inputs", []), "missing_inputs"),
+        missing_inputs=_expect_string_tuple(
+            payload.get("missing_inputs", []), "missing_inputs"
+        ),
         calculation_result_ids=_expect_string_tuple(
             payload.get("calculation_result_ids", []), "calculation_result_ids"
         ),
-        reason_codes=_expect_string_tuple(payload.get("reason_codes", []), "reason_codes"),
-        result_hash=_expect_optional_string(payload.get("result_hash"), "result_hash"),
+        reason_codes=_expect_string_tuple(
+            payload.get("reason_codes", []), "reason_codes"
+        ),
+        result_hash=_expect_optional_string(
+            payload.get("result_hash"), "result_hash"
+        ),
     )
 
 
@@ -308,7 +365,9 @@ def decode_confidence_result(value: object) -> ConfidenceResult:
         "confidence",
     )
     factors: list[ConfidenceFactor] = []
-    for index, item in enumerate(_expect_sequence(payload.get("factors"), "factors")):
+    for index, item in enumerate(
+        _expect_sequence(payload.get("factors"), "factors")
+    ):
         factor = _expect_mapping(item, f"factors[{index}]")
         _reject_unknown(
             factor,
@@ -317,18 +376,31 @@ def decode_confidence_result(value: object) -> ConfidenceResult:
         )
         factors.append(
             ConfidenceFactor(
-                name=_expect_string(factor.get("name"), f"factors[{index}].name"),
-                value=_expect_string(factor.get("value"), f"factors[{index}].value"),
-                weight=_expect_string(factor.get("weight"), f"factors[{index}].weight"),
-                contribution=_expect_string(
-                    factor.get("contribution"), f"factors[{index}].contribution"
+                name=_expect_string(
+                    factor.get("name"), f"factors[{index}].name"
                 ),
-                source=_expect_string(factor.get("source"), f"factors[{index}].source"),
+                value=_expect_string(
+                    factor.get("value"), f"factors[{index}].value"
+                ),
+                weight=_expect_string(
+                    factor.get("weight"), f"factors[{index}].weight"
+                ),
+                contribution=_expect_string(
+                    factor.get("contribution"),
+                    f"factors[{index}].contribution",
+                ),
+                source=_expect_string(
+                    factor.get("source"), f"factors[{index}].source"
+                ),
             )
         )
-    level = _expect_literal(payload.get("level"), "level", ("HIGH", "MEDIUM", "LOW"))
+    level = _expect_literal(
+        payload.get("level"), "level", ("HIGH", "MEDIUM", "LOW")
+    )
     return ConfidenceResult(
-        policy_version=_expect_string(payload.get("policy_version"), "policy_version"),
+        policy_version=_expect_string(
+            payload.get("policy_version"), "policy_version"
+        ),
         score=_expect_string(payload.get("score"), "score"),
         level=cast(ConfidenceLevel, level),
         factors=tuple(factors),
@@ -359,25 +431,37 @@ def decode_review_packet(value: object) -> ReviewPacket:
     }
     _reject_unknown(payload, allowed, "review_packet")
     status = _expect_literal(
-        payload.get("status"), "status", ("READY_FOR_HUMAN_REVIEW", "ABSTAIN")
+        payload.get("status"),
+        "status",
+        ("READY_FOR_HUMAN_REVIEW", "ABSTAIN"),
     )
-    claims = tuple(decode_claim(item) for item in _expect_sequence(payload.get("claims"), "claims"))
+    claims = tuple(
+        decode_claim(item)
+        for item in _expect_sequence(payload.get("claims"), "claims")
+    )
     calculations = tuple(
         decode_calculation_result(item)
         for item in _expect_sequence(payload.get("calculations"), "calculations")
     )
     rules = tuple(
-        decode_rule_result(item) for item in _expect_sequence(payload.get("rules"), "rules")
+        decode_rule_result(item)
+        for item in _expect_sequence(payload.get("rules"), "rules")
     )
     issue_results = tuple(
         decode_issue_result(item)
-        for item in _expect_sequence(payload.get("issue_results", []), "issue_results")
+        for item in _expect_sequence(
+            payload.get("issue_results", []), "issue_results"
+        )
     )
     issue_ids = [item.issue_id for item in issue_results]
     if len(issue_ids) != len(set(issue_ids)):
         raise ValueError("issue_results must contain unique issue identifiers")
     confidence_value = payload.get("confidence")
-    confidence = None if confidence_value is None else decode_confidence_result(confidence_value)
+    confidence = (
+        None
+        if confidence_value is None
+        else decode_confidence_result(confidence_value)
+    )
     snapshot_value = payload.get("snapshot_sha256")
     snapshot_sha256: str | None
     if snapshot_value is None:
@@ -404,7 +488,9 @@ def decode_review_packet(value: object) -> ReviewPacket:
             payload.get("abstention_reasons"), "abstention_reasons"
         ),
         snapshot_sha256=snapshot_sha256,
-        missing_inputs=_expect_string_tuple(payload.get("missing_inputs", []), "missing_inputs"),
+        missing_inputs=_expect_string_tuple(
+            payload.get("missing_inputs", []), "missing_inputs"
+        ),
         issue_results=issue_results,
         _serialized_lineage_fields=serialized_lineage_fields,
     )
