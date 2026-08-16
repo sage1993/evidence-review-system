@@ -100,6 +100,31 @@ def test_bounded_core_token_fallback_handles_entity_wording_mismatch(
     assert result.successful_query == "주차장 설치기준"
 
 
+def test_core_fallback_does_not_drop_legal_mechanism_anchor(tmp_path: Path) -> None:
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot(
+                "임대형기숙사를 제외한 안심주택의 주차장 설치기준을 정한다."
+            ),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+
+        result = search_clause_with_fallback(
+            connection,
+            "지구단위계획 주차장 설치기준 완화",
+            limit=5,
+        )
+
+    assert result.hits == ()
+    assert all(
+        "지구단위계획" in trace.derived_query
+        for trace in result.traces
+        if trace.stage == FallbackStage.CORE_TOKEN_AND
+    )
+
+
 def test_intent_pruning_removes_additional_review_noise(tmp_path: Path) -> None:
     with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
         ingest_snapshot(
