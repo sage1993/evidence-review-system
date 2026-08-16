@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from evidence_review.contracts.question_plan import decode_question_plan
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.retrieval.clause_resolution import ClauseRetrievalHit
 from evidence_review.retrieval.fallback import FallbackStage, search_clause_with_fallback
 from evidence_review.retrieval.index import build_fts_index
+from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
 from evidence_review.retrieval.relevance import evaluate_issue_clause_relevance
 
 
@@ -140,3 +142,97 @@ def test_fallback_continues_when_nonempty_stage_is_rejected_by_relevance_filter(
     ]
     assert result.traces[0].hit_count == 0
     assert result.traces[1].hit_count > 0
+
+
+def _zoning_snapshot() -> EvidenceSnapshot:
+    return EvidenceSnapshot(
+        documents=({"id": "DOC-Z", "title": "용도지역 변경 기준"},),
+        revisions=(
+            {
+                "id": "REV-Z",
+                "document_id": "DOC-Z",
+                "source_hash": "b" * 64,
+                "byte_size": 20,
+                "page_count": 1,
+            },
+        ),
+        pages=(
+            {
+                "id": "P-Z",
+                "revision_id": "REV-Z",
+                "page_number": 1,
+                "width": 600.0,
+                "height": 800.0,
+            },
+        ),
+        clauses=(
+            {
+                "id": "C-ARTERIAL",
+                "revision_id": "REV-Z",
+                "title": "2-3-2. 간선도로변의 용도지역 변경 기준",
+                "raw_text": "간선도로변에서 용도지역 변경 기준을 적용한다.",
+                "normalized_text": "간선도로변에서 용도지역 변경 기준을 적용한다.",
+                "review_status": "AUTOMATIC",
+            },
+            {
+                "id": "C-STATION",
+                "revision_id": "REV-Z",
+                "title": "역세권의 용도지역 변경 기준",
+                "raw_text": "역세권에서 용도지역 변경 기준을 적용한다.",
+                "normalized_text": "역세권에서 용도지역 변경 기준을 적용한다.",
+                "review_status": "AUTOMATIC",
+            },
+        ),
+    )
+
+
+def test_issue_bundle_uses_issue_subject_when_planner_query_is_broad(tmp_path: Path) -> None:
+    question = "역세권 부지의 제2종일반주거지역을 준주거지역으로 변경하는 요건은?"
+    plan = decode_question_plan(
+        {
+            "format": "evidence-review/question-plan",
+            "version": 2,
+            "original_question": question,
+            "facts": [],
+            "assumptions": [],
+            "issues": [
+                {
+                    "id": "I-ZONE",
+                    "question": question,
+                    "depends_on": [],
+                    "required_evidence_roles": ["rule"],
+                }
+            ],
+            "legal_anchors": [],
+            "search_requests": [
+                {
+                    "id": "S-ZONE",
+                    "issue_ids": ["I-ZONE"],
+                    "text": "용도지역 변경 기준",
+                    "kind": "concept_relation",
+                    "source": "planner",
+                    "role": "rule",
+                }
+            ],
+        },
+        question,
+    )
+
+    with EvidenceStore(tmp_path / "zoning.sqlite", create=True) as store:
+        ingest_snapshot(store, _zoning_snapshot())
+        connection = store.require_connection()
+        build_fts_index(connection)
+        bundle = retrieve_issue_bundle(connection, plan)
+
+    assert {candidate.clause.clause_id for candidate in bundle.candidates} == {
+        "C-STATION"
+    }
+    rejected = [
+        decision
+        for trace in bundle.fallback_traces
+        for decision in trace.relevance_decisions
+        if decision.clause_id == "C-ARTERIAL"
+    ]
+    assert rejected
+    assert all(decision.accepted is False for decision in rejected)
+    assert all("REJECT_SUBJECT_CONFLICT" in decision.reason_codes for decision in rejected)
