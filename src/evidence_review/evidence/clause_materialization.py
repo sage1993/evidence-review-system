@@ -7,6 +7,7 @@ import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import cast
 
 _ARTICLE_RE = re.compile(
     r"^\s*(제\d+조(?:의\d+)?)(?:\s*\(([^)]*)\))?\s*(.*)$",
@@ -223,8 +224,10 @@ def derive_legal_clauses(
 
     clauses: list[DerivedClause] = []
     for builder in builders:
-        parts = tuple(str(value) for value in builder["parts"])
-        source_ids = tuple(str(value) for value in builder["source_ids"])
+        parts_value = cast(list[object], builder["parts"])
+        source_ids_value = cast(list[object], builder["source_ids"])
+        parts = tuple(str(value) for value in parts_value)
+        source_ids = tuple(str(value) for value in source_ids_value)
         normalized_text = _normalize(" ".join(parts))
         revision_id = str(builder["revision_id"])
         structural_key = str(builder["structural_key"])
@@ -234,6 +237,7 @@ def derive_legal_clauses(
             structural_key,
             normalized_text,
         )
+        article_key_value = builder["article_key"]
         clauses.append(
             DerivedClause(
                 id=clause_id,
@@ -244,9 +248,7 @@ def derive_legal_clauses(
                 structural_key=structural_key,
                 source_element_ids=source_ids,
                 article_key=(
-                    None
-                    if builder["article_key"] is None
-                    else str(builder["article_key"])
+                    None if article_key_value is None else str(article_key_value)
                 ),
             )
         )
