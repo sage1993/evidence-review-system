@@ -31,6 +31,7 @@ from evidence_review.retrieval.graph import (
 from evidence_review.retrieval.index import search_fts_token_prefix_and
 from evidence_review.retrieval.models import ChannelScore, RetrievalHit
 from evidence_review.retrieval.policy import RetrievalPolicy
+from evidence_review.retrieval.relevance import evaluate_issue_clause_relevance
 
 BudgetDropReason = Literal[
     "QUERY_BUDGET",
@@ -41,8 +42,6 @@ BudgetDropReason = Literal[
 
 @dataclass(frozen=True, slots=True)
 class BudgetDrop:
-    """One deterministic retrieval item excluded by a hard policy bound."""
-
     issue_id: str
     search_request_id: str
     reason: BudgetDropReason
@@ -51,9 +50,16 @@ class BudgetDrop:
 
 
 @dataclass(frozen=True, slots=True)
-class IssueFallbackTrace:
-    """One fallback attempt bound to the issue/search request that caused it."""
+class IssueRelevanceDecision:
+    issue_id: str
+    search_request_id: str
+    clause_id: str
+    accepted: bool
+    reason_codes: tuple[str, ...]
 
+
+@dataclass(frozen=True, slots=True)
+class IssueFallbackTrace:
     issue_id: str
     search_request_id: str
     role: EvidenceRole
@@ -61,12 +67,11 @@ class IssueFallbackTrace:
     input_query: str
     derived_query: str
     hit_count: int
+    relevance_decisions: tuple[IssueRelevanceDecision, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class IssueCandidateMatch:
-    """Lineage binding one semantic clause candidate to one planned issue query."""
-
     search_request_id: str
     issue_id: str
     role: EvidenceRole
@@ -77,8 +82,6 @@ class IssueCandidateMatch:
 
 @dataclass(frozen=True, slots=True)
 class IssueClauseCandidate:
-    """One semantic clause selected across one or more issue/role buckets."""
-
     clause: ClauseRetrievalHit
     matches: tuple[IssueCandidateMatch, ...]
     evidence: tuple[RetrievalHit, ...] = ()
@@ -99,8 +102,6 @@ class IssueClauseCandidate:
 
 @dataclass(frozen=True, slots=True)
 class IssueReferenceMatch:
-    """Issue/query lineage for one evidence record reached through a legal link."""
-
     evidence_id: str
     issue_id: str
     search_request_id: str
@@ -113,16 +114,12 @@ class IssueReferenceMatch:
 
 @dataclass(frozen=True, slots=True)
 class IssueReferenceMissing:
-    """One unresolved reference target attributed to the issue traversal that found it."""
-
     issue_id: str
     reference: MissingReference
 
 
 @dataclass(frozen=True, slots=True)
 class IssueRetrievalBundle:
-    """Bounded semantic candidates plus citation-grade evidence and reference lineage."""
-
     candidates: tuple[IssueClauseCandidate, ...]
     selected_evidence: tuple[RetrievalHit, ...]
     budget_drops: tuple[BudgetDrop, ...]
@@ -308,6 +305,16 @@ def _bind_fallback_trace(
         input_query=trace.input_query,
         derived_query=trace.derived_query,
         hit_count=trace.hit_count,
+        relevance_decisions=tuple(
+            IssueRelevanceDecision(
+                issue_id=issue.id,
+                search_request_id=request.id,
+                clause_id=decision.clause_id,
+                accepted=decision.accepted,
+                reason_codes=decision.reason_codes,
+            )
+            for decision in trace.relevance_decisions
+        ),
     )
 
 
@@ -327,6 +334,17 @@ def _legacy_queries_from_fallback(
         *legal_compound_queries(request.text),
     ]
     return tuple(dict.fromkeys(value for value in values if value))
+
+
+def _legacy_clause(hit: RetrievalHit) -> ClauseRetrievalHit:
+    return ClauseRetrievalHit(
+        clause_id=hit.evidence_id,
+        document_id=hit.document_id,
+        revision_id=hit.revision_id,
+        title=hit.title,
+        text=hit.text,
+        channel_scores=hit.channel_scores,
+    )
 
 
 def _bucket_candidates(
@@ -354,37 +372,53 @@ def _bucket_candidates(
             legacy_hits: tuple[RetrievalHit, ...] = ()
             legacy_query = request.text
             for candidate_query in legacy_queries:
-                legacy_hits = search_fts_token_prefix_and(
+                raw_legacy_hits = search_fts_token_prefix_and(
                     connection,
                     candidate_query,
                     limit=policy.per_issue_role_limit,
                 )
-                if legacy_hits:
+                accepted_legacy: list[RetrievalHit] = []
+                legacy_decisions: list[IssueRelevanceDecision] = []
+                for legacy_hit in raw_legacy_hits:
+                    decision = evaluate_issue_clause_relevance(
+                        issue_id=issue.id,
+                        issue_question=issue.question,
+                        search_request_id=request.id,
+                        query_text=request.text,
+                        clause=_legacy_clause(legacy_hit),
+                    )
+                    legacy_decisions.append(
+                        IssueRelevanceDecision(
+                            issue_id=issue.id,
+                            search_request_id=request.id,
+                            clause_id=legacy_hit.evidence_id,
+                            accepted=decision.accepted,
+                            reason_codes=decision.reason_codes,
+                        )
+                    )
+                    if decision.accepted:
+                        accepted_legacy.append(legacy_hit)
+                traces.append(
+                    IssueFallbackTrace(
+                        issue_id=issue.id,
+                        search_request_id=request.id,
+                        role=role,
+                        stage=FallbackStage.LEGACY_ELEMENT,
+                        input_query=request.text,
+                        derived_query=candidate_query,
+                        hit_count=len(accepted_legacy),
+                        relevance_decisions=tuple(legacy_decisions),
+                    )
+                )
+                if accepted_legacy:
+                    legacy_hits = tuple(accepted_legacy)
                     legacy_query = candidate_query
                     break
             if not legacy_hits:
                 continue
-            traces.append(
-                IssueFallbackTrace(
-                    issue_id=issue.id,
-                    search_request_id=request.id,
-                    role=role,
-                    stage=FallbackStage.LEGACY_ELEMENT,
-                    input_query=request.text,
-                    derived_query=legacy_query,
-                    hit_count=len(legacy_hits),
-                )
-            )
             for legacy_hit in legacy_hits:
                 candidate = IssueClauseCandidate(
-                    clause=ClauseRetrievalHit(
-                        clause_id=legacy_hit.evidence_id,
-                        document_id=legacy_hit.document_id,
-                        revision_id=legacy_hit.revision_id,
-                        title=legacy_hit.title,
-                        text=legacy_hit.text,
-                        channel_scores=legacy_hit.channel_scores,
-                    ),
+                    clause=_legacy_clause(legacy_hit),
                     matches=(
                         IssueCandidateMatch(
                             search_request_id=request.id,
@@ -635,7 +669,6 @@ def retrieve_issue_bundle(
     *,
     policy: RetrievalPolicy | None = None,
 ) -> IssueRetrievalBundle:
-    """Retrieve fair per-issue clause candidates under deterministic hard budgets."""
     effective_policy = policy or RetrievalPolicy()
     if len(plan.issues) > effective_policy.max_issues:
         raise ValueError(
