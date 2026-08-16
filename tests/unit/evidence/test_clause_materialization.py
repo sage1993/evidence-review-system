@@ -21,17 +21,26 @@ def test_derives_article_paragraphs_and_source_lineage_from_parser_elements() ->
             _element(
                 "E-2",
                 1,
-                "① 사업시행자는 임대형기숙사를 제외한 안심주택인 경우 주차장을 설치하여야 한다.",
+                (
+                    "① 사업시행자는 임대형기숙사를 제외한 안심주택인 경우 "
+                    "주차장을 설치하여야 한다."
+                ),
             ),
             _element(
                 "E-3",
                 2,
-                "② 사업시행자는 임대형기숙사인 경우 별표 2에 따라 주차장을 설치하여야 한다.",
+                (
+                    "② 사업시행자는 임대형기숙사인 경우 별표 2에 따라 "
+                    "주차장을 설치하여야 한다."
+                ),
             ),
             _element(
                 "E-4",
                 3,
-                "③ 복합으로 계획하는 경우 주택용도에 따라 제1항 및 제2항을 각각 적용한다.",
+                (
+                    "③ 복합으로 계획하는 경우 주택용도에 따라 "
+                    "제1항 및 제2항을 각각 적용한다."
+                ),
             ),
             _element(
                 "E-5",
@@ -67,7 +76,10 @@ def test_splits_multiple_paragraphs_inside_one_parser_element() -> None:
             _element(
                 "E-1",
                 0,
-                "제13조(주차장 설치기준 완화) ① 첫째 기준. ② 둘째 기준. ③ 셋째 기준.",
+                (
+                    "제13조(주차장 설치기준 완화) "
+                    "① 첫째 기준. ② 둘째 기준. ③ 셋째 기준."
+                ),
             ),
         )
     )
@@ -78,6 +90,21 @@ def test_splits_multiple_paragraphs_inside_one_parser_element() -> None:
         "제13조#3",
     ]
     assert all(clause.source_element_ids == ("E-1",) for clause in result.clauses)
+
+
+def test_materializes_split_article_heading_and_unnumbered_body() -> None:
+    result = derive_legal_clauses(
+        (
+            _element("E-1", 0, "제27조(주차장)"),
+            _element("E-2", 1, "주택의 주차장 설치기준을 정한다."),
+        )
+    )
+
+    assert len(result.clauses) == 1
+    assert result.clauses[0].structural_key == "제27조"
+    assert result.clauses[0].title == "제27조(주차장)"
+    assert result.clauses[0].source_element_ids == ("E-2",)
+    assert "주차장 설치기준" in result.clauses[0].normalized_text
 
 
 def test_derives_operational_standard_numbering_without_materializing_plain_prose() -> None:
@@ -104,4 +131,6 @@ def test_clause_ids_are_stable_for_identical_source_content() -> None:
     left = derive_legal_clauses(elements)
     right = derive_legal_clauses(elements)
 
-    assert [clause.id for clause in left.clauses] == [clause.id for clause in right.clauses]
+    assert [clause.id for clause in left.clauses] == [
+        clause.id for clause in right.clauses
+    ]
