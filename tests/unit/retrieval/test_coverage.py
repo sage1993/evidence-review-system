@@ -138,6 +138,31 @@ def test_source_not_ingested_is_distinct_from_retrieval_miss() -> None:
     assert i2.gap_codes == ("SOURCE_NOT_INGESTED",)
 
 
+def test_local_citing_clause_does_not_resolve_uningested_reference_scope() -> None:
+    missing = MissingReference(
+        source_id="E-I2-rule",
+        target_id="EXT-ANNEX-2",
+        relation_type="source_not_ingested",
+        depth=1,
+        reason_code="SOURCE_NOT_INGESTED",
+    )
+    report = evaluate_issue_coverage(
+        _plan(),
+        _bundle(
+            _candidate("I1", "supporting_fact", with_evidence=True),
+            _candidate("I1", "rule", with_evidence=True),
+            _candidate("I2", "rule", with_evidence=True),
+        ),
+        reference_missing_by_issue={"I2": (missing,)},
+    )
+
+    assert report.by_issue_id("I1").status == "RESOLVED"
+    i2 = report.by_issue_id("I2")
+    assert i2.status == "SOURCE_MISSING"
+    assert i2.evidence_ids == ("E-I2-rule",)
+    assert i2.gap_codes == ("SOURCE_NOT_INGESTED",)
+
+
 def test_conflict_and_ambiguity_take_precedence_over_retrieval_status() -> None:
     conflict = evaluate_issue_coverage(
         _plan(),
