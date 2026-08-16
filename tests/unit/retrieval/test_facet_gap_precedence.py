@@ -24,7 +24,16 @@ def test_zero_candidate_issue_remains_retrieval_miss_even_when_facets_are_requir
                 }
             ],
             "legal_anchors": [],
-            "search_requests": [],
+            "search_requests": [
+                {
+                    "id": "S1",
+                    "issue_ids": ["I1"],
+                    "text": "안심주택 사업대상지 최소 면적",
+                    "kind": "concept_relation",
+                    "source": "planner",
+                    "role": "rule",
+                }
+            ],
         },
         question,
     )
