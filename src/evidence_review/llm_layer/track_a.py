@@ -11,8 +11,6 @@ from evidence_review.contracts.engines import CalculationResult, RuleResult, Rul
 from evidence_review.contracts.question_plan import EvidenceRole
 from evidence_review.contracts.review import Claim, TrackADraft
 
-_SUPPORTED_ISSUE_IDS = frozenset(f"I{index}" for index in range(1, 9))
-
 _REQUIRED_SECTIONS = (
     "run_id",
     "claims",
@@ -123,6 +121,28 @@ def _unique_string_tuple(value: object, field: str) -> tuple[str, ...]:
     if len(items) != len(set(items)):
         raise ValueError(f"{field} must contain unique values")
     return items
+
+
+def _planned_issue_ids(inputs: Mapping[str, object]) -> tuple[str, ...]:
+    value = inputs.get("question_plan")
+    if value is None:
+        return ()
+    plan = _mapping(value, "inputs.question_plan")
+    issues_value = plan.get("issues")
+    if issues_value is None:
+        return ()
+    issue_ids = tuple(
+        _string(
+            _mapping(item, f"inputs.question_plan.issues[{index}]").get("id"),
+            f"inputs.question_plan.issues[{index}].id",
+        )
+        for index, item in enumerate(
+            _sequence(issues_value, "inputs.question_plan.issues")
+        )
+    )
+    if len(issue_ids) != len(set(issue_ids)):
+        raise ValueError("inputs.question_plan.issues must contain unique ids")
+    return issue_ids
 
 
 def _lineage_by_citation(
@@ -263,19 +283,19 @@ def _validate_claim_issue_relevance(
     claim_issue_ids: tuple[str, ...],
     citation_ids: tuple[str, ...],
     evidence_by_citation: Mapping[str, EvidenceExcerpt],
+    planned_issue_ids: tuple[str, ...],
 ) -> None:
-    known_issue_ids = {
+    evidence_issue_ids = {
         issue_id
         for evidence in evidence_by_citation.values()
         for issue_id in evidence.issue_ids
     }
-    if not known_issue_ids:
+    if not evidence_issue_ids and not planned_issue_ids:
         return
     if not claim_issue_ids:
         raise ValueError(f"UNRELATED_CLAIM: claim {claim_id} requires issue_ids")
-    unknown_issue_ids = sorted(
-        set(claim_issue_ids) - known_issue_ids - _SUPPORTED_ISSUE_IDS
-    )
+    authoritative_issue_ids = set(planned_issue_ids) or evidence_issue_ids
+    unknown_issue_ids = sorted(set(claim_issue_ids) - authoritative_issue_ids)
     if unknown_issue_ids:
         raise ValueError(
             f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}"
@@ -307,6 +327,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
 
     evidence_by_citation = {item.citation.citation_id: item for item in bundle.evidence}
     known_citations = set(evidence_by_citation)
+    planned_issue_ids = _planned_issue_ids(bundle.inputs)
     declared_citations = _string_tuple(payload.get("citations"), "citations")
     if len(declared_citations) != len(set(declared_citations)):
         raise ValueError("track_a citations must be unique")
@@ -355,6 +376,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
             claim_issue_ids=issue_ids,
             citation_ids=citation_ids,
             evidence_by_citation=evidence_by_citation,
+            planned_issue_ids=planned_issue_ids,
         )
         numeric_tokens = _string_tuple(
             claim_payload.get("numeric_tokens", []), f"claims[{index}].numeric_tokens"
