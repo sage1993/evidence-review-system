@@ -27,9 +27,9 @@ def validate_claims(
 ) -> tuple[ClaimCitationIssue, ...]:
     """Return deterministic citation and issue-lineage failures for claims.
 
-    When ``valid_issue_ids`` is supplied it is the authoritative QuestionPlan issue
-    set. Legacy callers without a plan fall back to the issue ids present in cited
-    evidence lineage.
+    ``valid_issue_ids`` is authoritative when a QuestionPlan is available. Legacy
+    callers without that plan can still enforce missing issue ids and cross-issue
+    citations, but cannot classify an otherwise unseen issue id as unknown.
     """
     citation_map = {citation.citation_id: citation for citation in citations}
     evidence_map = {record.evidence_id: record for record in evidence_records}
@@ -37,12 +37,7 @@ def validate_claims(
         citation_id: tuple(sorted(set(issue_ids)))
         for citation_id, issue_ids in (citation_issue_ids or {}).items()
     }
-    evidence_issue_ids = {
-        issue_id for issue_ids in issue_map.values() for issue_id in issue_ids
-    }
-    authoritative_issue_ids = (
-        set(valid_issue_ids) if valid_issue_ids is not None else evidence_issue_ids
-    )
+    authoritative_issue_ids = set(valid_issue_ids) if valid_issue_ids is not None else None
 
     issues: list[ClaimCitationIssue] = []
     for claim in claims:
@@ -50,7 +45,7 @@ def validate_claims(
         if issue_map:
             if not claim.issue_ids:
                 issues.append(ClaimCitationIssue(claim.claim_id, "UNRELATED_CLAIM"))
-            else:
+            elif authoritative_issue_ids is not None:
                 unknown = sorted(set(claim.issue_ids) - authoritative_issue_ids)
                 if unknown:
                     issues.append(
