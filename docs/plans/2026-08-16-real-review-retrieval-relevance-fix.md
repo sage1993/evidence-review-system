@@ -156,6 +156,7 @@ QuestionPlan issue
 - 지구단위계획 추가 주차완화
 - unrelated evidence 제거
 - issue-scoped partial answer
+- parser-shaped fixture에서 retrieval → Track A → Track B → finalizer까지 검증
 
 ### Task 15 — 전체 검증
 
@@ -182,23 +183,35 @@ python -m compileall -q src
 - [x] Task 5 — issue-aware fair retrieval budgets
 - [x] Task 6 — deterministic adaptive fallback
 - [x] Task 7 — bounded legal cross-reference traversal
-- [ ] Task 8 — issue coverage state machine / gap diagnosis
-- [ ] Task 9 — Track A claim/citation issue relevance hard gate
-- [ ] Task 10 — end-to-end issue lineage 보존
-- [ ] Task 11 — partial answer / finalizer gate 재설계
-- [ ] Task 12 — confidence coverage 보강
-- [ ] Task 13 — retrieval trace
-- [ ] Task 14 — 실제 실패 E2E acceptance
-- [ ] Task 15 — 전체 검증
+- [x] Task 8 — issue coverage state machine / gap diagnosis
+- [x] Task 9 — Track A claim/citation issue relevance hard gate
+- [x] Task 10 — end-to-end issue lineage 보존
+- [x] Task 11 — partial answer / finalizer gate 재설계
+- [x] Task 12 — confidence coverage 보강
+- [x] Task 13 — retrieval trace
+- [x] Task 14 — 실제 실패 E2E acceptance 구현
+- [ ] Task 15 — 현재 HEAD 전체 재검증
 
-현재 진행: **Task 8 — issue coverage state machine / gap diagnosis**
+현재 진행: **Task 15 — merge-preflight 수정 후 exact-head 재검증**
 
-## 6. 검증 정책
+## 6. Merge-preflight 후속 수정
 
-현재 ChatGPT 실행환경에서는 외부 `git clone`이 DNS 차단되어 전체 checkout 기반 repository test 실행이 불가능하다. 따라서 구현 단계에서는 다음 원칙을 지킨다.
+PR 전체 diff 리뷰에서 발견된 다음 병합 차단 항목을 수정했다.
 
-- 테스트 코드를 production 변경보다 먼저 커밋한다.
+- [x] planned review의 자유형 `user_expansions`가 legacy global retrieval로 우회하지 않도록 fail-closed 처리. 사용자 확장은 QuestionPlan `search_requests`에서 issue/role binding을 가진 경우에만 계획 검색으로 표현한다.
+- [x] `I1`~`I8` 하드코딩 issue whitelist 제거. Track A claim issue는 실제 `inputs.question_plan.issues`를 권위 목록으로 검증한다.
+- [x] partial issue coverage가 deterministic `RuleResult.missing_inputs`의 전역 `MISSING_REQUIRED_INPUT` hard gate를 약화하지 않도록 분리한다.
+- [x] 실제 parser-shaped 회귀 fixture에서 retrieval → Track A validation → Track B audit → finalizer까지 통과하는 full-pipeline acceptance test를 추가한다.
+- [x] partial fixture에서 해결된 issue의 claim을 유지하고 unresolved issue claim을 생성하지 않는 finalizer E2E를 추가한다.
+- [x] `1,500㎡ >= 1,000㎡`, `300m > 250m`, `300m <= 350m` 비교를 production deterministic rule operator로 검증하는 acceptance assertion을 추가한다.
+- [ ] 위 후속 수정이 포함된 최종 HEAD에서 full pytest/Ruff/mypy/compileall/documentation/migration/exact-head E2E를 다시 실행한다.
+
+이전 exact-head 검증 `d614706788024374783249d4ae9cbe75f6b8df4f`의 `1539 passed, 7 skipped` 결과는 merge-preflight 수정 이전 증거이며 현재 HEAD 검증으로 재사용하지 않는다.
+
+## 7. 검증 정책
+
+- 테스트 코드를 production 변경보다 먼저 추가한다.
 - 가능한 경우 GitHub Actions 결과를 확인한다.
-- Actions가 없으면 독립 Python 하네스로 핵심 결정론적 로직을 검증한다.
-- full pytest/Ruff/mypy/compileall은 Task 15의 별도 완료 조건으로 유지한다.
-- 실행 증거가 없는 검증 항목은 완료로 표시하지 않는다.
+- Actions가 없으면 실행하지 않은 항목을 PASS로 표시하지 않는다.
+- full pytest/Ruff/mypy/compileall 및 exact-head acceptance는 Task 15의 별도 완료 조건으로 유지한다.
+- 최종 HEAD가 변경되면 이전 HEAD의 검증 결과를 최종 검증으로 재사용하지 않는다.
