@@ -16,6 +16,7 @@ from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
 
 _RATIO_FRACTION_RE = re.compile(r"\d+\s*분의\s*\d+")
 _RATIO_PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|퍼센트)")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+|\n+")
 _INDUSTRIAL_RATIO_MARKER = "산업부지 확보비율"
 _FACET_SEARCH_TEXT: dict[str, str] = {
     "minimum-area-threshold": "사업대상지 최소 면적",
@@ -76,6 +77,34 @@ def _normalize(value: str) -> str:
     return unicodedata.normalize("NFKC", " ".join(value.split())).casefold()
 
 
+def _measure_keys(text: str) -> frozenset[tuple[str, object]]:
+    return frozenset((measure.dimension, measure.value) for measure in extract_measures(text))
+
+
+def issue_context_text(plan: QuestionPlan, issue_question: str) -> str:
+    """Recover original-question context sharing a numeric anchor with one issue.
+
+    QuestionPlan validation guarantees that user numerics are preserved somewhere,
+    but an external planner can still place a co-occurring fact only in ``facts``
+    while shortening the issue question. A numeric anchor already present in the
+    issue (for example 300m) is therefore used to recover only the original
+    sentence(s) that contained that exact value. This avoids global fact leakage
+    while retaining compound facts such as a 1,500㎡ site stated in the same
+    sentence as the 300m distance condition.
+    """
+    issue_keys = _measure_keys(issue_question)
+    if not issue_keys:
+        return issue_question
+    related: list[str] = []
+    for sentence in _SENTENCE_SPLIT_RE.split(plan.original_question):
+        candidate = sentence.strip()
+        if not candidate:
+            continue
+        if issue_keys.intersection(_measure_keys(candidate)):
+            related.append(candidate)
+    return " ".join(dict.fromkeys((issue_question, *related)))
+
+
 def _has_area_fact_in_issue(text: str) -> bool:
     normalized = _normalize(text)
     has_area = any(measure.dimension == "area_m2" for measure in extract_measures(text))
@@ -118,14 +147,14 @@ def _required_facet_ids(question: str) -> tuple[str, ...]:
 
 
 def compile_required_facets(plan: QuestionPlan) -> FacetPlan:
-    """Compile stable sub-questions from issue wording without an LLM call."""
+    """Compile stable sub-questions from issue wording and numeric original context."""
     return FacetPlan(
         issues=tuple(
             IssueFacetPlan(
                 issue_id=issue.id,
                 required_facets=tuple(
                     FacetRequirement(facet_id=value)
-                    for value in _required_facet_ids(issue.question)
+                    for value in _required_facet_ids(issue_context_text(plan, issue.question))
                 ),
             )
             for issue in plan.issues
