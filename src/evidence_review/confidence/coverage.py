@@ -1,4 +1,4 @@
-"""Derive existing Confidence V1 factor inputs from deterministic issue coverage."""
+"""Derive Confidence V1 factor inputs from deterministic issue coverage."""
 
 from __future__ import annotations
 
@@ -8,6 +8,11 @@ from typing import cast
 from evidence_review.retrieval.coverage import CoverageReport
 
 _QUANTUM = Decimal("0.0001")
+_SOURCE_GAPS = {
+    "SOURCE_NOT_INGESTED",
+    "REFERENCE_TARGET_MISSING",
+    "RETRIEVAL_MISS",
+}
 
 
 def _ratio(numerator: int, denominator: int) -> str:
@@ -21,11 +26,12 @@ def apply_issue_coverage_factors(
     request: dict[str, object],
     report: CoverageReport,
 ) -> dict[str, object]:
-    """Update measured Confidence V1 factors without changing weights/thresholds.
+    """Bind measured coverage factors without changing policy weights.
 
-    Issue statuses remain authoritative in ``issue_results``. This function only
-    measures four existing factors whose semantics can be derived directly from
-    the deterministic coverage report.
+    The review request is prepared before a human decision exists, so human
+    review status is explicitly pending rather than optimistically complete.
+    Retrieval/source gaps also reduce source completeness instead of being
+    hidden behind the fact that the source batch itself was ingested.
     """
     if not report.issues:
         raise ValueError("issue coverage report must not be empty")
@@ -39,8 +45,11 @@ def apply_issue_coverage_factors(
 
     required_names = {
         "source completeness",
-        "rule coverage",
+        "traceability",
         "parse quality",
+        "human review status",
+        "rule coverage",
+        "input completeness",
         "unresolved conflict factor",
     }
     missing = sorted(required_names - set(factors_value))
@@ -50,7 +59,13 @@ def apply_issue_coverage_factors(
         )
 
     total_issues = len(report.issues)
-    source_complete = sum(item.status != "SOURCE_MISSING" for item in report.issues)
+    source_complete = sum(
+        not (_SOURCE_GAPS & set(item.gap_codes)) for item in report.issues
+    )
+    traceable = sum(
+        bool(item.covered_roles) and not item.missing_roles for item in report.issues
+    )
+    complete_inputs = sum(not item.missing_roles for item in report.issues)
     parse_gap_free = sum("PARSE_GAP" not in item.gap_codes for item in report.issues)
     conflicts = sum(item.status == "CONFLICT" for item in report.issues)
     covered_roles = sum(len(item.covered_roles) for item in report.issues)
@@ -72,13 +87,25 @@ def apply_issue_coverage_factors(
         "value": _ratio(source_complete, total_issues),
         "source": f"issue_coverage:source_complete={source_complete}/{total_issues}",
     }
+    factors["traceability"] = {
+        "value": _ratio(traceable, total_issues),
+        "source": f"issue_coverage:traceable={traceable}/{total_issues}",
+    }
     factors["rule coverage"] = {
         "value": _ratio(covered_roles, required_roles),
         "source": f"issue_coverage:required_roles={covered_roles}/{required_roles}",
     }
+    factors["input completeness"] = {
+        "value": _ratio(complete_inputs, total_issues),
+        "source": f"issue_coverage:complete_inputs={complete_inputs}/{total_issues}",
+    }
     factors["parse quality"] = {
         "value": _ratio(parse_gap_free, total_issues),
         "source": f"issue_coverage:parse_gap_free={parse_gap_free}/{total_issues}",
+    }
+    factors["human review status"] = {
+        "value": "0.0000",
+        "source": "human_review:pending",
     }
     factors["unresolved conflict factor"] = {
         "value": "0.0000" if conflicts else "1.0000",
