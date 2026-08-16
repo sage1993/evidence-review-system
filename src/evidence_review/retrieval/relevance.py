@@ -63,6 +63,14 @@ def _required_anchor_missing(query: str, candidate: str) -> bool:
 
 
 def _subject_conflict(query: str, candidate: str) -> bool:
+    """Reject only an explicit sibling subject, not an omitted umbrella label.
+
+    Legal source text often states the concrete criterion (for example,
+    ``승강장 경계로부터 250미터``) without repeating its parent label
+    ``역세권``. Absence of the requested label therefore is not itself a
+    conflict. A clause that explicitly names a mutually exclusive sibling such
+    as ``간선도로변`` is a deterministic conflict.
+    """
     for group in _SUBJECT_GROUPS:
         requested = tuple(anchor for anchor in group if _normalize(anchor) in query)
         if not requested:
@@ -72,7 +80,6 @@ def _subject_conflict(query: str, candidate: str) -> bool:
             continue
         if present:
             return True
-        return True
     return False
 
 

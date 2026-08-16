@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 
 from evidence_review.contracts.question_plan import QuestionPlan
 from evidence_review.retrieval.conditional import extract_measures
 from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
+
+_RATIO_FRACTION_RE = re.compile(r"\d+\s*분의\s*\d+")
+_RATIO_PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|퍼센트)")
+_INDUSTRIAL_RATIO_MARKER = "산업부지 확보비율"
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +117,21 @@ def _has_measure(text: str, dimension: str, *, conditional: bool | None = None) 
     return False
 
 
+def _has_industrial_ratio_value(text: str) -> bool:
+    """Require the actual industrial-site ratio after its semantic marker.
+
+    A preceding percentage such as ``공장비율 10%`` describes the trigger, not
+    the industrial-site allocation ratio itself, and therefore cannot satisfy
+    this facet.
+    """
+    normalized = _normalize(text)
+    marker_index = normalized.find(_INDUSTRIAL_RATIO_MARKER)
+    if marker_index < 0:
+        return False
+    tail = normalized[marker_index + len(_INDUSTRIAL_RATIO_MARKER) :]
+    return bool(_RATIO_FRACTION_RE.search(tail) or _RATIO_PERCENT_RE.search(tail))
+
+
 def _facet_matches(facet_id: str, text: str) -> bool:
     normalized = _normalize(text)
     if facet_id == "minimum-area-threshold":
@@ -155,7 +175,11 @@ def _facet_matches(facet_id: str, text: str) -> bool:
             )
         )
     if facet_id == "industrial-site-ratio":
-        return "산업부지" in normalized and "확보비율" in normalized
+        return (
+            "산업부지" in normalized
+            and "확보비율" in normalized
+            and _has_industrial_ratio_value(text)
+        )
     if facet_id == "industrial-site-relaxation-procedure":
         return (
             "산업부지" in normalized
