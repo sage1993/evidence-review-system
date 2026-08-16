@@ -127,7 +127,11 @@ def prepare_planned_review_question(
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
     review_request = bind_issue_coverage_to_review_request(review_request, coverage_report)
     review_request = bind_facet_coverage_to_review_request(review_request, facet_report)
-    review_request = bind_comparisons_to_review_request(review_request, comparisons)
+    review_request = bind_comparisons_to_review_request(
+        review_request,
+        comparisons,
+        facet_report=facet_report,
+    )
     review_request = apply_issue_coverage_factors(review_request, coverage_report)
     request_metric = finish_stage("review-request-build", request_timer)
 
