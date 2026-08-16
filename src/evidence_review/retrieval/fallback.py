@@ -284,12 +284,16 @@ def _heading_scoped_search(
     connection: sqlite3.Connection,
     query: str,
     *,
+    required_tokens: Iterable[str] = (),
     limit: int,
 ) -> tuple[ClauseRetrievalHit, ...]:
     require_fresh_index(connection)
     tokens = _tokenize(query)
     if not tokens:
         return ()
+    required = tuple(
+        _clean_token(token) for token in required_tokens if _clean_token(token)
+    )
     rows = connection.execute(
         """
         SELECT r.clause_id, r.document_id, r.revision_id, r.title,
@@ -312,8 +316,13 @@ def _heading_scoped_search(
         ),
     ).fetchall()
     hits: list[ClauseRetrievalHit] = []
-    for index, row in enumerate(rows):
-        score = Decimal(limit - index) / Decimal(max(limit, 1))
+    for row in rows:
+        searchable = _normalize_text(
+            " ".join("" if value is None else str(value) for value in row[3:9])
+        )
+        if any(token not in searchable for token in required):
+            continue
+        score = Decimal(limit - len(hits)) / Decimal(max(limit, 1))
         hits.append(
             ClauseRetrievalHit(
                 clause_id=str(row[0]),
@@ -391,10 +400,9 @@ def search_clause_with_fallback(
                 )
             )
 
-    protected_tokens = (
-        _protected_core_tokens(normalized)
-        | _protected_numeric_tokens(normalized, fact_texts)
-    )
+    protected_mechanisms = _protected_core_tokens(normalized)
+    protected_numerics = _protected_numeric_tokens(normalized, fact_texts)
+    protected_tokens = protected_mechanisms | protected_numerics
     core_queries: list[str] = []
     for base in tuple(dict.fromkeys((*bases, *compound_queries))):
         for derived in _core_token_queries(base, required_tokens=protected_tokens):
@@ -438,7 +446,16 @@ def search_clause_with_fallback(
             )
 
     heading_query = decontaminated or normalized
-    heading_hits = _heading_scoped_search(connection, heading_query, limit=limit)
+    heading_hits = (
+        ()
+        if protected_numerics
+        else _heading_scoped_search(
+            connection,
+            heading_query,
+            required_tokens=protected_mechanisms,
+            limit=limit,
+        )
+    )
     traces.append(
         FallbackTrace(
             stage=FallbackStage.HEADING_SCOPED,
