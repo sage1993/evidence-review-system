@@ -28,6 +28,7 @@ def _write_run(
     *,
     snapshot_hash: str | None = None,
     missing_inputs: tuple[str, ...] = (),
+    rule_missing_inputs: tuple[str, ...] = (),
     issue_results: tuple[IssueResult, ...] = (),
 ) -> Path:
     run_dir = tmp_path / RUN_ID
@@ -49,6 +50,7 @@ def _write_run(
         "1.0.0",
         "SATISFIED",
         citations=(citation,),
+        missing_inputs=rule_missing_inputs,
         calculation_result_ids=("CALC1",),
         result_hash="c" * 64,
     )
@@ -208,6 +210,35 @@ def test_partial_issue_coverage_stays_ready_and_preserves_issue_results(
         (tmp_path / RUN_ID / "final-review-packet.json").read_text(encoding="utf-8")
     )
     assert document["issue_results"][1]["issue_id"] == "I2"
+
+
+def test_partial_issue_coverage_does_not_suppress_rule_missing_input_hard_gate(
+    tmp_path: Path,
+) -> None:
+    packet = finalize_run(
+        _write_run(
+            tmp_path,
+            rule_missing_inputs=("법정 필수 입력",),
+            issue_results=(
+                IssueResult(
+                    "I1",
+                    "RESOLVED",
+                    evidence_ids=("E1",),
+                    covered_roles=("rule",),
+                ),
+                IssueResult(
+                    "I2",
+                    "SOURCE_MISSING",
+                    missing_roles=("rule",),
+                    gap_codes=("SOURCE_NOT_INGESTED",),
+                ),
+            ),
+        )
+    )
+
+    assert packet.status == "ABSTAIN"
+    assert packet.missing_inputs == ("법정 필수 입력",)
+    assert "MISSING_REQUIRED_INPUT" in packet.abstention_reasons
 
 
 def test_legacy_packet_decode_defaults_lineage_fields(tmp_path: Path) -> None:
