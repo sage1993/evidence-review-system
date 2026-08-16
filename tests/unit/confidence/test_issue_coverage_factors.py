@@ -50,7 +50,7 @@ def test_issue_coverage_updates_all_coverage_dependent_confidence_factors() -> N
             _issue(
                 "I2",
                 "SOURCE_MISSING",
-                missing_roles=("rule",),
+                covered_roles=("rule",),
                 gap_codes=("SOURCE_NOT_INGESTED",),
             ),
         )
@@ -68,8 +68,8 @@ def test_issue_coverage_updates_all_coverage_dependent_confidence_factors() -> N
         "source": "issue_coverage:traceable=1/2",
     }
     assert factors["rule coverage"] == {
-        "value": "0.5000",
-        "source": "issue_coverage:required_roles=1/2",
+        "value": "1.0000",
+        "source": "issue_coverage:required_roles=2/2",
     }
     assert factors["input completeness"] == {
         "value": "0.5000",
@@ -107,6 +107,26 @@ def test_retrieval_miss_is_not_reported_as_complete_source_input() -> None:
     assert factors["source completeness"]["value"] == "0.5000"
     assert factors["traceability"]["value"] == "0.5000"
     assert factors["input completeness"]["value"] == "0.5000"
+
+
+def test_source_missing_with_local_rule_is_not_complete_or_traceable() -> None:
+    report = CoverageReport(
+        issues=(
+            _issue(
+                "I1",
+                "SOURCE_MISSING",
+                covered_roles=("rule",),
+                gap_codes=("REFERENCE_TARGET_MISSING",),
+            ),
+        )
+    )
+
+    factors = apply_issue_coverage_factors(_request(), report)["confidence_input"]["factors"]
+
+    assert factors["rule coverage"]["value"] == "1.0000"
+    assert factors["source completeness"]["value"] == "0.0000"
+    assert factors["traceability"]["value"] == "0.0000"
+    assert factors["input completeness"]["value"] == "0.0000"
 
 
 def test_parse_gap_and_conflict_are_reflected_without_changing_policy_weights() -> None:
