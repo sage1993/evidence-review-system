@@ -14,7 +14,8 @@ def _clause(title: str, text: str) -> ClauseRetrievalHit:
     )
 
 
-def test_station_detail_without_literal_station_area_is_not_rejected_when_no_conflicting_subject() -> None:
+def test_station_detail_without_literal_station_area_is_not_rejected_when_no_conflicting_subject(
+) -> None:
     decision = evaluate_issue_clause_relevance(
         issue_id="I2",
         issue_question="역세권 승강장 경계 거리 기준은 무엇인가?",
