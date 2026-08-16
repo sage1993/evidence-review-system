@@ -13,10 +13,14 @@ from evidence_review.retrieval.models import ChannelScore, RetrievalHit
 _RELATION_PRIORITY = {
     "exception": 0,
     "parent": 1,
-    "cited_clause": 2,
-    "rule_source": 3,
-    "table": 4,
-    "visual": 5,
+    "next_sibling": 2,
+    "previous_sibling": 2,
+    "cited_clause": 3,
+    "rule_source": 4,
+    "source_not_ingested": 5,
+    "reference_target_missing": 6,
+    "table": 7,
+    "visual": 8,
 }
 
 
@@ -53,12 +57,20 @@ class ReferenceTraversalResult:
 def _channel(relation_type: str, evidence_type: str) -> str:
     if relation_type == "rule_source":
         return "rule_source"
+    if relation_type in {"next_sibling", "previous_sibling"}:
+        return "structural_context"
     if relation_type in {"table", "visual"} or evidence_type in {
         "table",
         "visual",
     }:
         return "linked_visual_table"
     return "clause_id"
+
+
+def _missing_reason(relation_type: str) -> str:
+    if relation_type == "source_not_ingested":
+        return "SOURCE_NOT_INGESTED"
+    return "REFERENCE_TARGET_MISSING"
 
 
 def _same_document_stale_revision(
@@ -84,9 +96,9 @@ def traverse_relations_with_provenance(
     """Traverse outgoing evidence links with hard budgets and provenance.
 
     The traversal is deterministic breadth-first search. It retains the first
-    deterministic path to each target, records missing/stale targets, rejects
-    stale revisions only when source and target belong to the same document,
-    and allows cross-document legal references.
+    deterministic path to each target, records typed missing/stale targets,
+    rejects stale revisions only within the same document, and allows bounded
+    structural sibling and cross-document legal traversal.
     """
     require_fresh_index(connection)
     if depth < 0 or depth > 3:
@@ -125,10 +137,14 @@ def traverse_relations_with_provenance(
                 CASE relation_type
                     WHEN 'exception' THEN 0
                     WHEN 'parent' THEN 1
-                    WHEN 'cited_clause' THEN 2
-                    WHEN 'rule_source' THEN 3
-                    WHEN 'table' THEN 4
-                    WHEN 'visual' THEN 5
+                    WHEN 'next_sibling' THEN 2
+                    WHEN 'previous_sibling' THEN 2
+                    WHEN 'cited_clause' THEN 3
+                    WHEN 'rule_source' THEN 4
+                    WHEN 'source_not_ingested' THEN 5
+                    WHEN 'reference_target_missing' THEN 6
+                    WHEN 'table' THEN 7
+                    WHEN 'visual' THEN 8
                     ELSE 99
                 END,
                 target_id
@@ -170,7 +186,7 @@ def traverse_relations_with_provenance(
                         target_id=target_id,
                         relation_type=relation_type,
                         depth=next_depth,
-                        reason_code="REFERENCE_TARGET_MISSING",
+                        reason_code=_missing_reason(relation_type),
                     )
                 )
                 continue
@@ -203,7 +219,7 @@ def traverse_relations_with_provenance(
                         target_id=target_id,
                         relation_type=relation_type,
                         depth=next_depth,
-                        reason_code="REFERENCE_TARGET_MISSING",
+                        reason_code=_missing_reason(relation_type),
                     )
                 )
                 continue
