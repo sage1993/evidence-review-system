@@ -296,7 +296,22 @@ def _bind_fallback_trace(
     issue: QuestionIssue,
     request: SearchRequest,
     trace: FallbackTrace,
+    relevance_overrides: dict[str, IssueRelevanceDecision] | None = None,
 ) -> IssueFallbackTrace:
+    overrides = relevance_overrides or {}
+
+    def bind_decision(clause_id: str, accepted: bool, reason_codes: tuple[str, ...]) -> IssueRelevanceDecision:
+        override = overrides.get(clause_id)
+        if override is not None:
+            return override
+        return IssueRelevanceDecision(
+            issue_id=issue.id,
+            search_request_id=request.id,
+            clause_id=clause_id,
+            accepted=accepted,
+            reason_codes=reason_codes,
+        )
+
     return IssueFallbackTrace(
         issue_id=issue.id,
         search_request_id=request.id,
@@ -306,12 +321,10 @@ def _bind_fallback_trace(
         derived_query=trace.derived_query,
         hit_count=trace.hit_count,
         relevance_decisions=tuple(
-            IssueRelevanceDecision(
-                issue_id=issue.id,
-                search_request_id=request.id,
-                clause_id=decision.clause_id,
-                accepted=decision.accepted,
-                reason_codes=decision.reason_codes,
+            bind_decision(
+                decision.clause_id,
+                decision.accepted,
+                decision.reason_codes,
             )
             for decision in trace.relevance_decisions
         ),
@@ -360,13 +373,42 @@ def _bucket_candidates(
     for request in requests:
         if request.role != role:
             continue
+
+        relevance_overrides: dict[str, IssueRelevanceDecision] = {}
+
+        def issue_relevance_filter(hit: ClauseRetrievalHit) -> bool:
+            decision = evaluate_issue_clause_relevance(
+                issue_id=issue.id,
+                issue_question=issue.question,
+                search_request_id=request.id,
+                query_text=request.text,
+                clause=hit,
+            )
+            relevance_overrides[hit.clause_id] = IssueRelevanceDecision(
+                issue_id=issue.id,
+                search_request_id=request.id,
+                clause_id=hit.clause_id,
+                accepted=decision.accepted,
+                reason_codes=decision.reason_codes,
+            )
+            return decision.accepted
+
         result = search_clause_with_fallback(
             connection,
             request.text,
             fact_texts=fact_texts,
             limit=policy.per_issue_role_limit,
+            hit_filter=issue_relevance_filter,
         )
-        traces.extend(_bind_fallback_trace(issue, request, trace) for trace in result.traces)
+        traces.extend(
+            _bind_fallback_trace(
+                issue,
+                request,
+                trace,
+                relevance_overrides,
+            )
+            for trace in result.traces
+        )
         if result.success_stage is None or result.successful_query is None:
             legacy_queries = _legacy_queries_from_fallback(request, result.traces)
             legacy_hits: tuple[RetrievalHit, ...] = ()
