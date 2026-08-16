@@ -325,9 +325,8 @@ def test_element_only_real_workspace_reaches_finalizer_with_all_issue_lineage(
         for issue_id in item.get("issue_ids", []):
             if issue_id in issue_text:
                 issue_text[issue_id].append(item["text"])
-    assert any(
-        "250미터" in text and "350미터" in text for text in issue_text["I2"]
-    )
+    assert any("250미터" in text for text in issue_text["I2"])
+    assert any("350미터" in text for text in issue_text["I2"])
     assert any("임대형기숙사" in text for text in issue_text["I4"])
     assert any("복합" in text for text in issue_text["I4"])
 
