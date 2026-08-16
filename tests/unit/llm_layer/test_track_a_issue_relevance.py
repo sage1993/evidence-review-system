@@ -6,6 +6,7 @@ from evidence_review.llm_layer.track_a import (
     build_track_a_bundle,
     validate_track_a_output,
 )
+from evidence_review.llm_layer.validators import validate_track_a_integrity
 
 
 def _citation(citation_id: str, evidence_id: str) -> Citation:
@@ -91,9 +92,43 @@ def test_track_a_rejects_cross_issue_citation() -> None:
 
 
 def test_track_a_accepts_claim_when_issue_and_citation_lineage_overlap() -> None:
+    bundle = _bundle()
     validated = validate_track_a_output(
         _payload(issue_ids=["I1"], citation_ids=["CIT-I1"]),
-        _bundle(),
+        bundle,
     )
 
+    validate_track_a_integrity(validated, bundle)
     assert validated.draft.claims[0].issue_ids == ("I1",)
+
+
+def test_track_a_integrity_rejects_multi_issue_claim_with_partial_citation_coverage() -> None:
+    bundle = _bundle()
+    validated = validate_track_a_output(
+        _payload(issue_ids=["I1", "I2"], citation_ids=["CIT-I1"]),
+        bundle,
+    )
+
+    with pytest.raises(ValueError, match="UNSUPPORTED_CLAIM_ISSUE.*I2"):
+        validate_track_a_integrity(validated, bundle)
+
+
+def test_track_a_integrity_rejects_issue_claim_without_citations() -> None:
+    bundle = _bundle()
+    validated = validate_track_a_output(
+        _payload(issue_ids=["I1"], citation_ids=[]),
+        bundle,
+    )
+
+    with pytest.raises(ValueError, match="UNSUPPORTED_CLAIM_ISSUE.*I1"):
+        validate_track_a_integrity(validated, bundle)
+
+
+def test_track_a_integrity_accepts_multi_issue_claim_when_each_issue_is_cited() -> None:
+    bundle = _bundle()
+    validated = validate_track_a_output(
+        _payload(issue_ids=["I1", "I2"], citation_ids=["CIT-I1", "CIT-I2"]),
+        bundle,
+    )
+
+    validate_track_a_integrity(validated, bundle)
