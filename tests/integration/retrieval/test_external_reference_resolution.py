@@ -87,6 +87,13 @@ def _article_source() -> str:
     )
 
 
+def _annex_source() -> str:
+    return (
+        "제13조(주차장 설치기준 완화) ② 「서울특별시 주차장 설치 및 관리 조례」 "
+        "제20조제1항 별표 2에 따라 주차장을 설치하여야 한다."
+    )
+
+
 def test_missing_external_authority_is_source_gap_not_generic_missing_target(
     tmp_path: Path,
 ) -> None:
@@ -134,18 +141,39 @@ def test_ingested_external_authority_resolves_to_citation_grade_target(
     assert result.paths[0].steps[0].relation_type == "rule_source"
 
 
+def test_article_reference_rejects_a_body_only_cross_reference(tmp_path: Path) -> None:
+    with EvidenceStore(tmp_path / "article-mention.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot(
+                source_text=_article_source(),
+                target_title="주택건설기준 등에 관한 규정",
+                target_text="제99조(다른 기준) 이 조에서는 제27조를 준용한다.",
+            ),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+        ensure_clause_index(connection)
+
+        result = traverse_relations_with_provenance(
+            connection,
+            ("E-DOC-SOURCE",),
+            depth=1,
+        )
+
+    assert result.hits == ()
+    assert len(result.missing) == 1
+    assert result.missing[0].reason_code == "REFERENCE_TARGET_MISSING"
+
+
 def test_specific_annex_reference_does_not_fall_back_to_article_only(
     tmp_path: Path,
 ) -> None:
-    source_text = (
-        "제13조(주차장 설치기준 완화) ② 「서울특별시 주차장 설치 및 관리 조례」 "
-        "제20조제1항 별표 2에 따라 주차장을 설치하여야 한다."
-    )
     with EvidenceStore(tmp_path / "annex-missing.sqlite", create=True) as store:
         ingest_snapshot(
             store,
             _snapshot(
-                source_text=source_text,
+                source_text=_annex_source(),
                 target_title="서울특별시 주차장 설치 및 관리 조례",
                 target_text="제20조(부설주차장) 제1항 일반적인 설치 원칙을 정한다.",
             ),
@@ -163,3 +191,52 @@ def test_specific_annex_reference_does_not_fall_back_to_article_only(
     assert result.hits == ()
     assert len(result.missing) == 1
     assert result.missing[0].reason_code == "REFERENCE_TARGET_MISSING"
+
+
+def test_annex_reference_rejects_a_body_only_annex_mention(tmp_path: Path) -> None:
+    with EvidenceStore(tmp_path / "annex-mention.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot(
+                source_text=_annex_source(),
+                target_title="서울특별시 주차장 설치 및 관리 조례",
+                target_text="제20조(부설주차장) 이 조의 산정은 별표 2에 따른다.",
+            ),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+        ensure_clause_index(connection)
+
+        result = traverse_relations_with_provenance(
+            connection,
+            ("E-DOC-SOURCE",),
+            depth=1,
+        )
+
+    assert result.hits == ()
+    assert len(result.missing) == 1
+    assert result.missing[0].reason_code == "REFERENCE_TARGET_MISSING"
+
+
+def test_annex_reference_resolves_when_annex_heading_is_ingested(tmp_path: Path) -> None:
+    with EvidenceStore(tmp_path / "annex-present.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot(
+                source_text=_annex_source(),
+                target_title="서울특별시 주차장 설치 및 관리 조례",
+                target_text="[별표 2] 부설주차장의 설치대상시설물 종류 및 설치기준",
+            ),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+        ensure_clause_index(connection)
+
+        result = traverse_relations_with_provenance(
+            connection,
+            ("E-DOC-SOURCE",),
+            depth=1,
+        )
+
+    assert {hit.evidence_id for hit in result.hits} == {"E-DOC-TARGET"}
+    assert result.missing == ()
