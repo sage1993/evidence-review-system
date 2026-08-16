@@ -52,6 +52,19 @@ def _normalize(value: object) -> str:
     return unicodedata.normalize("NFC", " ".join(value.split()))
 
 
+def _order_int(value: object) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
 def _stable_id(prefix: str, *parts: str) -> str:
     digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
     return f"{prefix}-{digest[:24].upper()}"
@@ -91,8 +104,8 @@ def derive_legal_clauses(
         elements,
         key=lambda row: (
             _normalize(_element_value(row, "revision_id")),
-            int(_element_value(row, "page_number", 0) or 0),
-            int(_element_value(row, "parser_order", 0) or 0),
+            _order_int(_element_value(row, "page_number", 0)),
+            _order_int(_element_value(row, "parser_order", 0)),
             _normalize(_element_value(row, "id")),
         ),
     )
