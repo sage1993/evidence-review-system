@@ -44,7 +44,9 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, Mapping) or not all(
+        isinstance(key, str) for key in value
+    ):
         raise ValueError(f"{field} must be an object")
     return cast(Mapping[str, object], value)
 
@@ -70,7 +72,10 @@ def _json_file(path: Path) -> object:
 
 
 def _verify_manifest(run_directory: Path) -> tuple[str, dict[str, Path]]:
-    manifest = _mapping(_json_file(run_directory / "run-manifest.json"), "run_manifest")
+    manifest = _mapping(
+        _json_file(run_directory / "run-manifest.json"),
+        "run_manifest",
+    )
     unknown = sorted(set(manifest) - {"run_id", "artifacts"})
     if unknown:
         raise ValueError(f"run_manifest has unknown fields: {', '.join(unknown)}")
@@ -126,7 +131,10 @@ def _decode_bundle(value: object) -> TrackABundle:
         issue_ids = tuple(
             _string(value, f"evidence[{index}].issue_ids[{item_index}]")
             for item_index, value in enumerate(
-                _sequence(evidence_payload.get("issue_ids", []), f"evidence[{index}].issue_ids")
+                _sequence(
+                    evidence_payload.get("issue_ids", []),
+                    f"evidence[{index}].issue_ids",
+                )
             )
         )
         if len(issue_ids) != len(set(issue_ids)):
@@ -141,7 +149,10 @@ def _decode_bundle(value: object) -> TrackABundle:
         evidence.append(
             EvidenceExcerpt(
                 citation=decode_citation(evidence_payload.get("citation")),
-                text=_string(evidence_payload.get("text"), f"evidence[{index}].text"),
+                text=_string(
+                    evidence_payload.get("text"),
+                    f"evidence[{index}].text",
+                ),
                 issue_ids=issue_ids,
                 role=role,
             )
@@ -158,7 +169,10 @@ def _decode_bundle(value: object) -> TrackABundle:
     approved = tuple(
         _string(item, f"approved_rule_result_ids[{index}]")
         for index, item in enumerate(
-            _sequence(payload.get("approved_rule_result_ids", []), "approved_rule_result_ids")
+            _sequence(
+                payload.get("approved_rule_result_ids", []),
+                "approved_rule_result_ids",
+            )
         )
     )
     return build_track_a_bundle(
@@ -176,15 +190,26 @@ def _decode_confidence_inputs(value: object) -> dict[str, FactorInput]:
     payload = _mapping(value, "confidence_input")
     if set(payload) != {"factors"}:
         raise ValueError("confidence_input must contain only factors")
-    factors_payload = _mapping(payload.get("factors"), "confidence_input.factors")
+    factors_payload = _mapping(
+        payload.get("factors"),
+        "confidence_input.factors",
+    )
     factors: dict[str, FactorInput] = {}
     for name, item in factors_payload.items():
         factor = _mapping(item, f"confidence_input.factors.{name}")
         if set(factor) != {"value", "source"}:
-            raise ValueError(f"confidence factor {name} must contain value and source")
+            raise ValueError(
+                f"confidence factor {name} must contain value and source"
+            )
         factors[name] = FactorInput(
-            value=_string(factor.get("value"), f"confidence_input.factors.{name}.value"),
-            source=_string(factor.get("source"), f"confidence_input.factors.{name}.source"),
+            value=_string(
+                factor.get("value"),
+                f"confidence_input.factors.{name}.value",
+            ),
+            source=_string(
+                factor.get("source"),
+                f"confidence_input.factors.{name}.source",
+            ),
         )
     return factors
 
@@ -196,7 +221,12 @@ def _citation_document(citation: Citation) -> dict[str, object]:
         "revision_id": citation.revision_id,
         "page_number": citation.page_number,
         "evidence_id": citation.evidence_id,
-        "bbox": [citation.bbox.left, citation.bbox.bottom, citation.bbox.right, citation.bbox.top],
+        "bbox": [
+            citation.bbox.left,
+            citation.bbox.bottom,
+            citation.bbox.right,
+            citation.bbox.top,
+        ],
         "source_hash": citation.source_hash,
     }
 
@@ -224,7 +254,9 @@ def _rule_document(result: RuleResult) -> dict[str, object]:
         "rule_id": result.rule_id,
         "rule_version": result.rule_version,
         "status": result.status,
-        "citations": [_citation_document(citation) for citation in result.citations],
+        "citations": [
+            _citation_document(citation) for citation in result.citations
+        ],
         "missing_inputs": list(result.missing_inputs),
         "calculation_result_ids": list(result.calculation_result_ids),
         "reason_codes": list(result.reason_codes),
@@ -252,7 +284,7 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
 
 
 def _issue_result_document(result: IssueResult) -> dict[str, object]:
-    return {
+    document: dict[str, object] = {
         "issue_id": result.issue_id,
         "status": result.status,
         "evidence_ids": list(result.evidence_ids),
@@ -260,6 +292,12 @@ def _issue_result_document(result: IssueResult) -> dict[str, object]:
         "missing_roles": list(result.missing_roles),
         "gap_codes": list(result.gap_codes),
     }
+    if result.covered_facet_ids or result.missing_facet_ids:
+        document["covered_facet_ids"] = list(result.covered_facet_ids)
+        document["missing_facet_ids"] = list(result.missing_facet_ids)
+    if result.comparison_ids:
+        document["comparison_ids"] = list(result.comparison_ids)
+    return document
 
 
 def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
@@ -281,7 +319,9 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
         "human_decision": None,
         "question": packet.question,
         "claims": claim_documents,
-        "calculations": [_calculation_document(result) for result in packet.calculations],
+        "calculations": [
+            _calculation_document(result) for result in packet.calculations
+        ],
         "rules": [_rule_document(result) for result in packet.rules],
         "confidence": (
             None
@@ -306,12 +346,17 @@ def _finding_codes(track_b_output: object) -> set[str]:
     codes: set[str] = set()
     for item in _sequence(payload.get("claim_audits"), "claim_audits"):
         audit = _mapping(item, "claim_audit")
-        for code in _sequence(audit.get("finding_codes", []), "finding_codes"):
+        for code in _sequence(
+            audit.get("finding_codes", []),
+            "finding_codes",
+        ):
             codes.add(_string(code, "finding_code"))
     return codes
 
 
-def _issue_results_from_inputs(inputs: Mapping[str, object]) -> tuple[IssueResult, ...]:
+def _issue_results_from_inputs(
+    inputs: Mapping[str, object],
+) -> tuple[IssueResult, ...]:
     value = inputs.get("issue_coverage")
     if value is None:
         return ()
@@ -321,7 +366,9 @@ def _issue_results_from_inputs(inputs: Mapping[str, object]) -> tuple[IssueResul
     )
     issue_ids = [item.issue_id for item in results]
     if len(issue_ids) != len(set(issue_ids)):
-        raise ValueError("inputs.issue_coverage must contain unique issue identifiers")
+        raise ValueError(
+            "inputs.issue_coverage must contain unique issue identifiers"
+        )
     return results
 
 
@@ -347,7 +394,9 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
     else:
         snapshot_sha256 = _string(snapshot_value, "snapshot_hash")
         if not _SHA256.fullmatch(snapshot_sha256):
-            raise ValueError("snapshot_hash must be a lowercase SHA-256 digest")
+            raise ValueError(
+                "snapshot_hash must be a lowercase SHA-256 digest"
+            )
     track_a_missing_inputs = set(validated_a.draft.missing_inputs)
     deterministic_rule_missing_inputs = {
         item for result in bundle.rules for item in result.missing_inputs
@@ -361,7 +410,9 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
     missing_required_input = (
         issue_results_require_global_abstain(
             issue_results,
-            deterministic_missing_inputs=bool(deterministic_rule_missing_inputs),
+            deterministic_missing_inputs=bool(
+                deterministic_rule_missing_inputs
+            ),
         )
         if issue_results
         else bool(missing_inputs)
@@ -369,21 +420,47 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
     context = AbstentionContext(
         confidence_score=confidence.score,
         missing_required_input=missing_required_input,
-        uncited_or_unresolved_claim=audit.overall_disposition == "INCOMPLETE"
-        or bool({"CITATION_MISMATCH", "UNSUPPORTED_CLAIM", "MISSING_EXCEPTION"} & finding_codes),
-        unapproved_rule=any(result.rule_result_id not in approved for result in bundle.rules),
-        math_engine_error=any(result.status != "SUCCESS" for result in bundle.calculations)
-        or any(result.status == "ENGINE_ERROR" for result in bundle.rules),
+        uncited_or_unresolved_claim=(
+            audit.overall_disposition == "INCOMPLETE"
+            or bool(
+                {
+                    "CITATION_MISMATCH",
+                    "UNSUPPORTED_CLAIM",
+                    "MISSING_EXCEPTION",
+                }
+                & finding_codes
+            )
+        ),
+        unapproved_rule=any(
+            result.rule_result_id not in approved for result in bundle.rules
+        ),
+        math_engine_error=(
+            any(
+                result.status != "SUCCESS"
+                for result in bundle.calculations
+            )
+            or any(result.status == "ENGINE_ERROR" for result in bundle.rules)
+        ),
         source_hash_mismatch=False,
-        unresolved_conflict=bool(validated_a.draft.conflicts) or "SOURCE_CONFLICT" in finding_codes,
+        unresolved_conflict=(
+            bool(validated_a.draft.conflicts)
+            or "SOURCE_CONFLICT" in finding_codes
+        ),
         track_b_rejection=audit.overall_disposition == "REJECT",
         machine_set_human_decision=False,
         unregistered_numeric_value=False,
     )
     reasons = evaluate_abstention_gates(context)
     if reasons:
-        confidence = replace(confidence, level="LOW", hard_gate_failures=reasons)
-    lineage_fields: tuple[str, ...] = ("snapshot_sha256", "missing_inputs")
+        confidence = replace(
+            confidence,
+            level="LOW",
+            hard_gate_failures=reasons,
+        )
+    lineage_fields: tuple[str, ...] = (
+        "snapshot_sha256",
+        "missing_inputs",
+    )
     if issue_results:
         lineage_fields += ("issue_results",)
     packet = ReviewPacket(
@@ -412,7 +489,9 @@ def verify_finalized_run(run_directory: Path) -> ReviewPacket:
     packet = decode_review_packet(_json_file(output_path))
     expected = expected_final_review_packet(run_directory)
     if packet != expected:
-        raise ValueError("final review packet does not match manifest-bound artifacts")
+        raise ValueError(
+            "final review packet does not match manifest-bound artifacts"
+        )
     return packet
 
 
