@@ -39,7 +39,9 @@ def _decimal_text(value: Decimal) -> str:
 
 
 def _measures_for_dimension(text: str, dimension: str) -> tuple[Measure, ...]:
-    return tuple(item for item in extract_measures(text) if item.dimension == dimension)
+    return tuple(
+        item for item in extract_measures(text) if item.dimension == dimension
+    )
 
 
 def _select_fact(text: str, dimension: str) -> Measure:
@@ -81,7 +83,9 @@ def compare_fact_to_threshold(
     try:
         dimension, operator, conditional = _COMPARISON_CONFIG[facet_id]
     except KeyError as error:
-        raise ValueError(f"facet does not define a numeric comparison: {facet_id}") from error
+        raise ValueError(
+            f"facet does not define a numeric comparison: {facet_id}"
+        ) from error
     fact = _select_fact(fact_text, dimension)
     threshold = _select_threshold(rule_text, dimension, operator, conditional)
     if operator == ">=":
@@ -190,7 +194,11 @@ def evaluate_fact_rule_comparisons(
             )
             if fact_text is None:
                 continue
-            evidence_ids = _evidence_ids_for_facet(facet_report, issue.id, facet_id)
+            evidence_ids = _evidence_ids_for_facet(
+                facet_report,
+                issue.id,
+                facet_id,
+            )
             if not evidence_ids:
                 continue
             rule_text = _rule_text_for_evidence(bundle, issue.id, evidence_ids)
@@ -229,9 +237,44 @@ def comparison_documents(
     return [comparison_document(item) for item in results]
 
 
+def _issue_coverage_with_lineage(
+    coverage_value: object,
+    results: tuple[FactRuleComparison, ...],
+    facet_report: FacetCoverageReport,
+) -> list[dict[str, object]]:
+    if not isinstance(coverage_value, list):
+        raise ValueError("inputs.issue_coverage must be an array")
+    comparisons_by_issue: dict[str, list[str]] = {}
+    for result in results:
+        comparisons_by_issue.setdefault(result.issue_id, []).append(
+            result.comparison_id
+        )
+
+    enriched: list[dict[str, object]] = []
+    for raw in coverage_value:
+        if not isinstance(raw, dict) or not all(
+            isinstance(key, str) for key in raw
+        ):
+            raise ValueError("inputs.issue_coverage entries must be objects")
+        issue_id = raw.get("issue_id")
+        if not isinstance(issue_id, str) or not issue_id:
+            raise ValueError("inputs.issue_coverage issue_id must be a string")
+        facet_issue = facet_report.by_issue_id(issue_id)
+        document = dict(raw)
+        document["covered_facet_ids"] = list(facet_issue.covered_facet_ids)
+        document["missing_facet_ids"] = list(facet_issue.missing_facet_ids)
+        document["comparison_ids"] = sorted(
+            set(comparisons_by_issue.get(issue_id, []))
+        )
+        enriched.append(document)
+    return enriched
+
+
 def bind_comparisons_to_review_request(
     request: dict[str, object],
     results: tuple[FactRuleComparison, ...],
+    *,
+    facet_report: FacetCoverageReport | None = None,
 ) -> dict[str, object]:
     inputs_value = request.get("inputs")
     if not isinstance(inputs_value, dict) or not all(
@@ -241,6 +284,12 @@ def bind_comparisons_to_review_request(
     bound = dict(request)
     inputs = dict(inputs_value)
     inputs["fact_rule_comparisons"] = comparison_documents(results)
+    if facet_report is not None:
+        inputs["issue_coverage"] = _issue_coverage_with_lineage(
+            inputs.get("issue_coverage"),
+            results,
+            facet_report,
+        )
     bound["inputs"] = inputs
     return bound
 
@@ -273,7 +322,10 @@ def conditional_issue_ids_from_comparisons(
         if values.get("distance-conditional-threshold") is not True:
             continue
         other_required = required_numeric - distance_facets
-        if any(values.get(facet_id) is not True for facet_id in other_required):
+        if any(
+            values.get(facet_id) is not True
+            for facet_id in other_required
+        ):
             continue
         conditional.append(issue.issue_id)
     return tuple(conditional)
