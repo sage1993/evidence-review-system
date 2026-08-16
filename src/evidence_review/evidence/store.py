@@ -5,9 +5,51 @@ import sqlite3
 from importlib.resources import files
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, Iterator
 
 from evidence_review.evidence.schema_version import detect_schema_version, require_current_schema
+
+
+class EvidenceRow:
+    """SQLite row compatibility object with tuple and named-field access."""
+
+    __slots__ = ("_values", "_columns", "_positions")
+
+    def __init__(self, cursor: sqlite3.Cursor, values: tuple[object, ...]) -> None:
+        self._values = tuple(values)
+        self._columns = tuple(str(item[0]) for item in cursor.description or ())
+        self._positions = {name: index for index, name in enumerate(self._columns)}
+
+    def __getitem__(self, key: int | slice | str) -> object:
+        if isinstance(key, str):
+            return self._values[self._positions[key]]
+        return self._values[key]
+
+    def __iter__(self) -> Iterator[object]:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, EvidenceRow):
+            return self._values == other._values and self._columns == other._columns
+        if isinstance(other, tuple):
+            return self._values == other
+        return NotImplemented
+
+    def __repr__(self) -> str:
+        return repr(self._values)
+
+    def keys(self) -> tuple[str, ...]:
+        return self._columns
+
+
+def _evidence_row_factory(
+    cursor: sqlite3.Cursor,
+    values: tuple[object, ...],
+) -> EvidenceRow:
+    return EvidenceRow(cursor, values)
 
 
 class EvidenceStore:
@@ -37,7 +79,7 @@ class EvidenceStore:
 
     def _configured_connection(self, target: str, *, uri: bool = False) -> sqlite3.Connection:
         connection = sqlite3.connect(target, uri=uri)
-        connection.row_factory = sqlite3.Row
+        connection.row_factory = _evidence_row_factory
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 

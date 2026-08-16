@@ -137,6 +137,9 @@ def test_cli_main_runs_prepare_plan_then_validated_plan_retrieval(
             "search_request_id": "S1",
             "issue_ids": ["I1"],
             "query_text": "에어컨 실외기 설치",
+            "retrieval_query": "에어컨 실외기 설치",
             "origin": "llm",
+            "role": "rule",
+            "fallback_stage": "LEGACY_ELEMENT",
         }
     ]

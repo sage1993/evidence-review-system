@@ -1,4 +1,4 @@
-"""QuestionPlan-bound review preparation using the existing deterministic runtime."""
+"""QuestionPlan-bound review preparation using deterministic issue-aware retrieval."""
 
 from __future__ import annotations
 
@@ -6,17 +6,27 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
+from evidence_review.confidence.coverage import apply_issue_coverage_factors
 from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
+from evidence_review.evidence.clause_rebuild import ensure_clause_index
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from evidence_review.question_planning import (
     bind_question_plan_to_review_request,
     bind_retrieval_lineage_to_review_request,
-    query_request_from_plan,
+    issue_retrieval_bundle_document,
 )
-from evidence_review.retrieval.bundle import build_evidence_bundle
+from evidence_review.retrieval.conditional import infer_conditional_issue_ids
+from evidence_review.retrieval.coverage import evaluate_issue_coverage
+from evidence_review.retrieval.index import require_fresh_index
+from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
+from evidence_review.retrieval.reference_projection import (
+    apply_reference_lineage_to_bundle_document,
+)
+from evidence_review.retrieval.trace import retrieval_trace_document
 from evidence_review.review_question import (
     PreparedReviewQuestion,
     _evidence_database,
@@ -27,6 +37,10 @@ from evidence_review.review_question import (
     _track_a_action,
     _write_or_identical,
     build_review_run_request,
+)
+from evidence_review.user_expansions import (
+    apply_search_request_origins,
+    plan_with_user_expansions,
 )
 
 
@@ -39,17 +53,43 @@ def prepare_planned_review_question(
     rules: Sequence[object] = (),
     approved_rule_result_ids: Sequence[str] = (),
 ) -> PreparedReviewQuestion:
-    """Retrieve and prepare a run whose identity is bound to a validated QuestionPlan."""
+    """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan.
+
+    Legacy CLI ``--expansion`` values remain supported, but each manual term is
+    converted into an issue/role-bound SearchRequest before retrieval. Planned
+    review never falls back to the legacy global retrieval path.
+    """
     normalization_timer = start_stage()
-    query_request = query_request_from_plan(
-        question_plan,
-        user_expansions=user_expansions,
-    )
+    effective_plan = plan_with_user_expansions(question_plan, user_expansions)
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
-        bundle = build_evidence_bundle(store.require_connection(), query_request)
+        connection = store.require_connection()
+        ensure_clause_index(connection)
+        snapshot_hash = require_fresh_index(connection)
+        issue_bundle = retrieve_issue_bundle(connection, effective_plan)
+        conditional_issue_ids = infer_conditional_issue_ids(
+            effective_plan,
+            issue_bundle,
+        )
+        coverage_report = evaluate_issue_coverage(
+            effective_plan,
+            issue_bundle,
+            conditional_issue_ids=conditional_issue_ids,
+        )
+        bundle = issue_retrieval_bundle_document(
+            effective_plan,
+            issue_bundle,
+            snapshot_hash=snapshot_hash,
+        )
+        bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
+        bundle = apply_search_request_origins(bundle, effective_plan)
+        trace_document = retrieval_trace_document(
+            effective_plan,
+            issue_bundle,
+            coverage_report,
+        )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
     request_timer = start_stage()
@@ -59,8 +99,17 @@ def prepare_planned_review_question(
         rules=rules,
         approved_rule_result_ids=approved_rule_result_ids,
     )
-    review_request = bind_question_plan_to_review_request(review_request, question_plan)
+    review_request["question"] = effective_plan.original_question
+    review_request = bind_question_plan_to_review_request(review_request, effective_plan)
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
+    review_request = bind_issue_coverage_to_review_request(
+        review_request,
+        coverage_report,
+    )
+    review_request = apply_issue_coverage_factors(
+        review_request,
+        coverage_report,
+    )
     request_metric = finish_stage("review-request-build", request_timer)
 
     run_id = compute_run_id_from_request(review_request)
@@ -78,9 +127,10 @@ def prepare_planned_review_question(
 
     _write_or_identical(
         run_directory / "question-plan.json",
-        question_plan_document(question_plan),
+        question_plan_document(effective_plan),
     )
     _write_or_identical(run_directory / "evidence-query.json", bundle)
+    _write_or_identical(run_directory / "retrieval-trace.json", trace_document)
 
     guidance_path: Path | None = None
     query_payload = _mapping(bundle["query"], "evidence_bundle.query")

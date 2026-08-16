@@ -85,9 +85,14 @@ def score_confidence(
         quantized_score = total.quantize(_QUANTUM, rounding=ROUND_HALF_UP)
 
     failures = tuple(hard_gate_failures)
+    human_review_pending = (
+        factors["human review status"].source == "human_review:pending"
+    )
     level: ConfidenceLevel
     if failures or quantized_score < MEDIUM_THRESHOLD:
         level = "LOW"
+    elif human_review_pending:
+        level = "MEDIUM"
     elif quantized_score >= HIGH_THRESHOLD:
         level = "HIGH"
     else:

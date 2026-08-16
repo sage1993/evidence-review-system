@@ -59,7 +59,12 @@ def _lineage_ids(value: object, field: str) -> tuple[str, ...]:
 def _merge_term(existing: QueryTerm, incoming: QueryTerm) -> QueryTerm:
     priority = {"primary": 0, "approved_synonym": 1, "user": 2, "llm": 3}
     origin = existing.origin
-    if priority[incoming.origin] < priority[existing.origin]:
+    if existing.origin == "primary" and incoming.search_request_ids:
+        # Planned review queries intentionally promote one validated SearchRequest
+        # to the primary retrieval text. Keep its planner/user provenance and issue
+        # lineage instead of relabelling that SearchRequest as an unbound primary.
+        origin = incoming.origin
+    elif priority[incoming.origin] < priority[existing.origin]:
         origin = incoming.origin
     return QueryTerm(
         text=existing.text,

@@ -20,10 +20,19 @@ from evidence_review.contracts.review import (
     ConfidenceLevel,
     ConfidenceResult,
     FinalizerStatus,
+    IssueResult,
+    IssueStatus,
     ReviewPacket,
 )
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_ISSUE_STATUSES: tuple[IssueStatus, ...] = (
+    "RESOLVED",
+    "CONDITIONAL",
+    "CONFLICT",
+    "SOURCE_MISSING",
+    "UNRESOLVED",
+)
 
 
 def _expect_mapping(value: object, field: str) -> Mapping[str, object]:
@@ -79,6 +88,13 @@ def _expect_literal[T: str](value: object, field: str, allowed: tuple[T, ...]) -
 def _expect_string_tuple(value: object, field: str) -> tuple[str, ...]:
     items = _expect_sequence(value, field)
     return tuple(_expect_string(item, f"{field}[{index}]") for index, item in enumerate(items))
+
+
+def _expect_unique_string_tuple(value: object, field: str) -> tuple[str, ...]:
+    items = _expect_string_tuple(value, field)
+    if len(items) != len(set(items)):
+        raise ValueError(f"{field} must contain unique values")
+    return items
 
 
 def _expect_string_dict(value: object, field: str) -> dict[str, str]:
@@ -139,14 +155,45 @@ def decode_citation(value: object) -> Citation:
 
 
 def decode_claim(value: object) -> Claim:
-    """Decode one cited factual claim."""
+    """Decode one cited factual claim, preserving optional issue lineage."""
     payload = _expect_mapping(value, "claim")
-    _reject_unknown(payload, {"claim_id", "text", "citation_ids", "numeric_tokens"}, "claim")
+    _reject_unknown(
+        payload,
+        {"claim_id", "text", "citation_ids", "numeric_tokens", "issue_ids"},
+        "claim",
+    )
     return Claim(
         claim_id=_expect_string(payload.get("claim_id"), "claim_id"),
         text=_expect_string(payload.get("text"), "text"),
         citation_ids=_expect_string_tuple(payload.get("citation_ids"), "citation_ids"),
         numeric_tokens=_expect_string_tuple(payload.get("numeric_tokens", []), "numeric_tokens"),
+        issue_ids=_expect_unique_string_tuple(payload.get("issue_ids", []), "issue_ids"),
+    )
+
+
+def decode_issue_result(value: object) -> IssueResult:
+    """Decode one deterministic planned-issue coverage result."""
+    payload = _expect_mapping(value, "issue_result")
+    allowed = {
+        "issue_id",
+        "status",
+        "evidence_ids",
+        "covered_roles",
+        "missing_roles",
+        "gap_codes",
+    }
+    _reject_unknown(payload, allowed, "issue_result")
+    return IssueResult(
+        issue_id=_expect_string(payload.get("issue_id"), "issue_id"),
+        status=_expect_literal(payload.get("status"), "status", _ISSUE_STATUSES),
+        evidence_ids=_expect_unique_string_tuple(payload.get("evidence_ids", []), "evidence_ids"),
+        covered_roles=_expect_unique_string_tuple(
+            payload.get("covered_roles", []), "covered_roles"
+        ),
+        missing_roles=_expect_unique_string_tuple(
+            payload.get("missing_roles", []), "missing_roles"
+        ),
+        gap_codes=_expect_unique_string_tuple(payload.get("gap_codes", []), "gap_codes"),
     )
 
 
@@ -308,6 +355,7 @@ def decode_review_packet(value: object) -> ReviewPacket:
         "abstention_reasons",
         "snapshot_sha256",
         "missing_inputs",
+        "issue_results",
     }
     _reject_unknown(payload, allowed, "review_packet")
     status = _expect_literal(
@@ -321,6 +369,13 @@ def decode_review_packet(value: object) -> ReviewPacket:
     rules = tuple(
         decode_rule_result(item) for item in _expect_sequence(payload.get("rules"), "rules")
     )
+    issue_results = tuple(
+        decode_issue_result(item)
+        for item in _expect_sequence(payload.get("issue_results", []), "issue_results")
+    )
+    issue_ids = [item.issue_id for item in issue_results]
+    if len(issue_ids) != len(set(issue_ids)):
+        raise ValueError("issue_results must contain unique issue identifiers")
     confidence_value = payload.get("confidence")
     confidence = None if confidence_value is None else decode_confidence_result(confidence_value)
     snapshot_value = payload.get("snapshot_sha256")
@@ -333,7 +388,7 @@ def decode_review_packet(value: object) -> ReviewPacket:
             raise ValueError("snapshot_sha256 must be a lowercase SHA-256 digest")
     serialized_lineage_fields = tuple(
         name
-        for name in ("snapshot_sha256", "missing_inputs")
+        for name in ("snapshot_sha256", "missing_inputs", "issue_results")
         if name in payload
     )
     return ReviewPacket(
@@ -350,5 +405,6 @@ def decode_review_packet(value: object) -> ReviewPacket:
         ),
         snapshot_sha256=snapshot_sha256,
         missing_inputs=_expect_string_tuple(payload.get("missing_inputs", []), "missing_inputs"),
+        issue_results=issue_results,
         _serialized_lineage_fields=serialized_lineage_fields,
     )

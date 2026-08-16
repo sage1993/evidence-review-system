@@ -1,0 +1,80 @@
+{
+  "required": [
+    {
+      "evidence_id": "E-MIN-AREA",
+      "clause_id": "C-MIN-AREA",
+      "issue_ids": ["I1"],
+      "title": "사업대상지 일반기준",
+      "text": "안심주택 사업대상지는 원칙적으로 대지면적 1,000㎡ 이상이어야 한다."
+    },
+    {
+      "evidence_id": "E-STATION-DISTANCE",
+      "clause_id": "C-STATION-DISTANCE",
+      "issue_ids": ["I2"],
+      "title": "역세권 범위",
+      "text": "역세권은 승강장 경계로부터 250m 이내를 원칙으로 하며 통합심의를 거치는 경우 350m 이내까지 검토할 수 있다."
+    },
+    {
+      "evidence_id": "E-PARKING-PRIVATE",
+      "clause_id": "C-PARKING-PRIVATE",
+      "issue_ids": ["I3"],
+      "title": "공공지원민간임대주택 주차기준",
+      "text": "임대형기숙사를 제외한 안심주택의 주차장 설치기준은 해당 주택 유형에 적용되는 기준을 따른다."
+    },
+    {
+      "evidence_id": "E-PARKING-DORM",
+      "clause_id": "C-PARKING-DORM",
+      "issue_ids": ["I4"],
+      "title": "임대형기숙사 주차기준",
+      "text": "임대형기숙사와 다른 주택용도를 복합하는 경우 주차장 설치기준은 각 주택용도별 기준을 각각 적용한다."
+    },
+    {
+      "evidence_id": "E-FAR-400",
+      "clause_id": "C-FAR-400",
+      "issue_ids": ["I5"],
+      "title": "준공업지역 용적률",
+      "text": "준공업지역에서 공동주택을 포함하는 안심주택의 기본용적률은 400% 이하로 정할 수 있다."
+    },
+    {
+      "evidence_id": "E-INDUSTRIAL-SITE",
+      "clause_id": "C-INDUSTRIAL-SITE",
+      "issue_ids": ["I6"],
+      "title": "산업부지 확보비율",
+      "text": "준공업지역에서는 산업부지 확보비율을 적용하며 통합심의 결과에 따라 정해진 범위에서 확보비율을 완화할 수 있다."
+    },
+    {
+      "evidence_id": "E-PARKING-DUP",
+      "clause_id": "C-PARKING-DUP",
+      "issue_ids": ["I7"],
+      "title": "지구단위계획 주차완화",
+      "text": "지구단위계획으로 정하는 경우 안심주택의 주차장 설치기준을 추가로 완화할 수 있다."
+    }
+  ],
+  "forbidden": [
+    {
+      "evidence_id": "E-FORBIDDEN-CONTRIBUTION",
+      "title": "공공기여율",
+      "text": "공장비율 10% 미만 또는 10% 이상에 따라 공공기여율을 달리 적용한다."
+    },
+    {
+      "evidence_id": "E-FORBIDDEN-NONRESIDENTIAL",
+      "title": "비주거 용도 위치",
+      "text": "비주거 용도는 지정된 위치 기준에 따라 배치한다."
+    },
+    {
+      "evidence_id": "E-FORBIDDEN-364",
+      "title": "364호 산식",
+      "text": "364호 이상인 경우 별도의 세대수 산식을 적용한다."
+    }
+  ],
+  "distractors": [
+    {"evidence_id": "E-D01", "text": "안심주택 사업의 공공지원민간임대주택 계획과 주차장 설치기준 검토 자료다."},
+    {"evidence_id": "E-D02", "text": "안심주택 준공업지역 사업계획과 공동주택 용적률 검토 자료다."},
+    {"evidence_id": "E-D03", "text": "안심주택 사업대상지 및 역세권 사업 추진 절차에 관한 일반 설명이다."},
+    {"evidence_id": "E-D04", "text": "공공지원민간임대주택과 임대형기숙사 복합 계획에 관한 일반 설명이다."},
+    {"evidence_id": "E-D05", "text": "준공업지역 안심주택의 산업부지와 주차장에 관한 일반 설명이다."},
+    {"evidence_id": "E-D06", "text": "안심주택 지구단위계획과 용적률 완화에 관한 일반 설명이다."},
+    {"evidence_id": "E-D07", "text": "주차장 설치기준과 용적률 기준을 함께 검토하는 안심주택 일반 자료다."},
+    {"evidence_id": "E-D08", "text": "역세권 안심주택 사업대상지의 면적과 거리 검토에 관한 일반 자료다."}
+  ]
+}

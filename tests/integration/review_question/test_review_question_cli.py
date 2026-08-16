@@ -638,6 +638,35 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
             }
         ],
     )
+    plan_document = json.loads(plan_output.read_text(encoding="utf-8"))
+    plan_document["search_requests"].extend(
+        [
+            {
+                "id": "S2",
+                "issue_ids": ["I1"],
+                "text": "청소년수련관",
+                "kind": "phrase",
+                "source": "planner",
+            },
+            {
+                "id": "S3",
+                "issue_ids": ["I1"],
+                "text": "1,500제곱미터",
+                "kind": "phrase",
+                "source": "planner",
+            },
+            {
+                "id": "S4",
+                "issue_ids": ["I1"],
+                "text": "청소년문화의집",
+                "kind": "phrase",
+                "source": "planner",
+            },
+        ]
+    )
+    plan_output.write_text(
+        json.dumps(plan_document, ensure_ascii=False), encoding="utf-8"
+    )
 
     arguments = [
         "review-question",

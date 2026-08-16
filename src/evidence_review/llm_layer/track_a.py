@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from evidence_review.contracts.common import Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult, RuleStatus
+from evidence_review.contracts.question_plan import EvidenceRole
 from evidence_review.contracts.review import Claim, TrackADraft
 
 _REQUIRED_SECTIONS = (
@@ -40,10 +41,12 @@ _ALLOWED_RULE_STATUSES = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class EvidenceExcerpt:
-    """One source excerpt exposed to Track A."""
+    """One source excerpt exposed to Track A with optional issue lineage."""
 
     citation: Citation
     text: str
+    issue_ids: tuple[str, ...] = ()
+    role: EvidenceRole | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +116,116 @@ def _string_tuple(value: object, field: str) -> tuple[str, ...]:
     )
 
 
+def _unique_string_tuple(value: object, field: str) -> tuple[str, ...]:
+    items = _string_tuple(value, field)
+    if len(items) != len(set(items)):
+        raise ValueError(f"{field} must contain unique values")
+    return items
+
+
+def _planned_issue_ids(inputs: Mapping[str, object]) -> tuple[str, ...]:
+    value = inputs.get("question_plan")
+    if value is None:
+        return ()
+    plan = _mapping(value, "inputs.question_plan")
+    issues_value = plan.get("issues")
+    if issues_value is None:
+        return ()
+    issue_ids = tuple(
+        _string(
+            _mapping(item, f"inputs.question_plan.issues[{index}]").get("id"),
+            f"inputs.question_plan.issues[{index}].id",
+        )
+        for index, item in enumerate(
+            _sequence(issues_value, "inputs.question_plan.issues")
+        )
+    )
+    if len(issue_ids) != len(set(issue_ids)):
+        raise ValueError("inputs.question_plan.issues must contain unique ids")
+    return issue_ids
+
+
+def _lineage_by_citation(
+    inputs: Mapping[str, object],
+) -> dict[str, tuple[str, tuple[str, ...], EvidenceRole | None]]:
+    value = inputs.get("retrieval_lineage")
+    if value is None:
+        return {}
+    result: dict[str, tuple[str, tuple[str, ...], EvidenceRole | None]] = {}
+    for index, item in enumerate(_sequence(value, "inputs.retrieval_lineage")):
+        entry = _mapping(item, f"inputs.retrieval_lineage[{index}]")
+        evidence_id = _string(
+            entry.get("evidence_id"), f"inputs.retrieval_lineage[{index}].evidence_id"
+        )
+        citation_id = _string(
+            entry.get("citation_id"), f"inputs.retrieval_lineage[{index}].citation_id"
+        )
+        issue_ids: set[str] = set()
+        roles: set[EvidenceRole] = set()
+        for match_index, match_value in enumerate(
+            _sequence(entry.get("matches", []), f"inputs.retrieval_lineage[{index}].matches")
+        ):
+            match = _mapping(
+                match_value,
+                f"inputs.retrieval_lineage[{index}].matches[{match_index}]",
+            )
+            match_issue_ids = _unique_string_tuple(
+                match.get("issue_ids", []),
+                f"inputs.retrieval_lineage[{index}].matches[{match_index}].issue_ids",
+            )
+            issue_ids.update(match_issue_ids)
+            role_value = match.get("role")
+            if role_value is not None:
+                role_text = _string(
+                    role_value,
+                    f"inputs.retrieval_lineage[{index}].matches[{match_index}].role",
+                )
+                if role_text not in {"supporting_fact", "rule"}:
+                    raise ValueError(f"unsupported retrieval lineage role: {role_text}")
+                roles.add(cast(EvidenceRole, role_text))
+        normalized_role: EvidenceRole | None = (
+            next(iter(roles)) if len(roles) == 1 else None
+        )
+        normalized = (evidence_id, tuple(sorted(issue_ids)), normalized_role)
+        existing = result.get(citation_id)
+        if existing is not None and existing != normalized:
+            raise ValueError(f"conflicting retrieval lineage for citation {citation_id}")
+        result[citation_id] = normalized
+    return result
+
+
+def _enrich_evidence_from_lineage(
+    evidence: tuple[EvidenceExcerpt, ...],
+    inputs: Mapping[str, object],
+) -> tuple[EvidenceExcerpt, ...]:
+    lineage = _lineage_by_citation(inputs)
+    if not lineage:
+        return evidence
+    enriched: list[EvidenceExcerpt] = []
+    for index, item in enumerate(evidence):
+        entry = lineage.get(item.citation.citation_id)
+        if entry is None:
+            enriched.append(item)
+            continue
+        evidence_id, issue_ids, role = entry
+        if evidence_id != item.citation.evidence_id:
+            raise ValueError(
+                f"evidence[{index}] retrieval lineage evidence_id does not match citation"
+            )
+        if item.issue_ids and tuple(sorted(item.issue_ids)) != issue_ids:
+            raise ValueError(f"evidence[{index}] issue lineage conflicts with request inputs")
+        if item.role is not None and role is not None and item.role != role:
+            raise ValueError(f"evidence[{index}] role conflicts with request inputs")
+        enriched.append(
+            replace(
+                item,
+                issue_ids=issue_ids or item.issue_ids,
+                role=role if role is not None else item.role,
+            )
+        )
+    return tuple(enriched)
+
+
 def build_track_a_bundle(
     *,
     run_id: str,
@@ -126,10 +239,15 @@ def build_track_a_bundle(
     """Build an immutable Track A input bundle without invoking a model."""
     if not run_id or not question:
         raise ValueError("run_id and question are required")
-    evidence_items = tuple(evidence)
+    evidence_items = _enrich_evidence_from_lineage(tuple(evidence), inputs)
     citation_ids = [item.citation.citation_id for item in evidence_items]
     if len(citation_ids) != len(set(citation_ids)):
         raise ValueError("evidence citation IDs must be unique")
+    for index, item in enumerate(evidence_items):
+        if len(item.issue_ids) != len(set(item.issue_ids)):
+            raise ValueError(f"evidence[{index}].issue_ids must contain unique values")
+        if item.role not in (None, "supporting_fact", "rule"):
+            raise ValueError(f"unsupported evidence[{index}].role: {item.role}")
     rule_items = tuple(rules)
     calculation_items = tuple(calculations)
     return TrackABundle(
@@ -159,6 +277,38 @@ def _decode_rule_reference(value: object, field: str) -> RuleReference:
     )
 
 
+def _validate_claim_issue_relevance(
+    *,
+    claim_id: str,
+    claim_issue_ids: tuple[str, ...],
+    citation_ids: tuple[str, ...],
+    evidence_by_citation: Mapping[str, EvidenceExcerpt],
+    planned_issue_ids: tuple[str, ...],
+) -> None:
+    evidence_issue_ids = {
+        issue_id
+        for evidence in evidence_by_citation.values()
+        for issue_id in evidence.issue_ids
+    }
+    if not evidence_issue_ids and not planned_issue_ids:
+        return
+    if not claim_issue_ids:
+        raise ValueError(f"UNRELATED_CLAIM: claim {claim_id} requires issue_ids")
+    authoritative_issue_ids = set(planned_issue_ids) or evidence_issue_ids
+    unknown_issue_ids = sorted(set(claim_issue_ids) - authoritative_issue_ids)
+    if unknown_issue_ids:
+        raise ValueError(
+            f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}"
+        )
+    claim_issue_set = set(claim_issue_ids)
+    for citation_id in citation_ids:
+        evidence = evidence_by_citation[citation_id]
+        if evidence.issue_ids and not claim_issue_set.intersection(evidence.issue_ids):
+            raise ValueError(
+                f"CROSS_ISSUE_CITATION: claim {claim_id} cites {citation_id}"
+            )
+
+
 def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTrackA:
     """Validate Track A structure while preserving deterministic authority boundaries."""
     payload = _mapping(value, "track_a")
@@ -175,7 +325,9 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
     if run_id != bundle.run_id:
         raise ValueError("track_a run_id does not match bundle")
 
-    known_citations = {item.citation.citation_id for item in bundle.evidence}
+    evidence_by_citation = {item.citation.citation_id: item for item in bundle.evidence}
+    known_citations = set(evidence_by_citation)
+    planned_issue_ids = _planned_issue_ids(bundle.inputs)
     declared_citations = _string_tuple(payload.get("citations"), "citations")
     if len(declared_citations) != len(set(declared_citations)):
         raise ValueError("track_a citations must be unique")
@@ -193,6 +345,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
         allowed = {
             "claim_id",
             "text",
+            "issue_ids",
             "citation_ids",
             "numeric_tokens",
             "calculation_result_ids",
@@ -215,6 +368,16 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
             raise ValueError(
                 f"claim {claim_id} cites unknown citations: {', '.join(unknown_claim_citations)}"
             )
+        issue_ids = _unique_string_tuple(
+            claim_payload.get("issue_ids", []), f"claims[{index}].issue_ids"
+        )
+        _validate_claim_issue_relevance(
+            claim_id=claim_id,
+            claim_issue_ids=issue_ids,
+            citation_ids=citation_ids,
+            evidence_by_citation=evidence_by_citation,
+            planned_issue_ids=planned_issue_ids,
+        )
         numeric_tokens = _string_tuple(
             claim_payload.get("numeric_tokens", []), f"claims[{index}].numeric_tokens"
         )
@@ -237,6 +400,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
                 text=_string(claim_payload.get("text"), f"claims[{index}].text"),
                 citation_ids=citation_ids,
                 numeric_tokens=numeric_tokens,
+                issue_ids=issue_ids,
             )
         )
         claim_references.append(
@@ -278,16 +442,25 @@ def _citation_document(citation: Citation) -> dict[str, object]:
     }
 
 
+def _evidence_document(item: EvidenceExcerpt) -> dict[str, object]:
+    document: dict[str, object] = {
+        "citation": _citation_document(item.citation),
+        "text": item.text,
+    }
+    if item.issue_ids:
+        document["issue_ids"] = list(item.issue_ids)
+    if item.role is not None:
+        document["role"] = item.role
+    return document
+
+
 def track_a_bundle_document(bundle: TrackABundle) -> dict[str, object]:
     """Return the canonical JSON-ready Track A input document."""
     return {
         "run_id": bundle.run_id,
         "question": bundle.question,
         "inputs": dict(bundle.inputs),
-        "evidence": [
-            {"citation": _citation_document(item.citation), "text": item.text}
-            for item in bundle.evidence
-        ],
+        "evidence": [_evidence_document(item) for item in bundle.evidence],
         "rules": [
             {
                 "rule_result_id": item.rule_result_id,

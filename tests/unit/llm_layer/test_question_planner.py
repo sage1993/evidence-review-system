@@ -58,16 +58,25 @@ def _valid_plan() -> dict[str, object]:
     }
 
 
-def test_decode_question_plan_accepts_v1_and_encodes_canonically() -> None:
+def test_decode_question_plan_accepts_v1_and_encodes_as_canonical_v2() -> None:
     raw = _valid_plan()
     raw["original_question"] = "  " + QUESTION.replace(" ", "   ") + "  "
 
     plan = decode_question_plan(raw, QUESTION)
+    document = question_plan_document(plan)
 
     assert plan.original_question == QUESTION
     assert plan.facts[0].polarity == "negative"
     assert plan.issues[1].depends_on == ("I1",)
-    assert question_plan_document(plan) == _valid_plan()
+    assert plan.issues[0].required_evidence_roles == ("rule",)
+    assert plan.search_requests[0].role == "rule"
+    assert document["version"] == 2
+    issues = document["issues"]
+    requests = document["search_requests"]
+    assert isinstance(issues, list)
+    assert isinstance(requests, list)
+    assert issues[0]["required_evidence_roles"] == ["rule"]
+    assert requests[0]["role"] == "rule"
 
 
 @pytest.mark.parametrize(

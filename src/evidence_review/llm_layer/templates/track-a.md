@@ -14,6 +14,13 @@ Legal anchors in the plan are planning context only: an anchor with
 `source=planner` is a retrieval hypothesis, not legal authority. Treat a legal
 anchor as authoritative only when the supplied evidence supports it.
 
+When evidence items contain `issue_ids`, every claim must contain a non-empty
+`issue_ids` array. Claim issue IDs must be copied from the supplied issue-aware
+evidence. Every citation used by a claim must share at least one issue ID with
+that claim. Do not cite evidence from another issue merely because the citation
+is valid or topically adjacent. A claim without issue lineage, an unknown issue,
+or a cross-issue citation is invalid.
+
 When `inputs.retrieval_lineage` is present, use it only to understand which
 validated issue/search request led to each cited evidence item. Lineage does not
 increase evidence authority or permit citation IDs outside the supplied bundle.

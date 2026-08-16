@@ -90,7 +90,7 @@ def _prepare(arguments: Sequence[str]) -> int:
         return _planner_failure("QUESTION_PLAN_OUTPUT_INVALID_JSON", error)
 
     try:
-        plan = validate_question_planner_output(raw_plan, args.question)
+        plan = validate_question_planner_output(raw_plan, args.question, allow_legacy=True)
     except ValueError as error:
         return _planner_failure("QUESTION_PLAN_INVALID", error)
 
