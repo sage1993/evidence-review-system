@@ -143,7 +143,10 @@ def evaluate_issue_coverage(
             gaps.append("AMBIGUOUS_RULE")
         else:
             missing_references = reference_missing.get(issue.id, ())
-            if issue.id in source_missing:
+            if issue.id in source_missing or any(
+                item.reason_code == "SOURCE_NOT_INGESTED"
+                for item in missing_references
+            ):
                 gaps.append("SOURCE_NOT_INGESTED")
             if any(
                 item.reason_code
