@@ -348,17 +348,21 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         snapshot_sha256 = _string(snapshot_value, "snapshot_hash")
         if not _SHA256.fullmatch(snapshot_sha256):
             raise ValueError("snapshot_hash must be a lowercase SHA-256 digest")
+    track_a_missing_inputs = set(validated_a.draft.missing_inputs)
+    deterministic_rule_missing_inputs = {
+        item for result in bundle.rules for item in result.missing_inputs
+    }
     missing_inputs = tuple(
-        sorted(
-            set(validated_a.draft.missing_inputs)
-            | {item for result in bundle.rules for item in result.missing_inputs}
-        )
+        sorted(track_a_missing_inputs | deterministic_rule_missing_inputs)
     )
     issue_results = _issue_results_from_inputs(bundle.inputs)
     finding_codes = _finding_codes(track_b_output)
     approved = set(bundle.approved_rule_result_ids)
     missing_required_input = (
-        issue_results_require_global_abstain(issue_results)
+        issue_results_require_global_abstain(
+            issue_results,
+            deterministic_missing_inputs=bool(deterministic_rule_missing_inputs),
+        )
         if issue_results
         else bool(missing_inputs)
     )
