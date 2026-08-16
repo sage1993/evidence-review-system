@@ -87,6 +87,13 @@ def _article_source() -> str:
     )
 
 
+def _paragraph_source() -> str:
+    return (
+        "제13조(주차장 설치기준 완화) ④ 「국토의 계획 및 이용에 관한 법률 시행령」 "
+        "제46조제6항에 따라 지구단위계획으로 주차기준을 완화할 수 있다."
+    )
+
+
 def _annex_source() -> str:
     return (
         "제13조(주차장 설치기준 완화) ② 「서울특별시 주차장 설치 및 관리 조례」 "
@@ -139,6 +146,32 @@ def test_ingested_external_authority_resolves_to_citation_grade_target(
     assert {hit.evidence_id for hit in result.hits} == {"E-DOC-TARGET"}
     assert result.missing == ()
     assert result.paths[0].steps[0].relation_type == "rule_source"
+
+
+def test_paragraph_reference_resolves_structural_article_paragraph_target(
+    tmp_path: Path,
+) -> None:
+    with EvidenceStore(tmp_path / "paragraph.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot(
+                source_text=_paragraph_source(),
+                target_title="국토의 계획 및 이용에 관한 법률 시행령",
+                target_text="제46조(지구단위계획구역에서의 완화) ⑥ 관련 기준을 완화할 수 있다.",
+            ),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+        ensure_clause_index(connection)
+
+        result = traverse_relations_with_provenance(
+            connection,
+            ("E-DOC-SOURCE",),
+            depth=1,
+        )
+
+    assert {hit.evidence_id for hit in result.hits} == {"E-DOC-TARGET"}
+    assert result.missing == ()
 
 
 def test_article_reference_rejects_a_body_only_cross_reference(tmp_path: Path) -> None:
