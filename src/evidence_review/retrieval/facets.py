@@ -16,6 +16,7 @@ from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
 
 _RATIO_FRACTION_RE = re.compile(r"\d+\s*분의\s*\d+")
 _RATIO_PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|퍼센트)")
+_RATIO_LABEL_RE = re.compile(r"[0-9A-Za-z가-힣]+비율")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+|\n+")
 _INDUSTRIAL_RATIO_MARKER = "산업부지 확보비율"
 _FACET_SEARCH_TEXT: dict[str, str] = {
@@ -257,13 +258,32 @@ def _has_measure(
 
 
 def _has_industrial_ratio_value(text: str) -> bool:
-    """Require the actual industrial-site ratio after its semantic marker."""
+    """Require a ratio whose nearest relevant label is the industrial-site ratio."""
     normalized = _normalize(text)
-    marker_index = normalized.find(_INDUSTRIAL_RATIO_MARKER)
-    if marker_index < 0:
-        return False
-    tail = normalized[marker_index + len(_INDUSTRIAL_RATIO_MARKER) :]
-    return bool(_RATIO_FRACTION_RE.search(tail) or _RATIO_PERCENT_RE.search(tail))
+    ratio_matches = sorted(
+        (*_RATIO_FRACTION_RE.finditer(normalized), *_RATIO_PERCENT_RE.finditer(normalized)),
+        key=lambda item: item.start(),
+    )
+    for ratio_match in ratio_matches:
+        marker_index = normalized.rfind(
+            _INDUSTRIAL_RATIO_MARKER,
+            0,
+            ratio_match.start(),
+        )
+        if marker_index < 0:
+            continue
+        marker_end = marker_index + len(_INDUSTRIAL_RATIO_MARKER)
+        if any(
+            label.start() >= marker_end
+            for label in _RATIO_LABEL_RE.finditer(
+                normalized,
+                marker_end,
+                ratio_match.start(),
+            )
+        ):
+            continue
+        return True
+    return False
 
 
 def _facet_matches(facet_id: str, text: str) -> bool:
