@@ -113,6 +113,7 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     fixture, run_directory = _prepare(tmp_path)
     bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
     trace = json.loads((run_directory / "retrieval-trace.json").read_text(encoding="utf-8"))
+    compiled_plan = json.loads((run_directory / "question-plan.json").read_text(encoding="utf-8"))
 
     inputs = bundle["inputs"]
     provenance = inputs["evidence_snapshot_provenance"]
@@ -122,6 +123,16 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     assert provenance["retrieval_record_count"] > 0
     assert provenance["clause_record_count"] >= 7
     assert trace["snapshot_provenance"] == provenance
+
+    i2_searches = [
+        item
+        for item in compiled_plan["search_requests"]
+        if "I2" in item["issue_ids"]
+    ]
+    assert [item["id"] for item in i2_searches] == [
+        "S2",
+        "FACET-I2-minimum-area-threshold",
+    ]
 
     coverage = {item["issue_id"]: item for item in inputs["issue_coverage"]}
     assert coverage["I2"]["status"] == "CONDITIONAL"
@@ -133,6 +144,7 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     facets = {item["issue_id"]: item for item in inputs["facet_coverage"]}
     assert all(not facets[f"I{index}"]["missing_facet_ids"] for index in range(1, 8))
     assert facets["I2"]["covered_facet_ids"] == [
+        "minimum-area-threshold",
         "distance-normal-threshold",
         "distance-conditional-threshold",
     ]
@@ -149,7 +161,9 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
         (item["issue_id"], item["facet_id"]): item
         for item in inputs["fact_rule_comparisons"]
     }
-    minimum_area = comparisons[("I1", "minimum-area-threshold")]
+    assert ("I1", "minimum-area-threshold") not in comparisons
+
+    minimum_area = comparisons[("I2", "minimum-area-threshold")]
     assert minimum_area["fact_value"] == "1500"
     assert minimum_area["threshold_value"] == "1000"
     assert minimum_area["operator"] == ">="
