@@ -106,7 +106,7 @@ def _snapshot() -> EvidenceSnapshot:
         ),
     )
     local_elements = tuple(
-        _element("E-LOCAL-%02d" % index, "REV-LOCAL", "P-LOCAL", index, text)
+        _element(f"E-LOCAL-{index:02d}", "REV-LOCAL", "P-LOCAL", index, text)
         for index, text in enumerate(local_texts, start=1)
     )
     external_elements = (
@@ -229,7 +229,7 @@ def _track_a_output(run_directory: Path) -> dict[str, object]:
     return {
         "run_id": run_directory.name,
         "claims": claims,
-        "citations": citations,
+        "citations": list(dict.fromkeys(citations)),
         "missing_inputs": [],
         "exceptions": [],
         "conflicts": [],
