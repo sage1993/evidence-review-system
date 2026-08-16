@@ -49,6 +49,7 @@ def _candidate(search_request_id: str, query: str) -> IssueClauseCandidate:
 
 
 def test_duplicate_legacy_candidates_preserve_evidence_and_both_query_matches() -> None:
+    """Two issue-bound queries hitting one legacy element must not erase evidence."""
     merged = _merge_candidate(
         _candidate("S1", "주차장"),
         _candidate("USER-EXP-01", "별표 2"),
