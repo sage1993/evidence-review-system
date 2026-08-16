@@ -48,8 +48,6 @@ class ClauseSearch(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class FallbackTrace:
-    """One deterministic search attempt within the fallback ladder."""
-
     stage: FallbackStage
     input_query: str
     derived_query: str
@@ -58,15 +56,12 @@ class FallbackTrace:
 
 @dataclass(frozen=True, slots=True)
 class FallbackResult:
-    """Clause hits plus the exact deterministic attempts that produced them."""
-
     hits: tuple[ClauseRetrievalHit, ...]
     traces: tuple[FallbackTrace, ...]
     success_stage: FallbackStage | None
     successful_query: str | None
 
 
-# Linguistic/legal-document aliases only. Do not add document-specific authorities.
 _APPROVED_TOKEN_ALIASES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("최소", "면적"), ("대지면적",)),
     (("주차장", "설치기준"), ("주차기준",)),
@@ -138,15 +133,15 @@ def _compound_decomposition_queries(value: str) -> tuple[str, ...]:
     return (derived,)
 
 
-def _clean_numeric_token(value: str) -> str:
+def _clean_token(value: str) -> str:
     return value.strip(".,!?;:()[]{}<>\\\"'“”‘’")
 
 
-def _fact_numeric_tokens(fact_texts: Sequence[str]) -> frozenset[str]:
+def _numeric_values(texts: Sequence[str]) -> frozenset[str]:
     values: set[str] = set()
-    for text in fact_texts:
+    for text in texts:
         for token in _tokenize(text):
-            candidate = _clean_numeric_token(token)
+            candidate = _clean_token(token)
             if _NUMERIC_TOKEN.fullmatch(candidate):
                 values.add(candidate.casefold())
     return frozenset(values)
@@ -156,14 +151,21 @@ def _fact_decontaminated_query(
     value: str,
     fact_texts: Sequence[str],
 ) -> str | None:
-    fact_values = _fact_numeric_tokens(fact_texts)
-    if not fact_values:
-        return None
     tokens = list(_tokenize(value))
+    removable = _numeric_values(fact_texts)
+    if not removable:
+        # Planned-review callers historically supplied only the SearchRequest here.
+        # Literal/threshold-preserving stages have already run before this fallback,
+        # so a numeric token is relaxed only after the exact numeric query failed.
+        removable = frozenset(
+            _clean_token(token).casefold()
+            for token in tokens
+            if _NUMERIC_TOKEN.fullmatch(_clean_token(token))
+        )
+    if not removable:
+        return None
     kept = [
-        token
-        for token in tokens
-        if _clean_numeric_token(token).casefold() not in fact_values
+        token for token in tokens if _clean_token(token).casefold() not in removable
     ]
     if len(kept) < 2 or len(kept) == len(tokens):
         return None
@@ -171,7 +173,7 @@ def _fact_decontaminated_query(
 
 
 def _core_token_queries(value: str) -> tuple[str, ...]:
-    """Return a small deterministic set of AND subsets, never token OR queries."""
+    """Return bounded AND subsets; never emit unrestricted token-OR queries."""
     tokens = list(_tokenize(value))
     if len(tokens) <= 2:
         return ()
@@ -184,20 +186,15 @@ def _core_token_queries(value: str) -> tuple[str, ...]:
         if candidate and candidate != _normalize_text(value) and candidate not in queries:
             queries.append(candidate)
 
-    # First relax exactly one token. This recovers one planner/entity mismatch
-    # while preserving all other anchors.
     for removed in range(len(tokens)):
         add((*tokens[:removed], *tokens[removed + 1 :]))
-
-    # Then allow bounded contiguous legal/entity cores. Three-token windows are
-    # preferred over two-token windows and the global cap keeps work predictable.
     for width in (3, 2):
-        if len(queries) >= _MAX_CORE_VARIANTS:
-            break
         for start in range(len(tokens) - width + 1):
             add(tokens[start : start + width])
             if len(queries) >= _MAX_CORE_VARIANTS:
                 break
+        if len(queries) >= _MAX_CORE_VARIANTS:
+            break
     return tuple(queries)
 
 
@@ -291,7 +288,6 @@ def search_clause_with_fallback(
         (FallbackStage.TOKEN_AND, normalized, search_clause_token_and),
         (FallbackStage.TOKEN_PREFIX, normalized, search_clause_token_prefix_and),
     ]
-
     decontaminated = _fact_decontaminated_query(normalized, fact_texts)
     if decontaminated is not None:
         attempts.append(
@@ -302,30 +298,33 @@ def search_clause_with_fallback(
             )
         )
 
-    alias_bases = tuple(dict.fromkeys((normalized, decontaminated) if decontaminated else (normalized,)))
-    for base in alias_bases:
+    bases = tuple(
+        dict.fromkeys(
+            (normalized, decontaminated) if decontaminated is not None else (normalized,)
+        )
+    )
+    for base in bases:
         attempts.extend(
             (FallbackStage.APPROVED_ALIAS, derived, search_clause_token_and)
             for derived in _approved_alias_queries(base)
         )
 
-    compound_bases = alias_bases
     compound_queries: list[str] = []
-    for base in compound_bases:
+    for base in bases:
         for derived in _compound_decomposition_queries(base):
-            if derived not in compound_queries:
-                compound_queries.append(derived)
-                attempts.append(
-                    (
-                        FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
-                        derived,
-                        search_clause_token_prefix_and,
-                    )
+            if derived in compound_queries:
+                continue
+            compound_queries.append(derived)
+            attempts.append(
+                (
+                    FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
+                    derived,
+                    search_clause_token_prefix_and,
                 )
+            )
 
-    core_bases = tuple(dict.fromkeys((*compound_bases, *compound_queries)))
     core_queries: list[str] = []
-    for base in core_bases:
+    for base in tuple(dict.fromkeys((*bases, *compound_queries))):
         for derived in _core_token_queries(base):
             if derived in core_queries:
                 continue
@@ -343,12 +342,12 @@ def search_clause_with_fallback(
             break
 
     traces: list[FallbackTrace] = []
-    seen_attempts: set[tuple[FallbackStage, str]] = set()
+    seen: set[tuple[FallbackStage, str]] = set()
     for stage, derived_query, search in attempts:
         key = (stage, derived_query)
-        if key in seen_attempts:
+        if key in seen:
             continue
-        seen_attempts.add(key)
+        seen.add(key)
         hits = search(connection, derived_query, limit=limit)
         traces.append(
             FallbackTrace(
