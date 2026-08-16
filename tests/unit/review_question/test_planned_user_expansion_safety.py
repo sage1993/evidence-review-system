@@ -1,7 +1,5 @@
-import pytest
-
 from evidence_review.contracts.question_plan import QuestionIssue, QuestionPlan, SearchRequest
-from evidence_review.planned_review_question import prepare_planned_review_question
+from evidence_review.user_expansions import plan_with_user_expansions
 
 
 def _plan() -> QuestionPlan:
@@ -31,10 +29,12 @@ def _plan() -> QuestionPlan:
     )
 
 
-def test_planned_review_rejects_unbound_user_expansions_before_retrieval(tmp_path) -> None:
-    with pytest.raises(ValueError, match="issue-bound"):
-        prepare_planned_review_question(
-            tmp_path,
-            _plan(),
-            user_expansions=("300m",),
-        )
+def test_user_expansion_is_bound_to_primary_issue_and_role() -> None:
+    effective = plan_with_user_expansions(_plan(), ("  별표   2  ",))
+
+    expansion = effective.search_requests[0]
+    assert expansion.text == "별표 2"
+    assert expansion.source == "user"
+    assert expansion.issue_ids == ("SITE_DISTANCE",)
+    assert expansion.role == "rule"
+    assert effective.search_requests[1].id == "SEARCH-DISTANCE"
