@@ -66,8 +66,7 @@ def _target_evidence_ids(
             """,
             (document_id, token, token),
         ).fetchall()
-        if rows:
-            return tuple(str(row[0]) for row in rows)
+        return tuple(str(row[0]) for row in rows)
 
     if reference.article is not None:
         article = f"%{reference.article}%"
@@ -97,8 +96,7 @@ def _target_evidence_ids(
             """,
             tuple(parameters),
         ).fetchall()
-        if rows:
-            return tuple(str(row[0]) for row in rows)
+        return tuple(str(row[0]) for row in rows)
 
     return ()
 
