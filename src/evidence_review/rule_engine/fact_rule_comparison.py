@@ -147,12 +147,22 @@ def _rule_text_for_evidence(
     return " ".join(texts)
 
 
-def _fact_text_for_dimension(plan: QuestionPlan, dimension: str) -> str | None:
-    matches = [
-        fact.text
-        for fact in plan.facts
-        if len(_measures_for_dimension(fact.text, dimension)) == 1
-    ]
+def _fact_text_for_issue_dimension(
+    plan: QuestionPlan,
+    issue_question: str,
+    dimension: str,
+) -> str | None:
+    issue_values = {
+        measure.value for measure in _measures_for_dimension(issue_question, dimension)
+    }
+    if not issue_values:
+        return None
+    matches: list[str] = []
+    for fact in plan.facts:
+        measures = _measures_for_dimension(fact.text, dimension)
+        if len(measures) != 1 or measures[0].value not in issue_values:
+            continue
+        matches.append(fact.text)
     if len(matches) != 1:
         return None
     return matches[0]
@@ -163,7 +173,7 @@ def evaluate_fact_rule_comparisons(
     bundle: IssueRetrievalBundle,
     facet_report: FacetCoverageReport,
 ) -> tuple[FactRuleComparison, ...]:
-    """Build all comparison artifacts that have both a user fact and covered facet."""
+    """Build comparison artifacts only when an issue preserves the user fact value."""
     results: list[FactRuleComparison] = []
     for issue in plan.issues:
         facet_issue = facet_report.by_issue_id(issue.id)
@@ -172,7 +182,11 @@ def evaluate_fact_rule_comparisons(
             if config is None:
                 continue
             dimension, _operator, _conditional = config
-            fact_text = _fact_text_for_dimension(plan, dimension)
+            fact_text = _fact_text_for_issue_dimension(
+                plan,
+                issue.question,
+                dimension,
+            )
             if fact_text is None:
                 continue
             evidence_ids = _evidence_ids_for_facet(facet_report, issue.id, facet_id)

@@ -4,15 +4,31 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from evidence_review.contracts.question_plan import QuestionPlan
+from evidence_review.contracts.question_plan import (
+    MAX_SEARCH_REQUESTS,
+    QuestionPlan,
+    SearchRequest,
+)
 from evidence_review.retrieval.conditional import extract_measures
 from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
 
 _RATIO_FRACTION_RE = re.compile(r"\d+\s*분의\s*\d+")
 _RATIO_PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|퍼센트)")
 _INDUSTRIAL_RATIO_MARKER = "산업부지 확보비율"
+_FACET_SEARCH_TEXT: dict[str, str] = {
+    "minimum-area-threshold": "사업대상지 최소 면적",
+    "distance-normal-threshold": "역세권 승강장 경계 거리 기준",
+    "distance-conditional-threshold": "역세권 승강장 경계 거리 기준",
+    "private-rental-parking-standard": "공공지원민간임대주택 주차장 설치기준",
+    "dormitory-parking-standard": "임대형기숙사 주차장 설치기준",
+    "mixed-use-parking-application": "복합 주차장 설치기준 각각 적용",
+    "semi-industrial-far-threshold": "준공업지역 공동주택 기본용적률",
+    "industrial-site-ratio": "준공업지역 산업부지 확보비율",
+    "industrial-site-relaxation-procedure": "산업부지 확보비율 심의 완화 절차",
+    "district-plan-parking-relaxation": "지구단위계획 주차장 설치기준 완화",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +76,16 @@ def _normalize(value: str) -> str:
     return unicodedata.normalize("NFKC", " ".join(value.split())).casefold()
 
 
+def _has_area_fact_in_issue(text: str) -> bool:
+    normalized = _normalize(text)
+    has_area = any(measure.dimension == "area_m2" for measure in extract_measures(text))
+    return (
+        has_area
+        and "부지" in normalized
+        and any(token in normalized for token in ("사업", "추진", "가능", "충족"))
+    )
+
+
 def _required_facet_ids(question: str) -> tuple[str, ...]:
     text = _normalize(question)
     facets: list[str] = []
@@ -68,7 +94,7 @@ def _required_facet_ids(question: str) -> tuple[str, ...]:
         if value not in facets:
             facets.append(value)
 
-    if "최소" in text and "면적" in text:
+    if ("최소" in text and "면적" in text) or _has_area_fact_in_issue(question):
         add("minimum-area-threshold")
     if "승강장" in text and ("역세권" in text or "거리" in text):
         add("distance-normal-threshold")
@@ -107,6 +133,75 @@ def compile_required_facets(plan: QuestionPlan) -> FacetPlan:
     )
 
 
+def _request_covers_facet(facet_id: str, text: str) -> bool:
+    normalized = _normalize(text)
+    if facet_id == "minimum-area-threshold":
+        return "면적" in normalized and ("최소" in normalized or "대지" in normalized)
+    if facet_id in {"distance-normal-threshold", "distance-conditional-threshold"}:
+        return "승강장" in normalized and ("거리" in normalized or "역세권" in normalized)
+    if facet_id == "private-rental-parking-standard":
+        return "공공지원민간임대주택" in normalized and "주차" in normalized
+    if facet_id == "dormitory-parking-standard":
+        return "임대형기숙사" in normalized and "주차" in normalized
+    if facet_id == "mixed-use-parking-application":
+        return "복합" in normalized and "주차" in normalized
+    if facet_id == "semi-industrial-far-threshold":
+        return "준공업" in normalized and "용적률" in normalized
+    if facet_id == "industrial-site-ratio":
+        return "산업부지" in normalized and "확보비율" in normalized
+    if facet_id == "industrial-site-relaxation-procedure":
+        return (
+            "산업부지" in normalized
+            and "확보비율" in normalized
+            and any(token in normalized for token in ("심의", "완화", "절차"))
+        )
+    if facet_id == "district-plan-parking-relaxation":
+        return "지구단위계획" in normalized and "주차" in normalized
+    return False
+
+
+def augment_plan_with_facet_search_requests(plan: QuestionPlan) -> QuestionPlan:
+    """Add bounded deterministic rule queries for uncovered compound issue facets."""
+    facet_plan = compile_required_facets(plan)
+    generated: list[SearchRequest] = []
+    for issue in facet_plan.issues:
+        issue_requests = [
+            request for request in plan.search_requests if issue.issue_id in request.issue_ids
+        ]
+        generated_texts: set[str] = set()
+        for requirement in issue.required_facets:
+            if any(
+                request.role == "rule"
+                and _request_covers_facet(requirement.facet_id, request.text)
+                for request in (*issue_requests, *generated)
+                if issue.issue_id in request.issue_ids
+            ):
+                continue
+            search_text = _FACET_SEARCH_TEXT.get(requirement.facet_id)
+            if search_text is None or search_text in generated_texts:
+                continue
+            generated.append(
+                SearchRequest(
+                    id=f"FACET-{issue.issue_id}-{requirement.facet_id}",
+                    issue_ids=(issue.issue_id,),
+                    text=search_text,
+                    kind="concept_relation",
+                    source="planner",
+                    role="rule",
+                )
+            )
+            generated_texts.add(search_text)
+    if not generated:
+        return plan
+    search_requests = (*plan.search_requests, *generated)
+    if len(search_requests) > MAX_SEARCH_REQUESTS:
+        raise ValueError(
+            "facet compiler exceeds question plan search request maximum: "
+            f"{len(search_requests)} > {MAX_SEARCH_REQUESTS}"
+        )
+    return replace(plan, search_requests=tuple(search_requests))
+
+
 def _has_measure(text: str, dimension: str, *, conditional: bool | None = None) -> bool:
     for measure in extract_measures(text):
         if measure.dimension != dimension:
@@ -118,12 +213,7 @@ def _has_measure(text: str, dimension: str, *, conditional: bool | None = None) 
 
 
 def _has_industrial_ratio_value(text: str) -> bool:
-    """Require the actual industrial-site ratio after its semantic marker.
-
-    A preceding percentage such as ``공장비율 10%`` describes the trigger, not
-    the industrial-site allocation ratio itself, and therefore cannot satisfy
-    this facet.
-    """
+    """Require the actual industrial-site ratio after its semantic marker."""
     normalized = _normalize(text)
     marker_index = normalized.find(_INDUSTRIAL_RATIO_MARKER)
     if marker_index < 0:

@@ -23,6 +23,7 @@ from evidence_review.question_planning import (
 from evidence_review.retrieval.conditional import infer_conditional_issue_ids
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
 from evidence_review.retrieval.facets import (
+    augment_plan_with_facet_search_requests,
     bind_facet_coverage_to_review_request,
     evaluate_facet_coverage,
     facet_coverage_document,
@@ -65,14 +66,11 @@ def prepare_planned_review_question(
     rules: Sequence[object] = (),
     approved_rule_result_ids: Sequence[str] = (),
 ) -> PreparedReviewQuestion:
-    """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan.
-
-    Legacy CLI ``--expansion`` values remain supported, but each manual term is
-    converted into an issue/role-bound SearchRequest before retrieval. Planned
-    review never falls back to the legacy global retrieval path.
-    """
+    """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan."""
     normalization_timer = start_stage()
-    effective_plan = plan_with_user_expansions(question_plan, user_expansions)
+    effective_plan = augment_plan_with_facet_search_requests(
+        plan_with_user_expansions(question_plan, user_expansions)
+    )
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
     retrieval_timer = start_stage()
@@ -131,22 +129,10 @@ def prepare_planned_review_question(
     review_request["question"] = effective_plan.original_question
     review_request = bind_question_plan_to_review_request(review_request, effective_plan)
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
-    review_request = bind_issue_coverage_to_review_request(
-        review_request,
-        coverage_report,
-    )
-    review_request = bind_facet_coverage_to_review_request(
-        review_request,
-        facet_report,
-    )
-    review_request = bind_comparisons_to_review_request(
-        review_request,
-        comparisons,
-    )
-    review_request = apply_issue_coverage_factors(
-        review_request,
-        coverage_report,
-    )
+    review_request = bind_issue_coverage_to_review_request(review_request, coverage_report)
+    review_request = bind_facet_coverage_to_review_request(review_request, facet_report)
+    review_request = bind_comparisons_to_review_request(review_request, comparisons)
+    review_request = apply_issue_coverage_factors(review_request, coverage_report)
     request_metric = finish_stage("review-request-build", request_timer)
 
     run_id = compute_run_id_from_request(review_request)
