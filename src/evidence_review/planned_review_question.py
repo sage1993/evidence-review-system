@@ -20,7 +20,6 @@ from evidence_review.question_planning import (
     bind_retrieval_lineage_to_review_request,
     issue_retrieval_bundle_document,
 )
-from evidence_review.retrieval.conditional import infer_conditional_issue_ids
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
 from evidence_review.retrieval.facets import (
     augment_plan_with_facet_search_requests,
@@ -86,12 +85,9 @@ def prepare_planned_review_question(
             issue_bundle,
             facet_report,
         )
-        conditional_issue_ids = tuple(
-            sorted(
-                set(infer_conditional_issue_ids(effective_plan, issue_bundle)).union(
-                    conditional_issue_ids_from_comparisons(comparisons, facet_report)
-                )
-            )
+        conditional_issue_ids = conditional_issue_ids_from_comparisons(
+            comparisons,
+            facet_report,
         )
         coverage_report = evaluate_issue_coverage(
             effective_plan,
