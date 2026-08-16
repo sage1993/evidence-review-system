@@ -24,7 +24,11 @@ def _plan():
             "version": 2,
             "original_question": question,
             "facts": [
-                {"id": "F1", "text": "대상 부지 면적은 1,500㎡이다.", "polarity": "positive"},
+                {
+                    "id": "F1",
+                    "text": "대상 부지 면적은 1,500㎡이다.",
+                    "polarity": "positive",
+                },
             ],
             "assumptions": [],
             "issues": [
@@ -43,8 +47,22 @@ def _plan():
             ],
             "legal_anchors": [],
             "search_requests": [
-                {"id": "S1", "issue_ids": ["I1"], "text": "사업대상지 최소 면적", "kind": "concept_relation", "source": "planner", "role": "rule"},
-                {"id": "S2", "issue_ids": ["I2"], "text": "1,500㎡ 부지 최소 면적 충족", "kind": "concept_relation", "source": "planner", "role": "rule"},
+                {
+                    "id": "S1",
+                    "issue_ids": ["I1"],
+                    "text": "사업대상지 최소 면적",
+                    "kind": "concept_relation",
+                    "source": "planner",
+                    "role": "rule",
+                },
+                {
+                    "id": "S2",
+                    "issue_ids": ["I2"],
+                    "text": "1,500㎡ 부지 최소 면적 충족",
+                    "kind": "concept_relation",
+                    "source": "planner",
+                    "role": "rule",
+                },
             ],
         },
         question,
