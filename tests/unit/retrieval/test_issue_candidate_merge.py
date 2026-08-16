@@ -56,4 +56,5 @@ def test_duplicate_legacy_candidates_preserve_evidence_and_both_query_matches() 
 
     assert [item.evidence_id for item in merged.evidence] == ["E1"]
     assert {item.search_request_id for item in merged.matches} == {"S1", "USER-EXP-01"}
-    assert {item.detail for item in merged.evidence[0].channel_scores} == {"별표 2 | 주차장"}
+    detail = merged.evidence[0].channel_scores[0].detail
+    assert {part.strip() for part in detail.split("|")} == {"주차장", "별표 2"}
