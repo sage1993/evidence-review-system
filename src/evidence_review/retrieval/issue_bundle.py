@@ -300,7 +300,11 @@ def _bind_fallback_trace(
 ) -> IssueFallbackTrace:
     overrides = relevance_overrides or {}
 
-    def bind_decision(clause_id: str, accepted: bool, reason_codes: tuple[str, ...]) -> IssueRelevanceDecision:
+    def bind_decision(
+        clause_id: str,
+        accepted: bool,
+        reason_codes: tuple[str, ...],
+    ) -> IssueRelevanceDecision:
         override = overrides.get(clause_id)
         if override is not None:
             return override
@@ -376,17 +380,23 @@ def _bucket_candidates(
 
         relevance_overrides: dict[str, IssueRelevanceDecision] = {}
 
-        def issue_relevance_filter(hit: ClauseRetrievalHit) -> bool:
+        def issue_relevance_filter(
+            hit: ClauseRetrievalHit,
+            bound_request: SearchRequest = request,
+            bound_overrides: dict[
+                str, IssueRelevanceDecision
+            ] = relevance_overrides,
+        ) -> bool:
             decision = evaluate_issue_clause_relevance(
                 issue_id=issue.id,
                 issue_question=issue.question,
-                search_request_id=request.id,
-                query_text=request.text,
+                search_request_id=bound_request.id,
+                query_text=bound_request.text,
                 clause=hit,
             )
-            relevance_overrides[hit.clause_id] = IssueRelevanceDecision(
+            bound_overrides[hit.clause_id] = IssueRelevanceDecision(
                 issue_id=issue.id,
-                search_request_id=request.id,
+                search_request_id=bound_request.id,
                 clause_id=hit.clause_id,
                 accepted=decision.accepted,
                 reason_codes=decision.reason_codes,
