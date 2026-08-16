@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -203,7 +203,7 @@ def _protected_core_tokens(value: str) -> frozenset[str]:
 def _core_token_queries(
     value: str,
     *,
-    required_tokens: Sequence[str] = (),
+    required_tokens: Iterable[str] = (),
 ) -> tuple[str, ...]:
     """Return bounded AND subsets; never emit unrestricted token-OR queries."""
     tokens = list(_tokenize(value))
