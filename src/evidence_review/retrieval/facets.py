@@ -78,7 +78,9 @@ def _normalize(value: str) -> str:
 
 
 def _measure_keys(text: str) -> frozenset[tuple[str, object]]:
-    return frozenset((measure.dimension, measure.value) for measure in extract_measures(text))
+    return frozenset(
+        (measure.dimension, measure.value) for measure in extract_measures(text)
+    )
 
 
 def issue_context_text(plan: QuestionPlan, issue_question: str) -> str:
@@ -107,7 +109,9 @@ def issue_context_text(plan: QuestionPlan, issue_question: str) -> str:
 
 def _has_area_fact_in_issue(text: str) -> bool:
     normalized = _normalize(text)
-    has_area = any(measure.dimension == "area_m2" for measure in extract_measures(text))
+    has_area = any(
+        measure.dimension == "area_m2" for measure in extract_measures(text)
+    )
     return (
         has_area
         and "부지" in normalized
@@ -154,7 +158,9 @@ def compile_required_facets(plan: QuestionPlan) -> FacetPlan:
                 issue_id=issue.id,
                 required_facets=tuple(
                     FacetRequirement(facet_id=value)
-                    for value in _required_facet_ids(issue_context_text(plan, issue.question))
+                    for value in _required_facet_ids(
+                        issue_context_text(plan, issue.question)
+                    )
                 ),
             )
             for issue in plan.issues
@@ -167,7 +173,9 @@ def _request_covers_facet(facet_id: str, text: str) -> bool:
     if facet_id == "minimum-area-threshold":
         return "면적" in normalized and ("최소" in normalized or "대지" in normalized)
     if facet_id in {"distance-normal-threshold", "distance-conditional-threshold"}:
-        return "승강장" in normalized and ("거리" in normalized or "역세권" in normalized)
+        return "승강장" in normalized and (
+            "거리" in normalized or "역세권" in normalized
+        )
     if facet_id == "private-rental-parking-standard":
         return "공공지원민간임대주택" in normalized and "주차" in normalized
     if facet_id == "dormitory-parking-standard":
@@ -195,7 +203,9 @@ def augment_plan_with_facet_search_requests(plan: QuestionPlan) -> QuestionPlan:
     generated: list[SearchRequest] = []
     for issue in facet_plan.issues:
         issue_requests = [
-            request for request in plan.search_requests if issue.issue_id in request.issue_ids
+            request
+            for request in plan.search_requests
+            if issue.issue_id in request.issue_ids
         ]
         generated_texts: set[str] = set()
         for requirement in issue.required_facets:
@@ -231,7 +241,12 @@ def augment_plan_with_facet_search_requests(plan: QuestionPlan) -> QuestionPlan:
     return replace(plan, search_requests=tuple(search_requests))
 
 
-def _has_measure(text: str, dimension: str, *, conditional: bool | None = None) -> bool:
+def _has_measure(
+    text: str,
+    dimension: str,
+    *,
+    conditional: bool | None = None,
+) -> bool:
     for measure in extract_measures(text):
         if measure.dimension != dimension:
             continue
@@ -281,7 +296,11 @@ def _facet_matches(facet_id: str, text: str) -> bool:
         return (
             "복합" in normalized
             and "적용" in normalized
-            and ("각각" in normalized or "각 주택" in normalized or "각 주택용도" in normalized)
+            and (
+                "각각" in normalized
+                or "각 주택" in normalized
+                or "각 주택용도" in normalized
+            )
         )
     if facet_id == "semi-industrial-far-threshold":
         measures = extract_measures(text)
@@ -314,11 +333,27 @@ def _facet_matches(facet_id: str, text: str) -> bool:
     return False
 
 
+def _direct_facet_evidence_ids(
+    facet_id: str,
+    candidate: object,
+) -> tuple[str, ...]:
+    from evidence_review.retrieval.issue_bundle import IssueClauseCandidate
+
+    if not isinstance(candidate, IssueClauseCandidate):
+        raise TypeError("candidate must be IssueClauseCandidate")
+    matched = [
+        hit.evidence_id
+        for hit in candidate.evidence
+        if _facet_matches(facet_id, f"{hit.title} {hit.text}")
+    ]
+    return tuple(sorted(set(matched)))
+
+
 def evaluate_facet_coverage(
     plan: QuestionPlan,
     bundle: IssueRetrievalBundle,
 ) -> FacetCoverageReport:
-    """Require direct semantic support for every compiled issue facet."""
+    """Require clause semantics and a direct citation element for every facet."""
     facet_plan = compile_required_facets(plan)
     issues: list[IssueFacetCoverage] = []
     for issue in facet_plan.issues:
@@ -328,14 +363,18 @@ def evaluate_facet_coverage(
         for requirement in issue.required_facets:
             evidence_ids: set[str] = set()
             for candidate in bundle.candidates:
-                if not any(match.issue_id == issue.issue_id for match in candidate.matches):
+                if not any(
+                    match.issue_id == issue.issue_id for match in candidate.matches
+                ):
                     continue
                 if not _facet_matches(
                     requirement.facet_id,
                     f"{candidate.clause.title} {candidate.clause.text}",
                 ):
                     continue
-                evidence_ids.update(hit.evidence_id for hit in candidate.evidence)
+                evidence_ids.update(
+                    _direct_facet_evidence_ids(requirement.facet_id, candidate)
+                )
             evidence_tuple = tuple(sorted(evidence_ids))
             evidence_by_facet.append((requirement.facet_id, evidence_tuple))
             if evidence_tuple:
