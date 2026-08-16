@@ -89,7 +89,8 @@ def test_vague_review_procedure_does_not_cover_industrial_site_ratio_value() -> 
     report = evaluate_facet_coverage(
         _plan(),
         _bundle(
-            "공장비율 10% 이상인 경우 산업부지 확보비율은 관련 위원회 심의를 통해 완화할 수 있다."
+            "공장비율 10% 이상인 경우 산업부지 확보비율은 관련 위원회 심의를 통해 "
+            "완화할 수 있다."
         ),
     )
 
@@ -102,7 +103,8 @@ def test_direct_half_ratio_covers_industrial_site_ratio_value() -> None:
     report = evaluate_facet_coverage(
         _plan(),
         _bundle(
-            "공장비율 10% 이상인 경우 산업부지 확보비율은 관련 위원회 심의를 통해 2분의 1까지 완화할 수 있다."
+            "공장비율 10% 이상인 경우 산업부지 확보비율은 관련 위원회 심의를 통해 "
+            "2분의 1까지 완화할 수 있다."
         ),
     )
 
