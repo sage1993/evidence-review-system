@@ -22,6 +22,11 @@ from evidence_review.question_planning import (
 )
 from evidence_review.retrieval.conditional import infer_conditional_issue_ids
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
+from evidence_review.retrieval.facets import (
+    bind_facet_coverage_to_review_request,
+    evaluate_facet_coverage,
+    facet_coverage_document,
+)
 from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
 from evidence_review.retrieval.reference_projection import (
@@ -71,6 +76,7 @@ def prepare_planned_review_question(
         snapshot_hash = require_fresh_index(connection)
         provenance = evidence_snapshot_provenance(connection)
         issue_bundle = retrieve_issue_bundle(connection, effective_plan)
+        facet_report = evaluate_facet_coverage(effective_plan, issue_bundle)
         conditional_issue_ids = infer_conditional_issue_ids(
             effective_plan,
             issue_bundle,
@@ -78,6 +84,7 @@ def prepare_planned_review_question(
         coverage_report = evaluate_issue_coverage(
             effective_plan,
             issue_bundle,
+            facet_report=facet_report,
             conditional_issue_ids=conditional_issue_ids,
         )
         bundle = issue_retrieval_bundle_document(
@@ -88,11 +95,13 @@ def prepare_planned_review_question(
         bundle["snapshot_provenance"] = provenance
         bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
         bundle = apply_search_request_origins(bundle, effective_plan)
+        facet_documents = facet_coverage_document(facet_report)
         trace_document = retrieval_trace_document(
             effective_plan,
             issue_bundle,
             coverage_report,
             snapshot_provenance=provenance,
+            facet_coverage=facet_documents,
         )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
@@ -109,6 +118,10 @@ def prepare_planned_review_question(
     review_request = bind_issue_coverage_to_review_request(
         review_request,
         coverage_report,
+    )
+    review_request = bind_facet_coverage_to_review_request(
+        review_request,
+        facet_report,
     )
     review_request = apply_issue_coverage_factors(
         review_request,

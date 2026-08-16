@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from evidence_review.contracts.question_plan import EvidenceRole, QuestionPlan
+from evidence_review.retrieval.facets import FacetCoverageReport
 from evidence_review.retrieval.graph import MissingReference
 from evidence_review.retrieval.issue_bundle import IssueRetrievalBundle
 
@@ -22,6 +23,7 @@ GapCode = Literal[
     "SOURCE_NOT_INGESTED",
     "REFERENCE_TARGET_MISSING",
     "PARSE_GAP",
+    "MISSING_REQUIRED_FACET",
     "AMBIGUOUS_RULE",
     "CONFLICTING_RULES",
 ]
@@ -32,7 +34,8 @@ _GAP_ORDER: dict[GapCode, int] = {
     "SOURCE_NOT_INGESTED": 2,
     "REFERENCE_TARGET_MISSING": 3,
     "PARSE_GAP": 4,
-    "RETRIEVAL_MISS": 5,
+    "MISSING_REQUIRED_FACET": 5,
+    "RETRIEVAL_MISS": 6,
 }
 
 
@@ -106,6 +109,7 @@ def evaluate_issue_coverage(
     plan: QuestionPlan,
     bundle: IssueRetrievalBundle,
     *,
+    facet_report: FacetCoverageReport | None = None,
     reference_missing_by_issue: Mapping[str, tuple[MissingReference, ...]] | None = None,
     source_missing_issue_ids: Sequence[str] = (),
     ambiguous_issue_ids: Sequence[str] = (),
@@ -115,8 +119,8 @@ def evaluate_issue_coverage(
     """Classify every planned issue after retrieval/fallback/reference expansion.
 
     Precedence is fail-closed and deterministic:
-    conflict > ambiguity > source/reference missing > parse gap > retrieval miss
-    > complete evidence (resolved/conditional).
+    conflict > ambiguity > source/reference missing > required facet > parse gap
+    > retrieval miss > complete evidence (resolved/conditional).
     """
     reference_missing = (
         _bundle_reference_missing(bundle)
@@ -139,6 +143,10 @@ def evaluate_issue_coverage(
     unknown = sorted(supplied_ids - known_issue_ids)
     if unknown:
         raise ValueError("coverage input references unknown issue ids: " + ", ".join(unknown))
+    if facet_report is not None:
+        facet_issue_ids = {item.issue_id for item in facet_report.issues}
+        if facet_issue_ids != known_issue_ids:
+            raise ValueError("facet coverage issue ids must exactly match question plan issues")
 
     supports: list[IssueSupport] = []
     for issue in plan.issues:
@@ -149,6 +157,11 @@ def evaluate_issue_coverage(
         required = set(issue.required_evidence_roles)
         covered = required & citation_roles
         missing = required - covered
+        missing_facets = (
+            ()
+            if facet_report is None
+            else facet_report.by_issue_id(issue.id).missing_facet_ids
+        )
         gaps: list[GapCode] = []
 
         if issue.id in conflicting:
@@ -173,6 +186,9 @@ def evaluate_issue_coverage(
 
             if gaps:
                 status = "SOURCE_MISSING"
+            elif missing_facets:
+                status = "UNRESOLVED"
+                gaps.append("MISSING_REQUIRED_FACET")
             elif missing:
                 if missing & semantic_roles:
                     status = "UNRESOLVED"
