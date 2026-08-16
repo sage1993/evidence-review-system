@@ -42,7 +42,9 @@ def _snapshot(text: str) -> EvidenceSnapshot:
     )
 
 
-def test_user_fact_numeric_literal_does_not_block_rule_threshold_retrieval(tmp_path: Path) -> None:
+def test_user_fact_numeric_literal_does_not_block_rule_threshold_retrieval(
+    tmp_path: Path,
+) -> None:
     with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
         ingest_snapshot(
             store,
@@ -67,11 +69,15 @@ def test_user_fact_numeric_literal_does_not_block_rule_threshold_retrieval(tmp_p
         FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
         FallbackStage.CORE_TOKEN_AND,
     }
-    assert result.traces[0].derived_query == "역세권 승강장 경계 300m 사업대상지 면적 기준"
+    assert result.traces[0].derived_query == (
+        "역세권 승강장 경계 300m 사업대상지 면적 기준"
+    )
     assert any("300m" not in trace.derived_query for trace in result.traces[1:])
 
 
-def test_bounded_core_token_fallback_handles_entity_wording_mismatch(tmp_path: Path) -> None:
+def test_bounded_core_token_fallback_handles_entity_wording_mismatch(
+    tmp_path: Path,
+) -> None:
     with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
         ingest_snapshot(
             store,
