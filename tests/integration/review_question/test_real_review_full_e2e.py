@@ -233,7 +233,7 @@ def _assert_claim_issue_lineage(run_directory: Path, packet) -> None:
 def test_real_review_full_pipeline_reaches_finalizer_with_issue_safe_claims(
     tmp_path: Path,
 ) -> None:
-    workspace, plan, evidence_fixture, run_directory = _prepare_workspace(tmp_path)
+    _, plan, evidence_fixture, run_directory = _prepare_workspace(tmp_path)
     track_a = _track_a_output(run_directory, evidence_fixture)
     track_b = _track_b_output(track_a, run_directory.name)
     _write_manifest_bound_outputs(run_directory, track_a, track_b)
