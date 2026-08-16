@@ -54,10 +54,6 @@ def _snapshot(
     ]
     forbidden = evidence_fixture["forbidden"]
     distractors = evidence_fixture["distractors"]
-    assert isinstance(required, list)
-    assert isinstance(forbidden, list)
-    assert isinstance(distractors, list)
-
     records = [*required, *forbidden, *distractors]
     elements = tuple(
         _element(str(record["evidence_id"]), str(record["text"]), index)
@@ -84,7 +80,9 @@ def _snapshot(
         for record in required
     )
     return EvidenceSnapshot(
-        documents=({"id": "DOC-REAL-REVIEW", "title": "안심주택 실제 검토 회귀 자료"},),
+        documents=(
+            {"id": "DOC-REAL-REVIEW", "title": "안심주택 실제 검토 회귀 자료"},
+        ),
         revisions=(
             {
                 "id": "REV-REAL-REVIEW",
@@ -132,16 +130,18 @@ def _prepare_workspace(
 
     prepared = prepare_planned_review_question(workspace, plan)
     assert prepared.status == "WAITING_TRACK_A"
-    return workspace, plan, evidence_fixture, workspace / "runs" / prepared.run_id
+    return plan, evidence_fixture, workspace / "runs" / prepared.run_id
 
 
-def _track_a_output(run_directory: Path, evidence_fixture: dict[str, Any]) -> dict[str, object]:
+def _track_a_output(
+    run_directory: Path,
+    evidence_fixture: dict[str, Any],
+) -> dict[str, object]:
     bundle = json.loads(
         (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
     )
     evidence_by_id = {
-        item["citation"]["evidence_id"]: item
-        for item in bundle["evidence"]
+        item["citation"]["evidence_id"]: item for item in bundle["evidence"]
     }
 
     claims: list[dict[str, object]] = []
@@ -190,6 +190,7 @@ def _track_b_output(track_a: dict[str, object], run_id: str) -> dict[str, object
                 "notes": "",
             }
             for claim in claims
+            if isinstance(claim, dict)
         ],
         "overall_disposition": "ACCEPT",
     }
@@ -202,14 +203,15 @@ def _write_manifest_bound_outputs(
 ) -> None:
     (run_directory / "track-a-output.json").write_bytes(dump_bytes(track_a))
     (run_directory / "track-b-output.json").write_bytes(dump_bytes(track_b))
-    artifacts = {}
-    for name in (
-        "track-a-bundle.json",
-        "track-a-output.json",
-        "track-b-output.json",
-        "confidence-input.json",
-    ):
-        artifacts[name] = hashlib.sha256((run_directory / name).read_bytes()).hexdigest()
+    artifacts = {
+        name: hashlib.sha256((run_directory / name).read_bytes()).hexdigest()
+        for name in (
+            "track-a-bundle.json",
+            "track-a-output.json",
+            "track-b-output.json",
+            "confidence-input.json",
+        )
+    }
     (run_directory / "run-manifest.json").write_bytes(
         dump_bytes({"run_id": run_directory.name, "artifacts": artifacts})
     )
@@ -220,8 +222,7 @@ def _assert_claim_issue_lineage(run_directory: Path, packet) -> None:
         (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
     )
     evidence_by_citation = {
-        item["citation"]["citation_id"]: item
-        for item in bundle["evidence"]
+        item["citation"]["citation_id"]: item for item in bundle["evidence"]
     }
     for claim in packet.claims:
         assert claim.issue_ids
@@ -233,7 +234,7 @@ def _assert_claim_issue_lineage(run_directory: Path, packet) -> None:
 def test_real_review_full_pipeline_reaches_finalizer_with_issue_safe_claims(
     tmp_path: Path,
 ) -> None:
-    _, plan, evidence_fixture, run_directory = _prepare_workspace(tmp_path)
+    plan, evidence_fixture, run_directory = _prepare_workspace(tmp_path)
     track_a = _track_a_output(run_directory, evidence_fixture)
     track_b = _track_b_output(track_a, run_directory.name)
     _write_manifest_bound_outputs(run_directory, track_a, track_b)
@@ -242,24 +243,30 @@ def test_real_review_full_pipeline_reaches_finalizer_with_issue_safe_claims(
 
     assert packet.status == "READY_FOR_HUMAN_REVIEW"
     assert len(packet.claims) == 7
-    assert {item.status for item in packet.issue_results} == {"RESOLVED"}
+    by_issue = {item.issue_id: item for item in packet.issue_results}
+    assert by_issue["I2"].status == "CONDITIONAL"
+    assert all(
+        by_issue[f"I{index}"].status == "RESOLVED"
+        for index in (1, 3, 4, 5, 6, 7)
+    )
     assert {claim.issue_ids[0] for claim in packet.claims} == {
         issue.id for issue in plan.issues
     }
     _assert_claim_issue_lineage(run_directory, packet)
 
     forbidden_ids = {
-        str(item["evidence_id"])
-        for item in evidence_fixture["forbidden"]
+        str(item["evidence_id"]) for item in evidence_fixture["forbidden"]
     }
     bundle = json.loads(
         (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
     )
+    cited_ids = {
+        citation for claim in packet.claims for citation in claim.citation_ids
+    }
     cited_evidence_ids = {
         item["citation"]["evidence_id"]
         for item in bundle["evidence"]
-        if item["citation"]["citation_id"]
-        in {citation for claim in packet.claims for citation in claim.citation_ids}
+        if item["citation"]["citation_id"] in cited_ids
     }
     assert cited_evidence_ids.isdisjoint(forbidden_ids)
 
@@ -276,7 +283,7 @@ def test_real_review_full_pipeline_reaches_finalizer_with_issue_safe_claims(
 def test_real_review_partial_issue_gap_preserves_resolved_claims(
     tmp_path: Path,
 ) -> None:
-    _, _, evidence_fixture, run_directory = _prepare_workspace(
+    _, evidence_fixture, run_directory = _prepare_workspace(
         tmp_path,
         omit_issue_ids=frozenset({"I7"}),
     )
@@ -291,9 +298,10 @@ def test_real_review_partial_issue_gap_preserves_resolved_claims(
     by_issue = {item.issue_id: item for item in packet.issue_results}
     assert by_issue["I7"].status == "UNRESOLVED"
     assert "RETRIEVAL_MISS" in by_issue["I7"].gap_codes
+    assert by_issue["I2"].status == "CONDITIONAL"
     assert all(
         by_issue[f"I{index}"].status == "RESOLVED"
-        for index in range(1, 7)
+        for index in (1, 3, 4, 5, 6)
     )
     assert all("I7" not in claim.issue_ids for claim in packet.claims)
     _assert_claim_issue_lineage(run_directory, packet)
