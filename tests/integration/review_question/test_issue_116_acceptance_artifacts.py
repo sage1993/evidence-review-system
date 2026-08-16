@@ -150,10 +150,17 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
 
     coverage = {item["issue_id"]: item for item in inputs["issue_coverage"]}
     assert coverage["I2"]["status"] == "CONDITIONAL"
-    assert all(
-        coverage[f"I{index}"]["status"] == "RESOLVED"
-        for index in (1, 3, 4, 5, 6, 7)
-    )
+    unexpected_coverage = {
+        issue_id: {
+            "status": coverage[issue_id]["status"],
+            "gap_codes": coverage[issue_id].get("gap_codes", []),
+            "covered_facet_ids": coverage[issue_id].get("covered_facet_ids", []),
+            "missing_facet_ids": coverage[issue_id].get("missing_facet_ids", []),
+        }
+        for issue_id in ("I1", "I3", "I4", "I5", "I6", "I7")
+        if coverage[issue_id]["status"] != "RESOLVED"
+    }
+    assert not unexpected_coverage, unexpected_coverage
 
     facets = {item["issue_id"]: item for item in inputs["facet_coverage"]}
     assert all(
@@ -183,8 +190,7 @@ def test_issue_116_prepare_binds_facets_comparisons_and_snapshot_provenance(
     minimum_area = comparisons[("I2", "minimum-area-threshold")]
     assert minimum_area["fact_value"] == "1500"
     assert minimum_area["threshold_value"] == "1000"
-    assert minimum_area["operator"] == ">="
-    assert minimum_area["satisfied"] is True
+    assert minimum_area["operator"] == ">="n    assert minimum_area["satisfied"] is True
 
     normal_distance = comparisons[("I2", "distance-normal-threshold")]
     assert normal_distance["fact_value"] == "300"
