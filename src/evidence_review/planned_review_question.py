@@ -10,6 +10,7 @@ from evidence_review.confidence.coverage import apply_issue_coverage_factors
 from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
+from evidence_review.evidence.clause_rebuild import ensure_clause_index
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
@@ -77,6 +78,7 @@ def prepare_planned_review_question(
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
         connection = store.require_connection()
+        ensure_clause_index(connection)
         snapshot_hash = require_fresh_index(connection)
         issue_bundle = retrieve_issue_bundle(connection, effective_plan)
         coverage_report = evaluate_issue_coverage(
