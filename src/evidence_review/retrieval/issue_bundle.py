@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -310,11 +311,30 @@ def _bind_fallback_trace(
     )
 
 
+def _legacy_queries_from_fallback(
+    request: SearchRequest,
+    traces: Sequence[FallbackTrace],
+) -> tuple[str, ...]:
+    allowed = {
+        FallbackStage.FACT_DECONTAMINATED,
+        FallbackStage.APPROVED_ALIAS,
+        FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
+        FallbackStage.CORE_TOKEN_AND,
+    }
+    values = [
+        request.text,
+        *(trace.derived_query for trace in traces if trace.stage in allowed),
+        *legal_compound_queries(request.text),
+    ]
+    return tuple(dict.fromkeys(value for value in values if value))
+
+
 def _bucket_candidates(
     connection: sqlite3.Connection,
     issue: QuestionIssue,
     role: EvidenceRole,
     requests: tuple[SearchRequest, ...],
+    fact_texts: Sequence[str],
     policy: RetrievalPolicy,
 ) -> tuple[tuple[IssueClauseCandidate, ...], tuple[IssueFallbackTrace, ...]]:
     by_clause: dict[str, IssueClauseCandidate] = {}
@@ -325,11 +345,12 @@ def _bucket_candidates(
         result = search_clause_with_fallback(
             connection,
             request.text,
+            fact_texts=fact_texts,
             limit=policy.per_issue_role_limit,
         )
         traces.extend(_bind_fallback_trace(issue, request, trace) for trace in result.traces)
         if result.success_stage is None or result.successful_query is None:
-            legacy_queries = (request.text, *legal_compound_queries(request.text))
+            legacy_queries = _legacy_queries_from_fallback(request, result.traces)
             legacy_hits: tuple[RetrievalHit, ...] = ()
             legacy_query = request.text
             for candidate_query in legacy_queries:
@@ -622,6 +643,7 @@ def retrieve_issue_bundle(
             f"policy maximum is {effective_policy.max_issues}"
         )
 
+    fact_texts = tuple(fact.text for fact in plan.facts)
     buckets: list[_IssueRoleBucket] = []
     budget_drops: list[BudgetDrop] = []
     fallback_traces: list[IssueFallbackTrace] = []
@@ -638,6 +660,7 @@ def retrieve_issue_bundle(
                 issue,
                 role,
                 selected_requests,
+                fact_texts,
                 effective_policy,
             )
             fallback_traces.extend(traces)
