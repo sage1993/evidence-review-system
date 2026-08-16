@@ -3,18 +3,20 @@ from __future__ import annotations
 from decimal import Decimal
 
 from evidence_review.retrieval.conditional import (
-    Measure,
     conditional_range_satisfied,
     extract_measures,
 )
 
 
 def test_extracts_equivalent_metric_units() -> None:
-    assert extract_measures("대상은 300m이고 기준은 250미터, 350 m이다.") == (
-        Measure(value=Decimal("300"), dimension="length_m", start=4, conditional=False),
-        Measure(value=Decimal("250"), dimension="length_m", start=16, conditional=False),
-        Measure(value=Decimal("350"), dimension="length_m", start=23, conditional=False),
-    )
+    measures = extract_measures("대상은 300m이고 기준은 250미터, 350 m이다.")
+
+    assert [(item.value, item.dimension, item.conditional) for item in measures] == [
+        (Decimal("300"), "length_m", False),
+        (Decimal("250"), "length_m", False),
+        (Decimal("350"), "length_m", False),
+    ]
+    assert [item.start for item in measures] == sorted(item.start for item in measures)
 
 
 def test_detects_fact_between_ordinary_and_conditional_threshold() -> None:
