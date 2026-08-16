@@ -85,6 +85,17 @@ _GENERIC_INTENT_TOKENS = frozenset(
         "추가",
     }
 )
+_CORE_PROTECTED_SUFFIXES = (
+    "계획",
+    "심의",
+    "협의",
+    "허가",
+    "인가",
+    "승인",
+    "신고",
+    "등록",
+    "위원회",
+)
 _NUMERIC_TOKEN = re.compile(
     r"^\d[\d,]*(?:\.\d+)?(?:m2|m²|㎡|㎥|km|mm|cm|m|%|퍼센트|미터|제곱미터)?$",
     re.IGNORECASE,
@@ -172,15 +183,40 @@ def _fact_decontaminated_query(
     return _normalize_text(" ".join(kept))
 
 
-def _core_token_queries(value: str) -> tuple[str, ...]:
+def _protected_core_tokens(value: str) -> frozenset[str]:
+    """Keep explicit legal mechanisms when pruning broad core-token fallbacks.
+
+    Entity wording may legitimately differ between a user question and a source
+    clause. Procedural/mechanism anchors such as a plan, approval, review, or
+    registration are different: dropping them can turn one legal issue into an
+    unrelated generic rule. This lexical guard is intentionally generic and only
+    constrains the broad CORE_TOKEN_AND stage.
+    """
+    protected: set[str] = set()
+    for token in _tokenize(value):
+        cleaned = _clean_token(token)
+        if any(cleaned.endswith(suffix) for suffix in _CORE_PROTECTED_SUFFIXES):
+            protected.add(cleaned)
+    return frozenset(protected)
+
+
+def _core_token_queries(
+    value: str,
+    *,
+    required_tokens: Sequence[str] = (),
+) -> tuple[str, ...]:
     """Return bounded AND subsets; never emit unrestricted token-OR queries."""
     tokens = list(_tokenize(value))
     if len(tokens) <= 2:
         return ()
+    required = frozenset(_clean_token(token) for token in required_tokens)
     queries: list[str] = []
 
     def add(candidate_tokens: Sequence[str]) -> None:
         if len(candidate_tokens) < 2 or len(queries) >= _MAX_CORE_VARIANTS:
+            return
+        cleaned_tokens = frozenset(_clean_token(token) for token in candidate_tokens)
+        if not required.issubset(cleaned_tokens):
             return
         candidate = _normalize_text(" ".join(candidate_tokens))
         if candidate and candidate != _normalize_text(value) and candidate not in queries:
@@ -323,9 +359,10 @@ def search_clause_with_fallback(
                 )
             )
 
+    protected_tokens = _protected_core_tokens(normalized)
     core_queries: list[str] = []
     for base in tuple(dict.fromkeys((*bases, *compound_queries))):
-        for derived in _core_token_queries(base):
+        for derived in _core_token_queries(base, required_tokens=protected_tokens):
             if derived in core_queries:
                 continue
             core_queries.append(derived)
