@@ -22,11 +22,12 @@ def _snapshot() -> EvidenceSnapshot:
         "제13조(주차장 설치기준 완화)",
         (
             "① 사업시행자는 임대형기숙사를 제외한 안심주택인 경우 "
-            "주택건설기준 등에 관한 규정에 따라 주차장을 설치하여야 한다."
+            "「주택건설기준 등에 관한 규정」 제27조에 따라 주차장을 "
+            "설치하여야 한다."
         ),
         (
-            "② 사업시행자는 임대형기숙사인 경우 서울특별시 주차장 설치 및 "
-            "관리 조례 별표 2에 따라 주차장을 설치하여야 한다."
+            "② 사업시행자는 임대형기숙사인 경우 「서울특별시 주차장 설치 및 "
+            "관리 조례」 제20조제1항 별표 2에 따라 주차장을 설치하여야 한다."
         ),
         (
             "③ 안심주택을 복합으로 계획하는 경우 주택용도에 따라 "
@@ -34,6 +35,7 @@ def _snapshot() -> EvidenceSnapshot:
         ),
         (
             "④ 시장은 원활한 교통소통 또는 보행환경 조성을 위하여 "
+            "「국토의 계획 및 이용에 관한 법률 시행령」 제46조제6항에 따라 "
             "지구단위계획으로 주차장 설치기준을 완화하여 적용할 수 있다."
         ),
     )
@@ -166,6 +168,11 @@ def test_element_only_workspace_recovers_real_retrieval_gaps(tmp_path: Path) -> 
         support = coverage.by_issue_id(issue_id)
         assert support.evidence_ids
         assert "RETRIEVAL_MISS" not in support.gap_codes
+
+    assert coverage.by_issue_id("I2").status == "RESOLVED"
+    assert coverage.by_issue_id("I3").status == "SOURCE_MISSING"
+    assert coverage.by_issue_id("I4").status == "SOURCE_MISSING"
+    assert coverage.by_issue_id("I7").status == "SOURCE_MISSING"
 
     i2_traces = [
         trace for trace in bundle.fallback_traces if trace.issue_id == "I2"
