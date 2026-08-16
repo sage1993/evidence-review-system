@@ -86,6 +86,22 @@ def test_rejects_minimum_area_candidate_missing_minimum_area_anchor() -> None:
     assert "REJECT_REQUIRED_ANCHOR_MISSING" in decision.reason_codes
 
 
+def test_required_anchor_is_scoped_to_search_request_not_compound_issue() -> None:
+    decision = evaluate_issue_clause_relevance(
+        issue_id="I4",
+        issue_question="최소 사업면적과 용도지역 변경 조건은 무엇인가",
+        search_request_id="S5",
+        query_text="용도지역 변경 요건",
+        clause=_clause(
+            "용도지역 변경 요건",
+            "용도지역 변경 요건은 현 용도지역과 변경하려는 용도지역을 검토한다.",
+        ),
+    )
+
+    assert decision.accepted is True
+    assert "REJECT_REQUIRED_ANCHOR_MISSING" not in decision.reason_codes
+
+
 def _fallback_snapshot() -> EvidenceSnapshot:
     return EvidenceSnapshot(
         documents=({"id": "DOC-1", "title": "Fallback relevance"},),
