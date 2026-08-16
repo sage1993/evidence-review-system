@@ -9,7 +9,13 @@ from evidence_review.retrieval.graph import traverse_relations_with_provenance
 from evidence_review.retrieval.index import build_fts_index
 
 
-def _document(doc_id: str, title: str, revision_id: str, page_id: str, text: str):
+def _document(
+    doc_id: str,
+    title: str,
+    revision_id: str,
+    page_id: str,
+    text: str,
+):
     return (
         {"id": doc_id, "title": title},
         {
@@ -48,7 +54,10 @@ def _snapshot(*, include_target: bool) -> EvidenceSnapshot:
         "안심주택 조례",
         "REV-SOURCE",
         "P-SOURCE",
-        "제13조(주차장 설치기준 완화) ① 「주택건설기준 등에 관한 규정」 제27조에 따라 주차장을 설치하여야 한다.",
+        (
+            "제13조(주차장 설치기준 완화) ① 「주택건설기준 등에 관한 규정」 "
+            "제27조에 따라 주차장을 설치하여야 한다."
+        ),
     )
     values = [source]
     if include_target:
@@ -69,7 +78,9 @@ def _snapshot(*, include_target: bool) -> EvidenceSnapshot:
     )
 
 
-def test_missing_external_authority_is_source_gap_not_generic_missing_target(tmp_path: Path) -> None:
+def test_missing_external_authority_is_source_gap_not_generic_missing_target(
+    tmp_path: Path,
+) -> None:
     with EvidenceStore(tmp_path / "missing.sqlite", create=True) as store:
         ingest_snapshot(store, _snapshot(include_target=False))
         connection = store.require_connection()
@@ -87,7 +98,9 @@ def test_missing_external_authority_is_source_gap_not_generic_missing_target(tmp
     assert result.missing[0].reason_code == "SOURCE_NOT_INGESTED"
 
 
-def test_ingested_external_authority_resolves_to_citation_grade_target(tmp_path: Path) -> None:
+def test_ingested_external_authority_resolves_to_citation_grade_target(
+    tmp_path: Path,
+) -> None:
     with EvidenceStore(tmp_path / "resolved.sqlite", create=True) as store:
         ingest_snapshot(store, _snapshot(include_target=True))
         connection = store.require_connection()
