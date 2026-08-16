@@ -41,7 +41,11 @@ def _comparison() -> dict[str, object]:
     )
 
 
-def _bundle(comparison: dict[str, object]) -> TrackABundle:
+def _bundle(
+    comparison: dict[str, object],
+    *,
+    evidence_issue_ids: tuple[str, ...] = ("I2",),
+) -> TrackABundle:
     return TrackABundle(
         run_id="RUN-1",
         question="거리 검토",
@@ -50,7 +54,7 @@ def _bundle(comparison: dict[str, object]) -> TrackABundle:
             EvidenceExcerpt(
                 citation=_citation(),
                 text="승강장 경계로부터 250미터 이내를 원칙으로 한다.",
-                issue_ids=("I2",),
+                issue_ids=evidence_issue_ids,
                 role="rule",
             ),
         ),
@@ -123,8 +127,10 @@ def test_track_a_may_use_comparison_fact_value_only_with_matching_issue_and_evid
 
 
 def test_track_a_rejects_comparison_fact_value_for_different_issue() -> None:
+    bundle = _bundle(_comparison(), evidence_issue_ids=("I2", "I3"))
+
     with pytest.raises(ValueError, match="unregistered numeric token: 300"):
-        validate_track_a_integrity(_validated("I3"), _bundle(_comparison()))
+        validate_track_a_integrity(_validated("I3"), bundle)
 
 
 def test_track_a_rejects_tampered_comparison_hash() -> None:
