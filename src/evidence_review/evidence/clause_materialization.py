@@ -8,11 +8,15 @@ import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-_ARTICLE_RE = re.compile(r"^\s*(제\d+조(?:의\d+)?)(?:\s*\(([^)]*)\))?\s*(.*)$", re.DOTALL)
+_ARTICLE_RE = re.compile(
+    r"^\s*(제\d+조(?:의\d+)?)(?:\s*\(([^)]*)\))?\s*(.*)$",
+    re.DOTALL,
+)
 _OPERATION_RE = re.compile(r"^\s*(\d+(?:-\d+){1,3})\.\s*(.*)$", re.DOTALL)
 _PARAGRAPH_CHARS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 _PARAGRAPH_INDEX = {value: index + 1 for index, value in enumerate(_PARAGRAPH_CHARS)}
 _PARAGRAPH_RE = re.compile(f"([{_PARAGRAPH_CHARS}])")
+_PARAGRAPH_REFERENCE_RE = re.compile(r"제(\d+)항")
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,8 +52,8 @@ def _normalize(value: object) -> str:
 
 
 def _stable_id(prefix: str, *parts: str) -> str:
-    digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:24].upper()
-    return f"{prefix}-{digest}"
+    digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+    return f"{prefix}-{digest[:24].upper()}"
 
 
 def _paragraph_parts(value: str) -> tuple[tuple[int, str], ...]:
@@ -65,16 +69,22 @@ def _paragraph_parts(value: str) -> tuple[tuple[int, str], ...]:
     return tuple(parts)
 
 
-def _element_value(row: Mapping[str, object], key: str, default: object = "") -> object:
+def _element_value(
+    row: Mapping[str, object],
+    key: str,
+    default: object = "",
+) -> object:
     return row[key] if key in row else default
 
 
-def derive_legal_clauses(elements: Sequence[Mapping[str, object]]) -> ClauseMaterialization:
+def derive_legal_clauses(
+    elements: Sequence[Mapping[str, object]],
+) -> ClauseMaterialization:
     """Derive generic article/paragraph and operational-standard clauses.
 
-    The input is citation-grade parser output. Unrecognized prose is never promoted
-    to a standalone clause; it only extends the immediately preceding recognized
-    structural clause in the same revision.
+    Parser elements remain citation-grade source truth. Only recognized legal or
+    operational structure is promoted to semantic clauses; plain text may extend
+    a recognized structure but is never promoted independently.
     """
     ordered = sorted(
         elements,
@@ -135,9 +145,8 @@ def derive_legal_clauses(elements: Sequence[Mapping[str, object]]) -> ClauseMate
             )
             active_builder = None
             remainder = _normalize(article_match.group(3))
-            paragraph_source = remainder
             if remainder:
-                paragraph_parts = _paragraph_parts(paragraph_source)
+                paragraph_parts = _paragraph_parts(remainder)
                 if paragraph_parts:
                     for paragraph_number, paragraph_text in paragraph_parts:
                         active_builder = start_clause(
@@ -192,6 +201,17 @@ def derive_legal_clauses(elements: Sequence[Mapping[str, object]]) -> ClauseMate
             )
             continue
 
+        if current_article is not None and active_builder is None:
+            active_builder = start_clause(
+                revision_id=revision_id,
+                structural_key=current_article,
+                title=current_article_title or current_article,
+                text=raw_text,
+                source_id=element_id,
+                article_key=current_article,
+            )
+            continue
+
         if active_builder is not None:
             parts = active_builder["parts"]
             source_ids = active_builder["source_ids"]
@@ -224,7 +244,9 @@ def derive_legal_clauses(elements: Sequence[Mapping[str, object]]) -> ClauseMate
                 structural_key=structural_key,
                 source_element_ids=source_ids,
                 article_key=(
-                    None if builder["article_key"] is None else str(builder["article_key"])
+                    None
+                    if builder["article_key"] is None
+                    else str(builder["article_key"])
                 ),
             )
         )
@@ -244,7 +266,11 @@ def derive_legal_clauses(elements: Sequence[Mapping[str, object]]) -> ClauseMate
     by_article: dict[tuple[str, str], list[DerivedClause]] = {}
     for clause in clauses:
         if clause.article_key is not None:
-            by_article.setdefault((clause.revision_id, clause.article_key), []).append(clause)
+            by_article.setdefault(
+                (clause.revision_id, clause.article_key),
+                [],
+            ).append(clause)
+
     for siblings in by_article.values():
         for left, right in zip(siblings, siblings[1:], strict=False):
             links.append(
@@ -263,28 +289,56 @@ def derive_legal_clauses(elements: Sequence[Mapping[str, object]]) -> ClauseMate
                     relation_type="previous_sibling",
                 )
             )
-            left_source = left.source_element_ids[-1]
-            right_source = right.source_element_ids[0]
-            if left_source != right_source:
-                links.append(
-                    DerivedLink(
-                        id=_stable_id(
-                            "AUTO-LINK", left_source, right_source, "next_sibling"
-                        ),
-                        source_id=left_source,
-                        target_id=right_source,
-                        relation_type="next_sibling",
-                    )
-                )
-                links.append(
-                    DerivedLink(
-                        id=_stable_id(
-                            "AUTO-LINK", right_source, left_source, "previous_sibling"
-                        ),
-                        source_id=right_source,
-                        target_id=left_source,
-                        relation_type="previous_sibling",
-                    )
-                )
 
-    return ClauseMaterialization(clauses=tuple(clauses), links=tuple(links))
+        paragraph_by_number = {
+            int(clause.structural_key.rsplit("#", 1)[1]): clause
+            for clause in siblings
+            if "#" in clause.structural_key
+            and clause.structural_key.rsplit("#", 1)[1].isdigit()
+        }
+        for source_clause in siblings:
+            referenced_numbers = {
+                int(match.group(1))
+                for match in _PARAGRAPH_REFERENCE_RE.finditer(
+                    source_clause.normalized_text
+                )
+            }
+            for paragraph_number in sorted(referenced_numbers):
+                target_clause = paragraph_by_number.get(paragraph_number)
+                if target_clause is None or target_clause.id == source_clause.id:
+                    continue
+                links.append(
+                    DerivedLink(
+                        id=_stable_id(
+                            "AUTO-LINK",
+                            source_clause.id,
+                            target_clause.id,
+                            "cited_clause",
+                        ),
+                        source_id=source_clause.id,
+                        target_id=target_clause.id,
+                        relation_type="cited_clause",
+                    )
+                )
+                for source_id in source_clause.source_element_ids:
+                    for target_id in target_clause.source_element_ids:
+                        if source_id == target_id:
+                            continue
+                        links.append(
+                            DerivedLink(
+                                id=_stable_id(
+                                    "AUTO-LINK",
+                                    source_id,
+                                    target_id,
+                                    "cited_clause",
+                                ),
+                                source_id=source_id,
+                                target_id=target_id,
+                                relation_type="cited_clause",
+                            )
+                        )
+
+    return ClauseMaterialization(
+        clauses=tuple(clauses),
+        links=tuple(links),
+    )
