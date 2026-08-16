@@ -7,7 +7,7 @@ import sqlite3
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Protocol
 
@@ -97,9 +97,25 @@ _CORE_PROTECTED_SUFFIXES = (
     "위원회",
 )
 _NUMERIC_TOKEN = re.compile(
-    r"^\d[\d,]*(?:\.\d+)?(?:m2|m²|㎡|㎥|km|mm|cm|m|%|퍼센트|미터|제곱미터)?$",
+    r"^(?P<number>\d[\d,]*(?:\.\d+)?)"
+    r"(?P<unit>m2|m²|㎡|m3|㎥|km|mm|cm|m|%|퍼센트|미터|제곱미터)?$",
     re.IGNORECASE,
 )
+_UNIT_KEYS = {
+    "m": "length_m",
+    "미터": "length_m",
+    "m2": "area_m2",
+    "m²": "area_m2",
+    "㎡": "area_m2",
+    "제곱미터": "area_m2",
+    "m3": "volume_m3",
+    "㎥": "volume_m3",
+    "%": "percent",
+    "퍼센트": "percent",
+    "km": "length_km",
+    "mm": "length_mm",
+    "cm": "length_cm",
+}
 _MAX_CORE_VARIANTS = 10
 
 
@@ -148,13 +164,28 @@ def _clean_token(value: str) -> str:
     return value.strip(".,!?;:()[]{}<>\\\"'“”‘’")
 
 
+def _numeric_key(value: str) -> str | None:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    match = _NUMERIC_TOKEN.fullmatch(normalized)
+    if match is None:
+        return None
+    try:
+        number = Decimal(match.group("number").replace(",", ""))
+    except InvalidOperation:
+        return None
+    number_key = format(number.normalize(), "f")
+    unit = match.group("unit") or ""
+    unit_key = _UNIT_KEYS.get(unit, unit)
+    return f"{number_key}:{unit_key}"
+
+
 def _numeric_values(texts: Sequence[str]) -> frozenset[str]:
     values: set[str] = set()
     for text in texts:
         for token in _tokenize(text):
-            candidate = _clean_token(token)
-            if _NUMERIC_TOKEN.fullmatch(candidate):
-                values.add(candidate.casefold())
+            key = _numeric_key(_clean_token(token))
+            if key is not None:
+                values.add(key)
     return frozenset(values)
 
 
@@ -165,18 +196,11 @@ def _fact_decontaminated_query(
     tokens = list(_tokenize(value))
     removable = _numeric_values(fact_texts)
     if not removable:
-        # Planned-review callers historically supplied only the SearchRequest here.
-        # Literal/threshold-preserving stages have already run before this fallback,
-        # so a numeric token is relaxed only after the exact numeric query failed.
-        removable = frozenset(
-            _clean_token(token).casefold()
-            for token in tokens
-            if _NUMERIC_TOKEN.fullmatch(_clean_token(token))
-        )
-    if not removable:
         return None
     kept = [
-        token for token in tokens if _clean_token(token).casefold() not in removable
+        token
+        for token in tokens
+        if _numeric_key(_clean_token(token)) not in removable
     ]
     if len(kept) < 2 or len(kept) == len(tokens):
         return None
@@ -184,18 +208,26 @@ def _fact_decontaminated_query(
 
 
 def _protected_core_tokens(value: str) -> frozenset[str]:
-    """Keep explicit legal mechanisms when pruning broad core-token fallbacks.
-
-    Entity wording may legitimately differ between a user question and a source
-    clause. Procedural/mechanism anchors such as a plan, approval, review, or
-    registration are different: dropping them can turn one legal issue into an
-    unrelated generic rule. This lexical guard is intentionally generic and only
-    constrains the broad CORE_TOKEN_AND stage.
-    """
+    """Keep explicit legal mechanisms when pruning broad core-token fallbacks."""
     protected: set[str] = set()
     for token in _tokenize(value):
         cleaned = _clean_token(token)
         if any(cleaned.endswith(suffix) for suffix in _CORE_PROTECTED_SUFFIXES):
+            protected.add(cleaned)
+    return frozenset(protected)
+
+
+def _protected_numeric_tokens(
+    value: str,
+    fact_texts: Sequence[str],
+) -> frozenset[str]:
+    """Protect numeric literals unless validated user facts authorize relaxation."""
+    removable = _numeric_values(fact_texts)
+    protected: set[str] = set()
+    for token in _tokenize(value):
+        cleaned = _clean_token(token)
+        key = _numeric_key(cleaned)
+        if key is not None and key not in removable:
             protected.add(cleaned)
     return frozenset(protected)
 
@@ -359,7 +391,10 @@ def search_clause_with_fallback(
                 )
             )
 
-    protected_tokens = _protected_core_tokens(normalized)
+    protected_tokens = (
+        _protected_core_tokens(normalized)
+        | _protected_numeric_tokens(normalized, fact_texts)
+    )
     core_queries: list[str] = []
     for base in tuple(dict.fromkeys((*bases, *compound_queries))):
         for derived in _core_token_queries(base, required_tokens=protected_tokens):
