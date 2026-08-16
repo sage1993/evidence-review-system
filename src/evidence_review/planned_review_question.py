@@ -89,7 +89,7 @@ def prepare_planned_review_question(
         conditional_issue_ids = tuple(
             sorted(
                 set(infer_conditional_issue_ids(effective_plan, issue_bundle)).union(
-                    conditional_issue_ids_from_comparisons(comparisons)
+                    conditional_issue_ids_from_comparisons(comparisons, facet_report)
                 )
             )
         )
