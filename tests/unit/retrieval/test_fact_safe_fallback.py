@@ -75,6 +75,66 @@ def test_user_fact_numeric_literal_does_not_block_rule_threshold_retrieval(
     assert any("300m" not in trace.derived_query for trace in result.traces[1:])
 
 
+def test_equivalent_fact_numeric_forms_are_decontaminated(tmp_path: Path) -> None:
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot("안심주택 사업대상지 면적 기준은 1000m2 이상으로 한다."),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+
+        result = search_clause_with_fallback(
+            connection,
+            "안심주택 1500m2 사업대상지 면적 기준",
+            fact_texts=("대상 부지 면적은 1,500㎡이다.",),
+            limit=5,
+        )
+
+    assert {hit.clause_id for hit in result.hits} == {"C-1"}
+    assert any(
+        trace.stage == FallbackStage.FACT_DECONTAMINATED
+        and "1500m2" not in trace.derived_query
+        for trace in result.traces
+    )
+
+
+def test_nonfact_numeric_literal_is_never_relaxed_by_broad_fallback(
+    tmp_path: Path,
+) -> None:
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot(
+                "준공업지역 공동주택 기본용적률은 400퍼센트까지 완화할 수 있다."
+            ),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+
+        result = search_clause_with_fallback(
+            connection,
+            "준공업지역 공동주택 500% 기본용적률",
+            fact_texts=("대상 부지는 승강장 경계에서 300m 떨어져 있다.",),
+            limit=5,
+        )
+
+    assert result.hits == ()
+    assert not any(
+        trace.stage == FallbackStage.FACT_DECONTAMINATED
+        for trace in result.traces
+    )
+    assert all(
+        "500%" in trace.derived_query
+        for trace in result.traces
+        if trace.stage == FallbackStage.CORE_TOKEN_AND
+    )
+    heading = next(
+        trace for trace in result.traces if trace.stage == FallbackStage.HEADING_SCOPED
+    )
+    assert heading.hit_count == 0
+
+
 def test_bounded_core_token_fallback_handles_entity_wording_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -123,6 +183,10 @@ def test_core_fallback_does_not_drop_legal_mechanism_anchor(tmp_path: Path) -> N
         for trace in result.traces
         if trace.stage == FallbackStage.CORE_TOKEN_AND
     )
+    heading = next(
+        trace for trace in result.traces if trace.stage == FallbackStage.HEADING_SCOPED
+    )
+    assert heading.hit_count == 0
 
 
 def test_intent_pruning_removes_additional_review_noise(tmp_path: Path) -> None:
