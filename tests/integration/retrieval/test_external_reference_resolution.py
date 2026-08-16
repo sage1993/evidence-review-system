@@ -48,26 +48,28 @@ def _document(
     )
 
 
-def _snapshot(*, include_target: bool) -> EvidenceSnapshot:
+def _snapshot(
+    *,
+    source_text: str,
+    target_title: str | None = None,
+    target_text: str | None = None,
+) -> EvidenceSnapshot:
     source = _document(
         "DOC-SOURCE",
         "안심주택 조례",
         "REV-SOURCE",
         "P-SOURCE",
-        (
-            "제13조(주차장 설치기준 완화) ① 「주택건설기준 등에 관한 규정」 "
-            "제27조에 따라 주차장을 설치하여야 한다."
-        ),
+        source_text,
     )
     values = [source]
-    if include_target:
+    if target_title is not None and target_text is not None:
         values.append(
             _document(
                 "DOC-TARGET",
-                "주택건설기준 등에 관한 규정",
+                target_title,
                 "REV-TARGET",
                 "P-TARGET",
-                "제27조(주차장) 주택의 주차장 설치기준을 정한다.",
+                target_text,
             )
         )
     return EvidenceSnapshot(
@@ -78,11 +80,18 @@ def _snapshot(*, include_target: bool) -> EvidenceSnapshot:
     )
 
 
+def _article_source() -> str:
+    return (
+        "제13조(주차장 설치기준 완화) ① 「주택건설기준 등에 관한 규정」 "
+        "제27조에 따라 주차장을 설치하여야 한다."
+    )
+
+
 def test_missing_external_authority_is_source_gap_not_generic_missing_target(
     tmp_path: Path,
 ) -> None:
     with EvidenceStore(tmp_path / "missing.sqlite", create=True) as store:
-        ingest_snapshot(store, _snapshot(include_target=False))
+        ingest_snapshot(store, _snapshot(source_text=_article_source()))
         connection = store.require_connection()
         build_fts_index(connection)
         ensure_clause_index(connection)
@@ -102,7 +111,14 @@ def test_ingested_external_authority_resolves_to_citation_grade_target(
     tmp_path: Path,
 ) -> None:
     with EvidenceStore(tmp_path / "resolved.sqlite", create=True) as store:
-        ingest_snapshot(store, _snapshot(include_target=True))
+        ingest_snapshot(
+            store,
+            _snapshot(
+                source_text=_article_source(),
+                target_title="주택건설기준 등에 관한 규정",
+                target_text="제27조(주차장) 주택의 주차장 설치기준을 정한다.",
+            ),
+        )
         connection = store.require_connection()
         build_fts_index(connection)
         ensure_clause_index(connection)
@@ -116,3 +132,34 @@ def test_ingested_external_authority_resolves_to_citation_grade_target(
     assert {hit.evidence_id for hit in result.hits} == {"E-DOC-TARGET"}
     assert result.missing == ()
     assert result.paths[0].steps[0].relation_type == "rule_source"
+
+
+def test_specific_annex_reference_does_not_fall_back_to_article_only(
+    tmp_path: Path,
+) -> None:
+    source_text = (
+        "제13조(주차장 설치기준 완화) ② 「서울특별시 주차장 설치 및 관리 조례」 "
+        "제20조제1항 별표 2에 따라 주차장을 설치하여야 한다."
+    )
+    with EvidenceStore(tmp_path / "annex-missing.sqlite", create=True) as store:
+        ingest_snapshot(
+            store,
+            _snapshot(
+                source_text=source_text,
+                target_title="서울특별시 주차장 설치 및 관리 조례",
+                target_text="제20조(부설주차장) 제1항 일반적인 설치 원칙을 정한다.",
+            ),
+        )
+        connection = store.require_connection()
+        build_fts_index(connection)
+        ensure_clause_index(connection)
+
+        result = traverse_relations_with_provenance(
+            connection,
+            ("E-DOC-SOURCE",),
+            depth=1,
+        )
+
+    assert result.hits == ()
+    assert len(result.missing) == 1
+    assert result.missing[0].reason_code == "REFERENCE_TARGET_MISSING"
