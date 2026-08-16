@@ -15,7 +15,6 @@ from evidence_review.llm_layer.numeric_grammar import (
 )
 from evidence_review.llm_layer.track_a import TrackABundle, ValidatedTrackA
 
-
 _REQUIRED_COMPARISON_FIELDS = {
     "comparison_id",
     "issue_id",
@@ -269,12 +268,13 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
         if extracted != claim.numeric_tokens:
             raise ValueError(f"NUMERIC_TOKEN_MISMATCH: {claim.claim_id}")
         references = references_by_claim[claim.claim_id]
-        allowed_tokens: set[str] = _comparison_tokens_for_claim(
+        comparison_tokens = _comparison_tokens_for_claim(
             claim.issue_ids,
             claim.citation_ids,
             bundle,
             comparisons,
         )
+        allowed_tokens: set[str] = set()
         for citation_id in claim.citation_ids:
             source_text = evidence_by_citation.get(citation_id)
             if source_text is None:
@@ -285,10 +285,15 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
             if calculation is None or calculation.status != "SUCCESS":
                 raise ValueError(f"invalid calculation reference: {calculation_id}")
             allowed_tokens.update(_calculation_tokens(calculation))
-        allowed_keys = {_numeric_token_key(token) for token in allowed_tokens}
+        comparison_keys = {
+            _numeric_token_key(token) for token in comparison_tokens
+        }
         for token in claim.numeric_tokens:
-            if _numeric_token_key(token) not in allowed_keys:
-                raise ValueError(f"unregistered numeric token: {token}")
+            if token in allowed_tokens:
+                continue
+            if _numeric_token_key(token) in comparison_keys:
+                continue
+            raise ValueError(f"unregistered numeric token: {token}")
 
         for reference in references.rule_references:
             result = rule_by_id.get(reference.rule_result_id)
