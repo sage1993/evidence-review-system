@@ -112,6 +112,23 @@ def _string(value: object, field: str) -> str:
     return value
 
 
+def _numeric_token_key(value: str) -> str:
+    """Canonicalize grouping while preserving percent as a semantic unit."""
+    suffix = "%" if value.endswith("%") else ""
+    raw = value[:-1] if suffix else value
+    try:
+        normalized = format(Decimal(raw.replace(",", "")).normalize(), "f")
+    except InvalidOperation:
+        return value
+    return normalized + suffix
+
+
+def _comparison_token(value: str, unit: str) -> str:
+    if unit == "percent":
+        return f"{value}%"
+    return value
+
+
 def _comparison_documents(bundle: TrackABundle) -> tuple[_TrustedComparison, ...]:
     value = bundle.inputs.get("fact_rule_comparisons")
     if value is None:
@@ -219,8 +236,8 @@ def _comparison_tokens_for_claim(
             continue
         if not set(comparison.evidence_ids).issubset(cited_evidence_ids):
             continue
-        tokens.add(comparison.fact_value)
-        tokens.add(comparison.threshold_value)
+        tokens.add(_comparison_token(comparison.fact_value, comparison.unit))
+        tokens.add(_comparison_token(comparison.threshold_value, comparison.unit))
     return tokens
 
 
@@ -268,8 +285,9 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
             if calculation is None or calculation.status != "SUCCESS":
                 raise ValueError(f"invalid calculation reference: {calculation_id}")
             allowed_tokens.update(_calculation_tokens(calculation))
+        allowed_keys = {_numeric_token_key(token) for token in allowed_tokens}
         for token in claim.numeric_tokens:
-            if token not in allowed_tokens:
+            if _numeric_token_key(token) not in allowed_keys:
                 raise ValueError(f"unregistered numeric token: {token}")
 
         for reference in references.rule_references:
