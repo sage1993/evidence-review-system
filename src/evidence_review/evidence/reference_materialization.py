@@ -14,6 +14,9 @@ _DERIVED_REFERENCE_RELATIONS = (
     "source_not_ingested",
     "reference_target_missing",
 )
+_REFERENCE_SCAN_LIMIT = 50
+_REFERENCE_RESULT_LIMIT = 5
+_LEADING_REFERENCE_WRAPPERS = "[({<【〈《"
 
 
 def _stable_id(prefix: str, *parts: str) -> str:
@@ -24,6 +27,49 @@ def _stable_id(prefix: str, *parts: str) -> str:
 def _canonical_title(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value).casefold()
     return re.sub(r"[^0-9a-z가-힣]", "", normalized)
+
+
+def _compact_structural_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = unicodedata.normalize("NFKC", value)
+    compact = re.sub(r"\s+", "", normalized)
+    return compact.lstrip(_LEADING_REFERENCE_WRAPPERS)
+
+
+def _starts_with_structural_anchor(value: object, anchor: str) -> bool:
+    compact = _compact_structural_text(value)
+    compact_anchor = re.sub(r"\s+", "", unicodedata.normalize("NFKC", anchor))
+    if not compact.startswith(compact_anchor):
+        return False
+    suffix = compact[len(compact_anchor) :]
+    return not suffix or not suffix[0].isdigit()
+
+
+def _matches_structural_clause(
+    title: object,
+    raw_text: object,
+    normalized_text: object,
+    reference: LegalReference,
+) -> bool:
+    article = reference.article
+    if article is None:
+        return False
+    candidates = (title, normalized_text, raw_text)
+    for value in candidates:
+        if not _starts_with_structural_anchor(value, article):
+            continue
+        if reference.paragraph is None:
+            return True
+        compact = _compact_structural_text(value)
+        paragraph = re.sub(
+            r"\s+",
+            "",
+            unicodedata.normalize("NFKC", reference.paragraph),
+        )
+        if paragraph in compact:
+            return True
+    return False
 
 
 def _document_id(connection: sqlite3.Connection, authority_title: str) -> str | None:
@@ -54,34 +100,35 @@ def _target_evidence_ids(
         token = f"%{compact_annex}%"
         rows = connection.execute(
             """
-            SELECT evidence_id
+            SELECT evidence_id, title, raw_text, normalized_text
             FROM retrieval_records
             WHERE document_id = ?
               AND (
                     REPLACE(normalized_text, ' ', '') LIKE ?
+                    OR REPLACE(raw_text, ' ', '') LIKE ?
                     OR REPLACE(title, ' ', '') LIKE ?
                   )
             ORDER BY evidence_id
-            LIMIT 5
+            LIMIT ?
             """,
-            (document_id, token, token),
+            (document_id, token, token, token, _REFERENCE_SCAN_LIMIT),
         ).fetchall()
-        return tuple(str(row[0]) for row in rows)
+        matches = [
+            str(row[0])
+            for row in rows
+            if any(
+                _starts_with_structural_anchor(value, reference.annex)
+                for value in (row[1], row[2], row[3])
+            )
+        ]
+        return tuple(matches[:_REFERENCE_RESULT_LIMIT])
 
     if reference.article is not None:
         article = f"%{reference.article}%"
-        parameters: list[object] = [document_id, article, article, article]
-        paragraph_sql = ""
-        if reference.paragraph is not None:
-            paragraph = f"%{reference.paragraph}%"
-            paragraph_sql = (
-                " AND (cr.title LIKE ? OR cr.raw_text LIKE ? "
-                "OR cr.normalized_text LIKE ?)"
-            )
-            parameters.extend((paragraph, paragraph, paragraph))
         rows = connection.execute(
-            f"""
-            SELECT DISTINCT cel.evidence_id
+            """
+            SELECT DISTINCT cel.evidence_id, cr.title, cr.raw_text,
+                            cr.normalized_text
             FROM clause_retrieval_records cr
             JOIN clause_evidence_links cel ON cel.clause_id = cr.clause_id
             WHERE cr.document_id = ?
@@ -90,13 +137,23 @@ def _target_evidence_ids(
                     OR cr.raw_text LIKE ?
                     OR cr.normalized_text LIKE ?
                   )
-              {paragraph_sql}
             ORDER BY cel.evidence_id
-            LIMIT 5
+            LIMIT ?
             """,
-            tuple(parameters),
+            (
+                document_id,
+                article,
+                article,
+                article,
+                _REFERENCE_SCAN_LIMIT,
+            ),
         ).fetchall()
-        return tuple(str(row[0]) for row in rows)
+        matches = [
+            str(row[0])
+            for row in rows
+            if _matches_structural_clause(row[1], row[2], row[3], reference)
+        ]
+        return tuple(matches[:_REFERENCE_RESULT_LIMIT])
 
     return ()
 
