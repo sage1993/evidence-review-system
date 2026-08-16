@@ -134,6 +134,39 @@ def test_derives_operational_standard_numbering_without_materializing_plain_pros
     assert result.clauses[0].source_element_ids == ("E-2", "E-3")
 
 
+def test_splits_operational_hierarchy_into_bounded_leaf_subclauses() -> None:
+    result = derive_legal_clauses(
+        (
+            _element("E-1", 0, "4-4-2. 준공업지역 완화기준"),
+            _element("E-2", 1, "나. 준공업지역의 경우"),
+            _element("E-3", 2, "1) 기본용적률 및 공공기여율"),
+            _element("E-4", 3, "가) 기본용적률 : 400% 이하"),
+            _element("E-5", 4, "2) 용도별 비율 등"),
+            _element(
+                "E-6",
+                5,
+                "나) 공장비율 10% 이상인 경우 산업부지 확보비율은 2분의 1까지 완화할 수 있다.",
+            ),
+        )
+    )
+
+    by_key = {clause.structural_key: clause for clause in result.clauses}
+    assert {
+        "4-4-2",
+        "4-4-2/나",
+        "4-4-2/나/1",
+        "4-4-2/나/1/가",
+        "4-4-2/나/2",
+        "4-4-2/나/2/나",
+    }.issubset(by_key)
+    assert by_key["4-4-2/나/1/가"].source_element_ids == ("E-4",)
+    assert by_key["4-4-2/나/2/나"].source_element_ids == ("E-6",)
+    assert "400% 이하" in by_key["4-4-2/나/1/가"].normalized_text
+    assert "2분의 1까지" in by_key["4-4-2/나/2/나"].normalized_text
+    assert "산업부지" not in by_key["4-4-2/나/1/가"].normalized_text
+    assert "400%" not in by_key["4-4-2/나/2/나"].normalized_text
+
+
 def test_clause_ids_are_stable_for_identical_source_content() -> None:
     elements = (
         _element("E-1", 0, "제13조(주차장 설치기준 완화)"),
