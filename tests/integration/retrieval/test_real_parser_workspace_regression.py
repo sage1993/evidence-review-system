@@ -78,20 +78,25 @@ def _snapshot() -> EvidenceSnapshot:
     )
 
 
-def _plan():
+def _plan(*, include_distance_fact: bool = True):
     question = "역세권 300m 부지와 복합 안심주택의 주차기준을 검토해줘."
+    facts = (
+        [
+            {
+                "id": "F1",
+                "text": "대상 부지는 승강장 경계에서 300m 떨어져 있다.",
+                "polarity": "positive",
+            }
+        ]
+        if include_distance_fact
+        else []
+    )
     return decode_question_plan(
         {
             "format": "evidence-review/question-plan",
             "version": 2,
             "original_question": question,
-            "facts": [
-                {
-                    "id": "F1",
-                    "text": "대상 부지는 승강장 경계에서 300m 떨어져 있다.",
-                    "polarity": "positive",
-                }
-            ],
+            "facts": facts,
             "assumptions": [],
             "issues": [
                 {
@@ -155,8 +160,9 @@ def test_element_only_workspace_recovers_real_retrieval_gaps(tmp_path: Path) -> 
         assert connection.execute("SELECT COUNT(*) FROM clauses").fetchone() == (0,)
 
         assert ensure_clause_index(connection) is True
-        bundle = retrieve_issue_bundle(connection, _plan())
-        coverage = evaluate_issue_coverage(_plan(), bundle)
+        plan = _plan()
+        bundle = retrieve_issue_bundle(connection, plan)
+        coverage = evaluate_issue_coverage(plan, bundle)
 
         assert connection.execute("SELECT COUNT(*) FROM clauses").fetchone()[0] >= 5
         assert connection.execute(
@@ -192,3 +198,26 @@ def test_element_only_workspace_recovers_real_retrieval_gaps(tmp_path: Path) -> 
     }
     assert any("임대형기숙사" in text for text in i4_evidence)
     assert any("복합" in text for text in i4_evidence)
+
+
+def test_issue_bundle_does_not_relax_numeric_without_matching_plan_fact(
+    tmp_path: Path,
+) -> None:
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(store, _snapshot())
+        connection = store.require_connection()
+        build_fts_index(connection)
+        assert ensure_clause_index(connection) is True
+
+        plan = _plan(include_distance_fact=False)
+        bundle = retrieve_issue_bundle(connection, plan)
+        coverage = evaluate_issue_coverage(plan, bundle)
+
+    i2 = coverage.by_issue_id("I2")
+    assert i2.evidence_ids == ()
+    assert "RETRIEVAL_MISS" in i2.gap_codes
+    assert all(
+        "300m" in trace.derived_query
+        for trace in bundle.fallback_traces
+        if trace.issue_id == "I2" and trace.stage == "CORE_TOKEN_AND"
+    )
