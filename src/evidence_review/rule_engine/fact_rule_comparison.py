@@ -246,15 +246,33 @@ def bind_comparisons_to_review_request(
 
 def conditional_issue_ids_from_comparisons(
     results: tuple[FactRuleComparison, ...],
+    facet_report: FacetCoverageReport,
 ) -> tuple[str, ...]:
+    """Return conditional issues only when every other required numeric facet passes."""
     by_issue: dict[str, dict[str, bool]] = {}
     for result in results:
         by_issue.setdefault(result.issue_id, {})[result.facet_id] = result.satisfied
+
     conditional: list[str] = []
-    for issue_id, values in sorted(by_issue.items()):
-        if (
-            values.get("distance-normal-threshold") is False
-            and values.get("distance-conditional-threshold") is True
-        ):
-            conditional.append(issue_id)
+    distance_facets = {
+        "distance-normal-threshold",
+        "distance-conditional-threshold",
+    }
+    for issue in facet_report.issues:
+        required_numeric = {
+            facet_id
+            for facet_id in (*issue.covered_facet_ids, *issue.missing_facet_ids)
+            if facet_id in _COMPARISON_CONFIG
+        }
+        if not distance_facets.issubset(required_numeric):
+            continue
+        values = by_issue.get(issue.issue_id, {})
+        if values.get("distance-normal-threshold") is not False:
+            continue
+        if values.get("distance-conditional-threshold") is not True:
+            continue
+        other_required = required_numeric - distance_facets
+        if any(values.get(facet_id) is not True for facet_id in other_required):
+            continue
+        conditional.append(issue.issue_id)
     return tuple(conditional)
