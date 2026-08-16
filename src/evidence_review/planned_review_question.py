@@ -37,6 +37,10 @@ from evidence_review.review_question import (
     _write_or_identical,
     build_review_run_request,
 )
+from evidence_review.user_expansions import (
+    apply_search_request_origins,
+    plan_with_user_expansions,
+)
 
 
 def _reference_missing_by_issue(
@@ -60,39 +64,35 @@ def prepare_planned_review_question(
     rules: Sequence[object] = (),
     approved_rule_result_ids: Sequence[str] = (),
 ) -> PreparedReviewQuestion:
-    """Retrieve and prepare a run whose identity is bound to a validated QuestionPlan.
+    """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan.
 
-    Planned review execution is always issue-aware. Free-form ``user_expansions``
-    are rejected until they have an explicit issue/role binding contract; silently
-    switching to the legacy global retrieval path would bypass issue lineage and
-    relevance gates.
+    Legacy CLI ``--expansion`` values remain supported, but each manual term is
+    converted into an issue/role-bound SearchRequest before retrieval. Planned
+    review never falls back to the legacy global retrieval path.
     """
-    if user_expansions:
-        raise ValueError(
-            "planned review user_expansions must be issue-bound in QuestionPlan search_requests"
-        )
-
     normalization_timer = start_stage()
+    effective_plan = plan_with_user_expansions(question_plan, user_expansions)
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
         connection = store.require_connection()
         snapshot_hash = require_fresh_index(connection)
-        issue_bundle = retrieve_issue_bundle(connection, question_plan)
+        issue_bundle = retrieve_issue_bundle(connection, effective_plan)
         coverage_report = evaluate_issue_coverage(
-            question_plan,
+            effective_plan,
             issue_bundle,
             reference_missing_by_issue=_reference_missing_by_issue(issue_bundle),
         )
         bundle = issue_retrieval_bundle_document(
-            question_plan,
+            effective_plan,
             issue_bundle,
             snapshot_hash=snapshot_hash,
         )
         bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
+        bundle = apply_search_request_origins(bundle, effective_plan)
         trace_document = retrieval_trace_document(
-            question_plan,
+            effective_plan,
             issue_bundle,
             coverage_report,
         )
@@ -105,8 +105,8 @@ def prepare_planned_review_question(
         rules=rules,
         approved_rule_result_ids=approved_rule_result_ids,
     )
-    review_request["question"] = question_plan.original_question
-    review_request = bind_question_plan_to_review_request(review_request, question_plan)
+    review_request["question"] = effective_plan.original_question
+    review_request = bind_question_plan_to_review_request(review_request, effective_plan)
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
     review_request = bind_issue_coverage_to_review_request(
         review_request,
@@ -133,7 +133,7 @@ def prepare_planned_review_question(
 
     _write_or_identical(
         run_directory / "question-plan.json",
-        question_plan_document(question_plan),
+        question_plan_document(effective_plan),
     )
     _write_or_identical(run_directory / "evidence-query.json", bundle)
     _write_or_identical(run_directory / "retrieval-trace.json", trace_document)
