@@ -43,7 +43,7 @@ def _issue(
     )
 
 
-def test_issue_coverage_updates_existing_confidence_factors_without_changing_shape() -> None:
+def test_issue_coverage_updates_all_coverage_dependent_confidence_factors() -> None:
     report = CoverageReport(
         issues=(
             _issue("I1", "RESOLVED", covered_roles=("rule",)),
@@ -63,19 +63,50 @@ def test_issue_coverage_updates_existing_confidence_factors_without_changing_sha
         "value": "0.5000",
         "source": "issue_coverage:source_complete=1/2",
     }
+    assert factors["traceability"] == {
+        "value": "0.5000",
+        "source": "issue_coverage:traceable=1/2",
+    }
     assert factors["rule coverage"] == {
         "value": "0.5000",
         "source": "issue_coverage:required_roles=1/2",
+    }
+    assert factors["input completeness"] == {
+        "value": "0.5000",
+        "source": "issue_coverage:complete_inputs=1/2",
     }
     assert factors["parse quality"] == {
         "value": "1.0000",
         "source": "issue_coverage:parse_gap_free=2/2",
     }
+    assert factors["human review status"] == {
+        "value": "0.0000",
+        "source": "human_review:pending",
+    }
     assert factors["unresolved conflict factor"] == {
         "value": "1.0000",
         "source": "issue_coverage:conflicts=0/2",
     }
-    assert factors["traceability"] == {"value": "1.0", "source": "legacy"}
+
+
+def test_retrieval_miss_is_not_reported_as_complete_source_input() -> None:
+    report = CoverageReport(
+        issues=(
+            _issue("I1", "RESOLVED", covered_roles=("rule",)),
+            _issue(
+                "I2",
+                "UNRESOLVED",
+                missing_roles=("rule",),
+                gap_codes=("RETRIEVAL_MISS",),
+            ),
+        )
+    )
+
+    factors = apply_issue_coverage_factors(_request(), report)["confidence_input"]["factors"]
+
+    assert factors["source completeness"]["value"] == "0.5000"
+    assert factors["traceability"]["value"] == "0.5000"
+    assert factors["input completeness"]["value"] == "0.5000"
 
 
 def test_parse_gap_and_conflict_are_reflected_without_changing_policy_weights() -> None:
