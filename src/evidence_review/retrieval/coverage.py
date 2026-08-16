@@ -90,6 +90,18 @@ def _candidate_role_state(
     return semantic_roles, citation_roles, evidence_ids
 
 
+def _bundle_reference_missing(
+    bundle: IssueRetrievalBundle,
+) -> dict[str, tuple[MissingReference, ...]]:
+    grouped: dict[str, list[MissingReference]] = {}
+    for item in bundle.reference_missing:
+        grouped.setdefault(item.issue_id, []).append(item.reference)
+    return {
+        issue_id: tuple(values)
+        for issue_id, values in sorted(grouped.items())
+    }
+
+
 def evaluate_issue_coverage(
     plan: QuestionPlan,
     bundle: IssueRetrievalBundle,
@@ -106,7 +118,11 @@ def evaluate_issue_coverage(
     conflict > ambiguity > source/reference missing > parse gap > retrieval miss
     > complete evidence (resolved/conditional).
     """
-    reference_missing = reference_missing_by_issue or {}
+    reference_missing = (
+        _bundle_reference_missing(bundle)
+        if reference_missing_by_issue is None
+        else dict(reference_missing_by_issue)
+    )
     source_missing = set(source_missing_issue_ids)
     ambiguous = set(ambiguous_issue_ids)
     conflicting = set(conflicting_issue_ids)
