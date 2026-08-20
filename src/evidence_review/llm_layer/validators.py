@@ -182,7 +182,7 @@ def _validate_majority_comparison(text: str, tokens: tuple[NumericToken, ...]) -
     )
     positive_assertion = any(
         marker in text
-        for marker in ("과반이다", "과반을 충족", "과반을 넘", "과반 초과")
+        for marker in ("과반이다", "충족한다", "넘는다", "초과한다")
     )
     if negative_assertion and not relation_holds(value, "<=", "50%"):
         raise ValueError(
