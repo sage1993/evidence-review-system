@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.observability.run_metrics import load_run_metrics
@@ -221,3 +223,31 @@ def test_same_path_track_a_records_zero_retry_and_no_fileexistserror(
         stage["reason_code"] == "FILEEXISTSERROR"
         for stage in metrics["stages"]
     )
+
+
+def test_finalization_retry_does_not_repeat_validated_track_b_stage(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / prepared.run_id
+    submit_question_track_a(workspace, prepared.run_id, _track_a(run_directory))
+    external_track_b = _track_b(run_directory)
+
+    with pytest.raises(FileNotFoundError):
+        submit_question_track_b(workspace, prepared.run_id, external_track_b)
+
+    metrics_after_failure = load_run_metrics(run_directory)
+    failed_names = [stage["name"] for stage in metrics_after_failure["stages"]]
+    assert failed_names.count("track-b-external-wait") == 1
+    assert failed_names.count("track-b-validation") == 1
+    assert (run_directory / "track-b-output.json").is_file()
+
+    _page_assets(workspace)
+    finalized = submit_question_track_b(workspace, prepared.run_id, external_track_b)
+
+    assert finalized.packet_path.is_file()
+    metrics_after_retry = load_run_metrics(run_directory)
+    retry_names = [stage["name"] for stage in metrics_after_retry["stages"]]
+    assert retry_names.count("track-b-external-wait") == 1
+    assert retry_names.count("track-b-validation") == 1
