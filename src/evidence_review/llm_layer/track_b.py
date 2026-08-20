@@ -10,6 +10,7 @@ from evidence_review.contracts.review import (
     ClaimAudit,
     TrackBAudit,
 )
+from evidence_review.llm_layer.claim_lineage import validate_claim_id_issue_binding
 from evidence_review.llm_layer.track_a import ValidatedTrackA
 
 _ALLOWED_DISPOSITIONS = frozenset({"ACCEPT", "REJECT", "INCOMPLETE"})
@@ -81,6 +82,8 @@ def validate_track_b_output(value: object, track_a: ValidatedTrackA) -> TrackBAu
     run_id = _string(payload.get("run_id"), "run_id")
     if run_id != track_a.draft.run_id:
         raise ValueError("track_b run_id does not match track_a")
+    for claim in track_a.draft.claims:
+        validate_claim_id_issue_binding(claim.claim_id, claim.issue_ids)
     expected_claim_ids = {claim.claim_id for claim in track_a.draft.claims}
     if not expected_claim_ids:
         audits_value = _sequence(payload.get("claim_audits"), "claim_audits")
