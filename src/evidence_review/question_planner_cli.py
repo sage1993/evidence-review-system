@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
+from evidence_review.case_visual import prepare_case_visual_sources
 from evidence_review.llm_layer.question_planner import validate_question_planner_output
 from evidence_review.planned_review_question import prepare_planned_review_question
 from evidence_review.question_planning import (
@@ -38,6 +39,8 @@ def _prepare_parser() -> argparse.ArgumentParser:
     parser.add_argument("--calculation-result", action="append", default=[], type=Path)
     parser.add_argument("--rule-result", action="append", default=[], type=Path)
     parser.add_argument("--approved-rule-result-id", action="append", default=[])
+    parser.add_argument("--case-drawing", action="append", default=[], type=Path)
+    parser.add_argument("--supporting-image", action="append", default=[], type=Path)
     return parser
 
 
@@ -99,6 +102,11 @@ def _prepare(arguments: Sequence[str]) -> int:
             json.loads(path.read_text(encoding="utf-8")) for path in args.calculation_result
         ]
         rules = [json.loads(path.read_text(encoding="utf-8")) for path in args.rule_result]
+        visual_attachments = prepare_case_visual_sources(
+            args.workspace,
+            case_drawings=args.case_drawing,
+            supporting_images=args.supporting_image,
+        )
         result = prepare_planned_review_question(
             args.workspace,
             plan,
@@ -106,6 +114,7 @@ def _prepare(arguments: Sequence[str]) -> int:
             calculations=calculations,
             rules=rules,
             approved_rule_result_ids=args.approved_rule_result_id,
+            case_visual_attachments=visual_attachments,
         )
     except (
         FileNotFoundError,
@@ -140,6 +149,7 @@ def _prepare(arguments: Sequence[str]) -> int:
                 if result.retrieval_guidance_path is None
                 else str(result.retrieval_guidance_path)
             ),
+            "case_visual_attachment_count": len(visual_attachments),
         }
     )
     return 0

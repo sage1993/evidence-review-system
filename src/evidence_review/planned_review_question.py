@@ -6,7 +6,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
+from evidence_review.case_visual import bind_case_visual_context_to_review_request
 from evidence_review.confidence.coverage import apply_issue_coverage_factors
+from evidence_review.contracts.attachments import ImmutableAttachment
+from evidence_review.contracts.drawing import DrawingCandidate
 from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
@@ -52,12 +55,16 @@ def prepare_planned_review_question(
     calculations: Sequence[object] = (),
     rules: Sequence[object] = (),
     approved_rule_result_ids: Sequence[str] = (),
+    case_visual_attachments: Sequence[ImmutableAttachment] = (),
+    drawing_candidates: Sequence[DrawingCandidate] = (),
 ) -> PreparedReviewQuestion:
     """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan.
 
     Legacy CLI ``--expansion`` values remain supported, but each manual term is
     converted into an issue/role-bound SearchRequest before retrieval. Planned
-    review never falls back to the legacy global retrieval path.
+    review never falls back to the legacy global retrieval path. Case-specific
+    visual sources are bound under request inputs and never enter reference
+    retrieval merely because a source is a PDF.
     """
     normalization_timer = start_stage()
     effective_plan = plan_with_user_expansions(question_plan, user_expansions)
@@ -109,6 +116,11 @@ def prepare_planned_review_question(
     review_request = apply_issue_coverage_factors(
         review_request,
         coverage_report,
+    )
+    review_request = bind_case_visual_context_to_review_request(
+        review_request,
+        case_visual_attachments,
+        drawing_candidates,
     )
     request_metric = finish_stage("review-request-build", request_timer)
 
