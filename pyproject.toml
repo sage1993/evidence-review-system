@@ -49,7 +49,7 @@ addopts = ["--import-mode=importlib"]
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-extend-exclude = ["scripts/validate_workspace.py"]
+extend-exclude = ["scripts/validate_workspace.py", ".pytest-work"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

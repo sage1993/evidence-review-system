@@ -65,18 +65,38 @@ def _prepared(tmp_path: Path):
     return prepare_review_run(tmp_path / "workspace", request_path)
 
 
-def test_track_a_numeric_token_error_does_not_create_track_b_action(tmp_path: Path) -> None:
+def test_track_a_explicit_numeric_token_error_does_not_create_track_b_action(
+    tmp_path: Path,
+) -> None:
     from evidence_review.review_run import submit_track_a
 
     prepared = _prepared(tmp_path)
     output = tmp_path / "track-a.json"
-    output.write_bytes(dump_bytes(_track_a(prepared.run_id, numeric_tokens=[])))
+    output.write_bytes(dump_bytes(_track_a(prepared.run_id, numeric_tokens=["41%"])))
 
     with pytest.raises(ValueError, match="NUMERIC_TOKEN_MISMATCH"):
         submit_track_a(tmp_path / "workspace", prepared.run_id, output)
 
     assert not (prepared.run_directory / "next-action-track-b.json").exists()
     assert not (prepared.run_directory / "track-a-output.json").exists()
+
+
+def test_track_a_empty_numeric_tokens_are_inferred_and_create_track_b_action(
+    tmp_path: Path,
+) -> None:
+    from evidence_review.review_run import submit_track_a
+
+    prepared = _prepared(tmp_path)
+    output = tmp_path / "track-a.json"
+    output.write_bytes(dump_bytes(_track_a(prepared.run_id, numeric_tokens=[])))
+
+    result = submit_track_a(tmp_path / "workspace", prepared.run_id, output)
+
+    assert result.next_action_path.name == "next-action-track-b.json"
+    stored = json.loads(
+        (prepared.run_directory / "track-a-output.json").read_text(encoding="utf-8")
+    )
+    assert stored["claims"][0]["numeric_tokens"] == []
 
 
 def test_valid_track_a_creates_only_track_b_handoff(tmp_path: Path) -> None:

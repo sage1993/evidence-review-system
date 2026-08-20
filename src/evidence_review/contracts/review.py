@@ -7,7 +7,7 @@ from typing import Literal
 
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 
-FinalizerStatus = Literal["READY_FOR_HUMAN_REVIEW", "ABSTAIN"]
+FinalizerStatus = Literal["READY_FOR_HUMAN_REVIEW", "PARTIALLY_RESOLVED", "ABSTAIN"]
 HumanDecision = Literal[
     "SATISFIED",
     "NOT_SATISFIED",

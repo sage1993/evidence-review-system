@@ -126,6 +126,16 @@ def test_v2_rejects_unregistered_numeric_token() -> None:
         review_v2.decode_review_packet_v2(payload)
 
 
+def test_v2_accepts_partially_resolved_finalizer_status() -> None:
+    review_v2 = _review_v2()
+    payload = _payload()
+    payload["finalizer_status"] = "PARTIALLY_RESOLVED"
+
+    packet = review_v2.decode_review_packet_v2(payload)
+
+    assert packet.finalizer_status == "PARTIALLY_RESOLVED"
+
+
 def test_v2_document_round_trips() -> None:
     review_v2 = _review_v2()
     packet = review_v2.decode_review_packet_v2(_payload())

@@ -144,6 +144,23 @@ def _write_run(
     return run_dir
 
 
+def _mixed_issue_results() -> tuple[IssueResult, ...]:
+    return (
+        IssueResult(
+            "I1",
+            "RESOLVED",
+            evidence_ids=("E1",),
+            covered_roles=("rule",),
+        ),
+        IssueResult(
+            "I2",
+            "SOURCE_MISSING",
+            missing_roles=("rule",),
+            gap_codes=("SOURCE_NOT_INGESTED",),
+        ),
+    )
+
+
 def test_complete_run_yields_ready_packet_without_human_decision(tmp_path: Path) -> None:
     run_dir = _write_run(tmp_path)
     packet = finalize_run(run_dir)
@@ -175,30 +192,17 @@ def test_final_packet_preserves_snapshot_and_missing_input_lineage(tmp_path: Pat
     assert output["missing_inputs"] == ["청소년문화의집 적용대상 확인"]
 
 
-def test_partial_issue_coverage_stays_ready_and_preserves_issue_results(
+def test_partial_issue_coverage_yields_partial_status_and_preserves_issue_results(
     tmp_path: Path,
 ) -> None:
     packet = finalize_run(
         _write_run(
             tmp_path,
-            issue_results=(
-                IssueResult(
-                    "I1",
-                    "RESOLVED",
-                    evidence_ids=("E1",),
-                    covered_roles=("rule",),
-                ),
-                IssueResult(
-                    "I2",
-                    "SOURCE_MISSING",
-                    missing_roles=("rule",),
-                    gap_codes=("SOURCE_NOT_INGESTED",),
-                ),
-            ),
+            issue_results=_mixed_issue_results(),
         )
     )
 
-    assert packet.status == "READY_FOR_HUMAN_REVIEW"
+    assert packet.status == "PARTIALLY_RESOLVED"
     assert packet.human_decision is None
     assert packet.claims[0].issue_ids == ("I1",)
     assert [item.status for item in packet.issue_results] == [
@@ -209,7 +213,24 @@ def test_partial_issue_coverage_stays_ready_and_preserves_issue_results(
     document = json.loads(
         (tmp_path / RUN_ID / "final-review-packet.json").read_text(encoding="utf-8")
     )
+    assert document["status"] == "PARTIALLY_RESOLVED"
     assert document["issue_results"][1]["issue_id"] == "I2"
+
+
+def test_partial_issue_coverage_preserves_resolved_claim_when_track_b_is_incomplete(
+    tmp_path: Path,
+) -> None:
+    packet = finalize_run(
+        _write_run(
+            tmp_path,
+            disposition="INCOMPLETE",
+            issue_results=_mixed_issue_results(),
+        )
+    )
+
+    assert packet.status == "PARTIALLY_RESOLVED"
+    assert packet.claims[0].issue_ids == ("I1",)
+    assert "UNCITED_OR_UNRESOLVED_CLAIM" not in packet.abstention_reasons
 
 
 def test_partial_issue_coverage_does_not_suppress_rule_missing_input_hard_gate(
@@ -219,20 +240,7 @@ def test_partial_issue_coverage_does_not_suppress_rule_missing_input_hard_gate(
         _write_run(
             tmp_path,
             rule_missing_inputs=("법정 필수 입력",),
-            issue_results=(
-                IssueResult(
-                    "I1",
-                    "RESOLVED",
-                    evidence_ids=("E1",),
-                    covered_roles=("rule",),
-                ),
-                IssueResult(
-                    "I2",
-                    "SOURCE_MISSING",
-                    missing_roles=("rule",),
-                    gap_codes=("SOURCE_NOT_INGESTED",),
-                ),
-            ),
+            issue_results=_mixed_issue_results(),
         )
     )
 

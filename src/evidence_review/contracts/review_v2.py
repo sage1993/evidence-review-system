@@ -40,6 +40,7 @@ from evidence_review.contracts.validation import (
 _FORMATS = (REVIEW_PACKET_FORMAT, LEGACY_REVIEW_PACKET_FORMAT)
 _FINALIZER_STATUSES: tuple[FinalizerStatus, ...] = (
     "READY_FOR_HUMAN_REVIEW",
+    "PARTIALLY_RESOLVED",
     "ABSTAIN",
 )
 

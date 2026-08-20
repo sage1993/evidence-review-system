@@ -293,7 +293,7 @@ def test_real_review_partial_issue_gap_preserves_resolved_claims(
 
     packet = finalize_run(run_directory)
 
-    assert packet.status == "READY_FOR_HUMAN_REVIEW"
+    assert packet.status == "PARTIALLY_RESOLVED"
     assert len(packet.claims) == 6
     by_issue = {item.issue_id: item for item in packet.issue_results}
     assert by_issue["I7"].status == "UNRESOLVED"

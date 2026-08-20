@@ -9,6 +9,14 @@ from evidence_review.contracts.review import IssueResult
 _SUPPORTED_STATUSES = frozenset({"RESOLVED", "CONDITIONAL"})
 
 
+def has_partial_issue_resolution(issue_results: Sequence[IssueResult]) -> bool:
+    """Return whether determinate and unresolved issue states coexist."""
+    if not issue_results:
+        return False
+    supported = [item.status in _SUPPORTED_STATUSES for item in issue_results]
+    return any(supported) and not all(supported)
+
+
 def issue_results_require_global_abstain(
     issue_results: Sequence[IssueResult],
     *,
