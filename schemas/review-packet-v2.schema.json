@@ -33,7 +33,7 @@
     "run_id": {"type": "string", "minLength": 1},
     "case_id": {"type": "string", "minLength": 1},
     "question": {"type": "string", "minLength": 1},
-    "finalizer_status": {"enum": ["READY_FOR_HUMAN_REVIEW", "ABSTAIN"]},
+    "finalizer_status": {"enum": ["READY_FOR_HUMAN_REVIEW", "PARTIALLY_RESOLVED", "ABSTAIN"]},
     "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "rule_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "formula_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
