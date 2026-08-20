@@ -5,10 +5,11 @@ from evidence_review.contracts.question_plan import QuestionIssue, QuestionPlan
 from evidence_review.retrieval.clause_resolution import ClauseRetrievalHit
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
 from evidence_review.retrieval.facets import FacetCoverageReport, IssueFacetCoverage
-from evidence_review.retrieval.graph import MissingReference
+from evidence_review.retrieval.graph import MissingReference, ReferencePath, ReferenceStep
 from evidence_review.retrieval.issue_bundle import (
     IssueCandidateMatch,
     IssueClauseCandidate,
+    IssueReferenceMatch,
     IssueRetrievalBundle,
 )
 from evidence_review.retrieval.models import ChannelScore
@@ -129,6 +130,41 @@ def test_no_candidate_is_retrieval_miss() -> None:
     i2 = evaluate_issue_coverage(_plan(), _bundle()).by_issue_id("I2")
     assert i2.status == "UNRESOLVED"
     assert i2.gap_codes == ("RETRIEVAL_MISS",)
+
+
+def test_linked_reference_evidence_is_part_of_issue_evidence_lineage() -> None:
+    candidate = _candidate("I2", "rule", with_evidence=True)
+    reference = IssueReferenceMatch(
+        evidence_id="E-I2-linked",
+        issue_id="I2",
+        search_request_id="SR-I2-rule",
+        role="rule",
+        query_text="기준",
+        retrieval_query="기준",
+        source_evidence_id="E-I2-rule",
+        path=ReferencePath(
+            target_id="E-I2-linked",
+            steps=(
+                ReferenceStep(
+                    source_id="E-I2-rule",
+                    target_id="E-I2-linked",
+                    relation_type="cited_clause",
+                    depth=1,
+                ),
+            ),
+        ),
+    )
+    bundle = IssueRetrievalBundle(
+        candidates=(candidate,),
+        selected_evidence=(),
+        budget_drops=(),
+        reference_matches=(reference,),
+    )
+
+    i2 = evaluate_issue_coverage(_plan(), bundle).by_issue_id("I2")
+
+    assert i2.status == "RESOLVED"
+    assert i2.evidence_ids == ("E-I2-linked", "E-I2-rule")
 
 
 def test_reference_target_missing_is_source_missing_not_generic_retrieval_miss() -> None:
