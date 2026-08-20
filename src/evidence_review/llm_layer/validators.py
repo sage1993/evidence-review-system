@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 from evidence_review.llm_layer.numeric_grammar import (
@@ -22,6 +23,23 @@ _RELATION_KEYWORDS: tuple[tuple[tuple[str, ...], ComparisonOperator], ...] = (
     (("초과", "넘는다", "크다", "높다"), ">"),
     (("이상",), ">="),
 )
+_COMPARAND_UNITS = (
+    "제곱미터",
+    "퍼센트",
+    "킬로미터",
+    "밀리미터",
+    "센티미터",
+    "m²",
+    "m2",
+    "km",
+    "mm",
+    "cm",
+    "㎡",
+    "㎥",
+    "m",
+    "%",
+)
+_COMPARAND_PARTICLES = frozenset({"", "은", "는", "이", "가"})
 
 
 def _calculation_tokens(calculation: CalculationResult) -> set[str]:
@@ -113,7 +131,7 @@ def _symbolic_operator(fragment: str) -> ComparisonOperator | None:
         "≠": "!=",
     }.get(value, value)
     if normalized in {"<", "<=", "=", "!=", ">=", ">"}:
-        return normalized  # type: ignore[return-value]
+        return cast(ComparisonOperator, normalized)
     return None
 
 
@@ -124,14 +142,24 @@ def _keyword_operator(text: str) -> ComparisonOperator | None:
     return None
 
 
+def _is_direct_comparand_connector(fragment: str) -> bool:
+    """Return whether two numeric tokens are directly connected as comparands."""
+    value = fragment.strip()
+    for unit in _COMPARAND_UNITS:
+        if value.startswith(unit):
+            value = value[len(unit) :].strip()
+            break
+    return value in _COMPARAND_PARTICLES
+
+
 def _validate_two_token_comparison(text: str, tokens: tuple[NumericToken, ...]) -> None:
     if len(tokens) != 2:
         return
     between = text[tokens[0].end : tokens[1].start]
     after = text[tokens[1].end :]
     operator = _symbolic_operator(between)
-    if operator is None:
-        operator = _keyword_operator(between + after)
+    if operator is None and _is_direct_comparand_connector(between):
+        operator = _keyword_operator(after)
     if operator is None:
         return
     if not relation_holds(tokens[0].text, operator, tokens[1].text):
