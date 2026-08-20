@@ -225,6 +225,23 @@ def test_same_path_track_a_records_zero_retry_and_no_fileexistserror(
     )
 
 
+def test_track_a_success_blocks_duplicate_external_stage(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / prepared.run_id
+    external_track_a = _track_a(run_directory)
+
+    submit_question_track_a(workspace, prepared.run_id, external_track_a)
+
+    with pytest.raises(ValueError, match="not waiting for Track A"):
+        submit_question_track_a(workspace, prepared.run_id, external_track_a)
+
+    metrics = load_run_metrics(run_directory)
+    names = [stage["name"] for stage in metrics["stages"]]
+    assert names.count("track-a-external-wait") == 1
+    assert names.count("track-a-validation") == 1
+
+
 def test_finalization_retry_does_not_repeat_validated_track_b_stage(
     tmp_path: Path,
 ) -> None:
