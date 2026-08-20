@@ -359,7 +359,9 @@ def decode_review_packet(value: object) -> ReviewPacket:
     }
     _reject_unknown(payload, allowed, "review_packet")
     status = _expect_literal(
-        payload.get("status"), "status", ("READY_FOR_HUMAN_REVIEW", "ABSTAIN")
+        payload.get("status"),
+        "status",
+        ("READY_FOR_HUMAN_REVIEW", "PARTIALLY_RESOLVED", "ABSTAIN"),
     )
     claims = tuple(decode_claim(item) for item in _expect_sequence(payload.get("claims"), "claims"))
     calculations = tuple(
