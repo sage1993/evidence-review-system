@@ -4,6 +4,7 @@ from decimal import Decimal
 from evidence_review.contracts.question_plan import QuestionIssue, QuestionPlan
 from evidence_review.retrieval.clause_resolution import ClauseRetrievalHit
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
+from evidence_review.retrieval.facets import FacetCoverageReport, IssueFacetCoverage
 from evidence_review.retrieval.graph import MissingReference
 from evidence_review.retrieval.issue_bundle import (
     IssueCandidateMatch,
@@ -72,6 +73,27 @@ def _bundle(*candidates: IssueClauseCandidate) -> IssueRetrievalBundle:
         candidates=tuple(candidates),
         selected_evidence=(),
         budget_drops=(),
+    )
+
+
+def _facet_report(evidence_id: str) -> FacetCoverageReport:
+    return FacetCoverageReport(
+        issues=(
+            IssueFacetCoverage(
+                issue_id="I1",
+                covered_facet_ids=(),
+                missing_facet_ids=(),
+                evidence_by_facet=(),
+            ),
+            IssueFacetCoverage(
+                issue_id="I2",
+                covered_facet_ids=("distance-normal-threshold",),
+                missing_facet_ids=(),
+                evidence_by_facet=(
+                    ("distance-normal-threshold", (evidence_id,)),
+                ),
+            ),
+        )
     )
 
 
@@ -160,6 +182,44 @@ def test_local_citing_clause_does_not_resolve_uningested_reference_scope() -> No
     i2 = report.by_issue_id("I2")
     assert i2.status == "SOURCE_MISSING"
     assert i2.evidence_ids == ("E-I2-rule",)
+    assert i2.gap_codes == ("SOURCE_NOT_INGESTED",)
+
+
+def test_unrelated_missing_reference_does_not_taint_facet_supported_issue() -> None:
+    missing = MissingReference(
+        source_id="E-UNRELATED",
+        target_id="EXT-UNRELATED",
+        relation_type="source_not_ingested",
+        depth=1,
+        reason_code="SOURCE_NOT_INGESTED",
+    )
+    i2 = evaluate_issue_coverage(
+        _plan(),
+        _bundle(_candidate("I2", "rule", with_evidence=True)),
+        facet_report=_facet_report("E-I2-rule"),
+        reference_missing_by_issue={"I2": (missing,)},
+    ).by_issue_id("I2")
+
+    assert i2.status == "RESOLVED"
+    assert i2.gap_codes == ()
+
+
+def test_missing_reference_from_facet_evidence_remains_source_missing() -> None:
+    missing = MissingReference(
+        source_id="E-I2-rule",
+        target_id="EXT-ANNEX-2",
+        relation_type="source_not_ingested",
+        depth=1,
+        reason_code="SOURCE_NOT_INGESTED",
+    )
+    i2 = evaluate_issue_coverage(
+        _plan(),
+        _bundle(_candidate("I2", "rule", with_evidence=True)),
+        facet_report=_facet_report("E-I2-rule"),
+        reference_missing_by_issue={"I2": (missing,)},
+    ).by_issue_id("I2")
+
+    assert i2.status == "SOURCE_MISSING"
     assert i2.gap_codes == ("SOURCE_NOT_INGESTED",)
 
 
