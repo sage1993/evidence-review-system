@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
@@ -57,6 +57,8 @@ def prepare_planned_review_question(
     approved_rule_result_ids: Sequence[str] = (),
     case_visual_attachments: Sequence[ImmutableAttachment] = (),
     drawing_candidates: Sequence[DrawingCandidate] = (),
+    candidate_issue_ids: Mapping[str, Sequence[str]] | None = None,
+    visual_analysis_completed: bool = False,
 ) -> PreparedReviewQuestion:
     """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan.
 
@@ -121,6 +123,8 @@ def prepare_planned_review_question(
         review_request,
         case_visual_attachments,
         drawing_candidates,
+        candidate_issue_ids=candidate_issue_ids,
+        visual_analysis_completed=visual_analysis_completed,
     )
     request_metric = finish_stage("review-request-build", request_timer)
 

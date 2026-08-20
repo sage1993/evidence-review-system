@@ -121,9 +121,7 @@ def prepare_case_visual_sources(
     if not requested:
         return ()
 
-    descriptors = [
-        (path, _source_descriptor(path, role)) for path, role in requested
-    ]
+    descriptors = [(path, _source_descriptor(path, role)) for path, role in requested]
     case_id = _case_id([descriptor for _, descriptor in descriptors])
     case_dir = workspace / "cases" / case_id
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -164,14 +162,19 @@ def bind_case_visual_context_to_review_request(
     request: dict[str, object],
     attachments: Sequence[ImmutableAttachment],
     drawing_candidates: Sequence[DrawingCandidate] = (),
+    *,
+    candidate_issue_ids: Mapping[str, Sequence[str]] | None = None,
+    visual_analysis_completed: bool = False,
 ) -> dict[str, object]:
     """Bind case visuals to immutable request inputs without changing legacy requests."""
     attachment_items = tuple(attachments)
     candidate_items = tuple(drawing_candidates)
-    if not attachment_items and not candidate_items:
+    if not attachment_items and not candidate_items and not visual_analysis_completed:
         return request
     if not attachment_items:
-        raise ValueError("drawing candidates require at least one case visual attachment")
+        raise ValueError("case visual context requires at least one attachment")
+    if candidate_items and not visual_analysis_completed:
+        raise ValueError("drawing candidates require completed visual analysis")
 
     attachment_ids: set[str] = set()
     source_hashes: set[str] = set()
@@ -190,6 +193,17 @@ def bind_case_visual_context_to_review_request(
         if candidate.source_sha256 not in source_hashes:
             raise ValueError("drawing candidate source is not bound to this review request")
 
+    lineage_source = {} if candidate_issue_ids is None else dict(candidate_issue_ids)
+    if set(lineage_source) != candidate_ids:
+        if candidate_ids or lineage_source:
+            raise ValueError("candidate issue lineage must match drawing candidate IDs exactly")
+    lineage: list[dict[str, object]] = []
+    for candidate_id in sorted(lineage_source):
+        issue_ids = tuple(sorted(set(lineage_source[candidate_id])))
+        if not issue_ids:
+            raise ValueError("candidate issue lineage must contain at least one issue")
+        lineage.append({"candidate_id": candidate_id, "issue_ids": list(issue_ids)})
+
     inputs = dict(_mapping(request.get("inputs"), "inputs"))
     if "case_visual_context" in inputs:
         raise ValueError("case_visual_context is already bound")
@@ -203,15 +217,20 @@ def bind_case_visual_context_to_review_request(
         for item in sorted(candidate_items, key=lambda item: item.candidate_id)
     ]
     visual_status = (
-        "VISUAL_ANALYSIS_VALIDATED" if candidate_documents else "VISUAL_ANALYSIS_REQUIRED"
+        "VISUAL_ANALYSIS_VALIDATED"
+        if visual_analysis_completed
+        else "VISUAL_ANALYSIS_REQUIRED"
     )
-    reason_codes = [] if candidate_documents else ["VISUAL_ANALYSIS_REQUIRED"]
-    inputs["case_visual_context"] = {
+    reason_codes = [] if visual_analysis_completed else ["VISUAL_ANALYSIS_REQUIRED"]
+    visual_context: dict[str, object] = {
         "attachments": attachment_documents,
         "drawing_candidates": candidate_documents,
         "visual_status": visual_status,
         "reason_codes": reason_codes,
     }
+    if visual_analysis_completed:
+        visual_context["candidate_lineage"] = lineage
+    inputs["case_visual_context"] = visual_context
     bound = dict(request)
     bound["inputs"] = inputs
     return bound
