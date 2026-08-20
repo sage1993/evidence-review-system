@@ -90,15 +90,24 @@ def _binding_for_workspace(workspace: Path) -> ActiveWorkspaceBinding:
     return ActiveWorkspaceBinding(
         workspace=resolved_workspace,
         evidence_snapshot_hash=_hash_value(
-            provenance["evidence_snapshot_hash"], "evidence_snapshot_hash"
+            provenance["evidence_snapshot_hash"],
+            "evidence_snapshot_hash",
         ),
-        evidence_db_sha256=_hash_value(provenance["evidence_db_sha256"], "evidence_db_sha256"),
-        schema_version=_integer_value(provenance["schema_version"], "schema_version"),
+        evidence_db_sha256=_hash_value(
+            provenance["evidence_db_sha256"],
+            "evidence_db_sha256",
+        ),
+        schema_version=_integer_value(
+            provenance["schema_version"],
+            "schema_version",
+        ),
         retrieval_record_count=_integer_value(
-            provenance["retrieval_record_count"], "retrieval_record_count"
+            provenance["retrieval_record_count"],
+            "retrieval_record_count",
         ),
         clause_record_count=_integer_value(
-            provenance["clause_record_count"], "clause_record_count"
+            provenance["clause_record_count"],
+            "clause_record_count",
         ),
     )
 
@@ -107,7 +116,10 @@ def _write_binding(path: Path, binding: ActiveWorkspaceBinding) -> None:
     state_directory = path.parent
     state_directory.mkdir(parents=True, exist_ok=True)
     if state_directory.is_symlink():
-        raise ValueError(f"active workspace state directory must not be a symlink: {state_directory}")
+        raise ValueError(
+            "active workspace state directory must not be a symlink: "
+            f"{state_directory}"
+        )
 
     temporary_path: Path | None = None
     try:
@@ -133,7 +145,7 @@ def bind_active_workspace(
     repository_root: Path,
     workspace: Path,
 ) -> ActiveWorkspaceBinding:
-    """Atomically select one validated workspace for a later ``$ERS_REVIEW`` handoff."""
+    """Atomically select a validated workspace for ``$ERS_REVIEW``."""
     binding_path = active_workspace_binding_path(repository_root)
     binding = _binding_for_workspace(workspace)
     _write_binding(binding_path, binding)
@@ -169,25 +181,30 @@ def _decode_binding(payload: object) -> ActiveWorkspaceBinding:
     return ActiveWorkspaceBinding(
         workspace=workspace,
         evidence_snapshot_hash=_hash_value(
-            document["evidence_snapshot_hash"], "evidence_snapshot_hash"
+            document["evidence_snapshot_hash"],
+            "evidence_snapshot_hash",
         ),
-        evidence_db_sha256=_hash_value(document["evidence_db_sha256"], "evidence_db_sha256"),
-        schema_version=_integer_value(document["schema_version"], "schema_version"),
+        evidence_db_sha256=_hash_value(
+            document["evidence_db_sha256"],
+            "evidence_db_sha256",
+        ),
+        schema_version=_integer_value(
+            document["schema_version"],
+            "schema_version",
+        ),
         retrieval_record_count=_integer_value(
-            document["retrieval_record_count"], "retrieval_record_count"
+            document["retrieval_record_count"],
+            "retrieval_record_count",
         ),
         clause_record_count=_integer_value(
-            document["clause_record_count"], "clause_record_count"
+            document["clause_record_count"],
+            "clause_record_count",
         ),
     )
 
 
-def _same_binding(left: ActiveWorkspaceBinding, right: ActiveWorkspaceBinding) -> bool:
-    return left == right
-
-
 def resolve_active_workspace(repository_root: Path) -> ActiveWorkspaceBinding:
-    """Resolve and revalidate the exact active workspace without filesystem guessing."""
+    """Resolve and revalidate the active workspace without filesystem guessing."""
     binding_path = active_workspace_binding_path(repository_root)
     if binding_path.is_symlink() or not binding_path.is_file():
         raise FileNotFoundError(f"ACTIVE_WORKSPACE_NOT_BOUND: {binding_path}")
@@ -201,6 +218,8 @@ def resolve_active_workspace(repository_root: Path) -> ActiveWorkspaceBinding:
         current = _binding_for_workspace(stored.workspace)
     except (FileNotFoundError, OSError, ValueError) as error:
         raise ValueError(f"ACTIVE_WORKSPACE_STALE: {error}") from error
-    if not _same_binding(stored, current):
-        raise ValueError("ACTIVE_WORKSPACE_STALE: evidence snapshot or workspace identity changed")
+    if stored != current:
+        raise ValueError(
+            "ACTIVE_WORKSPACE_STALE: evidence snapshot or workspace identity changed"
+        )
     return current
