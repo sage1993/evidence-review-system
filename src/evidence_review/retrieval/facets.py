@@ -18,6 +18,7 @@ _RATIO_FRACTION_RE = re.compile(r"\d+\s*분의\s*\d+")
 _RATIO_PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|퍼센트)")
 _RATIO_LABEL_RE = re.compile(r"[0-9A-Za-z가-힣]+비율")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+|\n+")
+_DORMITORY_EXCLUSION_RE = re.compile(r"임대형기숙사(?:를)?\s*제외")
 _INDUSTRIAL_RATIO_MARKER = "산업부지 확보비율"
 _FACET_SEARCH_TEXT: dict[str, str] = {
     "minimum-area-threshold": "사업대상지 최소 면적",
@@ -335,7 +336,11 @@ def _facet_matches(facet_id: str, text: str) -> bool:
             or "임대형기숙사를 제외" in normalized
         )
     if facet_id == "dormitory-parking-standard":
-        return "임대형기숙사" in normalized and "주차" in normalized
+        return (
+            "임대형기숙사" in normalized
+            and "주차" in normalized
+            and _DORMITORY_EXCLUSION_RE.search(normalized) is None
+        )
     if facet_id == "mixed-use-parking-application":
         return (
             "복합" in normalized
@@ -393,6 +398,24 @@ def _direct_facet_evidence_ids(
     return tuple(sorted(set(matched)))
 
 
+def _reference_facet_evidence_ids(
+    facet_id: str,
+    issue_id: str,
+    bundle: IssueRetrievalBundle,
+) -> tuple[str, ...]:
+    selected = {hit.evidence_id: hit for hit in bundle.selected_evidence}
+    matched: set[str] = set()
+    for reference in bundle.reference_matches:
+        if reference.issue_id != issue_id:
+            continue
+        hit = selected.get(reference.evidence_id)
+        if hit is None:
+            continue
+        if _facet_matches(facet_id, f"{hit.title} {hit.text}"):
+            matched.add(hit.evidence_id)
+    return tuple(sorted(matched))
+
+
 def evaluate_facet_coverage(
     plan: QuestionPlan,
     bundle: IssueRetrievalBundle,
@@ -419,6 +442,13 @@ def evaluate_facet_coverage(
                 evidence_ids.update(
                     _direct_facet_evidence_ids(requirement.facet_id, candidate)
                 )
+            evidence_ids.update(
+                _reference_facet_evidence_ids(
+                    requirement.facet_id,
+                    issue.issue_id,
+                    bundle,
+                )
+            )
             evidence_tuple = tuple(sorted(evidence_ids))
             evidence_by_facet.append((requirement.facet_id, evidence_tuple))
             if evidence_tuple:
