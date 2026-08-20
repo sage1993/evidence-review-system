@@ -15,6 +15,7 @@ from evidence_review.review_question import (
     submit_question_track_a,
     submit_question_track_b,
 )
+from evidence_review.review_run import TrackBContractError
 
 
 def _workspace(path: Path) -> Path:
@@ -268,3 +269,28 @@ def test_finalization_retry_does_not_repeat_validated_track_b_stage(
     retry_names = [stage["name"] for stage in metrics_after_retry["stages"]]
     assert retry_names.count("track-b-external-wait") == 1
     assert retry_names.count("track-b-validation") == 1
+
+
+def test_finalization_retry_rejects_different_track_b_input(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    prepared = prepare_review_question(workspace, "주차장은 별표 2에 따른다")
+    run_directory = workspace / "runs" / prepared.run_id
+    submit_question_track_a(workspace, prepared.run_id, _track_a(run_directory))
+    external_track_b = _track_b(run_directory)
+
+    with pytest.raises(FileNotFoundError):
+        submit_question_track_b(workspace, prepared.run_id, external_track_b)
+
+    different_track_b = run_directory / "different-track-b.json"
+    document = json.loads(external_track_b.read_text(encoding="utf-8"))
+    document["overall_disposition"] = "REJECT"
+    different_track_b.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(TrackBContractError) as error_info:
+        submit_question_track_b(workspace, prepared.run_id, different_track_b)
+    assert error_info.value.reason_code == "TRACK_B_RETRY_MISMATCH"
+
+    metrics = load_run_metrics(run_directory)
+    names = [stage["name"] for stage in metrics["stages"]]
+    assert names.count("track-b-external-wait") == 1
+    assert names.count("track-b-validation") == 1

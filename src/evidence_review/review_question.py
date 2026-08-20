@@ -560,6 +560,9 @@ def submit_question_track_a(
     """Advance the journal only after Track A's full validation succeeds."""
     run_directory = workspace / "runs" / run_id
     _assert_run_evidence_snapshot(run_directory)
+    state, _action = _resume_state(run_directory)
+    if state != "WAITING_TRACK_A":
+        raise ValueError(f"review question run is not waiting for Track A: {state}")
     record_external_wait(
         run_directory,
         "track-a-external-wait",
@@ -604,6 +607,33 @@ def submit_question_track_b(
 
     if state == "FINALIZING":
         _validate_finalizing_retry_identity(run_directory, track_b_output)
+        try:
+            finalized = _existing_finalized_run(run_directory)
+        except ValueError:
+            finalized = None
+        if finalized is not None:
+            _append_event(
+                run_directory,
+                "READY_FOR_REVIEW",
+                _sha256(finalized.packet_path),
+                finalizer_status=finalized.packet.status,
+            )
+            return finalized
+        _recover_incomplete_finalization(run_directory, track_b_output)
+        result = submit_track_b(
+            workspace,
+            run_id,
+            track_b_output,
+            publish=publish,
+            prevalidated=True,
+        )
+        _append_event(
+            result.run_directory,
+            "READY_FOR_REVIEW",
+            _sha256(result.packet_path),
+            finalizer_status=result.packet.status,
+        )
+        return result
 
     record_external_wait(
         run_directory,
