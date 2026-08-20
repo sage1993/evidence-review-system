@@ -16,3 +16,6 @@ def test_ers_pdf_skill_declares_a_safe_parse_to_evidence_workflow() -> None:
     assert "PENDING_PARSER_OUTPUT" in skill
     assert "READY_TO_EVALUATE" in skill
     assert "원본" in skill and "덮어쓰" in skill
+    assert "evidence-review workspace bind" in skill
+    assert ".ers/active-workspace.json" in skill
+    assert "준비가 완료되지 않은 workspace를 active workspace로 bind" in skill
