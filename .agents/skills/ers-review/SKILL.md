@@ -13,7 +13,7 @@ description: Use when a user invokes $ERS_REVIEW or asks Codex Desktop to answer
 
 ## 사전 조건
 
-1. `$ERS_PDF`로 준비된 workspace를 사용한다.
+1. `$ERS_PDF`로 준비되고 active workspace로 bind된 workspace를 사용한다.
 2. `<workspace>/evidence/evidence.sqlite`가 있어야 한다.
 3. 인용 가능한 revision의 page image cache가 `<workspace>/page-images/<REVISION-ID>/`에 준비되어 있어야 한다.
 4. 계산이 필요한 질문은 승인된 `CalculationResult`, 규칙이 필요한 질문은 승인된 `RuleResult`를 먼저 확보한다. prose에서 새 계산값이나 규칙 결과를 만들지 않는다.
@@ -21,6 +21,21 @@ description: Use when a user invokes $ERS_REVIEW or asks Codex Desktop to answer
 사전 조건이 충족되지 않으면 질문에 답하지 말고 정확한 blocking state를 보고한다.
 
 ## 권위 흐름
+
+### 0. Active workspace 재검증
+
+`$ERS_REVIEW`를 시작할 때 filesystem에서 workspace 후보를 추측하지 않는다. 먼저 `$ERS_PDF`가 저장한 repository-local binding을 runtime으로 재검증한다.
+
+```powershell
+evidence-review workspace active `
+  --repository-root .
+```
+
+정상 상태는 `ACTIVE`다. stdout의 `workspace`, `evidence_snapshot_hash`, `evidence_db_sha256`을 이번 review의 고정 입력으로 사용하고, 이후 모든 `--workspace`에는 반환된 **동일한 workspace path**만 전달한다.
+
+`ACTIVE_WORKSPACE_NOT_BOUND`이면 임의의 workspace를 선택하지 말고 `$ERS_PDF`를 먼저 완료하도록 보고한다. `ACTIVE_WORKSPACE_STALE`이면 bind 시점 이후 evidence snapshot 또는 workspace identity가 바뀐 것이므로 review를 시작하지 말고 해당 workspace를 다시 검증·bind한다.
+
+저장소나 상위 디렉터리에서 `evidence.sqlite`를 재귀 검색하지 않는다. 수정시간이 가장 최신인 workspace, 첫 번째 검색 결과, 최근 run 경로를 active workspace 대신 선택하지 않는다. 사용자가 별도 workspace를 명시적으로 지정하더라도 그 경로를 먼저 `$ERS_PDF` 준비·검증 경계로 통과시키고 active binding을 갱신한 뒤 review를 시작한다.
 
 ### 1. Question Planner handoff 준비
 
@@ -139,6 +154,13 @@ evidence-review review-question submit-track-b `
   --publish
 ```
 
+Track B 외부 생성 루프의 종료 조건은 `submit-track-b` 검증 결과다.
+
+- Track B를 생성하기 전 현재 workflow가 `WAITING_TRACK_B`인지 확인한다. 이미 `FINALIZING`, `READY_FOR_HUMAN_REVIEW`, `ABSTAIN`이거나 canonical `track-b-output.json`/final packet이 존재하면 외부 Track B를 생성하지 않는다.
+- **`submit-track-b` 성공 응답을 받은 즉시 Track B 외부 생성 루프를 종료한다.** 성공한 attempt 번호를 증가시키거나 새 `track-b-attempt-<N+1>.json`을 만들지 않는다.
+- `track-b-attempt-<N+1>.json`은 **직전 `submit-track-b`가 검증 실패를 반환한 경우에만** 허용한다. FILEEXISTS, publication, finalizer, server, browser 오류는 Track B validation failure로 재분류하지 않는다.
+- packet/HTML 생성 후 보호 브라우저 handoff 실패는 Track B 재생성 사유가 아니다. 동일 run의 기존 packet을 사용해 `review-run serve` 단계만 복구한다.
+
 Track B 검증을 통과해 finalization이 시작되거나 최종 packet이 생성되면 **Track B 외부 호출을 다시 수행하지 않는다.** `READY_FOR_HUMAN_REVIEW` 또는 `ABSTAIN`이 반환된 뒤에는 같은 run에 대해 모델을 다시 호출하지 않고 기존 immutable artifact를 사용한다.
 
 Track B 검증을 통과하면 기존 finalizer가 `final-review-packet.json`과 `review.html`을 만든다. `READY_FOR_HUMAN_REVIEW`는 자동 승인 상태가 아니다. `ABSTAIN`은 기록된 사유를 유지한다.
@@ -158,7 +180,7 @@ evidence-review review-run serve `
 
 Detached protected review servers default to a 1800-second monotonic idle timeout. Use a finite positive override only for an explicit acceptance window; valid protected requests refresh activity and rejected requests do not.
 
-보호 URL은 `127.0.0.1`의 run-scoped token 경로다. packet/HTML 생성 이후 브라우저 handoff가 실패하면 완료로 보고하지 않는다.
+보호 URL은 `127.0.0.1`의 run-scoped token 경로다. packet/HTML 생성 이후 브라우저 handoff가 실패하면 완료로 보고하지 않는다. 이 경우 Track A/B를 다시 생성하지 않고 기존 final packet에서 browser/server handoff만 재시도한다.
 
 `--reviewer-id`를 생략한 경우 결정 저장 또는 보관 envelope 생성 시 reviewer ID를 한 번 확인한다.
 
@@ -218,6 +240,8 @@ evidence-review review-run import-decision `
 
 | 조건 | 처리 |
 |---|---|
+| `ACTIVE_WORKSPACE_NOT_BOUND` | filesystem 추측 금지, `$ERS_PDF` 선행 요구 |
+| `ACTIVE_WORKSPACE_STALE` | review 시작 금지, workspace 재검증·재bind 요구 |
 | `evidence.sqlite` 없음 | `$ERS_PDF` 선행 요구 |
 | parser/source 상태가 `PENDING_*`, `BLOCKED`, `FAILED` | 정확한 상태와 reason 보고 |
 | Planner handoff 또는 출력 누락 | `WAITING_QUESTION_PLAN` 유지, retrieval 시작 금지 |
@@ -229,11 +253,12 @@ evidence-review review-run import-decision `
 | Track B 검증 실패 | finalization 금지; 새 attempt 경로에서만 수정 |
 | Track B 검증 성공 / finalization 진입 | Track B 외부 호출 금지 |
 | packet/HTML 누락 | 브라우저 완료 주장 금지 |
-| protected URL 실패 | URL/browser handoff 실패로 보고 |
+| protected URL 실패 | Track A/B 재호출 금지, URL/browser handoff만 복구 |
 | packet hash mismatch | 결정 저장/import 거부 |
 
 ## 금지
 
+- active binding 없이 저장소에서 `evidence.sqlite`를 검색해 workspace 추측
 - Question Planner를 건너뛰고 자연어 질문 전체를 곧바로 retrieval에 전달
 - Planner 단계에서 답변·결론·적합성·confidence 생성
 - quick mode 또는 정식 검토 우회
