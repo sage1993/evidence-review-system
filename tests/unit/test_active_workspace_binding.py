@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from evidence_review.cli_handlers import dispatch
+from evidence_review.command_dispatch import main as dispatch
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.workspace_binding import (
     ACTIVE_WORKSPACE_BINDING_FORMAT,
