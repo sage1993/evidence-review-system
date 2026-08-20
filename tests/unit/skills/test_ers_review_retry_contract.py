@@ -25,3 +25,15 @@ def test_validated_success_stops_external_retries_for_that_stage() -> None:
     assert "Track A 외부 호출을 다시 수행하지 않는다" in text
     assert "Track B 외부 호출을 다시 수행하지 않는다" in text
     assert "FILEEXISTSERROR" in text
+    assert "`submit-track-b` 성공 응답을 받은 즉시" in text
+    assert "직전 `submit-track-b`가 검증 실패를 반환한 경우에만" in text
+    assert "브라우저 handoff 실패는 Track B 재생성 사유가 아니다" in text
+
+
+def test_review_skill_resolves_bound_workspace_without_filesystem_guessing() -> None:
+    text = _skill_text()
+
+    assert "evidence-review workspace active" in text
+    assert "ACTIVE_WORKSPACE_NOT_BOUND" in text
+    assert "ACTIVE_WORKSPACE_STALE" in text
+    assert "`evidence.sqlite`를 재귀 검색하지 않는다" in text
