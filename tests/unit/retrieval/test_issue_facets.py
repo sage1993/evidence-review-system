@@ -11,9 +11,11 @@ from evidence_review.retrieval.facets import (
     evaluate_facet_coverage,
 )
 from evidence_review.retrieval.fallback import FallbackStage
+from evidence_review.retrieval.graph import ReferencePath, ReferenceStep
 from evidence_review.retrieval.issue_bundle import (
     IssueCandidateMatch,
     IssueClauseCandidate,
+    IssueReferenceMatch,
     IssueRetrievalBundle,
 )
 from evidence_review.retrieval.models import ChannelScore, RetrievalHit
@@ -229,3 +231,91 @@ def test_mixed_dormitory_parking_issue_requires_base_and_mixed_application_facet
     issue = facet_report.by_issue_id("I1")
     assert "dormitory-parking-standard" in issue.covered_facet_ids
     assert "mixed-use-parking-application" in issue.missing_facet_ids
+
+
+def test_dormitory_exclusion_does_not_cover_dormitory_parking_facet() -> None:
+    plan = _plan(
+        "임대형기숙사의 주차장 설치기준은 어떤 규정에 따라 적용되는가?",
+        "임대형기숙사 주차장 설치기준 적용 규정",
+    )
+    bundle = _bundle(
+        "사업시행자는 임대형기숙사를 제외한 안심주택인 경우 별도 주차기준을 따른다.",
+        title="주차장 설치기준 완화",
+    )
+
+    issue = evaluate_facet_coverage(plan, bundle).by_issue_id("I1")
+
+    assert issue.covered_facet_ids == ()
+    assert issue.missing_facet_ids == ("dormitory-parking-standard",)
+
+
+def test_linked_dormitory_clause_is_direct_facet_evidence() -> None:
+    plan = _plan(
+        "임대형기숙사의 주차장 설치기준은 어떤 규정에 따라 적용되는가?",
+        "임대형기숙사 주차장 설치기준 적용 규정",
+    )
+    exclusion_text = (
+        "사업시행자는 임대형기숙사를 제외한 안심주택인 경우 별도 주차기준을 따른다."
+    )
+    dormitory_text = (
+        "사업시행자는 임대형기숙사인 경우 서울특별시 주차장 설치 및 관리 조례 "
+        "제20조제1항 별표 2에 따라 주차장을 설치하여야 한다."
+    )
+    clause = ClauseRetrievalHit(
+        clause_id="C-PARKING",
+        document_id="DOC-1",
+        revision_id="REV-1",
+        title="주차장 설치기준 완화",
+        text=exclusion_text,
+        channel_scores=(ChannelScore("clause_phrase", Decimal("1"), exclusion_text),),
+    )
+    match = IssueCandidateMatch(
+        search_request_id="S1",
+        issue_id="I1",
+        role="rule",
+        query_text="임대형기숙사 주차장 설치기준 적용 규정",
+        retrieval_query="임대형기숙사 주차장 설치기준 규정",
+        fallback_stage=FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
+    )
+    exclusion = _hit("E-EXCLUSION", exclusion_text, title="주차장 설치기준 완화")
+    dormitory = _hit("E-DORMITORY", dormitory_text, title="주차장 설치기준 완화")
+    reference = IssueReferenceMatch(
+        evidence_id="E-DORMITORY",
+        issue_id="I1",
+        search_request_id="S1",
+        role="rule",
+        query_text="임대형기숙사 주차장 설치기준 적용 규정",
+        retrieval_query="임대형기숙사 주차장 설치기준 규정",
+        source_evidence_id="E-EXCLUSION",
+        path=ReferencePath(
+            target_id="E-DORMITORY",
+            steps=(
+                ReferenceStep(
+                    source_id="E-EXCLUSION",
+                    target_id="E-DORMITORY",
+                    relation_type="cited_clause",
+                    depth=1,
+                ),
+            ),
+        ),
+    )
+    bundle = IssueRetrievalBundle(
+        candidates=(
+            IssueClauseCandidate(
+                clause=clause,
+                matches=(match,),
+                evidence=(exclusion,),
+            ),
+        ),
+        selected_evidence=(exclusion, dormitory),
+        budget_drops=(),
+        reference_matches=(reference,),
+    )
+
+    issue = evaluate_facet_coverage(plan, bundle).by_issue_id("I1")
+
+    assert issue.covered_facet_ids == ("dormitory-parking-standard",)
+    assert issue.missing_facet_ids == ()
+    assert issue.evidence_by_facet == (
+        ("dormitory-parking-standard", ("E-DORMITORY",)),
+    )
