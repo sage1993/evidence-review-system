@@ -27,7 +27,12 @@ from evidence_review.contracts.codecs import (
 from evidence_review.contracts.common import Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 from evidence_review.contracts.question_plan import EvidenceRole
-from evidence_review.contracts.review import ConfidenceResult, IssueResult, ReviewPacket
+from evidence_review.contracts.review import (
+    ConfidenceResult,
+    FinalizerStatus,
+    IssueResult,
+    ReviewPacket,
+)
 from evidence_review.llm_layer.track_a import (
     EvidenceExcerpt,
     TrackABundle,
@@ -396,13 +401,13 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
     lineage_fields: tuple[str, ...] = ("snapshot_sha256", "missing_inputs")
     if issue_results:
         lineage_fields += ("issue_results",)
-    status = (
-        "ABSTAIN"
-        if reasons
-        else "PARTIALLY_RESOLVED"
-        if partial_issue_resolution
-        else "READY_FOR_HUMAN_REVIEW"
-    )
+    status: FinalizerStatus
+    if reasons:
+        status = "ABSTAIN"
+    elif partial_issue_resolution:
+        status = "PARTIALLY_RESOLVED"
+    else:
+        status = "READY_FOR_HUMAN_REVIEW"
     packet = ReviewPacket(
         run_id=manifest_run_id,
         status=status,
