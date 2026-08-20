@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import cast
 
 from evidence_review.abstention.gates import AbstentionContext, evaluate_abstention_gates
-from evidence_review.abstention.issue_policy import issue_results_require_global_abstain
+from evidence_review.abstention.issue_policy import (
+    has_partial_issue_resolution,
+    issue_results_require_global_abstain,
+)
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.scorer import FactorInput, score_confidence
 from evidence_review.contracts.codecs import (
@@ -356,6 +359,7 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         sorted(track_a_missing_inputs | deterministic_rule_missing_inputs)
     )
     issue_results = _issue_results_from_inputs(bundle.inputs)
+    partial_issue_resolution = has_partial_issue_resolution(issue_results)
     finding_codes = _finding_codes(track_b_output)
     approved = set(bundle.approved_rule_result_ids)
     missing_required_input = (
@@ -366,11 +370,15 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         if issue_results
         else bool(missing_inputs)
     )
+    issue_scoped_incomplete = audit.overall_disposition == "INCOMPLETE" or bool(
+        {"CITATION_MISMATCH", "UNSUPPORTED_CLAIM", "MISSING_EXCEPTION"}
+        & finding_codes
+    )
     context = AbstentionContext(
         confidence_score=confidence.score,
         missing_required_input=missing_required_input,
-        uncited_or_unresolved_claim=audit.overall_disposition == "INCOMPLETE"
-        or bool({"CITATION_MISMATCH", "UNSUPPORTED_CLAIM", "MISSING_EXCEPTION"} & finding_codes),
+        uncited_or_unresolved_claim=issue_scoped_incomplete
+        and not partial_issue_resolution,
         unapproved_rule=any(result.rule_result_id not in approved for result in bundle.rules),
         math_engine_error=any(result.status != "SUCCESS" for result in bundle.calculations)
         or any(result.status == "ENGINE_ERROR" for result in bundle.rules),
@@ -381,14 +389,23 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         unregistered_numeric_value=False,
     )
     reasons = evaluate_abstention_gates(context)
+    if partial_issue_resolution:
+        reasons = tuple(reason for reason in reasons if reason != "LOW_CONFIDENCE")
     if reasons:
         confidence = replace(confidence, level="LOW", hard_gate_failures=reasons)
     lineage_fields: tuple[str, ...] = ("snapshot_sha256", "missing_inputs")
     if issue_results:
         lineage_fields += ("issue_results",)
+    status = (
+        "ABSTAIN"
+        if reasons
+        else "PARTIALLY_RESOLVED"
+        if partial_issue_resolution
+        else "READY_FOR_HUMAN_REVIEW"
+    )
     packet = ReviewPacket(
         run_id=manifest_run_id,
-        status="ABSTAIN" if reasons else "READY_FOR_HUMAN_REVIEW",
+        status=status,
         human_decision=None,
         question=bundle.question,
         claims=validated_a.draft.claims,
