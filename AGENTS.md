@@ -28,6 +28,8 @@ The system never makes the final human decision. `READY_FOR_HUMAN_REVIEW` means 
 - All natural-language user questions use the formal `review-question` flow and pass through Question Planner before deterministic retrieval. There is no quick mode and no whole-sentence direct-retrieval bypass.
 - Users do not hand-author QuestionPlan, query bundles, review-run requests, Track handoff metadata, packet hashes, or timestamps.
 - Question Planner may structure issues and search requests but must not answer, decide compliance/eligibility/legality, assign confidence, or create rule status.
+- `$ERS_REVIEW` must resolve the repository-local active workspace binding. Never recursively search for `evidence.sqlite`, choose the newest workspace, or guess from previous run paths.
+- Once runtime validation succeeds for Track A or Track B, that external stage is terminal for the run. Later finalizer/server/browser failures do not authorize another model call for the validated stage.
 
 ## 3. PDF preparation
 
@@ -57,7 +59,28 @@ Verified page images are revision-scoped reusable cache artifacts under:
 
 Review rendering verifies the cached image hash and PDF geometry. It must not re-render the same source page for every question.
 
+Only after parser-ready evidence ingest, required page-image verification, and `READY_TO_EVALUATE` are all satisfied, bind that exact workspace for the next formal review:
+
+```powershell
+evidence-review workspace bind `
+  --repository-root . `
+  --workspace <workspace>
+```
+
+The binding at `.ers/active-workspace.json` is local control state. It records the exact absolute workspace path and evidence snapshot identity; it does not modify source evidence. Do not bind a `PENDING_*`, `BLOCKED`, or `FAILED` workspace.
+
 ## 4. Mandatory formal question flow
+
+### 4.0 Resolve the active workspace
+
+Before Question Planner handoff, revalidate the workspace selected by `$ERS_PDF`:
+
+```powershell
+evidence-review workspace active `
+  --repository-root .
+```
+
+Use only the returned `workspace` path for every subsequent `--workspace` argument in this review. `ACTIVE_WORKSPACE_NOT_BOUND` requires `$ERS_PDF` preparation; `ACTIVE_WORKSPACE_STALE` requires workspace revalidation and rebinding. Neither state permits filesystem guessing or fallback to another evidence database.
 
 ### 4.1 Prepare the Question Planner handoff
 
@@ -120,32 +143,38 @@ A valid Plan with zero authoritative retrieval hits is `RETRIEVAL_NO_EVIDENCE`. 
 
 ### 4.3 Track A
 
-Codex reads `track-a-bundle.json` and `TRACK_A_INSTRUCTIONS.md`, writes Track A, then immediately validates it:
+Codex reads `track-a-bundle.json` and `TRACK_A_INSTRUCTIONS.md`, writes Track A to an attempt-specific path, then immediately validates it:
 
 ```powershell
 evidence-review review-question submit-track-a `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --track-a-output <track-a-output.json>
+  --track-a-output <track-a-attempt-N.json>
 ```
 
 Do not start Track B before this succeeds. Track A may explain supplied evidence and engine results but cannot create evidence, calculations, rule outcomes, confidence authority, or a human decision.
 
 When `inputs.question_plan` exists, preserve validated issues/facts/assumptions/dependencies. `inputs.retrieval_lineage` is explanatory trace only. A planner-inferred legal anchor is not citeable authority unless present in supplied evidence.
 
+If Track A validation fails, write a new attempt path and retry only that stage. Once `submit-track-a` succeeds and workflow reaches `WAITING_TRACK_B`, Track A is terminal and must not be regenerated.
+
 ### 4.4 Track B
 
-Track B independently audits every Track A claim exactly once. Then submit it:
+Track B independently audits every Track A claim exactly once per validation attempt. Write it to an attempt-specific path and submit it:
 
 ```powershell
 evidence-review review-question submit-track-b `
   --workspace <workspace> `
   --run-id <RUN-ID> `
-  --track-b-output <track-b-output.json> `
+  --track-b-output <track-b-attempt-N.json> `
   --publish
 ```
 
 Track B validation precedes finalization. A failed or incomplete Track B cannot produce a ready packet.
+
+Before external Track B generation, confirm workflow is still `WAITING_TRACK_B`. After `submit-track-b` succeeds, terminate the Track B generation loop immediately. A new `track-b-attempt-<N+1>.json` is allowed only when the immediately preceding `submit-track-b` returned a validation failure. `FILEEXISTS`, publication, finalizer, protected-server, or browser failures are not Track B validation failures and do not authorize another Track B model call.
+
+If finalization or browser handoff needs recovery after a validated Track B, reuse the canonical validated Track B and existing final artifacts. Do not regenerate Track A or Track B.
 
 `review-run prepare` and `review-run finalize` are lower-level compatibility/test interfaces. They are not the current `$ERS_REVIEW` user path.
 
@@ -164,7 +193,7 @@ Hard acceptance budgets:
 - deterministic non-model total: at most 5 seconds;
 - protected server start + browser dispatch after packet/HTML: at most 2 seconds.
 
-Only an attempt following a failed attempt of the same stage counts as a retry. External Track wait is reported separately from deterministic runtime.
+Only an attempt following a failed attempt of the same stage counts as a retry. External Track wait is reported separately from deterministic runtime. After a successful validation event for a Track stage, any later external wait event for that same stage is an orchestration defect, not a retry.
 
 ## 6. Non-developer Review Workspace
 
@@ -254,6 +283,8 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 Focused planner/review suites:
 
 ```powershell
+py -3.13 -m pytest -v tests/unit/test_active_workspace_binding.py
+py -3.13 -m pytest -v tests/unit/skills/test_ers_review_retry_contract.py
 py -3.13 -m pytest -v tests/unit/llm_layer/test_question_planner.py
 py -3.13 -m pytest -v tests/unit/llm_layer/test_question_planner_cli.py
 py -3.13 -m pytest -v tests/unit/llm_layer/test_question_planner_safety.py
