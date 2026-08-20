@@ -1,6 +1,6 @@
 # Track A — Evidence-Only Explanation
 
-Use only the supplied evidence, CalculationResult, and RuleResult artifacts.
+Use only the supplied evidence, validated case-visual candidates, CalculationResult, and RuleResult artifacts.
 Return JSON with exactly: `run_id`, `claims`, `citations`, `missing_inputs`,
 `exceptions`, `conflicts`, and `explanation`.
 
@@ -24,6 +24,26 @@ or a cross-issue citation is invalid.
 When `inputs.retrieval_lineage` is present, use it only to understand which
 validated issue/search request led to each cited evidence item. Lineage does not
 increase evidence authority or permit citation IDs outside the supplied bundle.
+
+## Case visual evidence
+
+When `inputs.case_visual_context.visual_status` is
+`VISUAL_ANALYSIS_VALIDATED`, claims may include an optional
+`drawing_candidate_ids` array. Use only candidate IDs present in
+`inputs.case_visual_context.drawing_candidates`, and only when that candidate's
+`candidate_lineage.issue_ids` overlaps the claim's `issue_ids`.
+
+Drawing candidates are case-specific visual facts. They are **not** legal or
+regulatory authority and do not replace `citation_ids`. A claim that references
+a drawing candidate must still satisfy the normal citation requirements.
+
+Do not treat `UNCONFIRMED` drawing candidates as deterministic measurements or
+as Math/Rule inputs. Do not promote visible text or dimensions into new numeric
+claims unless the exact numeric token is independently allowed by the normal
+citation/CalculationResult rules.
+
+If `visual_status` is not `VISUAL_ANALYSIS_VALIDATED`, do not reference drawing
+candidates.
 
 ## Numeric claim rules
 

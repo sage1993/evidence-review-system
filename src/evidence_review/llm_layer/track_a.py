@@ -80,6 +80,7 @@ class ClaimReferences:
     claim_id: str
     calculation_result_ids: tuple[str, ...]
     rule_references: tuple[RuleReference, ...]
+    drawing_candidate_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +148,56 @@ def _planned_issue_ids(inputs: Mapping[str, object]) -> tuple[str, ...]:
     return issue_ids
 
 
+def _visual_candidate_lineage(inputs: Mapping[str, object]) -> dict[str, tuple[str, ...]]:
+    value = inputs.get("case_visual_context")
+    if value is None:
+        return {}
+    context = _mapping(value, "inputs.case_visual_context")
+    status = _string(context.get("visual_status"), "inputs.case_visual_context.visual_status")
+    if status != "VISUAL_ANALYSIS_VALIDATED":
+        return {}
+    candidates = _sequence(
+        context.get("drawing_candidates", []),
+        "inputs.case_visual_context.drawing_candidates",
+    )
+    known_ids = {
+        _string(
+            _mapping(item, f"inputs.case_visual_context.drawing_candidates[{index}]").get(
+                "candidate_id"
+            ),
+            f"inputs.case_visual_context.drawing_candidates[{index}].candidate_id",
+        )
+        for index, item in enumerate(candidates)
+    }
+    lineage: dict[str, tuple[str, ...]] = {}
+    for index, item in enumerate(
+        _sequence(
+            context.get("candidate_lineage", []),
+            "inputs.case_visual_context.candidate_lineage",
+        )
+    ):
+        entry = _mapping(item, f"inputs.case_visual_context.candidate_lineage[{index}]")
+        if set(entry) != {"candidate_id", "issue_ids"}:
+            raise ValueError("case visual candidate lineage fields are invalid")
+        candidate_id = _string(
+            entry.get("candidate_id"),
+            f"inputs.case_visual_context.candidate_lineage[{index}].candidate_id",
+        )
+        issue_ids = _unique_string_tuple(
+            entry.get("issue_ids"),
+            f"inputs.case_visual_context.candidate_lineage[{index}].issue_ids",
+        )
+        if not issue_ids:
+            raise ValueError("case visual candidate lineage issue_ids must not be empty")
+        if candidate_id in lineage:
+            raise ValueError("duplicate case visual candidate lineage")
+        lineage[candidate_id] = tuple(sorted(issue_ids))
+    if set(lineage) != known_ids:
+        if lineage or known_ids:
+            raise ValueError("case visual candidate lineage does not match candidates")
+    return lineage
+
+
 def _lineage_by_citation(
     inputs: Mapping[str, object],
 ) -> dict[str, tuple[str, tuple[str, ...], EvidenceRole | None]]:
@@ -185,9 +236,7 @@ def _lineage_by_citation(
                 if role_text not in {"supporting_fact", "rule"}:
                     raise ValueError(f"unsupported retrieval lineage role: {role_text}")
                 roles.add(cast(EvidenceRole, role_text))
-        normalized_role: EvidenceRole | None = (
-            next(iter(roles)) if len(roles) == 1 else None
-        )
+        normalized_role: EvidenceRole | None = next(iter(roles)) if len(roles) == 1 else None
         normalized = (evidence_id, tuple(sorted(issue_ids)), normalized_role)
         existing = result.get(citation_id)
         if existing is not None and existing != normalized:
@@ -250,15 +299,14 @@ def build_track_a_bundle(
             raise ValueError(f"evidence[{index}].issue_ids must contain unique values")
         if item.role not in (None, "supporting_fact", "rule"):
             raise ValueError(f"unsupported evidence[{index}].role: {item.role}")
-    rule_items = tuple(rules)
-    calculation_items = tuple(calculations)
+    _visual_candidate_lineage(inputs)
     return TrackABundle(
         run_id=run_id,
         question=question,
         inputs=dict(inputs),
         evidence=evidence_items,
-        rules=rule_items,
-        calculations=calculation_items,
+        rules=tuple(rules),
+        calculations=tuple(calculations),
         approved_rule_result_ids=tuple(sorted(set(approved_rule_result_ids))),
     )
 
@@ -311,8 +359,23 @@ def _validate_claim_issue_relevance(
     for citation_id in citation_ids:
         evidence = evidence_by_citation[citation_id]
         if evidence.issue_ids and not claim_issue_set.intersection(evidence.issue_ids):
+            raise ValueError(f"CROSS_ISSUE_CITATION: claim {claim_id} cites {citation_id}")
+
+
+def _validate_drawing_candidate_relevance(
+    *,
+    claim_id: str,
+    claim_issue_ids: tuple[str, ...],
+    candidate_ids: tuple[str, ...],
+    candidate_lineage: Mapping[str, tuple[str, ...]],
+) -> None:
+    for candidate_id in candidate_ids:
+        issue_ids = candidate_lineage.get(candidate_id)
+        if issue_ids is None:
+            raise ValueError(f"UNKNOWN_DRAWING_CANDIDATE: {candidate_id}")
+        if not set(claim_issue_ids).intersection(issue_ids):
             raise ValueError(
-                f"CROSS_ISSUE_CITATION: claim {claim_id} cites {citation_id}"
+                f"CROSS_ISSUE_DRAWING_CANDIDATE: claim {claim_id} references {candidate_id}"
             )
 
 
@@ -335,6 +398,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
     evidence_by_citation = {item.citation.citation_id: item for item in bundle.evidence}
     known_citations = set(evidence_by_citation)
     planned_issue_ids = _planned_issue_ids(bundle.inputs)
+    candidate_lineage = _visual_candidate_lineage(bundle.inputs)
     declared_citations = _string_tuple(payload.get("citations"), "citations")
     if len(declared_citations) != len(set(declared_citations)):
         raise ValueError("track_a citations must be unique")
@@ -357,6 +421,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
             "numeric_tokens",
             "calculation_result_ids",
             "rule_references",
+            "drawing_candidate_ids",
         }
         claim_unknown = sorted(set(claim_payload) - allowed)
         if claim_unknown:
@@ -385,6 +450,16 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
             citation_ids=citation_ids,
             evidence_by_citation=evidence_by_citation,
             planned_issue_ids=planned_issue_ids,
+        )
+        drawing_candidate_ids = _unique_string_tuple(
+            claim_payload.get("drawing_candidate_ids", []),
+            f"claims[{index}].drawing_candidate_ids",
+        )
+        _validate_drawing_candidate_relevance(
+            claim_id=claim_id,
+            claim_issue_ids=issue_ids,
+            candidate_ids=drawing_candidate_ids,
+            candidate_lineage=candidate_lineage,
         )
         numeric_tokens = _string_tuple(
             claim_payload.get("numeric_tokens", []), f"claims[{index}].numeric_tokens"
@@ -418,6 +493,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
                 claim_id=claim_id,
                 calculation_result_ids=calculation_ids,
                 rule_references=rule_references,
+                drawing_candidate_ids=drawing_candidate_ids,
             )
         )
         used_citations.update(citation_ids)
