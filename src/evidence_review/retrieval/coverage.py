@@ -90,6 +90,12 @@ def _candidate_role_state(
             continue
         citation_roles.update(roles)
         evidence_ids.update(hit.evidence_id for hit in candidate.evidence)
+    for reference in bundle.reference_matches:
+        if reference.issue_id != issue_id:
+            continue
+        semantic_roles.add(reference.role)
+        citation_roles.add(reference.role)
+        evidence_ids.add(reference.evidence_id)
     return semantic_roles, citation_roles, evidence_ids
 
 
@@ -103,6 +109,21 @@ def _bundle_reference_missing(
         issue_id: tuple(values)
         for issue_id, values in sorted(grouped.items())
     }
+
+
+def _complete_facet_evidence_ids(
+    facet_report: FacetCoverageReport,
+    issue_id: str,
+) -> set[str] | None:
+    issue = facet_report.by_issue_id(issue_id)
+    if issue.missing_facet_ids:
+        return None
+    evidence_ids = {
+        evidence_id
+        for _facet_id, facet_evidence_ids in issue.evidence_by_facet
+        for evidence_id in facet_evidence_ids
+    }
+    return evidence_ids or None
 
 
 def evaluate_issue_coverage(
@@ -125,6 +146,11 @@ def evaluate_issue_coverage(
     A required facet is only meaningful after the required evidence role has
     citation-grade support. When no candidate exists, retain ``RETRIEVAL_MISS``
     rather than masking the retrieval failure as ``MISSING_REQUIRED_FACET``.
+
+    When all required facets are already supported by direct citation-grade
+    evidence, a missing external reference only taints the issue if it originates
+    from evidence that directly supports one of those facets. This prevents
+    unrelated context selected in the same issue from creating a false source gap.
     """
     reference_missing = (
         _bundle_reference_missing(bundle)
@@ -176,6 +202,17 @@ def evaluate_issue_coverage(
             gaps.append("AMBIGUOUS_RULE")
         else:
             missing_references = reference_missing.get(issue.id, ())
+            if facet_report is not None:
+                facet_evidence_ids = _complete_facet_evidence_ids(
+                    facet_report,
+                    issue.id,
+                )
+                if facet_evidence_ids is not None:
+                    missing_references = tuple(
+                        item
+                        for item in missing_references
+                        if item.source_id in facet_evidence_ids
+                    )
             if issue.id in source_missing or any(
                 item.reason_code == "SOURCE_NOT_INGESTED"
                 for item in missing_references
