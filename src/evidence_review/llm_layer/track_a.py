@@ -10,6 +10,8 @@ from evidence_review.contracts.common import Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult, RuleStatus
 from evidence_review.contracts.question_plan import EvidenceRole
 from evidence_review.contracts.review import Claim, TrackADraft
+from evidence_review.llm_layer.claim_lineage import validate_claim_id_issue_binding
+from evidence_review.llm_layer.numeric_grammar import extract_numeric_tokens
 
 _REQUIRED_SECTIONS = (
     "run_id",
@@ -300,6 +302,11 @@ def _validate_claim_issue_relevance(
         raise ValueError(
             f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}"
         )
+    validate_claim_id_issue_binding(
+        claim_id,
+        claim_issue_ids,
+        planned_issue_ids=planned_issue_ids,
+    )
     claim_issue_set = set(claim_issue_ids)
     for citation_id in citation_ids:
         evidence = evidence_by_citation[citation_id]
@@ -358,6 +365,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
         if claim_id in seen_claim_ids:
             raise ValueError(f"duplicate claim_id: {claim_id}")
         seen_claim_ids.add(claim_id)
+        claim_text = _string(claim_payload.get("text"), f"claims[{index}].text")
         citation_ids = _string_tuple(
             claim_payload.get("citation_ids"), f"claims[{index}].citation_ids"
         )
@@ -381,6 +389,8 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
         numeric_tokens = _string_tuple(
             claim_payload.get("numeric_tokens", []), f"claims[{index}].numeric_tokens"
         )
+        if not numeric_tokens:
+            numeric_tokens = extract_numeric_tokens(claim_text)
         calculation_ids = _string_tuple(
             claim_payload.get("calculation_result_ids", []),
             f"claims[{index}].calculation_result_ids",
@@ -397,7 +407,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
         claims.append(
             Claim(
                 claim_id=claim_id,
-                text=_string(claim_payload.get("text"), f"claims[{index}].text"),
+                text=claim_text,
                 citation_ids=citation_ids,
                 numeric_tokens=numeric_tokens,
                 issue_ids=issue_ids,
