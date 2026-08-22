@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
-from math import ceil, floor
+from math import ceil, floor, isfinite
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import Protocol
@@ -48,8 +48,21 @@ class PageImageSource:
     source_hash: str
 
 
-def _metadata(source: PageImageSource, page: PdfPageGeometry, image: bytes) -> dict[str, object]:
-    return {
+def _render_scale(value: float) -> float:
+    scale = float(value)
+    if not isfinite(scale) or scale <= 0:
+        raise ValueError("page image render_scale must be a positive finite number")
+    return scale
+
+
+def _metadata(
+    source: PageImageSource,
+    page: PdfPageGeometry,
+    image: bytes,
+    *,
+    render_scale: float,
+) -> dict[str, object]:
+    document: dict[str, object] = {
         "format": _PAGE_IMAGE_FORMAT,
         "version": 1,
         "revision_id": source.revision_id,
@@ -63,6 +76,9 @@ def _metadata(source: PageImageSource, page: PdfPageGeometry, image: bytes) -> d
         "box_kind": page.box_kind,
         "image_sha256": hashlib.sha256(image).hexdigest(),
     }
+    if render_scale != _RENDER_SCALE:
+        document["render_scale"] = render_scale
+    return document
 
 
 def _paths(root: Path, revision_id: str, page_number: int) -> tuple[Path, Path]:
@@ -95,6 +111,8 @@ def _load_existing(
     metadata_path: Path,
     source: PageImageSource,
     page: PdfPageGeometry,
+    *,
+    render_scale: float,
 ) -> bool:
     if not image_path.exists() and not metadata_path.exists():
         return False
@@ -105,7 +123,7 @@ def _load_existing(
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("page image cache metadata is invalid") from error
     image = image_path.read_bytes()
-    expected = _metadata(source, page, image)
+    expected = _metadata(source, page, image, render_scale=render_scale)
     if metadata.get("format") == LEGACY_PAGE_IMAGE_FORMAT:
         expected["format"] = LEGACY_PAGE_IMAGE_FORMAT
     if metadata != expected:
@@ -139,14 +157,20 @@ def _crop_bounds(
     return left_px, upper_px, right_px, lower_px
 
 
-def _render_page(source: Path, page: PdfPageGeometry, destination: Path) -> bytes:
+def _render_page(
+    source: Path,
+    page: PdfPageGeometry,
+    destination: Path,
+    *,
+    render_scale: float,
+) -> bytes:
     """Render one page in-process and crop it to the authoritative page geometry."""
     try:
         with pdfium.PdfDocument(source) as document:
             pdf_page = document[page.page_number - 1]
             try:
                 bitmap = pdf_page.render(
-                    scale=_RENDER_SCALE,
+                    scale=render_scale,
                     rev_byteorder=True,
                     prefer_bgrx=True,
                     maybe_alpha=True,
@@ -179,12 +203,20 @@ def _verify_revision(
     root: Path,
     source: PageImageSource,
     pages: tuple[PdfPageGeometry, ...],
+    *,
+    render_scale: float,
 ) -> bool:
     if sha256_file(source.source_path) != source.source_hash:
         raise ValueError("page image source hash changed")
     for page in pages:
         image_path, metadata_path = _paths(root, source.revision_id, page.page_number)
-        if not _load_existing(image_path, metadata_path, source, page):
+        if not _load_existing(
+            image_path,
+            metadata_path,
+            source,
+            page,
+            render_scale=render_scale,
+        ):
             return False
     return True
 
@@ -196,10 +228,15 @@ def _write_durable(path: Path, data: bytes) -> None:
         os.fsync(stream.fileno())
 
 
-def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
+def _cache_source(
+    root: Path,
+    source: PageImageSource,
+    *,
+    render_scale: float,
+) -> tuple[Path, ...]:
     pages = read_pdf_page_geometries(source.source_path)
     with _revision_lock(root, source.revision_id):
-        if _verify_revision(root, source, pages):
+        if _verify_revision(root, source, pages, render_scale=render_scale):
             return ()
         destination = root / source.revision_id
         if destination.exists():
@@ -208,10 +245,22 @@ def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
         try:
             for page in pages:
                 temporary_image = temporary_root / f"page-{page.page_number:04d}.png"
-                image = _render_page(source.source_path, page, temporary_image)
+                image = _render_page(
+                    source.source_path,
+                    page,
+                    temporary_image,
+                    render_scale=render_scale,
+                )
                 _write_durable(
                     temporary_root / f"page-{page.page_number:04d}.json",
-                    dump_bytes(_metadata(source, page, image)),
+                    dump_bytes(
+                        _metadata(
+                            source,
+                            page,
+                            image,
+                            render_scale=render_scale,
+                        )
+                    ),
                 )
             if sha256_file(source.source_path) != source.source_hash:
                 raise ValueError("page image source hash changed during rendering")
@@ -228,11 +277,17 @@ def _cache_source(root: Path, source: PageImageSource) -> tuple[Path, ...]:
             raise
 
 
-def cache_page_images(root: Path, sources: tuple[PageImageSource, ...]) -> tuple[Path, ...]:
+def cache_page_images(
+    root: Path,
+    sources: tuple[PageImageSource, ...],
+    *,
+    render_scale: float = _RENDER_SCALE,
+) -> tuple[Path, ...]:
     """Render every missing page after all existing caches have been verified."""
+    scale = _render_scale(render_scale)
     published: list[Path] = []
     for source in sources:
-        published.extend(_cache_source(root, source))
+        published.extend(_cache_source(root, source, render_scale=scale))
     return tuple(published)
 
 
@@ -251,9 +306,12 @@ def cache_pdf_page_images(
     source_path: Path,
     revision_id: str,
     source_hash: str,
+    *,
+    render_scale: float = _RENDER_SCALE,
 ) -> None:
     """Convenience boundary for one immutable source revision."""
     cache_page_images(
         root,
         (PageImageSource(source_path, revision_id, source_hash),),
+        render_scale=render_scale,
     )
