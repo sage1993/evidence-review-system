@@ -13,6 +13,27 @@ from evidence_review.review_packet.presentation import (
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
 
 
+_VISUAL_SHELL_STYLE = """
+<style>
+body:has(#case-visual-review){overflow:hidden}
+body:has(#case-visual-review) .app-shell{width:100%;max-width:none;height:100vh;margin:0;padding:12px}
+body:has(#case-visual-review) .review-workspace{display:block;height:100%;padding:0}
+body:has(#case-visual-review) .review-workspace>.visual-review-grid-span{height:100%;width:100%;min-width:0}
+body:has(#case-visual-review) .review-workspace>:not(.visual-review-grid-span):not(#decision-form){display:none!important}
+body:has(#case-visual-review) #case-visual-review{height:100%;min-height:0;max-height:none;margin:0}
+body:has(#case-visual-review) .process-strip{display:none!important}
+body:has(#case-visual-review) .case-visual-transform,
+body:has(#case-visual-review) .case-visual-transform img{pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
+body:has(#case-visual-review) #decision-form{position:fixed;right:0;top:50%;z-index:30;width:min(380px,calc(100vw - 48px));max-height:86vh;overflow:auto;transform:translate(calc(100% - 42px),-50%);transition:transform .16s ease;box-shadow:0 12px 32px rgba(16,24,40,.18);background:#fff}
+body:has(#case-visual-review) #decision-form:hover,
+body:has(#case-visual-review) #decision-form:focus-within{transform:translate(0,-50%)}
+body:has(#case-visual-review) #decision-form::before{content:"검토 의견";position:absolute;left:0;top:0;width:42px;height:100%;display:grid;place-items:center;writing-mode:vertical-rl;background:#f8fafc;border-right:1px solid #d0d5dd;color:#475467;font-size:11px;font-weight:700;pointer-events:none}
+body:has(#case-visual-review) #decision-form>*{margin-left:42px}
+@media(max-width:720px){body:has(#case-visual-review) .app-shell{padding:6px}body:has(#case-visual-review) #decision-form{width:min(340px,calc(100vw - 24px))}}
+</style>
+"""
+
+
 def _text(value: object) -> str:
     return "" if value is None else escape(str(value), quote=True)
 
@@ -26,11 +47,12 @@ def _visual_workspace(model: Mapping[str, object]) -> bool:
 
 
 def _visual_grid_span(visual_review: str) -> str:
-    """Make Visual Review span the full parent review-workspace grid."""
+    """Make Visual Review span and own the full parent viewport workspace."""
     if not visual_review:
         return ""
     return (
-        '<div class="visual-review-grid-span" '
+        _VISUAL_SHELL_STYLE
+        + '<div class="visual-review-grid-span" '
         'style="grid-column:1/-1;width:100%;min-width:0">'
         f"{visual_review}</div>"
     )
@@ -100,12 +122,17 @@ def render_summary(model: Mapping[str, object]) -> str:
 
 def render_additional_review(model: Mapping[str, object]) -> str:
     visual_review = _visual_grid_span(render_case_visual_review(model))
+    if visual_review:
+        # In Visual Review mode the #119 workspace owns the screen. Missing inputs and
+        # comparison boundaries are represented inside Findings rather than duplicated
+        # in the legacy additional-review strip below the viewer.
+        return visual_review
     items = additional_review_items(model)
     if not items:
-        return visual_review
+        return ""
     first = _text(items[0])
     entries = "".join(f"<li>{_text(item)}</li>" for item in items)
-    additional = "".join(
+    return "".join(
         (
             '<section id="additional-review" aria-labelledby="additional-heading">',
             '<div class="additional-message">',
@@ -120,7 +147,6 @@ def render_additional_review(model: Mapping[str, object]) -> str:
             "</section>",
         )
     )
-    return visual_review + additional
 
 
 __all__ = ["render_additional_review", "render_status_band", "render_summary"]
