@@ -1,8 +1,6 @@
 """Reference-image reviewer summary and conditional sections."""
 from __future__ import annotations
 
-# ruff: noqa: E501
-
 from collections.abc import Mapping
 from html import escape
 
@@ -13,6 +11,8 @@ from evidence_review.review_packet.presentation import (
     localized_status,
 )
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
+
+# ruff: noqa: E501
 
 
 _VISUAL_SHELL_STYLE = """
