@@ -38,11 +38,18 @@ def _positive_int(value: object, field: str) -> int:
     return value
 
 
-def _positive_number(value: object, field: str) -> float:
+def _finite_number(value: object, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{field} must be a positive number")
+        raise ValueError(f"{field} must be a finite number")
     result = float(value)
-    if not math.isfinite(result) or result <= 0:
+    if not math.isfinite(result):
+        raise ValueError(f"{field} must be a finite number")
+    return result
+
+
+def _positive_number(value: object, field: str) -> float:
+    result = _finite_number(value, field)
+    if result <= 0:
         raise ValueError(f"{field} must be a positive number")
     return result
 
@@ -61,7 +68,8 @@ def _issue_questions(inputs: Mapping[str, object]) -> dict[str, str]:
         return {}
     plan = _mapping(value, "inputs.question_plan")
     questions: dict[str, str] = {}
-    for index, item in enumerate(_sequence(plan.get("issues", []), "inputs.question_plan.issues")):
+    issues = _sequence(plan.get("issues", []), "inputs.question_plan.issues")
+    for index, item in enumerate(issues):
         issue = _mapping(item, f"inputs.question_plan.issues[{index}]")
         issue_id = _string(issue.get("id"), f"inputs.question_plan.issues[{index}].id")
         question = _string(
@@ -77,28 +85,34 @@ def _issue_questions(inputs: Mapping[str, object]) -> dict[str, str]:
 
 def _claim_links(track_a: Mapping[str, object]) -> dict[str, list[dict[str, object]]]:
     links: dict[str, list[dict[str, object]]] = {}
-    for index, item in enumerate(_sequence(track_a.get("claims", []), "track_a.claims")):
+    claims = _sequence(track_a.get("claims", []), "track_a.claims")
+    for index, item in enumerate(claims):
         claim = _mapping(item, f"track_a.claims[{index}]")
         claim_id = _string(claim.get("claim_id"), f"track_a.claims[{index}].claim_id")
         claim_text = _string(
             claim.get("text"), f"track_a.claims[{index}].text", allow_empty=True
         )
+        issue_values = _sequence(
+            claim.get("issue_ids", []), f"track_a.claims[{index}].issue_ids"
+        )
         issue_ids = tuple(
             _string(value, f"track_a.claims[{index}].issue_ids")
-            for value in _sequence(claim.get("issue_ids", []), f"track_a.claims[{index}].issue_ids")
+            for value in issue_values
+        )
+        citation_values = _sequence(
+            claim.get("citation_ids", []), f"track_a.claims[{index}].citation_ids"
         )
         citation_ids = tuple(
             _string(value, f"track_a.claims[{index}].citation_ids")
-            for value in _sequence(
-                claim.get("citation_ids", []), f"track_a.claims[{index}].citation_ids"
-            )
+            for value in citation_values
+        )
+        candidate_values = _sequence(
+            claim.get("drawing_candidate_ids", []),
+            f"track_a.claims[{index}].drawing_candidate_ids",
         )
         candidate_ids = tuple(
             _string(value, f"track_a.claims[{index}].drawing_candidate_ids")
-            for value in _sequence(
-                claim.get("drawing_candidate_ids", []),
-                f"track_a.claims[{index}].drawing_candidate_ids",
-            )
+            for value in candidate_values
         )
         for candidate_id in candidate_ids:
             links.setdefault(candidate_id, []).append(
@@ -114,9 +128,8 @@ def _claim_links(track_a: Mapping[str, object]) -> dict[str, list[dict[str, obje
 
 def _review_statuses(view_model: Mapping[str, object]) -> dict[str, str]:
     result: dict[str, str] = {}
-    for index, item in enumerate(
-        _sequence(view_model.get("review_items", []), "review_items")
-    ):
+    items = _sequence(view_model.get("review_items", []), "review_items")
+    for index, item in enumerate(items):
         review_item = _mapping(item, f"review_items[{index}]")
         claim_id = review_item.get("claim_id")
         status = review_item.get("status")
@@ -142,32 +155,47 @@ def _tone(statuses: Sequence[str]) -> str:
     return "observation"
 
 
-def _verify_geometry_bounds(candidate: Mapping[str, object], width: float, height: float) -> None:
+def _verify_geometry_bounds(
+    candidate: Mapping[str, object], width: float, height: float
+) -> None:
     geometry = _mapping(candidate.get("geometry"), "drawing_candidate.geometry")
     if geometry.get("coordinate_system") != "IMAGE_TOP_LEFT_PIXELS":
         raise ValueError("case visual candidate must use IMAGE_TOP_LEFT_PIXELS")
     geometry_type = _string(geometry.get("type"), "drawing_candidate.geometry.type")
-    coordinates = _sequence(geometry.get("coordinates"), "drawing_candidate.geometry.coordinates")
+    coordinates = _sequence(
+        geometry.get("coordinates"), "drawing_candidate.geometry.coordinates"
+    )
 
     points: list[tuple[float, float]] = []
     if geometry_type == "POINT":
         if len(coordinates) != 2:
             raise ValueError("visual POINT coordinates are invalid")
-        points = [(float(coordinates[0]), float(coordinates[1]))]
+        points = [
+            (
+                _finite_number(coordinates[0], "drawing_candidate.geometry.x"),
+                _finite_number(coordinates[1], "drawing_candidate.geometry.y"),
+            )
+        ]
     elif geometry_type == "BBOX":
         if len(coordinates) != 4:
             raise ValueError("visual BBOX coordinates are invalid")
-        left, top, right, bottom = (float(value) for value in coordinates)
+        left, top, right, bottom = (
+            _finite_number(value, "drawing_candidate.geometry.coordinate")
+            for value in coordinates
+        )
         points = [(left, top), (right, bottom)]
     else:
         for point in coordinates:
             values = _sequence(point, "drawing_candidate.geometry.point")
             if len(values) != 2:
                 raise ValueError("visual path coordinates are invalid")
-            points.append((float(values[0]), float(values[1])))
+            points.append(
+                (
+                    _finite_number(values[0], "drawing_candidate.geometry.point.x"),
+                    _finite_number(values[1], "drawing_candidate.geometry.point.y"),
+                )
+            )
     for x, y in points:
-        if not math.isfinite(x) or not math.isfinite(y):
-            raise ValueError("visual geometry must be finite")
         if x < 0 or y < 0 or x > width or y > height:
             raise ValueError("visual geometry is outside the verified raster page")
 
@@ -197,7 +225,9 @@ def build_case_visual_projection(
 
     attachments = [
         decode_immutable_attachment(item)
-        for item in _sequence(context.get("attachments", []), "case_visual_context.attachments")
+        for item in _sequence(
+            context.get("attachments", []), "case_visual_context.attachments"
+        )
     ]
     attachment_by_id: dict[str, ImmutableAttachment] = {}
     for attachment in attachments:
@@ -208,11 +238,14 @@ def build_case_visual_projection(
 
     page_records: dict[tuple[str, int], dict[str, object]] = {}
     page_by_source: dict[tuple[str, int], tuple[str, int]] = {}
-    for index, item in enumerate(
-        _sequence(context.get("visual_pages", []), "case_visual_context.visual_pages")
-    ):
+    visual_pages = _sequence(
+        context.get("visual_pages", []), "case_visual_context.visual_pages"
+    )
+    for index, item in enumerate(visual_pages):
         page = _mapping(item, f"case_visual_context.visual_pages[{index}]")
-        attachment_id = validate_identifier(page.get("attachment_id"), "visual_page.attachment_id")
+        attachment_id = validate_identifier(
+            page.get("attachment_id"), "visual_page.attachment_id"
+        )
         source_sha256 = _string(page.get("source_sha256"), "visual_page.source_sha256")
         page_number = _positive_int(page.get("page"), "visual_page.page")
         width = _positive_number(page.get("width"), "visual_page.width")
@@ -251,20 +284,22 @@ def build_case_visual_projection(
             "height": height,
             "coordinate_system": coordinate_system,
             "image_sha256": image_sha256,
-            "data_uri": "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii"),
+            "data_uri": "data:image/png;base64,"
+            + base64.b64encode(image_bytes).decode("ascii"),
             "candidates": [],
         }
         page_by_source[source_key] = key
 
     lineage: dict[str, tuple[str, ...]] = {}
-    for index, item in enumerate(
-        _sequence(context.get("candidate_lineage", []), "case_visual_context.candidate_lineage")
-    ):
+    lineage_values = _sequence(
+        context.get("candidate_lineage", []), "case_visual_context.candidate_lineage"
+    )
+    for index, item in enumerate(lineage_values):
         entry = _mapping(item, f"case_visual_context.candidate_lineage[{index}]")
         candidate_id = _string(entry.get("candidate_id"), "candidate_lineage.candidate_id")
+        issue_values = _sequence(entry.get("issue_ids", []), "candidate_lineage.issue_ids")
         issue_ids = tuple(
-            _string(value, "candidate_lineage.issue_ids")
-            for value in _sequence(entry.get("issue_ids", []), "candidate_lineage.issue_ids")
+            _string(value, "candidate_lineage.issue_ids") for value in issue_values
         )
         if not issue_ids or candidate_id in lineage:
             raise ValueError("case visual candidate lineage is invalid")
@@ -276,9 +311,10 @@ def build_case_visual_projection(
     issue_questions = _issue_questions(inputs)
     seen_candidates: set[str] = set()
 
-    for raw_candidate in _sequence(
+    candidate_values = _sequence(
         context.get("drawing_candidates", []), "case_visual_context.drawing_candidates"
-    ):
+    )
+    for raw_candidate in candidate_values:
         candidate = decode_drawing_candidate(raw_candidate)
         if candidate.candidate_id in seen_candidates:
             raise ValueError("duplicate case visual candidate id")
@@ -308,7 +344,9 @@ def build_case_visual_projection(
         projected.update(
             {
                 "issue_ids": list(issue_ids),
-                "issue_questions": [issue_questions.get(issue_id, "") for issue_id in issue_ids],
+                "issue_questions": [
+                    issue_questions.get(issue_id, "") for issue_id in issue_ids
+                ],
                 "claims": links,
                 "review_statuses": linked_statuses,
                 "tone": _tone(linked_statuses),
