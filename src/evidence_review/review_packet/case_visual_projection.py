@@ -127,13 +127,21 @@ def _claim_links(track_a: Mapping[str, object]) -> dict[str, list[dict[str, obje
 
 
 def _review_statuses(view_model: Mapping[str, object]) -> dict[str, str]:
+    """Return statuses only when a claim is actually connected to deterministic rules."""
     result: dict[str, str] = {}
     items = _sequence(view_model.get("review_items", []), "review_items")
     for index, item in enumerate(items):
         review_item = _mapping(item, f"review_items[{index}]")
         claim_id = review_item.get("claim_id")
         status = review_item.get("status")
-        if isinstance(claim_id, str) and claim_id and isinstance(status, str) and status:
+        rule_ids = _sequence(review_item.get("rule_ids", []), f"review_items[{index}].rule_ids")
+        if (
+            rule_ids
+            and isinstance(claim_id, str)
+            and claim_id
+            and isinstance(status, str)
+            and status
+        ):
             result[claim_id] = status
     return result
 
