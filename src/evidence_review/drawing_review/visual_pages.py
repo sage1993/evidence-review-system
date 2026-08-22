@@ -18,6 +18,8 @@ from evidence_review.parsing.source_manifest import sha256_file
 
 _VISUAL_PAGE_FORMAT = "evidence-review/case-visual-page"
 _MAX_IMAGE_PIXELS = 150_000_000
+_CASE_PDF_RENDER_SCALE = 4.0
+_CASE_PDF_CACHE_DIR = "case-page-images-hq-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,8 +62,17 @@ def _pdf_assets(
     attachment: ImmutableAttachment,
     source: Path,
 ) -> tuple[VisualPageAsset, ...]:
-    root = workspace / "case-page-images"
-    cache_pdf_page_images(root, source, attachment.attachment_id, attachment.sha256)
+    # CASE_DRAWING PDFs need materially more raster detail than the normal reference
+    # document viewer because reviewers zoom into dimensions, notes, and linework.
+    # Keep this cache isolated so reference/legal-document rendering remains unchanged.
+    root = workspace / _CASE_PDF_CACHE_DIR
+    cache_pdf_page_images(
+        root,
+        source,
+        attachment.attachment_id,
+        attachment.sha256,
+        render_scale=_CASE_PDF_RENDER_SCALE,
+    )
     directory = root / attachment.attachment_id
     images = sorted(directory.glob("page-*.png"))
     if not images:
