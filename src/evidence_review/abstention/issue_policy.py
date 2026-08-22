@@ -6,7 +6,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import replace
 
-from evidence_review.contracts.review import Claim, IssueResult
+from evidence_review.contracts.review import Claim, IssueResult, IssueStatus
 
 _SUPPORTED_STATUSES = frozenset({"RESOLVED", "CONDITIONAL"})
 
@@ -48,6 +48,7 @@ def reconcile_issue_results(
             _missing_input_targets_issue(value, result.issue_id)
             for value in track_a_missing_inputs
         )
+        status: IssueStatus
         if not has_claim:
             status = "SOURCE_MISSING" if has_blocking_missing else "UNRESOLVED"
         elif result.status == "RESOLVED" and has_blocking_missing:
