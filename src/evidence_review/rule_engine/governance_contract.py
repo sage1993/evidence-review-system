@@ -266,7 +266,7 @@ def _timestamp(value: object, field: str) -> str:
 def _status(value: object, field: str) -> GoldenStatus:
     if value not in {"PASS", "FAIL"}:
         raise ValueError(f"{field} must be PASS or FAIL")
-    return value
+    return cast(GoldenStatus, value)
 
 
 def _load_scope(value: object, field: str = "scope") -> RuleScope:
