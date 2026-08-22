@@ -102,8 +102,6 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert 'data-finding-next' in html
     assert 'data-case-zoom-in' in html
     assert 'data-case-zoom-out' in html
-    assert "grid-column:1/-1" in html
-    assert "width:100%" in html
     assert "마우스 휠로 커서 위치 기준 확대·축소" in html
     assert "http://" not in html
     assert "https://" not in html
@@ -133,8 +131,10 @@ def test_renderer_returns_empty_for_non_visual_model() -> None:
     assert render_case_visual_review({}) == ""
 
 
-def test_summary_flow_keeps_visual_section_without_other_additional_review() -> None:
+def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None:
     html = render_additional_review(_model())
 
+    assert 'class="visual-review-grid-span"' in html
+    assert 'style="grid-column:1/-1;width:100%;min-width:0"' in html
     assert 'id="case-visual-review"' in html
     assert 'id="additional-review"' not in html
