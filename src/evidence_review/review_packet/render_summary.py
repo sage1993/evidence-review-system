@@ -10,6 +10,7 @@ from evidence_review.review_packet.presentation import (
     conclusion_text,
     localized_status,
 )
+from evidence_review.review_packet.render_case_visual import render_case_visual_review
 
 
 def _text(value: object) -> str:
@@ -74,12 +75,13 @@ def render_summary(model: Mapping[str, object]) -> str:
 
 
 def render_additional_review(model: Mapping[str, object]) -> str:
+    visual_review = render_case_visual_review(model)
     items = additional_review_items(model)
     if not items:
-        return ""
+        return visual_review
     first = _text(items[0])
     entries = "".join(f"<li>{_text(item)}</li>" for item in items)
-    return "".join(
+    additional = "".join(
         (
             '<section id="additional-review" aria-labelledby="additional-heading">',
             '<div class="additional-message">', icon_svg("info", size=16),
@@ -93,6 +95,7 @@ def render_additional_review(model: Mapping[str, object]) -> str:
             "</section>",
         )
     )
+    return additional + visual_review
 
 
 __all__ = ["render_additional_review", "render_status_band", "render_summary"]
