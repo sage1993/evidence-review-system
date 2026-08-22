@@ -266,7 +266,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             f'<button type="button" data-case-prev aria-label="이전 페이지">{_icon("prev")}</button><span><b data-case-page-number>1</b> / {len(pages)}</span><button type="button" data-case-next aria-label="다음 페이지">{_icon("next")}</button>',
             '<span class="control-separator"></span>',
             f'<button type="button" data-case-zoom-out aria-label="축소">{_icon("minus")}</button><span data-case-zoom>100%</span><button type="button" data-case-zoom-in aria-label="확대">{_icon("plus")}</button><button type="button" data-case-reset aria-label="화면 맞춤">{_icon("fit")}</button>',
-            "</div></header><div class="subject-body">",
+            '</div></header><div class="subject-body">',
             "".join(page_html),
             "</div></section></div>",
             '<aside class="findings-panel" aria-label="대조 결과"><header><strong>대조 결과</strong><span>Findings</span></header><div class="findings-body">',
