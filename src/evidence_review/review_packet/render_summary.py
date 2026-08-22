@@ -21,7 +21,13 @@ def _mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _visual_workspace(model: Mapping[str, object]) -> bool:
+    return model.get("case_visual_review") is not None
+
+
 def render_status_band(model: Mapping[str, object]) -> str:
+    if _visual_workspace(model):
+        return ""
     raw_status = str(model.get("display_status", model.get("status", "")))
     return "".join(
         (
@@ -41,13 +47,16 @@ def render_status_band(model: Mapping[str, object]) -> str:
 
 
 def render_summary(model: Mapping[str, object]) -> str:
+    if _visual_workspace(model):
+        return ""
     summary = _mapping(model.get("summary"))
     citation_count = summary.get("citation_count", 0)
     missing = summary.get("missing_input_count", 0)
     conflicts = summary.get("conflict_count", 0)
     exceptions = summary.get("exception_count", 0)
     additional_count = sum(
-        value for value in (missing, conflicts, exceptions)
+        value
+        for value in (missing, conflicts, exceptions)
         if isinstance(value, int) and not isinstance(value, bool)
     )
     return "".join(
@@ -63,8 +72,12 @@ def render_summary(model: Mapping[str, object]) -> str:
             f'<p class="answer-summary">{_text(conclusion_text(model))}</p>',
             "</div>",
             '<dl class="result-facts">',
-            '<div><dt>근거</dt><dd>', _text(citation_count), ' 건</dd></div>',
-            '<div><dt>추가 확인</dt><dd>', _text(additional_count), ' 건</dd></div>',
+            '<div><dt>근거</dt><dd>',
+            _text(citation_count),
+            ' 건</dd></div>',
+            '<div><dt>추가 확인</dt><dd>',
+            _text(additional_count),
+            ' 건</dd></div>',
             "</dl>",
             '<span id="ready-for-review" class="visually-hidden">',
             _text(localized_status(model.get("display_status", model.get("status")))),
@@ -84,7 +97,8 @@ def render_additional_review(model: Mapping[str, object]) -> str:
     additional = "".join(
         (
             '<section id="additional-review" aria-labelledby="additional-heading">',
-            '<div class="additional-message">', icon_svg("info", size=16),
+            '<div class="additional-message">',
+            icon_svg("info", size=16),
             '<strong id="additional-heading">추가 확인</strong>',
             f'<span>{first}</span></div>',
             '<button type="button" class="additional-toggle" data-additional-toggle ',
@@ -95,7 +109,7 @@ def render_additional_review(model: Mapping[str, object]) -> str:
             "</section>",
         )
     )
-    return additional + visual_review
+    return visual_review + additional
 
 
 __all__ = ["render_additional_review", "render_status_band", "render_summary"]
