@@ -82,8 +82,11 @@ def test_visual_handoff_rasterizes_case_pdf_without_reference_ingestion(
     assert bundle["attachments"][0]["mime"] == "application/pdf"
     assert bundle["attachments"][0]["role"] == "CASE_DRAWING"
     assert len(bundle["pages"]) == 1
-    assert bundle["pages"][0]["asset_path"].startswith("case-page-images/")
-    assert (workspace / bundle["pages"][0]["asset_path"]).is_file()
+    page = bundle["pages"][0]
+    assert page["asset_path"].startswith("case-page-images-hq-v1/")
+    assert page["width"] == 800.0
+    assert page["height"] == 400.0
+    assert (workspace / page["asset_path"]).is_file()
 
 
 def test_invalid_case_pdf_fails_as_visual_render_before_formal_review(
