@@ -39,7 +39,9 @@ _CANONICAL_EXTENSION: dict[str, str] = {
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, Mapping) or not all(
+        isinstance(key, str) for key in value
+    ):
         raise ValueError(f"{field} must be an object")
     return cast(Mapping[str, object], value)
 
@@ -122,7 +124,9 @@ def prepare_case_visual_sources(
     if not requested:
         return ()
 
-    descriptors = [(path, _source_descriptor(path, role)) for path, role in requested]
+    descriptors = [
+        (path, _source_descriptor(path, role)) for path, role in requested
+    ]
     case_id = _case_id([descriptor for _, descriptor in descriptors])
     case_dir = workspace / "cases" / case_id
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -133,12 +137,19 @@ def prepare_case_visual_sources(
         attachment_id = _attachment_id(descriptor)
         expected = _reconstructed_attachment(descriptor, attachment_id)
         canonical_extension = _CANONICAL_EXTENSION[expected.mime]
-        physical = case_dir / "sources" / "drawings" / f"{attachment_id}{canonical_extension}"
+        physical = (
+            case_dir
+            / "sources"
+            / "drawings"
+            / f"{attachment_id}{canonical_extension}"
+        )
         if physical.exists():
             errors = verify_immutable_attachment(case_dir, expected)
             if errors:
+                joined = ",".join(errors)
                 raise ValueError(
-                    f"existing case visual source failed integrity validation: {','.join(errors)}"
+                    "existing case visual source failed integrity validation: "
+                    f"{joined}"
                 )
             attachment = expected
         else:
@@ -150,7 +161,9 @@ def prepare_case_visual_sources(
                 intake_policy,
             )
             if attachment != expected:
-                raise ValueError("drawing intake metadata does not match deterministic identity")
+                raise ValueError(
+                    "drawing intake metadata does not match deterministic identity"
+                )
         attachments.append(attachment)
 
     attachments.sort(key=lambda item: item.attachment_id)
@@ -184,7 +197,12 @@ def bind_case_visual_context_to_review_request(
     attachment_items = tuple(attachments)
     candidate_items = tuple(drawing_candidates)
     page_items = tuple(visual_page_assets)
-    if not attachment_items and not candidate_items and not page_items and not visual_analysis_completed:
+    if (
+        not attachment_items
+        and not candidate_items
+        and not page_items
+        and not visual_analysis_completed
+    ):
         return request
     if not attachment_items:
         raise ValueError("case visual context requires at least one attachment")
@@ -205,7 +223,9 @@ def bind_case_visual_context_to_review_request(
     page_keys: set[tuple[str, int]] = set()
     for page in page_items:
         if page.attachment_id not in attachment_ids:
-            raise ValueError("visual page references an attachment outside this review request")
+            raise ValueError(
+                "visual page references an attachment outside this review request"
+            )
         if page.source_sha256 != source_hash_by_attachment[page.attachment_id]:
             raise ValueError("visual page source hash does not match its attachment")
         key = (page.attachment_id, page.page)
@@ -219,7 +239,9 @@ def bind_case_visual_context_to_review_request(
             raise ValueError("drawing candidate IDs must be unique")
         candidate_ids.add(candidate.candidate_id)
         if candidate.source_sha256 not in source_hashes:
-            raise ValueError("drawing candidate source is not bound to this review request")
+            raise ValueError(
+                "drawing candidate source is not bound to this review request"
+            )
         matching_attachment_ids = {
             attachment_id
             for attachment_id, source_hash in source_hash_by_attachment.items()
@@ -229,7 +251,9 @@ def bind_case_visual_context_to_review_request(
             (attachment_id, candidate.page) in page_keys
             for attachment_id in matching_attachment_ids
         ):
-            raise ValueError("drawing candidate page is not bound to a visual page asset")
+            raise ValueError(
+                "drawing candidate page is not bound to a visual page asset"
+            )
 
     if visual_analysis_completed and not page_items:
         raise ValueError("completed visual analysis requires visual page identities")
@@ -237,7 +261,9 @@ def bind_case_visual_context_to_review_request(
     lineage_source = {} if candidate_issue_ids is None else dict(candidate_issue_ids)
     if set(lineage_source) != candidate_ids:
         if candidate_ids or lineage_source:
-            raise ValueError("candidate issue lineage must match drawing candidate IDs exactly")
+            raise ValueError(
+                "candidate issue lineage must match drawing candidate IDs exactly"
+            )
     lineage: list[dict[str, object]] = []
     for candidate_id in sorted(lineage_source):
         issue_ids = tuple(sorted(set(lineage_source[candidate_id])))
@@ -262,7 +288,9 @@ def bind_case_visual_context_to_review_request(
         if visual_analysis_completed
         else "VISUAL_ANALYSIS_REQUIRED"
     )
-    reason_codes = [] if visual_analysis_completed else ["VISUAL_ANALYSIS_REQUIRED"]
+    reason_codes = (
+        [] if visual_analysis_completed else ["VISUAL_ANALYSIS_REQUIRED"]
+    )
     visual_context: dict[str, object] = {
         "attachments": attachment_documents,
         "drawing_candidates": candidate_documents,
@@ -272,7 +300,10 @@ def bind_case_visual_context_to_review_request(
     if visual_analysis_completed:
         visual_context["visual_pages"] = [
             _visual_page_document(item)
-            for item in sorted(page_items, key=lambda item: (item.attachment_id, item.page))
+            for item in sorted(
+                page_items,
+                key=lambda item: (item.attachment_id, item.page),
+            )
         ]
         visual_context["candidate_lineage"] = lineage
     inputs["case_visual_context"] = visual_context
