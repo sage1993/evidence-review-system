@@ -11,6 +11,7 @@ from typing import cast
 
 from evidence_review.contracts.attachments import decode_immutable_attachment
 from evidence_review.contracts.drawing import decode_drawing_candidate, drawing_candidate_document
+from evidence_review.contracts.identifiers import validate_identifier
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -177,7 +178,7 @@ def build_case_visual_projection(
     workspace_root: Path,
 ) -> dict[str, object] | None:
     """Project immutable visual evidence into a self-contained reviewer model."""
-    run_id = _string(view_model.get("run_id"), "view_model.run_id")
+    run_id = validate_identifier(view_model.get("run_id"), "view_model.run_id")
     run_directory = workspace_root / "runs" / run_id
     bundle_path = run_directory / "track-a-bundle.json"
     track_a_path = run_directory / "track-a-output.json"
@@ -198,9 +199,12 @@ def build_case_visual_projection(
         decode_immutable_attachment(item)
         for item in _sequence(context.get("attachments", []), "case_visual_context.attachments")
     ]
-    attachment_by_id = {item.attachment_id: item for item in attachments}
-    if len(attachment_by_id) != len(attachments):
-        raise ValueError("duplicate case visual attachment id")
+    attachment_by_id: dict[str, object] = {}
+    for attachment in attachments:
+        attachment_id = validate_identifier(attachment.attachment_id, "attachment_id")
+        if attachment_id in attachment_by_id:
+            raise ValueError("duplicate case visual attachment id")
+        attachment_by_id[attachment_id] = attachment
 
     page_records: dict[tuple[str, int], dict[str, object]] = {}
     page_by_source: dict[tuple[str, int], tuple[str, int]] = {}
@@ -208,7 +212,7 @@ def build_case_visual_projection(
         _sequence(context.get("visual_pages", []), "case_visual_context.visual_pages")
     ):
         page = _mapping(item, f"case_visual_context.visual_pages[{index}]")
-        attachment_id = _string(page.get("attachment_id"), "visual_page.attachment_id")
+        attachment_id = validate_identifier(page.get("attachment_id"), "visual_page.attachment_id")
         source_sha256 = _string(page.get("source_sha256"), "visual_page.source_sha256")
         page_number = _positive_int(page.get("page"), "visual_page.page")
         width = _positive_number(page.get("width"), "visual_page.width")
@@ -218,7 +222,7 @@ def build_case_visual_projection(
         )
         image_sha256 = _string(page.get("image_sha256"), "visual_page.image_sha256")
         attachment = attachment_by_id.get(attachment_id)
-        if attachment is None or attachment.sha256 != source_sha256:
+        if attachment is None or getattr(attachment, "sha256", None) != source_sha256:
             raise ValueError("visual page attachment/source binding mismatch")
         if coordinate_system != "IMAGE_TOP_LEFT_PIXELS":
             raise ValueError("visual page coordinate system is unsupported")
@@ -240,7 +244,7 @@ def build_case_visual_projection(
         page_records[key] = {
             "asset_key": f"{attachment_id}-p{page_number}",
             "attachment_id": attachment_id,
-            "document_name": attachment.original_name,
+            "document_name": getattr(attachment, "original_name"),
             "source_sha256": source_sha256,
             "page": page_number,
             "width": width,
