@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Render verified case drawings/images and localized visual findings."""
 from __future__ import annotations
 
