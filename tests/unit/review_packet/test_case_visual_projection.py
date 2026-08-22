@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
+from evidence_review.review_packet.case_visual_projection import (
+    build_case_visual_projection,
+)
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -12,7 +14,11 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
 
 
-def _fixture(tmp_path: Path, *, coordinates: list[float] | None = None) -> tuple[dict[str, object], Path]:
+def _fixture(
+    tmp_path: Path,
+    *,
+    coordinates: list[float] | None = None,
+) -> tuple[dict[str, object], Path]:
     workspace = tmp_path / "workspace"
     run_id = "RUN-1234567890ABCDEF1234"
     run_dir = workspace / "runs" / run_id
@@ -77,7 +83,12 @@ def _fixture(tmp_path: Path, *, coordinates: list[float] | None = None) -> tuple
         {
             "inputs": {
                 "question_plan": {
-                    "issues": [{"id": "I1", "question": "차량 출입구 기준을 충족하는가"}]
+                    "issues": [
+                        {
+                            "id": "I1",
+                            "question": "차량 출입구 기준을 충족하는가",
+                        }
+                    ]
                 },
                 "case_visual_context": context,
             }
@@ -106,7 +117,9 @@ def _fixture(tmp_path: Path, *, coordinates: list[float] | None = None) -> tuple
     return view_model, workspace
 
 
-def test_projection_embeds_verified_case_raster_and_candidate(tmp_path: Path) -> None:
+def test_projection_embeds_verified_case_raster_and_candidate(
+    tmp_path: Path,
+) -> None:
     view_model, workspace = _fixture(tmp_path)
 
     result = build_case_visual_projection(view_model, workspace_root=workspace)
@@ -123,7 +136,9 @@ def test_projection_embeds_verified_case_raster_and_candidate(tmp_path: Path) ->
     assert candidate["claims"][0]["citation_ids"] == ["CIT-RULE-1"]
 
 
-def test_projection_fails_closed_when_raster_hash_changes(tmp_path: Path) -> None:
+def test_projection_fails_closed_when_raster_hash_changes(
+    tmp_path: Path,
+) -> None:
     view_model, workspace = _fixture(tmp_path)
     raster = workspace / "case-page-images" / "ATT-VISUAL-1" / "page-0001.png"
     raster.write_bytes(b"tampered")
@@ -132,7 +147,9 @@ def test_projection_fails_closed_when_raster_hash_changes(tmp_path: Path) -> Non
         build_case_visual_projection(view_model, workspace_root=workspace)
 
 
-def test_projection_rejects_geometry_outside_verified_page(tmp_path: Path) -> None:
+def test_projection_rejects_geometry_outside_verified_page(
+    tmp_path: Path,
+) -> None:
     view_model, workspace = _fixture(tmp_path, coordinates=[10, 20, 130, 90])
 
     with pytest.raises(ValueError, match="outside the verified raster page"):
@@ -142,8 +159,15 @@ def test_projection_rejects_geometry_outside_verified_page(tmp_path: Path) -> No
 def test_projection_is_absent_for_non_visual_review(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     run_id = "RUN-1234567890ABCDEF1234"
-    _write_json(workspace / "runs" / run_id / "track-a-bundle.json", {"inputs": {}})
+    _write_json(
+        workspace / "runs" / run_id / "track-a-bundle.json",
+        {"inputs": {}},
+    )
 
-    assert build_case_visual_projection(
-        {"run_id": run_id, "review_items": []}, workspace_root=workspace
-    ) is None
+    assert (
+        build_case_visual_projection(
+            {"run_id": run_id, "review_items": []},
+            workspace_root=workspace,
+        )
+        is None
+    )
