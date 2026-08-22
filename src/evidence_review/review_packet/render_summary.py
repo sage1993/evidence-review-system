@@ -25,6 +25,17 @@ def _visual_workspace(model: Mapping[str, object]) -> bool:
     return model.get("case_visual_review") is not None
 
 
+def _visual_grid_span(visual_review: str) -> str:
+    """Make Visual Review span the full parent review-workspace grid."""
+    if not visual_review:
+        return ""
+    return (
+        '<div class="visual-review-grid-span" '
+        'style="grid-column:1/-1;width:100%;min-width:0">'
+        f"{visual_review}</div>"
+    )
+
+
 def render_status_band(model: Mapping[str, object]) -> str:
     if _visual_workspace(model):
         return ""
@@ -88,7 +99,7 @@ def render_summary(model: Mapping[str, object]) -> str:
 
 
 def render_additional_review(model: Mapping[str, object]) -> str:
-    visual_review = render_case_visual_review(model)
+    visual_review = _visual_grid_span(render_case_visual_review(model))
     items = additional_review_items(model)
     if not items:
         return visual_review
