@@ -14,6 +14,7 @@ from evidence_review.abstention.gates import AbstentionContext, evaluate_abstent
 from evidence_review.abstention.issue_policy import (
     has_partial_issue_resolution,
     issue_results_require_global_abstain,
+    reconcile_issue_results,
 )
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.scorer import FactorInput, score_confidence
@@ -363,7 +364,11 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
     missing_inputs = tuple(
         sorted(track_a_missing_inputs | deterministic_rule_missing_inputs)
     )
-    issue_results = _issue_results_from_inputs(bundle.inputs)
+    issue_results = reconcile_issue_results(
+        _issue_results_from_inputs(bundle.inputs),
+        claims=validated_a.draft.claims,
+        track_a_missing_inputs=validated_a.draft.missing_inputs,
+    )
     partial_issue_resolution = has_partial_issue_resolution(issue_results)
     finding_codes = _finding_codes(track_b_output)
     approved = set(bundle.approved_rule_result_ids)
