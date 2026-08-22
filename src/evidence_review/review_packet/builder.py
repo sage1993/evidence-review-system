@@ -11,6 +11,7 @@ from typing import cast
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.review import ReviewPacket
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
 
 _DECISION_OPTIONS = (
     "SATISFIED",
@@ -460,4 +461,10 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
                 ),
             }
         )
+    case_visual_review = build_case_visual_projection(
+        model,
+        workspace_root=evidence_db.parent.parent,
+    )
+    if case_visual_review is not None:
+        model["case_visual_review"] = case_visual_review
     return model
