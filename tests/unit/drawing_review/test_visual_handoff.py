@@ -43,7 +43,9 @@ def _plan() -> QuestionPlan:
     )
 
 
-def test_visual_handoff_exposes_actual_raster_page_without_reference_parser(tmp_path: Path) -> None:
+def test_visual_handoff_exposes_actual_raster_page_without_reference_parser(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "drawing.png"
     Image.new("RGB", (40, 30), "white").save(source)
     workspace = tmp_path / "workspace"
@@ -63,7 +65,9 @@ def test_visual_handoff_exposes_actual_raster_page_without_reference_parser(tmp_
     assert "parser" not in bundle["attachments"][0]
 
 
-def test_visual_handoff_rasterizes_case_pdf_without_reference_ingestion(tmp_path: Path) -> None:
+def test_visual_handoff_rasterizes_case_pdf_without_reference_ingestion(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "drawing.pdf"
     writer = PdfWriter()
     writer.add_blank_page(width=200, height=100)
@@ -82,7 +86,9 @@ def test_visual_handoff_rasterizes_case_pdf_without_reference_ingestion(tmp_path
     assert (workspace / bundle["pages"][0]["asset_path"]).is_file()
 
 
-def test_invalid_case_pdf_fails_as_visual_render_before_formal_review(tmp_path: Path) -> None:
+def test_invalid_case_pdf_fails_as_visual_render_before_formal_review(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "broken.pdf"
     source.write_bytes(b"%PDF-1.7\nnot-a-valid-pdf")
     workspace = tmp_path / "workspace"
