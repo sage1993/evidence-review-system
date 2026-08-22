@@ -13,6 +13,7 @@ from evidence_review.contracts.attachments import (
     immutable_attachment_document,
 )
 from evidence_review.contracts.drawing import DrawingCandidate, drawing_candidate_document
+from evidence_review.drawing_review.visual_pages import VisualPageAsset
 from evidence_review.parsing.drawing_source import (
     DrawingIntakePolicy,
     ingest_drawing_source,
@@ -158,32 +159,59 @@ def prepare_case_visual_sources(
     return tuple(attachments)
 
 
+def _visual_page_document(page: VisualPageAsset) -> dict[str, object]:
+    return {
+        "attachment_id": page.attachment_id,
+        "source_sha256": page.source_sha256,
+        "page": page.page,
+        "width": page.width,
+        "height": page.height,
+        "coordinate_system": page.coordinate_system,
+        "image_sha256": page.image_sha256,
+    }
+
+
 def bind_case_visual_context_to_review_request(
     request: dict[str, object],
     attachments: Sequence[ImmutableAttachment],
     drawing_candidates: Sequence[DrawingCandidate] = (),
     *,
     candidate_issue_ids: Mapping[str, Sequence[str]] | None = None,
+    visual_page_assets: Sequence[VisualPageAsset] = (),
     visual_analysis_completed: bool = False,
 ) -> dict[str, object]:
     """Bind case visuals to immutable request inputs without changing legacy requests."""
     attachment_items = tuple(attachments)
     candidate_items = tuple(drawing_candidates)
-    if not attachment_items and not candidate_items and not visual_analysis_completed:
+    page_items = tuple(visual_page_assets)
+    if not attachment_items and not candidate_items and not page_items and not visual_analysis_completed:
         return request
     if not attachment_items:
         raise ValueError("case visual context requires at least one attachment")
-    if candidate_items and not visual_analysis_completed:
-        raise ValueError("drawing candidates require completed visual analysis")
+    if (candidate_items or page_items) and not visual_analysis_completed:
+        raise ValueError("visual evidence requires completed visual analysis")
 
     attachment_ids: set[str] = set()
+    source_hash_by_attachment: dict[str, str] = {}
     source_hashes: set[str] = set()
     for attachment in attachment_items:
         _validate_visual_role(attachment.role)
         if attachment.attachment_id in attachment_ids:
             raise ValueError("case visual attachment_id values must be unique")
         attachment_ids.add(attachment.attachment_id)
+        source_hash_by_attachment[attachment.attachment_id] = attachment.sha256
         source_hashes.add(attachment.sha256)
+
+    page_keys: set[tuple[str, int]] = set()
+    for page in page_items:
+        if page.attachment_id not in attachment_ids:
+            raise ValueError("visual page references an attachment outside this review request")
+        if page.source_sha256 != source_hash_by_attachment[page.attachment_id]:
+            raise ValueError("visual page source hash does not match its attachment")
+        key = (page.attachment_id, page.page)
+        if key in page_keys:
+            raise ValueError("visual page identities must be unique")
+        page_keys.add(key)
 
     candidate_ids: set[str] = set()
     for candidate in candidate_items:
@@ -192,6 +220,19 @@ def bind_case_visual_context_to_review_request(
         candidate_ids.add(candidate.candidate_id)
         if candidate.source_sha256 not in source_hashes:
             raise ValueError("drawing candidate source is not bound to this review request")
+        matching_attachment_ids = {
+            attachment_id
+            for attachment_id, source_hash in source_hash_by_attachment.items()
+            if source_hash == candidate.source_sha256
+        }
+        if page_items and not any(
+            (attachment_id, candidate.page) in page_keys
+            for attachment_id in matching_attachment_ids
+        ):
+            raise ValueError("drawing candidate page is not bound to a visual page asset")
+
+    if visual_analysis_completed and not page_items:
+        raise ValueError("completed visual analysis requires visual page identities")
 
     lineage_source = {} if candidate_issue_ids is None else dict(candidate_issue_ids)
     if set(lineage_source) != candidate_ids:
@@ -229,6 +270,10 @@ def bind_case_visual_context_to_review_request(
         "reason_codes": reason_codes,
     }
     if visual_analysis_completed:
+        visual_context["visual_pages"] = [
+            _visual_page_document(item)
+            for item in sorted(page_items, key=lambda item: (item.attachment_id, item.page))
+        ]
         visual_context["candidate_lineage"] = lineage
     inputs["case_visual_context"] = visual_context
     bound = dict(request)

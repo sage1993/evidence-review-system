@@ -13,6 +13,7 @@ from evidence_review.contracts.drawing import DrawingCandidate
 from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
+from evidence_review.drawing_review.visual_pages import VisualPageAsset
 from evidence_review.evidence.clause_rebuild import ensure_clause_index
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
@@ -58,6 +59,7 @@ def prepare_planned_review_question(
     case_visual_attachments: Sequence[ImmutableAttachment] = (),
     drawing_candidates: Sequence[DrawingCandidate] = (),
     candidate_issue_ids: Mapping[str, Sequence[str]] | None = None,
+    visual_page_assets: Sequence[VisualPageAsset] = (),
     visual_analysis_completed: bool = False,
 ) -> PreparedReviewQuestion:
     """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan.
@@ -124,6 +126,7 @@ def prepare_planned_review_question(
         case_visual_attachments,
         drawing_candidates,
         candidate_issue_ids=candidate_issue_ids,
+        visual_page_assets=visual_page_assets,
         visual_analysis_completed=visual_analysis_completed,
     )
     request_metric = finish_stage("review-request-build", request_timer)

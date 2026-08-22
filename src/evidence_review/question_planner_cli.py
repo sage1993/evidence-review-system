@@ -23,7 +23,10 @@ from evidence_review.contracts.question_plan import (
     decode_question_plan,
     question_plan_document,
 )
-from evidence_review.contracts.visual_review import visual_analysis_output_document
+from evidence_review.contracts.visual_review import (
+    decode_visual_analysis_output,
+    visual_analysis_output_document,
+)
 from evidence_review.drawing_review.visual_handoff import prepare_visual_analysis_handoff
 from evidence_review.drawing_review.visual_submission import validate_visual_analysis_output
 from evidence_review.llm_layer.question_planner import validate_question_planner_output
@@ -323,6 +326,7 @@ def _submit_visual(arguments: Sequence[str]) -> int:
         if handoff.visual_analysis_id != args.visual_analysis_id:
             raise ValueError("visual analysis resume identity mismatch")
         raw_output = _load_json(args.visual_analysis_output)
+        decoded_output = decode_visual_analysis_output(raw_output)
         validated = validate_visual_analysis_output(
             raw_output,
             expected_visual_analysis_id=args.visual_analysis_id,
@@ -330,13 +334,10 @@ def _submit_visual(arguments: Sequence[str]) -> int:
             attachments=attachments,
             pages=handoff.pages,
         )
-        normalized_output = visual_analysis_output_document(
-            __import__(
-                "evidence_review.contracts.visual_review",
-                fromlist=["decode_visual_analysis_output"],
-            ).decode_visual_analysis_output(raw_output)
+        _write_or_identical(
+            directory / "visual-analysis-validated.json",
+            visual_analysis_output_document(decoded_output),
         )
-        _write_or_identical(directory / "visual-analysis-validated.json", normalized_output)
         _write_or_identical(
             directory / "drawing-candidates.json",
             {
@@ -362,6 +363,7 @@ def _submit_visual(arguments: Sequence[str]) -> int:
             case_visual_attachments=attachments,
             drawing_candidates=validated.candidates,
             candidate_issue_ids=validated.candidate_issue_ids,
+            visual_page_assets=handoff.pages,
             visual_analysis_completed=True,
         )
     except (
