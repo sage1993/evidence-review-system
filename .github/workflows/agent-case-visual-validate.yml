@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/case-visual-review-ci
+  pull_request:
+    branches:
+      - main
 
 jobs:
   validate:
