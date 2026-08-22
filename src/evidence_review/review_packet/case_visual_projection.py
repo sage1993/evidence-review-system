@@ -134,7 +134,10 @@ def _review_statuses(view_model: Mapping[str, object]) -> dict[str, str]:
         review_item = _mapping(item, f"review_items[{index}]")
         claim_id = review_item.get("claim_id")
         status = review_item.get("status")
-        rule_ids = _sequence(review_item.get("rule_ids", []), f"review_items[{index}].rule_ids")
+        rule_ids = _sequence(
+            review_item.get("rule_ids", []),
+            f"review_items[{index}].rule_ids",
+        )
         if (
             rule_ids
             and isinstance(claim_id, str)
@@ -262,8 +265,8 @@ def build_case_visual_projection(
             page.get("coordinate_system"), "visual_page.coordinate_system"
         )
         image_sha256 = _string(page.get("image_sha256"), "visual_page.image_sha256")
-        attachment = attachment_by_id.get(attachment_id)
-        if attachment is None or attachment.sha256 != source_sha256:
+        page_attachment = attachment_by_id.get(attachment_id)
+        if page_attachment is None or page_attachment.sha256 != source_sha256:
             raise ValueError("visual page attachment/source binding mismatch")
         if coordinate_system != "IMAGE_TOP_LEFT_PIXELS":
             raise ValueError("visual page coordinate system is unsupported")
@@ -285,7 +288,7 @@ def build_case_visual_projection(
         page_records[key] = {
             "asset_key": f"{attachment_id}-p{page_number}",
             "attachment_id": attachment_id,
-            "document_name": attachment.original_name,
+            "document_name": page_attachment.original_name,
             "source_sha256": source_sha256,
             "page": page_number,
             "width": width,
@@ -306,12 +309,12 @@ def build_case_visual_projection(
         entry = _mapping(item, f"case_visual_context.candidate_lineage[{index}]")
         candidate_id = _string(entry.get("candidate_id"), "candidate_lineage.candidate_id")
         issue_values = _sequence(entry.get("issue_ids", []), "candidate_lineage.issue_ids")
-        issue_ids = tuple(
+        lineage_issue_ids = tuple(
             _string(value, "candidate_lineage.issue_ids") for value in issue_values
         )
-        if not issue_ids or candidate_id in lineage:
+        if not lineage_issue_ids or candidate_id in lineage:
             raise ValueError("case visual candidate lineage is invalid")
-        lineage[candidate_id] = issue_ids
+        lineage[candidate_id] = lineage_issue_ids
 
     track_a = _json(track_a_path)
     claim_links = _claim_links(track_a)
@@ -337,8 +340,8 @@ def build_case_visual_projection(
             cast(float, page["width"]),
             cast(float, page["height"]),
         )
-        issue_ids = lineage.get(candidate.candidate_id)
-        if issue_ids is None:
+        candidate_issue_ids = lineage.get(candidate.candidate_id)
+        if candidate_issue_ids is None:
             raise ValueError("case visual candidate has no issue lineage")
         links = claim_links.get(candidate.candidate_id, [])
         linked_statuses = sorted(
@@ -351,9 +354,10 @@ def build_case_visual_projection(
         projected = dict(canonical)
         projected.update(
             {
-                "issue_ids": list(issue_ids),
+                "issue_ids": list(candidate_issue_ids),
                 "issue_questions": [
-                    issue_questions.get(issue_id, "") for issue_id in issue_ids
+                    issue_questions.get(issue_id, "")
+                    for issue_id in candidate_issue_ids
                 ],
                 "claims": links,
                 "review_statuses": linked_statuses,
