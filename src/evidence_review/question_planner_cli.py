@@ -27,8 +27,12 @@ from evidence_review.contracts.visual_review import (
     decode_visual_analysis_output,
     visual_analysis_output_document,
 )
-from evidence_review.drawing_review.visual_handoff import prepare_visual_analysis_handoff
-from evidence_review.drawing_review.visual_submission import validate_visual_analysis_output
+from evidence_review.drawing_review.visual_handoff import (
+    prepare_visual_analysis_handoff,
+)
+from evidence_review.drawing_review.visual_submission import (
+    validate_visual_analysis_output,
+)
 from evidence_review.llm_layer.question_planner import validate_question_planner_output
 from evidence_review.planned_review_question import prepare_planned_review_question
 from evidence_review.question_planning import (
@@ -52,7 +56,8 @@ def _write_or_identical(path: Path, document: object) -> None:
             stream.write(encoded)
     except FileExistsError:
         if path.read_bytes() != encoded:
-            raise FileExistsError(f"existing visual resume artifact differs: {path.name}") from None
+            message = f"existing visual resume artifact differs: {path.name}"
+            raise FileExistsError(message) from None
 
 
 def _load_json(path: Path) -> object:
@@ -60,13 +65,17 @@ def _load_json(path: Path) -> object:
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, Mapping) or not all(
+        isinstance(key, str) for key in value
+    ):
         raise ValueError(f"{field} must be an object")
     return cast(Mapping[str, object], value)
 
 
 def _prepare_plan_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="evidence-review review-question prepare-plan")
+    parser = argparse.ArgumentParser(
+        prog="evidence-review review-question prepare-plan"
+    )
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument("--question", required=True)
     return parser
@@ -170,7 +179,11 @@ def _prepare(arguments: Sequence[str]) -> int:
         return _planner_failure("QUESTION_PLAN_OUTPUT_INVALID_JSON", error)
 
     try:
-        plan = validate_question_planner_output(raw_plan, args.question, allow_legacy=True)
+        plan = validate_question_planner_output(
+            raw_plan,
+            args.question,
+            allow_legacy=True,
+        )
     except ValueError as error:
         return _planner_failure("QUESTION_PLAN_INVALID", error)
 
@@ -248,7 +261,9 @@ def _prepare(arguments: Sequence[str]) -> int:
             "run_id": result.run_id,
             "question_plan_sha256": question_plan_sha256(plan),
             "next_action_path": (
-                None if result.next_action_path is None else str(result.next_action_path)
+                None
+                if result.next_action_path is None
+                else str(result.next_action_path)
             ),
             "resumed": result.resumed,
             "retrieval_guidance_path": (
@@ -284,7 +299,10 @@ def _decode_resume(value: object) -> tuple[
     }
     if set(payload) != required:
         raise ValueError("visual resume fields are invalid")
-    if payload.get("format") != _VISUAL_RESUME_FORMAT or payload.get("version") != 1:
+    if (
+        payload.get("format") != _VISUAL_RESUME_FORMAT
+        or payload.get("version") != 1
+    ):
         raise ValueError("unsupported visual resume format")
     question = payload.get("question")
     if not isinstance(question, str) or not question:
@@ -292,10 +310,12 @@ def _decode_resume(value: object) -> tuple[
     plan = decode_question_plan(payload.get("question_plan"), question)
 
     def sequence(field: str) -> Sequence[object]:
-        value = payload.get(field)
-        if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        item = payload.get(field)
+        if isinstance(item, (str, bytes, bytearray)) or not isinstance(
+            item, Sequence
+        ):
             raise ValueError(f"visual resume {field} must be an array")
-        return cast(Sequence[object], value)
+        return cast(Sequence[object], item)
 
     expansions = tuple(str(item) for item in sequence("expansions"))
     if any(not item for item in expansions):
@@ -303,7 +323,9 @@ def _decode_resume(value: object) -> tuple[
     approved = tuple(str(item) for item in sequence("approved_rule_result_ids"))
     if any(not item for item in approved):
         raise ValueError("visual resume approved ids must be non-empty strings")
-    attachments = tuple(decode_immutable_attachment(item) for item in sequence("attachments"))
+    attachments = tuple(
+        decode_immutable_attachment(item) for item in sequence("attachments")
+    )
     return (
         plan,
         expansions,
@@ -319,10 +341,19 @@ def _submit_visual(arguments: Sequence[str]) -> int:
     directory = args.workspace / "visual-analysis" / args.visual_analysis_id
     resume_path = directory / "review-resume-input.json"
     try:
-        plan, expansions, calculations, rules, approved, attachments = _decode_resume(
-            _load_json(resume_path)
+        (
+            plan,
+            expansions,
+            calculations,
+            rules,
+            approved,
+            attachments,
+        ) = _decode_resume(_load_json(resume_path))
+        handoff = prepare_visual_analysis_handoff(
+            args.workspace,
+            plan,
+            attachments,
         )
-        handoff = prepare_visual_analysis_handoff(args.workspace, plan, attachments)
         if handoff.visual_analysis_id != args.visual_analysis_id:
             raise ValueError("visual analysis resume identity mismatch")
         raw_output = _load_json(args.visual_analysis_output)
@@ -345,10 +376,14 @@ def _submit_visual(arguments: Sequence[str]) -> int:
                 "version": 1,
                 "visual_analysis_id": args.visual_analysis_id,
                 "candidates": [
-                    drawing_candidate_document(item) for item in validated.candidates
+                    drawing_candidate_document(item)
+                    for item in validated.candidates
                 ],
                 "candidate_lineage": [
-                    {"candidate_id": key, "issue_ids": list(validated.candidate_issue_ids[key])}
+                    {
+                        "candidate_id": key,
+                        "issue_ids": list(validated.candidate_issue_ids[key]),
+                    }
                     for key in sorted(validated.candidate_issue_ids)
                 ],
             },
@@ -393,7 +428,9 @@ def _submit_visual(arguments: Sequence[str]) -> int:
             "visual_candidate_count": len(validated.candidates),
             "run_id": result.run_id,
             "next_action_path": (
-                None if result.next_action_path is None else str(result.next_action_path)
+                None
+                if result.next_action_path is None
+                else str(result.next_action_path)
             ),
             "resumed": result.resumed,
         }
