@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
-from evidence_review.contracts.attachments import decode_immutable_attachment
+from evidence_review.contracts.attachments import ImmutableAttachment, decode_immutable_attachment
 from evidence_review.contracts.drawing import decode_drawing_candidate, drawing_candidate_document
 from evidence_review.contracts.identifiers import validate_identifier
 
@@ -129,8 +129,6 @@ def _tone(statuses: Sequence[str]) -> str:
     normalized = {item.upper() for item in statuses}
     if normalized & {"NOT_SATISFIED", "FAILED", "FAIL", "REJECTED"}:
         return "issue"
-    if normalized & {"SATISFIED", "PASS", "PASSED"}:
-        return "compliant"
     if normalized & {
         "INDETERMINATE",
         "REVIEW_REQUIRED",
@@ -139,6 +137,8 @@ def _tone(statuses: Sequence[str]) -> str:
         "CONDITIONAL",
     }:
         return "review"
+    if normalized & {"SATISFIED", "PASS", "PASSED"}:
+        return "compliant"
     return "observation"
 
 
@@ -199,7 +199,7 @@ def build_case_visual_projection(
         decode_immutable_attachment(item)
         for item in _sequence(context.get("attachments", []), "case_visual_context.attachments")
     ]
-    attachment_by_id: dict[str, object] = {}
+    attachment_by_id: dict[str, ImmutableAttachment] = {}
     for attachment in attachments:
         attachment_id = validate_identifier(attachment.attachment_id, "attachment_id")
         if attachment_id in attachment_by_id:
@@ -222,7 +222,7 @@ def build_case_visual_projection(
         )
         image_sha256 = _string(page.get("image_sha256"), "visual_page.image_sha256")
         attachment = attachment_by_id.get(attachment_id)
-        if attachment is None or getattr(attachment, "sha256", None) != source_sha256:
+        if attachment is None or attachment.sha256 != source_sha256:
             raise ValueError("visual page attachment/source binding mismatch")
         if coordinate_system != "IMAGE_TOP_LEFT_PIXELS":
             raise ValueError("visual page coordinate system is unsupported")
@@ -244,7 +244,7 @@ def build_case_visual_projection(
         page_records[key] = {
             "asset_key": f"{attachment_id}-p{page_number}",
             "attachment_id": attachment_id,
-            "document_name": getattr(attachment, "original_name"),
+            "document_name": attachment.original_name,
             "source_sha256": source_sha256,
             "page": page_number,
             "width": width,
