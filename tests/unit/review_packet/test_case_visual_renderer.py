@@ -138,3 +138,17 @@ def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None
     assert 'style="grid-column:1/-1;width:100%;min-width:0"' in html
     assert 'id="case-visual-review"' in html
     assert 'id="additional-review"' not in html
+    assert "body:has(#case-visual-review){overflow:hidden}" in html
+    assert ".review-workspace>:not(.visual-review-grid-span):not(#decision-form)" in html
+    assert ".case-visual-transform img{pointer-events:none" in html
+    assert "#decision-form:hover" in html
+
+
+def test_visual_workspace_does_not_duplicate_legacy_additional_review_strip() -> None:
+    model = _model()
+    model["missing_inputs"] = ["I1: 추가 기준 확인 필요"]
+
+    html = render_additional_review(model)
+
+    assert 'id="case-visual-review"' in html
+    assert 'id="additional-review"' not in html
