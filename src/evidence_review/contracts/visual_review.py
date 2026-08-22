@@ -6,7 +6,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
-from evidence_review.contracts.drawing import Geometry, decode_geometry, geometry_document
+from evidence_review.contracts.drawing import (
+    Geometry,
+    decode_geometry,
+    geometry_document,
+)
 from evidence_review.contracts.validation import (
     expect_int,
     expect_mapping,
@@ -42,7 +46,9 @@ class VisualAnalysisOutput:
 
 
 def _sequence(value: object, field: str) -> Sequence[object]:
-    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(
+        value, Sequence
+    ):
         raise ValueError(f"{field} must be an array")
     return cast(Sequence[object], value)
 
@@ -69,53 +75,78 @@ def _observation(value: object, field: str) -> VisualObservation:
     page = expect_int(payload.get("page"), f"{field}.page")
     if page < 1:
         raise ValueError(f"{field}.page must be positive")
+    issue_values = _sequence(
+        payload.get("issue_ids"),
+        f"{field}.issue_ids",
+    )
     issue_ids = tuple(
         expect_string(item, f"{field}.issue_ids[{index}]")
-        for index, item in enumerate(_sequence(payload.get("issue_ids"), f"{field}.issue_ids"))
+        for index, item in enumerate(issue_values)
     )
     if not issue_ids:
         raise ValueError(f"{field}.issue_ids must not be empty")
     if len(issue_ids) != len(set(issue_ids)):
         raise ValueError(f"{field}.issue_ids must contain unique values")
     return VisualObservation(
-        attachment_id=expect_string(payload.get("attachment_id"), f"{field}.attachment_id"),
-        source_sha256=expect_sha256(payload.get("source_sha256"), f"{field}.source_sha256"),
+        attachment_id=expect_string(
+            payload.get("attachment_id"),
+            f"{field}.attachment_id",
+        ),
+        source_sha256=expect_sha256(
+            payload.get("source_sha256"),
+            f"{field}.source_sha256",
+        ),
         page=page,
         issue_ids=issue_ids,
-        candidate_type=expect_string(payload.get("candidate_type"), f"{field}.candidate_type"),
+        candidate_type=expect_string(
+            payload.get("candidate_type"),
+            f"{field}.candidate_type",
+        ),
         geometry=decode_geometry(payload.get("geometry")),
-        raw_value=_optional_string(payload.get("raw_value"), f"{field}.raw_value"),
+        raw_value=_optional_string(
+            payload.get("raw_value"),
+            f"{field}.raw_value",
+        ),
         normalized_candidate=_optional_string(
-            payload.get("normalized_candidate"), f"{field}.normalized_candidate"
+            payload.get("normalized_candidate"),
+            f"{field}.normalized_candidate",
         ),
     )
 
 
 def decode_visual_analysis_output(value: object) -> VisualAnalysisOutput:
-    """Decode a visual-analysis response and reject any conclusion-like extra fields."""
+    """Decode a visual-analysis response and reject conclusion-like extras."""
     payload = expect_mapping(value, "visual_analysis_output")
     allowed = {"format", "version", "visual_analysis_id", "observations"}
     reject_unknown(payload, allowed, "visual_analysis_output")
     if payload.get("format") != VISUAL_ANALYSIS_OUTPUT_FORMAT:
         raise ValueError("unsupported visual analysis output format")
-    version = expect_int(payload.get("version"), "visual_analysis_output.version")
+    version = expect_int(
+        payload.get("version"),
+        "visual_analysis_output.version",
+    )
     if version != VISUAL_ANALYSIS_OUTPUT_VERSION:
         raise ValueError("unsupported visual analysis output version")
+    observation_values = _sequence(
+        payload.get("observations"),
+        "visual_analysis_output.observations",
+    )
     observations = tuple(
         _observation(item, f"observations[{index}]")
-        for index, item in enumerate(
-            _sequence(payload.get("observations"), "visual_analysis_output.observations")
-        )
+        for index, item in enumerate(observation_values)
     )
     return VisualAnalysisOutput(
         visual_analysis_id=expect_string(
-            payload.get("visual_analysis_id"), "visual_analysis_output.visual_analysis_id"
+            payload.get("visual_analysis_id"),
+            "visual_analysis_output.visual_analysis_id",
         ),
         observations=observations,
     )
 
 
-def visual_observation_document(observation: VisualObservation) -> dict[str, object]:
+def visual_observation_document(
+    observation: VisualObservation,
+) -> dict[str, object]:
     return {
         "attachment_id": observation.attachment_id,
         "source_sha256": observation.source_sha256,
@@ -128,12 +159,16 @@ def visual_observation_document(observation: VisualObservation) -> dict[str, obj
     }
 
 
-def visual_analysis_output_document(output: VisualAnalysisOutput) -> dict[str, object]:
+def visual_analysis_output_document(
+    output: VisualAnalysisOutput,
+) -> dict[str, object]:
     return {
         "format": VISUAL_ANALYSIS_OUTPUT_FORMAT,
         "version": VISUAL_ANALYSIS_OUTPUT_VERSION,
         "visual_analysis_id": output.visual_analysis_id,
-        "observations": [visual_observation_document(item) for item in output.observations],
+        "observations": [
+            visual_observation_document(item) for item in output.observations
+        ],
     }
 
 
