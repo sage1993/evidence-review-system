@@ -36,7 +36,8 @@ def _write_or_identical(path: Path, content: bytes) -> None:
             stream.write(content)
     except FileExistsError:
         if path.read_bytes() != content:
-            raise FileExistsError(f"existing visual-analysis artifact differs: {path.name}") from None
+            message = f"existing visual-analysis artifact differs: {path.name}"
+            raise FileExistsError(message) from None
 
 
 def _page_identity(page: VisualPageAsset) -> dict[str, object]:
@@ -97,7 +98,10 @@ def prepare_visual_analysis_handoff(
         "pages": [_page_document(workspace, item) for item in pages],
     }
     template = (
-        Path(__file__).parents[1] / "llm_layer" / "templates" / "visual-analysis.md"
+        Path(__file__).parents[1]
+        / "llm_layer"
+        / "templates"
+        / "visual-analysis.md"
     ).read_bytes()
     _write_or_identical(bundle_path, dump_bytes(bundle))
     _write_or_identical(instructions_path, template)
