@@ -18,6 +18,7 @@ def _fixture(
     tmp_path: Path,
     *,
     coordinates: list[float] | None = None,
+    with_rule: bool = True,
 ) -> tuple[dict[str, object], Path]:
     workspace = tmp_path / "workspace"
     run_id = "RUN-1234567890ABCDEF1234"
@@ -108,11 +109,14 @@ def _fixture(
             ]
         },
     )
+    review_item: dict[str, object] = {
+        "claim_id": "CL-I1-1",
+        "status": "NOT_SATISFIED" if with_rule else "INDETERMINATE",
+        "rule_ids": ["RULE-1"] if with_rule else [],
+    }
     view_model: dict[str, object] = {
         "run_id": run_id,
-        "review_items": [
-            {"claim_id": "CL-I1-1", "status": "NOT_SATISFIED"}
-        ],
+        "review_items": [review_item],
     }
     return view_model, workspace
 
@@ -134,6 +138,17 @@ def test_projection_embeds_verified_case_raster_and_candidate(
     assert candidate["tone"] == "issue"
     assert candidate["issue_ids"] == ["I1"]
     assert candidate["claims"][0]["citation_ids"] == ["CIT-RULE-1"]
+
+
+def test_projection_keeps_ruleless_visual_observation_blue(tmp_path: Path) -> None:
+    view_model, workspace = _fixture(tmp_path, with_rule=False)
+
+    result = build_case_visual_projection(view_model, workspace_root=workspace)
+
+    assert result is not None
+    candidate = result["pages"][0]["candidates"][0]
+    assert candidate["review_statuses"] == []
+    assert candidate["tone"] == "observation"
 
 
 def test_projection_fails_closed_when_raster_hash_changes(
