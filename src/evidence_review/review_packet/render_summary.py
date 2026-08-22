@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Reference-image reviewer summary and conditional sections."""
 from __future__ import annotations
 
@@ -140,7 +141,7 @@ def render_additional_review(model: Mapping[str, object]) -> str:
             '<strong id="additional-heading">추가 확인</strong>',
             f'<span>{first}</span></div>',
             '<button type="button" class="additional-toggle" data-additional-toggle ',
-            'aria-expanded="false" aria-controls="additional-details">자세히 보기 <span aria-hidden="true">⌄</span></button>',  # noqa: E501
+            'aria-expanded="false" aria-controls="additional-details">자세히 보기 <span aria-hidden="true">⌄</span></button>',
             '<div id="additional-details" class="additional-details" hidden>',
             f'<ul class="attention-list">{entries}</ul>',
             "</div>",
