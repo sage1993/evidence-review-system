@@ -102,6 +102,8 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert 'data-finding-next' in html
     assert 'data-case-zoom-in' in html
     assert 'data-case-zoom-out' in html
+    assert "grid-column:1/-1" in html
+    assert "width:100%" in html
     assert "마우스 휠로 커서 위치 기준 확대·축소" in html
     assert "http://" not in html
     assert "https://" not in html
