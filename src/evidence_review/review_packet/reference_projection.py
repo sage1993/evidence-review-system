@@ -5,6 +5,8 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Literal, cast
 
+from evidence_review.review_packet.reference_pages import build_reference_projection
+
 ReferenceType = Literal[
     "TEXT",
     "TABLE",
@@ -134,4 +136,4 @@ def project_reference_record(
     }
 
 
-__all__ = ["project_reference_record"]
+__all__ = ["build_reference_projection", "project_reference_record"]
