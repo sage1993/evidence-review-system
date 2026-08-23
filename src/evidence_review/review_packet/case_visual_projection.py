@@ -12,6 +12,9 @@ from typing import cast
 from evidence_review.contracts.attachments import ImmutableAttachment, decode_immutable_attachment
 from evidence_review.contracts.drawing import decode_drawing_candidate, drawing_candidate_document
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.review_packet.reference_projection import (
+    build_reference_projection,
+)
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -124,6 +127,34 @@ def _claim_links(track_a: Mapping[str, object]) -> dict[str, list[dict[str, obje
                 }
             )
     return links
+
+
+def _claim_citations(
+    view_model: Mapping[str, object],
+) -> dict[str, dict[str, Mapping[str, object]]]:
+    result: dict[str, dict[str, Mapping[str, object]]] = {}
+    claims = _sequence(view_model.get("claims", []), "claims")
+    for index, item in enumerate(claims):
+        claim = _mapping(item, f"claims[{index}]")
+        claim_id = _string(claim.get("claim_id"), f"claims[{index}].claim_id")
+        if claim_id in result:
+            raise ValueError("duplicate view-model claim id")
+        citations: dict[str, Mapping[str, object]] = {}
+        values = _sequence(claim.get("citations", []), f"claims[{index}].citations")
+        for citation_index, citation_value in enumerate(values):
+            citation = _mapping(
+                citation_value,
+                f"claims[{index}].citations[{citation_index}]",
+            )
+            citation_id = _string(
+                citation.get("citation_id"),
+                f"claims[{index}].citations[{citation_index}].citation_id",
+            )
+            if citation_id in citations:
+                raise ValueError("duplicate citation id within claim")
+            citations[citation_id] = citation
+        result[claim_id] = citations
+    return result
 
 
 def _review_statuses(view_model: Mapping[str, object]) -> dict[str, str]:
@@ -318,9 +349,12 @@ def build_case_visual_projection(
 
     track_a = _json(track_a_path)
     claim_links = _claim_links(track_a)
+    citations_by_claim = _claim_citations(view_model)
     statuses = _review_statuses(view_model)
     issue_questions = _issue_questions(inputs)
     seen_candidates: set[str] = set()
+    referenced_citations: dict[str, Mapping[str, object]] = {}
+    finding_specs: list[dict[str, object]] = []
 
     candidate_values = _sequence(
         context.get("drawing_candidates", []), "case_visual_context.drawing_candidates"
@@ -372,16 +406,63 @@ def build_case_visual_projection(
             }
         )
         cast(list[object], page["candidates"]).append(projected)
+        reference_citation_ids: list[str] = []
+        for link in links:
+            claim_id = cast(str, link["claim_id"])
+            claim_citations = citations_by_claim.get(claim_id, {})
+            for citation_id in cast(list[str], link["citation_ids"]):
+                citation = claim_citations.get(citation_id)
+                if citation is None:
+                    continue
+                existing = referenced_citations.get(citation_id)
+                if existing is not None and existing != citation:
+                    raise ValueError("reference citation identity is ambiguous")
+                referenced_citations.setdefault(citation_id, citation)
+                if citation_id not in reference_citation_ids:
+                    reference_citation_ids.append(citation_id)
+        finding_specs.append(
+            {
+                "finding_id": candidate.candidate_id,
+                "reference_citation_ids": reference_citation_ids,
+                "subject_region": {
+                    "page_asset_key": cast(str, page["asset_key"]),
+                    "attachment_id": cast(str, page["attachment_id"]),
+                    "page": candidate.page,
+                    "geometry": canonical["geometry"],
+                },
+            }
+        )
 
     if set(lineage) != seen_candidates:
         raise ValueError("case visual lineage does not match drawing candidates")
 
     pages = [page_records[key] for key in sorted(page_records)]
+    if referenced_citations:
+        reference_documents, reference_pages, anchors = build_reference_projection(
+            tuple(referenced_citations.values()),
+            page_root=workspace_root / "page-images",
+        )
+    else:
+        reference_documents, reference_pages, anchors = [], [], {}
+    findings = [
+        {
+            "finding_id": cast(str, spec["finding_id"]),
+            "reference_anchors": [
+                anchors[citation_id]
+                for citation_id in cast(list[str], spec["reference_citation_ids"])
+            ],
+            "subject_region": spec["subject_region"],
+        }
+        for spec in finding_specs
+    ]
     return {
         "status": "VISUAL_ANALYSIS_VALIDATED",
         "attachment_count": len(attachments),
         "candidate_count": len(seen_candidates),
         "pages": pages,
+        "reference_documents": reference_documents,
+        "reference_pages": reference_pages,
+        "findings": findings,
     }
 
 
