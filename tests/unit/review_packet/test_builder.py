@@ -167,6 +167,21 @@ def test_view_model_projects_packet_missing_inputs_into_summary(tmp_path: Path) 
     assert model["missing_inputs"] == ["청소년문화의집 적용대상 확인"]
 
 
+def test_view_model_projects_safe_text_reference_metadata(tmp_path: Path) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+
+    model = build_review_view_model(_packet(), database)
+
+    citation = model["claims"][0]["citations"][0]
+    assert citation["document_page_count"] == 3
+    assert citation["reference"] == {
+        "type": "TEXT",
+        "table": None,
+        "visual": None,
+    }
+
+
 def test_view_model_requires_explicit_v1_migration(tmp_path: Path) -> None:
     database = tmp_path / "evidence-v1.sqlite"
     connection = sqlite3.connect(database)
