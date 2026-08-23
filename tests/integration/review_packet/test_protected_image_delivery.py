@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import http.client
 import json
@@ -90,13 +91,100 @@ def _page(root: Path, image_bytes: bytes) -> None:
     )
 
 
-def _run(root: Path, image_bytes: bytes) -> tuple[Path, bytes]:
+def _visual_model(reference_bytes: bytes) -> dict[str, object]:
+    model = _model()
+    subject_uri = "data:image/png;base64," + base64.b64encode(b"subject-page").decode()
+    reference_uri = "data:image/png;base64," + base64.b64encode(reference_bytes).decode()
+    geometry = {
+        "type": "BBOX",
+        "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
+        "coordinates": [10, 20, 50, 60],
+    }
+    candidate = {
+        "candidate_id": "CAND-1",
+        "page": 1,
+        "candidate_type": "VISUAL_OBSERVATION",
+        "geometry": geometry,
+        "issue_ids": ["I1"],
+        "claims": [{"claim_id": "C1", "citation_ids": ["CIT-E1"]}],
+        "review_statuses": [],
+        "tone": "observation",
+        "display_value": "subject region",
+    }
+    anchor = {
+        "anchor_id": "CIT-E1",
+        "type": "TEXT",
+        "document_id": "DOC1",
+        "revision_id": "REV1",
+        "document_name": "source.pdf",
+        "page": 3,
+        "page_asset_key": "reference-page-1",
+        "title": "제3조",
+        "quote": "근거 문장",
+        "bbox": {
+            "coordinate_system": "PDF_BOTTOM_LEFT_POINTS",
+            "coordinates": [10, 20, 50, 40],
+        },
+        "table": None,
+        "visual": None,
+    }
+    model["case_visual_review"] = {
+        "status": "VISUAL_ANALYSIS_VALIDATED",
+        "attachment_count": 1,
+        "candidate_count": 1,
+        "pages": [
+            {
+                "asset_key": "SUB-1",
+                "attachment_id": "ATT-1",
+                "document_name": "case.pdf",
+                "page": 1,
+                "width": 100.0,
+                "height": 120.0,
+                "data_uri": subject_uri,
+                "candidates": [candidate],
+            }
+        ],
+        "reference_pages": [
+            {
+                "asset_key": "reference-page-1",
+                "document_id": "DOC1",
+                "revision_id": "REV1",
+                "page": 3,
+                "source_hash": SOURCE_HASH,
+                "width": 100.0,
+                "height": 200.0,
+                "rotation": 0,
+                "data_uri": reference_uri,
+            }
+        ],
+        "findings": [
+            {
+                "finding_id": "CAND-1",
+                "reference_anchors": [anchor],
+                "subject_region": {
+                    "page_asset_key": "SUB-1",
+                    "attachment_id": "ATT-1",
+                    "page": 1,
+                    "geometry": geometry,
+                },
+            }
+        ],
+    }
+    return model
+
+
+def _run(
+    root: Path,
+    image_bytes: bytes,
+    *,
+    model: dict[str, object] | None = None,
+) -> tuple[Path, bytes]:
     _page(root, image_bytes)
     run = root / "runs" / RUN_ID
     run.mkdir(parents=True)
     packet = b'{"human_decision":null,"run_id":"RUN-0123456789ABCDEF0123"}'
     (run / "final-review-packet.json").write_bytes(packet)
-    archive_html = render_review_html(_model(), root / "page-images")
+    archive_html = render_review_html(model or _model(), root / "page-images")
     (run / "review.html").write_text(archive_html, encoding="utf-8")
     return run, packet
 
@@ -142,6 +230,44 @@ def test_archive_stays_embedded_but_protected_review_is_lazy(tmp_path: Path) -> 
         assert headers["cache-control"] == "no-store"
         assert headers["x-content-type-options"] == "nosniff"
         assert delivered == image_bytes
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_visual_reference_is_lazy_without_stripping_subject_raster(tmp_path: Path) -> None:
+    reference_bytes = b"\x89PNG\r\n\x1a\nreference"
+    model = _visual_model(reference_bytes)
+    visual = model["case_visual_review"]
+    assert isinstance(visual, dict)
+    pages = visual["pages"]
+    reference_pages = visual["reference_pages"]
+    assert isinstance(pages, list) and isinstance(reference_pages, list)
+    subject_uri = str(pages[0]["data_uri"])
+    reference_uri = str(reference_pages[0]["data_uri"])
+    run, _ = _run(tmp_path, reference_bytes, model=model)
+    archive = (run / "review.html").read_text(encoding="utf-8")
+
+    assert archive.count(subject_uri) == 1
+    assert archive.count(reference_uri) == 1
+    assert 'id="evidence-viewer"' not in archive
+
+    server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"/runs/{RUN_ID}/{TOKEN}"
+        status, _, protected = _get(server, base + "/review")
+        assert status == 200
+        assert reference_uri.encode() not in protected
+        assert subject_uri.encode() in protected
+        lazy = b'data-page-src="./page-images/REV1/3/' + SOURCE_HASH.encode() + b'"'
+        assert lazy in protected
+        status, _, delivered = _get(server, base + f"/page-images/REV1/3/{SOURCE_HASH}")
+        assert status == 200 and delivered == reference_bytes
+        status, _, _ = _get(server, base + f"/page-images/REV1/4/{SOURCE_HASH}")
+        assert status == 404
     finally:
         server.shutdown()
         server.server_close()

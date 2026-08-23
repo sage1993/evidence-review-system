@@ -300,8 +300,10 @@ def _protected_review_html(html_bytes: bytes) -> bytes:
         )
 
     html = _PAGE_IMAGE_TAG.sub(lazy_image, html)
-    if "data:image/png;base64," in html:
-        raise ValueError("protected presentation still contains embedded page images")
+    if any(
+        _EMBEDDED_SRC.search(match.group(0)) for match in _PAGE_IMAGE_TAG.finditer(html)
+    ):
+        raise ValueError("protected presentation still contains embedded reference pages")
     return html.encode("utf-8")
 
 

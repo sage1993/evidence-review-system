@@ -823,6 +823,32 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
     responsive_css = (assets_path / "review_responsive.css").read_text(encoding="utf-8")
     css_bundle = css + "\n/* review_responsive.css */\n" + responsive_css
     script = (assets_path / "review.js").read_text(encoding="utf-8")
+    if model.get("case_visual_review") is not None:
+        visual_workspace = render_additional_review(model)
+        return "".join(
+            (
+                '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
+                '<meta name="viewport" content="width=device-width, initial-scale=1">',
+                f"<title>근거 검토 · {_text(model.get('question'))}</title>",
+                f"<style>{css_bundle}</style>",
+                '</head><body><div class="app-shell" data-viewer-mode="compare">',
+                render_status_band(model),
+                '<main class="review-workspace">',
+                render_summary(model),
+                visual_workspace,
+                render_decision_form(model),
+                render_audit_details(model),
+                "</main>",
+                _render_process_footer(model),
+                "</div>",
+                '<script id="review-model" type="application/json">',
+                _model_json(model),
+                "</script>",
+                f"<script>{script}</script>",
+                "</body></html>",
+            )
+        )
+
     claims = _sequence(model.get("claims", []), "claims")
     assets = _page_assets(claims, page_image_root)
     documents = _viewer_documents(claims, assets)
