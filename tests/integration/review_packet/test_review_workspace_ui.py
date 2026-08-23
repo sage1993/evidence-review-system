@@ -1,9 +1,11 @@
+# ruff: noqa: E501
 import json
 import re
 import subprocess
 from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.render_case_visual import CASE_VISUAL_SCRIPT
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
 
@@ -389,4 +391,32 @@ if (!page1.classList.contains("is-active")) {
 }
 """
     completed = _run_node_harness(controller, harness)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_case_visual_controller_focuses_reference_and_subject_independently() -> None:
+    harness = r"""
+function classes(){const values=new Set();return{add(v){values.add(v)},remove(v){values.delete(v)},toggle(v,on){on?values.add(v):values.delete(v)},contains(v){return values.has(v)}}}
+function node(dataset){return{dataset:dataset||{},hidden:false,classList:classes(),listeners:{},attributes:{},style:{},textContent:'',addEventListener(t,h){this.listeners[t]=h},setAttribute(n,v){this.attributes[n]=String(v)},getAttribute(n){return this.attributes[n]??null},setPointerCapture(){},releasePointerCapture(){}}}
+function shape(x,y,w,h,klass){const value=node();value.attributes={x:String(x),y:String(y),width:String(w),height:String(h)};value.className=klass;return value}
+function stage(kind){const value=node(),transform=node(),svg=node();svg.viewBox={baseVal:{width:kind==='reference'?595:100,height:kind==='reference'?842:120}};value.transform=transform;value.svg=svg;value.matches=s=>s==='[data-reference-stage]'&&kind==='reference';value.getBoundingClientRect=()=>({left:0,top:0,width:400,height:500});value.querySelector=s=>s==='[data-reference-transform],[data-case-transform]'?transform:s==='svg'?svg:null;return value}
+function page(key,kind){const value=node(kind==='reference'?{referencePage:key}:{casePage:key}),viewer=stage(kind);value.viewer=viewer;value.querySelector=s=>s===`[data-${kind==='reference'?'reference':'case'}-stage]`?viewer:null;return value}
+const referencePages=[page('REF-1','reference'),page('REF-2','reference')],subjectPages=[page('SUB-1','subject'),page('SUB-2','subject')];
+const referenceShapes=[shape(70,380,120,40,'reference-anchor-shape'),shape(200,300,80,50,'reference-anchor-shape')],subjectShapes=[shape(10,20,30,30,'case-visual-shape'),shape(50,60,20,20,'case-visual-shape')];
+const referenceOverlays=[node({referenceAnchor:'A-1'}),node({referenceAnchor:'A-2'})],subjectOverlays=[node({caseOverlay:'F-1'}),node({caseOverlay:'F-2'})];referenceOverlays.forEach((v,i)=>v.querySelector=s=>s==='.reference-anchor-shape'?referenceShapes[i]:null);subjectOverlays.forEach((v,i)=>v.querySelector=s=>s==='.case-visual-shape'?subjectShapes[i]:null);
+const details=[node({referenceAnchorDetail:'A-1',assetKey:'REF-1'}),node({referenceAnchorDetail:'A-2',assetKey:'REF-2'})],references=[node({caseReference:'F-1'}),node({caseReference:'F-2'})];references.forEach((v,i)=>v.querySelector=s=>s==='[data-reference-anchor-detail]'?details[i]:null);
+const findings=[node({caseFinding:'F-1',casePageKey:'SUB-1'}),node({caseFinding:'F-2',casePageKey:'SUB-2'})];
+const selectors=['[data-reference-prev]','[data-reference-next]','[data-case-prev]','[data-case-next]','[data-reference-zoom-in]','[data-reference-zoom-out]','[data-reference-fit]','[data-case-zoom-in]','[data-case-zoom-out]','[data-case-reset]','[data-finding-prev]','[data-finding-next]'];const buttons=Object.fromEntries(selectors.map(s=>[s,node()]));
+const labels=Object.fromEntries(['[data-reference-page-number]','[data-case-page-number]','[data-reference-zoom]','[data-case-zoom]','[data-finding-number]'].map(s=>[s,node()]));
+const root=node();root.querySelectorAll=s=>s==='[data-reference-page]'?referencePages:s==='[data-case-page]'?subjectPages:s==='[data-case-finding]'?findings:s==='[data-case-reference]'?references:s==='[data-reference-anchor]'?referenceOverlays:s==='[data-case-overlay]'?subjectOverlays:[];root.querySelector=s=>buttons[s]||labels[s]||null;
+global.requestAnimationFrame=fn=>fn();global.document={getElementById:id=>id==='case-visual-review'?root:null};eval(controller);
+buttons['[data-finding-next]'].listeners.click();
+if(referencePages[1].hidden||subjectPages[1].hidden)throw new Error('second finding pages not active');
+if(!referencePages[1].viewer.transform.style.transform||!subjectPages[1].viewer.transform.style.transform)throw new Error('finding focus missing');
+const subjectBefore=subjectPages[1].viewer.transform.style.transform;buttons['[data-reference-zoom-in]'].listeners.click();if(subjectPages[1].viewer.transform.style.transform!==subjectBefore)throw new Error('reference zoom changed subject');
+const referenceBefore=referencePages[1].viewer.transform.style.transform;subjectPages[1].viewer.listeners.wheel({preventDefault(){},deltaY:-1,clientX:100,clientY:100});if(referencePages[1].viewer.transform.style.transform!==referenceBefore)throw new Error('subject wheel changed reference');
+referencePages[1].viewer.listeners.pointerdown({button:0,clientX:10,clientY:10,pointerId:1});referencePages[1].viewer.listeners.pointermove({clientX:30,clientY:35});if(referencePages[1].viewer.transform.style.transform===referenceBefore)throw new Error('reference pan missing');
+subjectPages[1].viewer.listeners.dblclick();if(!subjectPages[1].viewer.transform.style.transform.endsWith('scale(1)'))throw new Error('subject fit did not reset');
+"""
+    completed = _run_node_harness(CASE_VISUAL_SCRIPT, harness)
     assert completed.returncode == 0, completed.stderr

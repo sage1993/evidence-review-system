@@ -209,6 +209,25 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert 'data-case-overlay="CAND-1"' in html
     assert '<rect class="case-visual-shape" x="10" y="20" width="70" height="70"' in html
     assert 'data-case-divider' in html
+    for function_name in (
+        "showReferencePage",
+        "showSubjectPage",
+        "focusStage",
+        "fitStage",
+        "activateFinding",
+    ):
+        assert f"function {function_name}" in html
+    assert "requestAnimationFrame" in html
+    assert "new WeakMap()" in html
+    assert "Math.min(5,Math.max(.5" in html
+    assert "{passive:false}" in html
+    assert "setPointerCapture" in html
+    assert "releasePointerCapture" in html
+    assert "data-reference-stage" in html
+    assert "data-case-stage" in html
+    assert "data-reference-transform" in html
+    assert "data-case-transform" in html
+
     assert 'role="separator"' in html
     assert 'data-finding-prev' in html
     assert 'data-finding-next' in html
