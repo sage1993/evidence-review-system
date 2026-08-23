@@ -228,6 +228,13 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert "data-reference-transform" in html
     assert "data-case-transform" in html
 
+    assert 'data-findings-toggle' in html
+    assert 'data-findings-close' in html
+    assert 'data-findings-backdrop' in html
+    assert '@media(max-width:1366px)' in html
+    assert '[data-findings-open="true"] .findings-panel' in html
+    assert '@media(max-width:1439px)' not in html
+
     assert 'role="separator"' in html
     assert 'data-finding-prev' in html
     assert 'data-finding-next' in html

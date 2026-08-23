@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.render_case_visual import CASE_VISUAL_CSS, CASE_VISUAL_SCRIPT
 
 from .test_html_renderer import _model, _write_page_assets
 
@@ -110,3 +111,18 @@ def test_review_selection_and_focus_orchestration_is_non_recursive(tmp_path: Pat
     assert "selectReviewItem(" not in focus_body
     assert "function activateReviewItem" in html
     assert "window.activateReviewItem = activateReviewItem" in html
+
+
+def test_visual_1366_contract_uses_findings_drawer_without_hiding_viewers() -> None:
+    medium = _media(CASE_VISUAL_CSS, "@media(max-width:1366px)")
+
+    assert ".findings-panel{position:absolute" in medium
+    assert "transform:translateX(100%)" in medium
+    assert '[data-findings-open="true"] .findings-panel' in medium
+    assert ".comparison-workspace{grid-template-columns" not in medium
+    assert "@media(max-width:1439px)" not in CASE_VISUAL_CSS
+    assert "data-findings-toggle" in CASE_VISUAL_SCRIPT
+    assert "data-findings-close" in CASE_VISUAL_SCRIPT
+    assert "data-findings-backdrop" in CASE_VISUAL_SCRIPT
+    assert "Escape" in CASE_VISUAL_SCRIPT
+    assert ".focus()" in CASE_VISUAL_SCRIPT
