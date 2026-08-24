@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Thread
 
 from evidence_review.review_packet.case_visual_asset_server import (
-    install_case_visual_asset_support,
+    configure_case_visual_server,
 )
 from evidence_review.review_packet.local_server import (
     create_review_server,
@@ -35,13 +35,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     reviewer_ids = None if args.reviewer_id is None else {args.run_id: args.reviewer_id}
-    install_case_visual_asset_support()
     server = create_review_server(
         Path(args.workspace),
         run_tokens={args.run_id: args.token},
         reviewer_ids=reviewer_ids,
         idle_timeout_seconds=args.idle_timeout_seconds,
     )
+    configure_case_visual_server(server)
     state_path = Path(args.workspace) / "runs" / args.run_id / "review-server.json"
     try:
         port = server.server_address[1]
