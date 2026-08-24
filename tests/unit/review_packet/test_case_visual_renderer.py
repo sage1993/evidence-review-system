@@ -1,3 +1,5 @@
+import re
+
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
 from evidence_review.review_packet.render_summary import (
     render_additional_review,
@@ -110,7 +112,13 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert "설계기준" in html
     assert "차량 출입구는 기준 위치를 확보해야 한다." in html
     assert 'data-case-page-src="data:image/png;base64,ZmFrZQ=="' in html
-    assert 'src="data:image/png;base64,ZmFrZQ=="' not in html
+    assert (
+        re.search(
+            r'(?<![\w-])src\s*=\s*"data:image/png;base64,ZmFrZQ=="',
+            html,
+        )
+        is None
+    )
     assert 'data-case-overlay="CAND-1"' in html
     assert '<rect class="case-visual-geometry" fill="none"' in html
     assert 'data-case-divider' in html
@@ -160,8 +168,17 @@ def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None
     assert "body:has(#case-visual-review){overflow:hidden}" in html
     assert ".review-workspace>:not(.visual-review-grid-span):not(#decision-form)" in html
     assert 'body[data-visual-decision-open="true"]' in html
-    assert "#decision-form:hover" not in html
+    assert "#decision-form:hover" in html
+    assert "#decision-form:focus-within" in html
+    assert "pointer-events:none!important" in html
     assert 'data-case-decision-open' in html
+    assert 'data-case-decision-backdrop' in html
+    assert "e.key==='Escape'" in html
+    assert "data:image/png;base64,ZmFrZQ==" not in html
+    assert (
+        'data-case-page-src="./case-pages/ATT-1/1/' + "b" * 64 + '"'
+        in html
+    )
 
 
 def test_visual_workspace_does_not_duplicate_legacy_additional_review_strip() -> None:
