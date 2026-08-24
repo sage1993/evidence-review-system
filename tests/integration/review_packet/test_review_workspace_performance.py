@@ -1,10 +1,12 @@
 """Bounded local rendering coverage for the non-developer Review Workspace."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
 import struct
+import tracemalloc
 import zlib
 from pathlib import Path
 from time import perf_counter
@@ -172,3 +174,144 @@ def test_abstain_state_surfaces_additional_review_without_selecting_decision(
     assert 'id="additional-review"' in html
     assert "MISSING REQUIRED EVIDENCE" in html
     assert " checked" not in _decision_form(html)
+
+
+def _visual_twenty_page_model(source_hashes: list[str]) -> dict[str, object]:
+    base = _twenty_page_model(source_hashes)
+    subject_uri = "data:image/png;base64," + base64.b64encode(b"subject-page").decode()
+    candidates: list[dict[str, object]] = []
+    anchors: list[dict[str, object]] = []
+    for index, claim in enumerate(base["claims"]):
+        claim_mapping = claim
+        citation = claim_mapping["citations"][0]
+        candidate_id = f"CAND-{index + 1:03d}"
+        candidates.append(
+            {
+                "candidate_id": candidate_id,
+                "page": 1,
+                "candidate_type": "VISUAL_OBSERVATION",
+                "geometry": {
+                    "type": "BBOX",
+                    "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
+                    "coordinates": [
+                        float(index % 10 * 50),
+                        float(index // 10 * 70),
+                        float(index % 10 * 50 + 30),
+                        float(index // 10 * 70 + 30),
+                    ],
+                },
+                "issue_ids": ["I1"],
+                "claims": [
+                    {
+                        "claim_id": claim_mapping["claim_id"],
+                        "citation_ids": [citation["citation_id"]],
+                    }
+                ],
+                "review_statuses": [],
+                "tone": "observation",
+                "display_value": f"Subject region {index + 1}",
+            }
+        )
+        page_number = int(citation["page_number"])
+        anchors.append(
+            {
+                "anchor_id": citation["citation_id"],
+                "type": "TEXT",
+                "document_id": "DOC-PERFORMANCE",
+                "revision_id": "REV-PERFORMANCE",
+                "document_name": "performance-reference.pdf",
+                "page": page_number,
+                "page_asset_key": f"reference-page-{page_number}",
+                "title": citation["title"],
+                "quote": citation["quote"],
+                "bbox": {
+                    "coordinate_system": "PDF_BOTTOM_LEFT_POINTS",
+                    "coordinates": citation["bbox"],
+                },
+                "table": None,
+                "visual": None,
+            }
+        )
+    reference_pages = [
+        {
+            "asset_key": f"reference-page-{page_number}",
+            "document_id": "DOC-PERFORMANCE",
+            "revision_id": "REV-PERFORMANCE",
+            "page": page_number,
+            "source_hash": source_hashes[page_number - 1],
+            "width": 600.0,
+            "height": 800.0,
+            "rotation": 0,
+            "data_uri": "data:image/png;base64,"
+            + base64.b64encode(VALID_MINIMAL_PNG + bytes([page_number])).decode(),
+        }
+        for page_number in range(1, PAGE_COUNT + 1)
+    ]
+    base["case_visual_review"] = {
+        "status": "VISUAL_ANALYSIS_VALIDATED",
+        "attachment_count": 1,
+        "candidate_count": CITATION_COUNT,
+        "pages": [
+            {
+                "asset_key": "ATT-SUBJECT-p1",
+                "attachment_id": "ATT-SUBJECT",
+                "document_name": "subject.pdf",
+                "page": 1,
+                "width": 600.0,
+                "height": 800.0,
+                "data_uri": subject_uri,
+                "candidates": candidates,
+            }
+        ],
+        "reference_documents": [
+            {
+                "document_id": "DOC-PERFORMANCE",
+                "revision_id": "REV-PERFORMANCE",
+                "document_name": "performance-reference.pdf",
+                "page_count": PAGE_COUNT,
+                "page_asset_keys": [page["asset_key"] for page in reference_pages],
+            }
+        ],
+        "reference_pages": reference_pages,
+        "findings": [
+            {
+                "finding_id": candidate["candidate_id"],
+                "reference_anchors": [anchor],
+                "subject_region": {
+                    "page_asset_key": "ATT-SUBJECT-p1",
+                    "attachment_id": "ATT-SUBJECT",
+                    "page": 1,
+                    "geometry": candidate["geometry"],
+                },
+            }
+            for candidate, anchor in zip(candidates, anchors, strict=True)
+        ],
+    }
+    return base
+
+
+def test_visual_workspace_renders_twenty_reference_pages_and_one_subject_once(
+    tmp_path: Path,
+) -> None:
+    source_hashes = _write_shared_page_assets(tmp_path / "pages")
+    model = _visual_twenty_page_model(source_hashes)
+
+    tracemalloc.start()
+    started = perf_counter()
+    html = render_review_html(model, tmp_path / "pages")
+    elapsed = perf_counter() - started
+    _current, peak_memory = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert len(html.encode("utf-8")) < 2_000_000
+    assert peak_memory < 128 * 1024 * 1024
+    assert html.count('data-reference-page="reference-page-') == PAGE_COUNT
+    assert html.count('data-page-image-source="reference-page-') == PAGE_COUNT
+    assert html.count("data:image/png;base64,") == PAGE_COUNT + 1
+    assert 'id="evidence-viewer"' not in html
+    assert elapsed <= LOCAL_RENDER_BUDGET_SECONDS
+
+    visual = model["case_visual_review"]
+    assert isinstance(visual, dict)
+    assert all("data_uri" not in page for page in visual["reference_pages"])
+    assert "data_uri" not in visual["pages"][0]
