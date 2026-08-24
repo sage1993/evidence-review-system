@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
@@ -294,12 +295,22 @@ def test_visual_workspace_uses_click_only_decision_drawer() -> None:
 
     assert 'data-case-decision-open' in html
     assert 'data-visual-decision-open="true"' in html
-    assert "#decision-form:hover" not in html
+    assert "#decision-form:hover" in html
+    assert "#decision-form:focus-within" in html
+    assert "pointer-events:none!important" in html
+    assert 'data-case-decision-backdrop' in html
+    assert "e.key==='Escape'" in html
 
 
 def test_renderer_defers_raster_decode_to_active_page() -> None:
     html = render_case_visual_review(_render_model())
 
     assert 'data-case-page-src="data:image/png;base64,ZmFrZQ=="' in html
-    assert 'src="data:image/png;base64,ZmFrZQ=="' not in html
+    assert (
+        re.search(
+            r'(?<![\w-])src\s*=\s*"data:image/png;base64,ZmFrZQ=="',
+            html,
+        )
+        is None
+    )
     assert "ensurePageRaster" in html
