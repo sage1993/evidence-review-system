@@ -16,6 +16,8 @@ from urllib.parse import unquote, urlsplit
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.review_packet import local_server
 
+# ruff: noqa: E501
+
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FIGURE_RE = re.compile(
     r'<figure class="case-visual-page[^\"]*"[^>]*\bdata-case-page="(?P<asset>[^"]+)"[^>]*>.*?</figure>',
