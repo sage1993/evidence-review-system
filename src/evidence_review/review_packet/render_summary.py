@@ -10,7 +10,7 @@ from evidence_review.review_packet.presentation import (
     conclusion_text,
     localized_status,
 )
-from evidence_review.review_packet.render_case_visual import render_case_visual_review
+from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
 
 # ruff: noqa: E501
 
