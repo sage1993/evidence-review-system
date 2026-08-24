@@ -6,10 +6,12 @@ import hashlib
 import json
 import os
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import cast
 
 from PIL import Image, ImageOps
 
@@ -241,6 +243,21 @@ def _tile_manifest_header(page: VisualPageAsset) -> dict[str, object]:
     }
 
 
+def _record_mapping(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or not all(
+        isinstance(key, str) for key in value
+    ):
+        raise ValueError("case visual tile record is invalid")
+    return cast(Mapping[str, object], value)
+
+
+def _record_int(record: Mapping[str, object], field: str) -> int:
+    value = record.get(field)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("case visual tile geometry is invalid")
+    return value
+
+
 def _load_visual_page_tiles(
     directory: Path,
     page: VisualPageAsset,
@@ -249,9 +266,12 @@ def _load_visual_page_tiles(
     if not manifest_path.is_file():
         raise ValueError("case visual tile cache is incomplete")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError("case visual tile manifest is invalid") from error
+    if not isinstance(raw_manifest, Mapping):
+        raise ValueError("case visual tile manifest is invalid")
+    manifest = cast(Mapping[str, object], raw_manifest)
     expected = _tile_manifest_header(page)
     for key, value in expected.items():
         if manifest.get(key) != value:
@@ -260,9 +280,8 @@ def _load_visual_page_tiles(
     if not isinstance(records, list) or not records:
         raise ValueError("case visual tile manifest has no tiles")
     tiles: list[VisualPageTile] = []
-    for record in records:
-        if not isinstance(record, dict):
-            raise ValueError("case visual tile record is invalid")
+    for raw_record in records:
+        record = _record_mapping(raw_record)
         filename = record.get("filename")
         if not isinstance(filename, str) or Path(filename).name != filename:
             raise ValueError("case visual tile filename is invalid")
@@ -270,12 +289,15 @@ def _load_visual_page_tiles(
         if not tile_path.is_file():
             raise ValueError("case visual tile file is missing")
         expected_hash = record.get("image_sha256")
-        if not isinstance(expected_hash, str) or sha256_file(tile_path) != expected_hash:
+        if (
+            not isinstance(expected_hash, str)
+            or sha256_file(tile_path) != expected_hash
+        ):
             raise ValueError("case visual tile hash mismatch")
-        values = [record.get(name) for name in ("x", "y", "width", "height")]
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise ValueError("case visual tile geometry is invalid")
-        x, y, width, height = values
+        x = _record_int(record, "x")
+        y = _record_int(record, "y")
+        width = _record_int(record, "width")
+        height = _record_int(record, "height")
         if x < 0 or y < 0 or width < 1 or height < 1:
             raise ValueError("case visual tile geometry is invalid")
         if x + width > int(page.width) or y + height > int(page.height):
