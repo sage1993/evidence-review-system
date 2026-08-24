@@ -64,6 +64,11 @@ def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _normalized_phrase(value: object) -> str:
+    text = _text(value)
+    return re.sub(r"\s+", " ", text).strip().casefold() if text else ""
+
+
 def _number(value: object, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field} must be a finite number")
@@ -205,14 +210,30 @@ def _status(candidates: Sequence[Mapping[str, object]]) -> str:
     return "needs_check"
 
 
+def _issue_questions(candidates: Sequence[Mapping[str, object]]) -> set[str]:
+    questions: set[str] = set()
+    for candidate in candidates:
+        for raw_question in _sequence(
+            candidate.get("issue_questions", []), "candidate.issue_questions"
+        ):
+            normalized = _normalized_phrase(raw_question)
+            if normalized:
+                questions.add(normalized)
+    return questions
+
+
 def _display_values(candidates: Sequence[Mapping[str, object]]) -> str:
     values: list[str] = []
+    questions = _issue_questions(candidates)
     for candidate in candidates:
         value = (
             _text(candidate.get("display_value"))
             or _text(candidate.get("normalized_candidate"))
             or _text(candidate.get("raw_value"))
         )
+        normalized = _normalized_phrase(value)
+        if normalized and any(question in normalized for question in questions):
+            continue
         if value and value not in values:
             values.append(value)
     return " · ".join(values) if values else "도면에서 확인된 시각 요소"
