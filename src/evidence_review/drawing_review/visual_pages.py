@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from tempfile import mkdtemp
 
 from PIL import Image, ImageOps
 
@@ -17,9 +20,14 @@ from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 from evidence_review.parsing.source_manifest import sha256_file
 
 _VISUAL_PAGE_FORMAT = "evidence-review/case-visual-page"
+_VISUAL_TILE_FORMAT = "evidence-review/case-visual-tile-manifest"
 _MAX_IMAGE_PIXELS = 150_000_000
 _CASE_PDF_RENDER_SCALE = 4.0
 _CASE_PDF_CACHE_DIR = "case-page-images-hq-v1"
+_TILE_CACHE_DIR = "case-page-tiles-v1"
+_TILE_SIZE = 2048
+_TILE_TRIGGER_PIXELS = 16_000_000
+_TILE_TRIGGER_DIMENSION = 4096
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +41,18 @@ class VisualPageAsset:
     height: float
     coordinate_system: CoordinateSystem
     image_path: Path
+    image_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class VisualPageTile:
+    """One hash-bound raster tile for lazy browser decode."""
+
+    path: Path
+    x: int
+    y: int
+    width: int
+    height: int
     image_sha256: str
 
 
@@ -189,6 +209,156 @@ def _normalized_image_asset(
     )
 
 
+def _tile_directory(workspace: Path, page: VisualPageAsset) -> Path:
+    return (
+        workspace
+        / _TILE_CACHE_DIR
+        / page.attachment_id
+        / f"page-{page.page:04d}"
+    )
+
+
+def _tile_required(page: VisualPageAsset) -> bool:
+    width = int(page.width)
+    height = int(page.height)
+    return (
+        width * height >= _TILE_TRIGGER_PIXELS
+        and max(width, height) > _TILE_TRIGGER_DIMENSION
+    )
+
+
+def _tile_manifest_header(page: VisualPageAsset) -> dict[str, object]:
+    return {
+        "format": _VISUAL_TILE_FORMAT,
+        "version": 1,
+        "attachment_id": page.attachment_id,
+        "source_sha256": page.source_sha256,
+        "page": page.page,
+        "page_width": int(page.width),
+        "page_height": int(page.height),
+        "page_image_sha256": page.image_sha256,
+        "tile_size": _TILE_SIZE,
+    }
+
+
+def _load_visual_page_tiles(
+    directory: Path,
+    page: VisualPageAsset,
+) -> tuple[VisualPageTile, ...]:
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError("case visual tile cache is incomplete")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("case visual tile manifest is invalid") from error
+    expected = _tile_manifest_header(page)
+    for key, value in expected.items():
+        if manifest.get(key) != value:
+            raise ValueError("case visual tile cache binding mismatch")
+    records = manifest.get("tiles")
+    if not isinstance(records, list) or not records:
+        raise ValueError("case visual tile manifest has no tiles")
+    tiles: list[VisualPageTile] = []
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("case visual tile record is invalid")
+        filename = record.get("filename")
+        if not isinstance(filename, str) or Path(filename).name != filename:
+            raise ValueError("case visual tile filename is invalid")
+        tile_path = directory / filename
+        if not tile_path.is_file():
+            raise ValueError("case visual tile file is missing")
+        expected_hash = record.get("image_sha256")
+        if not isinstance(expected_hash, str) or sha256_file(tile_path) != expected_hash:
+            raise ValueError("case visual tile hash mismatch")
+        values = [record.get(name) for name in ("x", "y", "width", "height")]
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+            raise ValueError("case visual tile geometry is invalid")
+        x, y, width, height = values
+        if x < 0 or y < 0 or width < 1 or height < 1:
+            raise ValueError("case visual tile geometry is invalid")
+        if x + width > int(page.width) or y + height > int(page.height):
+            raise ValueError("case visual tile is outside page bounds")
+        tiles.append(
+            VisualPageTile(
+                path=tile_path,
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                image_sha256=expected_hash,
+            )
+        )
+    tiles.sort(key=lambda item: (item.y, item.x))
+    return tuple(tiles)
+
+
+def ensure_visual_page_tiles(
+    workspace: Path,
+    page: VisualPageAsset,
+) -> tuple[VisualPageTile, ...]:
+    """Create/reuse hash-bound 2048px tiles only for large visual pages."""
+    if not _tile_required(page):
+        return ()
+    if sha256_file(page.image_path) != page.image_sha256:
+        raise ValueError("case visual tile source hash mismatch")
+    directory = _tile_directory(workspace, page)
+    if directory.exists():
+        if not directory.is_dir():
+            raise ValueError("case visual tile cache path is invalid")
+        return _load_visual_page_tiles(directory, page)
+
+    parent = directory.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(mkdtemp(prefix=f".{directory.name}.tmp-", dir=parent))
+    records: list[dict[str, object]] = []
+    try:
+        with Image.open(page.image_path) as opened:
+            image = opened.convert("RGB")
+            image_width, image_height = image.size
+            if (image_width, image_height) != (int(page.width), int(page.height)):
+                raise ValueError("case visual tile source dimensions mismatch")
+            row = 0
+            for y in range(0, image_height, _TILE_SIZE):
+                column = 0
+                for x in range(0, image_width, _TILE_SIZE):
+                    right = min(image_width, x + _TILE_SIZE)
+                    bottom = min(image_height, y + _TILE_SIZE)
+                    crop = image.crop((x, y, right, bottom))
+                    output = BytesIO()
+                    crop.save(output, format="PNG", compress_level=6)
+                    data = output.getvalue()
+                    filename = f"tile-r{row:03d}-c{column:03d}.png"
+                    tile_path = temporary / filename
+                    with tile_path.open("xb") as stream:
+                        stream.write(data)
+                    records.append(
+                        {
+                            "filename": filename,
+                            "x": x,
+                            "y": y,
+                            "width": right - x,
+                            "height": bottom - y,
+                            "image_sha256": hashlib.sha256(data).hexdigest(),
+                        }
+                    )
+                    column += 1
+                row += 1
+        manifest = _tile_manifest_header(page)
+        manifest["tiles"] = records
+        with (temporary / "manifest.json").open("xb") as stream:
+            stream.write(dump_bytes(manifest))
+        try:
+            os.rename(temporary, directory)
+        except FileExistsError:
+            shutil.rmtree(temporary, ignore_errors=True)
+        return _load_visual_page_tiles(directory, page)
+    except Exception:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+
+
 def prepare_visual_page_assets(
     workspace: Path,
     attachments: tuple[ImmutableAttachment, ...],
@@ -207,4 +377,9 @@ def prepare_visual_page_assets(
     return tuple(assets)
 
 
-__all__ = ["VisualPageAsset", "prepare_visual_page_assets"]
+__all__ = [
+    "VisualPageAsset",
+    "VisualPageTile",
+    "ensure_visual_page_tiles",
+    "prepare_visual_page_assets",
+]
