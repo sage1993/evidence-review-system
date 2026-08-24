@@ -12,6 +12,15 @@ from typing import cast
 from evidence_review.contracts.attachments import ImmutableAttachment, decode_immutable_attachment
 from evidence_review.contracts.drawing import decode_drawing_candidate, drawing_candidate_document
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.drawing_review.visual_pages import (
+    VisualPageAsset,
+    ensure_visual_page_tiles,
+)
+from evidence_review.review_packet.visual_findings import build_semantic_visual_findings
+
+
+_CASE_PDF_CACHE_DIR = "case-page-images-hq-v1"
+_CASE_IMAGE_CACHE_DIR = "case-page-images"
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -211,6 +220,55 @@ def _verify_geometry_bounds(
             raise ValueError("visual geometry is outside the verified raster page")
 
 
+def _resolve_visual_raster_path(
+    workspace_root: Path,
+    attachment_id: str,
+    page_number: int,
+    expected_sha256: str,
+) -> Path:
+    """Resolve the exact verified raster, preferring the 4x PDF cache."""
+    candidates = (
+        workspace_root
+        / _CASE_PDF_CACHE_DIR
+        / attachment_id
+        / f"page-{page_number:04d}.png",
+        workspace_root
+        / _CASE_IMAGE_CACHE_DIR
+        / attachment_id
+        / f"page-{page_number:04d}.png",
+    )
+    existing = [path for path in candidates if path.is_file()]
+    for path in existing:
+        if hashlib.sha256(path.read_bytes()).hexdigest() == expected_sha256:
+            return path
+    if existing:
+        raise ValueError("case visual raster hash mismatch")
+    raise FileNotFoundError(candidates[0])
+
+
+def _page_tile_documents(
+    workspace_root: Path,
+    asset: VisualPageAsset,
+) -> list[dict[str, object]]:
+    tiles = ensure_visual_page_tiles(workspace_root, asset)
+    documents: list[dict[str, object]] = []
+    for tile in tiles:
+        data = tile.path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != tile.image_sha256:
+            raise ValueError("case visual tile hash mismatch")
+        documents.append(
+            {
+                "x": tile.x,
+                "y": tile.y,
+                "width": tile.width,
+                "height": tile.height,
+                "image_sha256": tile.image_sha256,
+                "data_uri": "data:image/png;base64," + base64.b64encode(data).decode("ascii"),
+            }
+        )
+    return documents
+
+
 def build_case_visual_projection(
     view_model: Mapping[str, object],
     *,
@@ -274,18 +332,25 @@ def build_case_visual_projection(
         source_key = (source_sha256, page_number)
         if key in page_records or source_key in page_by_source:
             raise ValueError("case visual page identity is ambiguous")
-        image_path = (
-            workspace_root
-            / "case-page-images"
-            / attachment_id
-            / f"page-{page_number:04d}.png"
+        image_path = _resolve_visual_raster_path(
+            workspace_root,
+            attachment_id,
+            page_number,
+            image_sha256,
         )
-        if not image_path.is_file():
-            raise FileNotFoundError(image_path)
         image_bytes = image_path.read_bytes()
-        if hashlib.sha256(image_bytes).hexdigest() != image_sha256:
-            raise ValueError("case visual raster hash mismatch")
-        page_records[key] = {
+        asset = VisualPageAsset(
+            attachment_id=attachment_id,
+            source_sha256=source_sha256,
+            page=page_number,
+            width=width,
+            height=height,
+            coordinate_system="IMAGE_TOP_LEFT_PIXELS",
+            image_path=image_path,
+            image_sha256=image_sha256,
+        )
+        tile_documents = _page_tile_documents(workspace_root, asset)
+        page_record: dict[str, object] = {
             "asset_key": f"{attachment_id}-p{page_number}",
             "attachment_id": attachment_id,
             "document_name": page_attachment.original_name,
@@ -295,10 +360,15 @@ def build_case_visual_projection(
             "height": height,
             "coordinate_system": coordinate_system,
             "image_sha256": image_sha256,
-            "data_uri": "data:image/png;base64,"
-            + base64.b64encode(image_bytes).decode("ascii"),
             "candidates": [],
         }
+        if tile_documents:
+            page_record["tiles"] = tile_documents
+        else:
+            page_record["data_uri"] = "data:image/png;base64," + base64.b64encode(
+                image_bytes
+            ).decode("ascii")
+        page_records[key] = page_record
         page_by_source[source_key] = key
 
     lineage: dict[str, tuple[str, ...]] = {}
@@ -343,14 +413,17 @@ def build_case_visual_projection(
         candidate_issue_ids = lineage.get(candidate.candidate_id)
         if candidate_issue_ids is None:
             raise ValueError("case visual candidate has no issue lineage")
-        links = claim_links.get(candidate.candidate_id, [])
-        linked_statuses = sorted(
-            {
-                statuses[cast(str, link["claim_id"])]
-                for link in links
-                if cast(str, link["claim_id"]) in statuses
-            }
-        )
+        links: list[dict[str, object]] = []
+        linked_statuses: set[str] = set()
+        for raw_link in claim_links.get(candidate.candidate_id, []):
+            link = dict(raw_link)
+            claim_id = cast(str, link["claim_id"])
+            relation = "direct" if claim_id in statuses else "related"
+            link["relation"] = relation
+            links.append(link)
+            if relation == "direct":
+                linked_statuses.add(statuses[claim_id])
+        sorted_statuses = sorted(linked_statuses)
         projected = dict(canonical)
         projected.update(
             {
@@ -360,8 +433,8 @@ def build_case_visual_projection(
                     for issue_id in candidate_issue_ids
                 ],
                 "claims": links,
-                "review_statuses": linked_statuses,
-                "tone": _tone(linked_statuses),
+                "review_statuses": sorted_statuses,
+                "tone": _tone(sorted_statuses),
                 "display_value": (
                     candidate.normalized_candidate
                     if candidate.normalized_candidate not in (None, "")
@@ -377,11 +450,14 @@ def build_case_visual_projection(
         raise ValueError("case visual lineage does not match drawing candidates")
 
     pages = [page_records[key] for key in sorted(page_records)]
+    findings = build_semantic_visual_findings(pages)
     return {
         "status": "VISUAL_ANALYSIS_VALIDATED",
         "attachment_count": len(attachments),
         "candidate_count": len(seen_candidates),
+        "finding_count": len(findings),
         "pages": pages,
+        "findings": findings,
     }
 
 
