@@ -8,6 +8,7 @@ import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from http import HTTPStatus
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
 from urllib.parse import unquote, urlsplit
@@ -24,6 +25,8 @@ _PAGE_SOURCE_RE = re.compile(r'data-case-page-src="data:image/[^\"]+"')
 _TILE_TAG_RE = re.compile(r'<image\b(?P<attrs>[^>]*\bdata-case-tile\b[^>]*)/?>')
 _TILE_SOURCE_RE = re.compile(r'data-case-tile-src="data:image/[^\"]+"')
 _DATA_ATTR_RE = re.compile(r'\b(?P<name>data-[a-z-]+)="(?P<value>[^"]*)"')
+_ORIGINAL_PROTECTED_REVIEW_HTML = local_server._protected_review_html
+_PROTECTED_HTML_INSTALLED = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,43 +294,42 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
     return None
 
 
-def install_case_visual_asset_support() -> None:
-    """Install protected case-page routes before constructing the loopback server."""
-    if getattr(local_server, "_CASE_VISUAL_ASSET_SUPPORT_INSTALLED", False):
-        return
-    original_protected_review_html = local_server._protected_review_html
-    base_handler = local_server._ReviewHandler
-
-    def protected_review_html(html_bytes: bytes) -> bytes:
-        return original_protected_review_html(protect_case_visual_sources(html_bytes))
-
-    class CaseVisualReviewHandler(base_handler):  # type: ignore[misc, valid-type]
-        def do_GET(self) -> None:  # noqa: N802
-            case_route = _case_asset_route(self.path)
-            if case_route is None:
-                super().do_GET()
-                return
-            authorization_route = local_server._Route(
-                run_id=case_route.run_id,
-                token=case_route.token,
-                endpoint="review",
-            )
-            if not self._authorized(authorization_route, require_origin=False):
-                return
-            self.state.mark_activity()
-            body = (
-                _page_asset(self.state.workspace_root, case_route)
-                if case_route.kind == "page"
-                else _tile_asset(self.state.workspace_root, case_route)
-            )
-            if body is None:
-                self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
-                return
-            self._send_bytes(HTTPStatus.OK, body, "image/png")
-
-    local_server._protected_review_html = protected_review_html
-    local_server._ReviewHandler = CaseVisualReviewHandler
-    local_server._CASE_VISUAL_ASSET_SUPPORT_INSTALLED = True
+def _protected_review_html(html_bytes: bytes) -> bytes:
+    return _ORIGINAL_PROTECTED_REVIEW_HTML(protect_case_visual_sources(html_bytes))
 
 
-__all__ = ["install_case_visual_asset_support", "protect_case_visual_sources"]
+class CaseVisualReviewHandler(local_server._ReviewHandler):
+    def do_GET(self) -> None:  # noqa: N802
+        case_route = _case_asset_route(self.path)
+        if case_route is None:
+            super().do_GET()
+            return
+        authorization_route = local_server._Route(
+            run_id=case_route.run_id,
+            token=case_route.token,
+            endpoint="review",
+        )
+        if not self._authorized(authorization_route, require_origin=False):
+            return
+        self.state.mark_activity()
+        body = (
+            _page_asset(self.state.workspace_root, case_route)
+            if case_route.kind == "page"
+            else _tile_asset(self.state.workspace_root, case_route)
+        )
+        if body is None:
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        self._send_bytes(HTTPStatus.OK, body, "image/png")
+
+
+def configure_case_visual_server(server: ThreadingHTTPServer) -> None:
+    """Enable protected case-page routes on one loopback review server."""
+    global _PROTECTED_HTML_INSTALLED
+    if not _PROTECTED_HTML_INSTALLED:
+        local_server._protected_review_html = _protected_review_html
+        _PROTECTED_HTML_INSTALLED = True
+    server.RequestHandlerClass = CaseVisualReviewHandler
+
+
+__all__ = ["configure_case_visual_server", "protect_case_visual_sources"]
