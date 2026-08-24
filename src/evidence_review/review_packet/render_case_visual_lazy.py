@@ -10,6 +10,8 @@ from evidence_review.review_packet.render_case_visual import (
     render_case_visual_review as _render_embedded_case_visual_review,
 )
 
+# ruff: noqa: E501
+
 _FIGURE_RE = re.compile(
     r'<figure class="case-visual-page[^\"]*"[^>]*\bdata-case-page="(?P<asset>[^"]+)"[^>]*>.*?</figure>',
     re.DOTALL,
