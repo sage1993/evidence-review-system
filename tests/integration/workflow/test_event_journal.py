@@ -58,6 +58,18 @@ def _event(
     )
 
 
+def test_workflow_event_accepts_partial_finalizer_status() -> None:
+    events = _events()
+    event = _event(
+        events,
+        sequence=2,
+        previous_state="FINALIZING",
+        next_state="READY_FOR_REVIEW",
+        finalizer_status="PARTIALLY_RESOLVED",
+    )
+
+    assert event.finalizer_status == "PARTIALLY_RESOLVED"
+
 def test_event_journal_is_append_only_and_idempotent(tmp_path: Path) -> None:
     events = _events()
     root = tmp_path / "events"
