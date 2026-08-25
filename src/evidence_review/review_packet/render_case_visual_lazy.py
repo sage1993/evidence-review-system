@@ -6,6 +6,9 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import cast
 
+from evidence_review.review_packet.related_reference_routing import (
+    related_reference_claims,
+)
 from evidence_review.review_packet.render_case_visual import (
     render_case_visual_review as _render_embedded_case_visual_review,
 )
@@ -72,6 +75,29 @@ def _tile_hashes(page: Mapping[str, object]) -> dict[tuple[int, int], str]:
     return result
 
 
+def _with_related_reference_claims(model: Mapping[str, object]) -> Mapping[str, object]:
+    """Add render-only related-reference claims without mutating machine claims."""
+    visual = _mapping(model.get("case_visual_review"), "case_visual_review")
+    related = related_reference_claims(visual)
+    if not related:
+        return model
+    rendered_model = dict(model)
+    claims = [
+        dict(_mapping(item, f"claims[{index}]"))
+        for index, item in enumerate(_sequence(model.get("claims", []), "claims"))
+    ]
+    existing_ids = {
+        str(claim.get("claim_id")) for claim in claims if claim.get("claim_id")
+    }
+    for claim in related:
+        claim_id = str(claim.get("claim_id", ""))
+        if claim_id and claim_id not in existing_ids:
+            claims.append(claim)
+            existing_ids.add(claim_id)
+    rendered_model["claims"] = claims
+    return rendered_model
+
+
 def externalize_case_visual_sources(
     fragment: str,
     model: Mapping[str, object],
@@ -130,7 +156,9 @@ def externalize_case_visual_sources(
 
 def render_case_visual_review(model: Mapping[str, object]) -> str:
     """Render Visual Review without embedding case raster bytes in review.html."""
-    fragment = _render_embedded_case_visual_review(model)
+    fragment = _render_embedded_case_visual_review(
+        _with_related_reference_claims(model)
+    )
     if not fragment:
         return ""
     return externalize_case_visual_sources(fragment, model)
