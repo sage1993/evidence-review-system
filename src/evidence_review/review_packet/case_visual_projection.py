@@ -22,6 +22,9 @@ from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
     ensure_visual_page_tiles,
 )
+from evidence_review.review_packet.related_reference_routing import (
+    bind_related_retrieval_references,
+)
 from evidence_review.review_packet.visual_findings import build_semantic_visual_findings
 
 _CASE_PDF_CACHE_DIR = "case-page-images-hq-v1"
@@ -456,6 +459,11 @@ def build_case_visual_projection(
 
     pages = [page_records[key] for key in sorted(page_records)]
     findings = build_semantic_visual_findings(pages)
+    findings, related_references = bind_related_retrieval_references(
+        bundle,
+        inputs,
+        findings,
+    )
     return {
         "status": "VISUAL_ANALYSIS_VALIDATED",
         "attachment_count": len(attachments),
@@ -463,6 +471,7 @@ def build_case_visual_projection(
         "finding_count": len(findings),
         "pages": pages,
         "findings": findings,
+        "related_references": related_references,
     }
 
 
