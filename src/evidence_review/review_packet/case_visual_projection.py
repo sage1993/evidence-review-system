@@ -9,8 +9,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
-from evidence_review.contracts.attachments import ImmutableAttachment, decode_immutable_attachment
-from evidence_review.contracts.drawing import decode_drawing_candidate, drawing_candidate_document
+from evidence_review.contracts.attachments import (
+    ImmutableAttachment,
+    decode_immutable_attachment,
+)
+from evidence_review.contracts.drawing import (
+    decode_drawing_candidate,
+    drawing_candidate_document,
+)
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
