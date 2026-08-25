@@ -103,7 +103,9 @@ def _matching_search_request_ids(
     return tuple(sorted(request_id for score, request_id in scored if score == best))
 
 
-def _lineage_by_evidence(inputs: Mapping[str, object]) -> dict[str, tuple[Mapping[str, object], ...]]:
+def _lineage_by_evidence(
+    inputs: Mapping[str, object],
+) -> dict[str, tuple[Mapping[str, object], ...]]:
     result: dict[str, tuple[Mapping[str, object], ...]] = {}
     for index, item in enumerate(
         _sequence(inputs.get("retrieval_lineage", []), "inputs.retrieval_lineage")
