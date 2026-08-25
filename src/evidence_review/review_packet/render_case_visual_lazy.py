@@ -77,7 +77,10 @@ def _tile_hashes(page: Mapping[str, object]) -> dict[tuple[int, int], str]:
 
 def _with_related_reference_claims(model: Mapping[str, object]) -> Mapping[str, object]:
     """Add render-only related-reference claims without mutating machine claims."""
-    visual = _mapping(model.get("case_visual_review"), "case_visual_review")
+    raw_visual = model.get("case_visual_review")
+    if raw_visual is None:
+        return model
+    visual = _mapping(raw_visual, "case_visual_review")
     related = related_reference_claims(visual)
     if not related:
         return model
