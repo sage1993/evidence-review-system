@@ -24,7 +24,6 @@ from evidence_review.drawing_review.visual_pages import (
 )
 from evidence_review.review_packet.visual_findings import build_semantic_visual_findings
 
-
 _CASE_PDF_CACHE_DIR = "case-page-images-hq-v1"
 _CASE_IMAGE_CACHE_DIR = "case-page-images"
 
