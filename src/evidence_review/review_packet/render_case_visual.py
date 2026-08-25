@@ -7,7 +7,6 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import cast
 
-
 _FINDINGS_PER_PAGE = 3
 _STATUS_META = {
     "mismatch": ("불일치", "mismatch"),
