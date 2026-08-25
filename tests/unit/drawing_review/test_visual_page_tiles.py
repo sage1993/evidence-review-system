@@ -29,7 +29,14 @@ def test_large_visual_page_builds_verified_tile_manifest(tmp_path: Path) -> None
     assert all(tile.width <= 2048 for tile in tiles)
     assert all(tile.height <= 2048 for tile in tiles)
     assert all(tile.path.is_file() for tile in tiles)
-    assert (tmp_path / "case-page-tiles-v1" / page.attachment_id / "page-0001" / "manifest.json").is_file()
+    manifest = (
+        tmp_path
+        / "case-page-tiles-v1"
+        / page.attachment_id
+        / "page-0001"
+        / "manifest.json"
+    )
+    assert manifest.is_file()
 
     second = visual_pages.ensure_visual_page_tiles(tmp_path, page)
     assert second == tiles
