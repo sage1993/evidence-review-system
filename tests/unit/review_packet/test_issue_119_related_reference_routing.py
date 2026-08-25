@@ -154,7 +154,9 @@ def _fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
                                 "search_request_id": "S-SPACE",
                                 "role": "supporting_fact",
                                 "query_text": "단위세대 도면의 공간 구성 치수 설비 및 편의시설",
-                                "retrieval_query": "단위세대 도면의 공간 구성 치수 설비 및 편의시설",
+                                "retrieval_query": (
+                                    "단위세대 도면의 공간 구성 치수 설비 및 편의시설"
+                                ),
                                 "fallback_stage": "HEADING_SCOPED",
                                 "origin": "llm",
                             }
