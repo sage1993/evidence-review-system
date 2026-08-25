@@ -8,7 +8,6 @@ from typing import cast
 
 from evidence_review.canonical_json import sha256_json
 
-
 _SPACE_TERMS = (
     "scenario",
     "침실",
