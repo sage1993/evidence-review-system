@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
-from evidence_review.review_packet.render_case_visual import render_case_visual_review
+from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
 
 
 def _write_json(path: Path, value: object) -> None:
