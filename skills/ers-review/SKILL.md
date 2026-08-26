@@ -163,7 +163,7 @@ evidence-review review-question submit-track-b `
   --publish
 ```
 
-Track B 통과 후 finalizer가 `final-review-packet.json`과 `review.html`을 만든다. `READY_FOR_HUMAN_REVIEW`는 자동 승인 상태가 아니다.
+Track B 통과 후 finalizer가 `final-review-packet.json`과 `review.html`을 만든다. `READY_FOR_HUMAN_REVIEW`는 자동 승인 상태가 아니다. `ABSTAIN`은 기록된 사유를 유지한다.
 
 ## 6. Review Workspace와 사람 결정
 
@@ -189,7 +189,18 @@ evidence-review review-run serve `
 | `CONDITIONAL` | 조건부 확인 |
 | `ADDITIONAL_REVIEW_REQUIRED` | 추가 자료 필요 |
 
-결정은 append-only human-decision record로 저장하고 machine packet의 `human_decision`은 수정하지 않는다.
+결정은 append-only human-decision record로 저장하고 machine packet의 `human_decision`은 수정하지 않는다. 유효한 결정이 존재하면 화면 상태만 `REVIEW_COMPLETED`로 투영할 수 있다.
+
+보관용 `file:` HTML은 서버에 직접 저장할 수 없다. **결정 JSON 다운로드**는 유효한 envelope를 만들며 HTML 파일 저장과는 별개다. 다운로드한 envelope는 다음 승인 경로로 반영한다.
+
+```powershell
+evidence-review review-run import-decision `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --envelope <human-decision-envelope.json>
+```
+
+현재 packet SHA-256과 envelope hash가 다르면 import를 거부한다. 기존 decision record를 덮어쓰지 않는다.
 
 ## 화면 계약
 
