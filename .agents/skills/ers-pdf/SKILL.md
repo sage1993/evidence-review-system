@@ -81,6 +81,18 @@ page metadata는 source hash, page number, PDF geometry, image SHA-256을 검증
 
 `PENDING_PARSER_OUTPUT`, `BLOCKED`, `FAILED`는 그대로 보존한다.
 
+11. 위 준비 조건이 모두 충족된 뒤에만 이번 `$ERS_PDF` 결과 workspace를 다음 `$ERS_REVIEW`의 active workspace로 bind한다.
+
+```powershell
+evidence-review workspace bind `
+  --repository-root . `
+  --workspace <workspace>
+```
+
+binding은 저장소 로컬 제어 상태 `.ers/active-workspace.json`에 exact absolute workspace path와 현재 evidence snapshot identity를 기록한다. 원본 PDF, parser artifact, evidence DB 자체를 변경하지 않는다. 새로 준비 완료된 workspace를 bind하면 이 로컬 pointer만 교체되고 기존 workspace 산출물은 보존된다.
+
+`workspace bind`가 실패하면 `$ERS_REVIEW` handoff 준비가 완료되었다고 보고하지 않는다. 준비가 완료되지 않은 workspace를 active workspace로 bind하지 않는다.
+
 ## CASE visual PDF와의 경계
 
 `CASE_DRAWING` PDF에는 다음 작업을 수행하지 않는다.
@@ -100,7 +112,8 @@ REFERENCE_DOCUMENT에 대해서만 다음을 반환한다.
 - parser/source 상태와 warnings
 - searchable evidence 준비 여부 또는 정확한 blocking reason
 - page-image cache 준비 여부
-- 준비 완료 시 다음 입력: `$ERS_REVIEW <질문>`
+- active workspace binding 성공 여부
+- 준비와 binding 완료 시 다음 입력: `$ERS_REVIEW <질문>`
 
 ## 금지
 
@@ -113,7 +126,8 @@ REFERENCE_DOCUMENT에 대해서만 다음을 반환한다.
 - 누락 text/table/bbox/parser metadata 생성
 - invalid/missing page image를 정상 cache로 게시
 - Review Workspace를 열 때마다 reference PDF page image 재렌더
+- 준비가 완료되지 않은 workspace를 active workspace로 bind
 
 ## Handoff
 
-REFERENCE_DOCUMENT 준비가 성공하면 정식 질문은 `$ERS_REVIEW`로 넘긴다. `$ERS_PDF` 단계에서 QuestionPlan 이후의 Track A/B, Visual Analysis, 규제 결론을 만들지 않는다.
+REFERENCE_DOCUMENT 준비와 active workspace binding이 성공하면 정식 질문은 `$ERS_REVIEW`로 넘긴다. `$ERS_PDF` 단계에서 QuestionPlan 이후의 Track A/B, Visual Analysis, 규제 결론을 만들지 않는다.
