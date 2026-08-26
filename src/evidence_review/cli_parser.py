@@ -14,6 +14,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    workspace = subparsers.add_parser(
+        "workspace", help="bind or resolve the local active ERS workspace"
+    )
+    workspace_stages = workspace.add_subparsers(dest="workspace_stage", required=True)
+    workspace_bind = workspace_stages.add_parser(
+        "bind", help="bind one validated workspace to the local repository control state"
+    )
+    workspace_bind.add_argument("--repository-root", required=True, type=Path)
+    workspace_bind.add_argument("--workspace", required=True, type=Path)
+    workspace_active = workspace_stages.add_parser(
+        "active", help="resolve and revalidate the exact active workspace binding"
+    )
+    workspace_active.add_argument("--repository-root", required=True, type=Path)
+
     evidence = subparsers.add_parser("evidence", help="manage versioned evidence databases")
     evidence_stages = evidence.add_subparsers(dest="evidence_stage", required=True)
     evidence_migrate = evidence_stages.add_parser(
