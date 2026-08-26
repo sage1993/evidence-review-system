@@ -1,21 +1,38 @@
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.retrieval.index import build_fts_index
-from evidence_review.review_question import (
-    ReviewEvidenceSnapshotError,
-    _assert_run_evidence_snapshot,
-)
+
+
+def _snapshot_provenance_api() -> Any:
+    module = importlib.import_module("evidence_review.evidence.snapshot")
+    if not hasattr(module, "evidence_snapshot_provenance"):
+        pytest.fail("evidence_snapshot_provenance is not implemented", pytrace=False)
+    return module.evidence_snapshot_provenance
+
+
+def _run_snapshot_api() -> tuple[type[Exception], Any]:
+    module = importlib.import_module("evidence_review.review_question")
+    missing = [
+        name
+        for name in ("ReviewEvidenceSnapshotError", "_assert_run_evidence_snapshot")
+        if not hasattr(module, name)
+    ]
+    if missing:
+        pytest.fail(f"review snapshot API missing: {missing}", pytrace=False)
+    return module.ReviewEvidenceSnapshotError, module._assert_run_evidence_snapshot
 
 
 def _workspace(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+    evidence_snapshot_provenance = _snapshot_provenance_api()
     workspace = tmp_path / "workspace"
     evidence_dir = workspace / "evidence"
     evidence_dir.mkdir(parents=True)
@@ -94,23 +111,25 @@ def test_evidence_snapshot_provenance_records_identity_and_counts(tmp_path: Path
 
 
 def test_run_snapshot_binding_accepts_matching_workspace_snapshot(tmp_path: Path) -> None:
+    _error_type, assert_run_evidence_snapshot = _run_snapshot_api()
     workspace, provenance = _workspace(tmp_path)
     run_directory = workspace / "runs" / "RUN-00000000000000000000"
     _write_run_request(run_directory, str(provenance["evidence_snapshot_hash"]))
 
-    active = _assert_run_evidence_snapshot(run_directory)
+    active = assert_run_evidence_snapshot(run_directory)
 
     assert active["evidence_snapshot_hash"] == provenance["evidence_snapshot_hash"]
 
 
 def test_run_snapshot_binding_fails_closed_on_stale_run(tmp_path: Path) -> None:
+    error_type, assert_run_evidence_snapshot = _run_snapshot_api()
     workspace, provenance = _workspace(tmp_path)
     run_directory = workspace / "runs" / "RUN-00000000000000000000"
     stale_hash = "f" * 64
     assert stale_hash != provenance["evidence_snapshot_hash"]
     _write_run_request(run_directory, stale_hash)
 
-    with pytest.raises(ReviewEvidenceSnapshotError) as raised:
-        _assert_run_evidence_snapshot(run_directory)
+    with pytest.raises(error_type) as raised:
+        assert_run_evidence_snapshot(run_directory)
 
     assert raised.value.reason_code == "EVIDENCE_SNAPSHOT_MISMATCH"
