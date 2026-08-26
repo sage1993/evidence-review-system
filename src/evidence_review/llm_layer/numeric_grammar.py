@@ -155,6 +155,10 @@ def _consumed_mask(text: str, tokens: tuple[NumericToken, ...]) -> list[bool]:
             raise ValueError("numeric token spans are invalid")
         for index in range(token.start, token.end):
             consumed[index] = True
+        unit_match = _ATTACHED_MEASUREMENT_UNIT.match(text, token.end)
+        if unit_match is not None:
+            for index in range(unit_match.start(), unit_match.end()):
+                consumed[index] = True
         previous_end = token.end
     return consumed
 
