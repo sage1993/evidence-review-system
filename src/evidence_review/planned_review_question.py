@@ -15,6 +15,7 @@ from evidence_review.contracts.question_plan import QuestionPlan, question_plan_
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.drawing_review.visual_pages import VisualPageAsset
 from evidence_review.evidence.clause_rebuild import ensure_clause_index
+from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
@@ -79,6 +80,7 @@ def prepare_planned_review_question(
         connection = store.require_connection()
         ensure_clause_index(connection)
         snapshot_hash = require_fresh_index(connection)
+        provenance = evidence_snapshot_provenance(connection)
         issue_bundle = retrieve_issue_bundle(connection, effective_plan)
         conditional_issue_ids = infer_conditional_issue_ids(
             effective_plan,
@@ -94,12 +96,14 @@ def prepare_planned_review_question(
             issue_bundle,
             snapshot_hash=snapshot_hash,
         )
+        bundle["snapshot_provenance"] = provenance
         bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
         bundle = apply_search_request_origins(bundle, effective_plan)
         trace_document = retrieval_trace_document(
             effective_plan,
             issue_bundle,
             coverage_report,
+            snapshot_provenance=provenance,
         )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
