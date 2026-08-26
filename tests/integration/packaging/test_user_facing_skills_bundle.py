@@ -54,6 +54,27 @@ def test_repository_ers_review_skill_requires_question_planner() -> None:
     assert "Question Planner를 건너뛰고" in skill
 
 
+def test_repository_skills_use_exact_active_workspace_handoff() -> None:
+    repository_root = Path(__file__).parents[3]
+    pdf_skill = (repository_root / "skills/ers-pdf/SKILL.md").read_text(encoding="utf-8")
+    review_skill = (repository_root / "skills/ers-review/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "evidence-review workspace bind" in pdf_skill
+    assert "evidence-review workspace active" in review_skill
+    assert "ACTIVE_WORKSPACE_NOT_BOUND" in review_skill
+    assert "ACTIVE_WORKSPACE_STALE" in review_skill
+
+
+def test_repo_local_and_bundle_source_skills_match() -> None:
+    repository_root = Path(__file__).parents[3]
+    for name in ("ers-pdf", "ers-review"):
+        bundle_source = (repository_root / f"skills/{name}/SKILL.md").read_bytes()
+        repo_local = (repository_root / f".agents/skills/{name}/SKILL.md").read_bytes()
+        assert repo_local == bundle_source
+
+
 def test_repository_agents_requires_question_planner_before_retrieval() -> None:
     repository_root = Path(__file__).parents[3]
     agents = (repository_root / "AGENTS.md").read_text(encoding="utf-8")
@@ -63,6 +84,7 @@ def test_repository_agents_requires_question_planner_before_retrieval() -> None:
     assert "QuestionPlan" in agents
     assert "PLANNER_FAILED" in agents
     assert "RETRIEVAL_NO_EVIDENCE" in agents
+    assert "evidence-review workspace active" in agents
 
 
 def test_codex_bundle_includes_only_user_facing_ers_skills(tmp_path: Path) -> None:
