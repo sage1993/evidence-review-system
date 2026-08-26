@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,20 @@ import pytest
 from evidence_review import cli
 from evidence_review.cli_parser import build_parser
 from evidence_review.review_packet.server_runtime import idle_timeout_argument
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+_SOURCE_ROOT = _REPOSITORY_ROOT / "src"
+
+
+def _source_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    existing = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        str(_SOURCE_ROOT)
+        if not existing
+        else str(_SOURCE_ROOT) + os.pathsep + existing
+    )
+    return environment
 
 
 def test_review_run_prepare_cli_routes_and_outputs_status(
@@ -144,13 +159,30 @@ def test_review_run_finalize_open_returns_url_without_waiting(
         published_packet=None,
     )
     monkeypatch.setattr(cli, "finalize_review_run", lambda *_args, **_kwargs: result)
-    monkeypatch.setattr(cli, "open_review_run", lambda *_args, **_kwargs: "http://127.0.0.1/review")
+    monkeypatch.setattr(
+        cli,
+        "open_review_run",
+        lambda *_args, **_kwargs: "http://127.0.0.1/review",
+    )
 
-    assert cli.main([
-        "review-run", "finalize", "--workspace", str(tmp_path / "workspace"),
-        "--run-id", run_id, "--track-a-output", str(tmp_path / "a.json"),
-        "--track-b-output", str(tmp_path / "b.json"), "--open",
-    ]) == 0
+    assert (
+        cli.main(
+            [
+                "review-run",
+                "finalize",
+                "--workspace",
+                str(tmp_path / "workspace"),
+                "--run-id",
+                run_id,
+                "--track-a-output",
+                str(tmp_path / "a.json"),
+                "--track-b-output",
+                str(tmp_path / "b.json"),
+                "--open",
+            ]
+        )
+        == 0
+    )
 
     assert json.loads(capsys.readouterr().out)["url"] == "http://127.0.0.1/review"
 
@@ -216,6 +248,8 @@ def test_review_run_help_commands(
         check=True,
         capture_output=True,
         text=True,
+        cwd=_REPOSITORY_ROOT,
+        env=_source_environment(),
     )
     assert expected in completed.stdout
 
@@ -239,21 +273,24 @@ def test_review_run_serve_cli_returns_detached_url_and_timeout(
 
     monkeypatch.setattr(cli, "serve_review_run", fake_serve)
 
-    assert cli.main(
-        [
-            "review-run",
-            "serve",
-            "--workspace",
-            str(tmp_path),
-            "--run-id",
-            run_id,
-            "--reviewer-id",
-            "reviewer-01",
-            "--detach",
-            "--idle-timeout-seconds",
-            "5",
-        ]
-    ) == 0
+    assert (
+        cli.main(
+            [
+                "review-run",
+                "serve",
+                "--workspace",
+                str(tmp_path),
+                "--run-id",
+                run_id,
+                "--reviewer-id",
+                "reviewer-01",
+                "--detach",
+                "--idle-timeout-seconds",
+                "5",
+            ]
+        )
+        == 0
+    )
 
     document = json.loads(capsys.readouterr().out)
     assert document["url"].startswith("http://127.0.0.1:")
