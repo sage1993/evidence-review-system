@@ -1,16 +1,33 @@
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from evidence_review.evidence.store import EvidenceStore
-from evidence_review.workspace_binding import (
-    ACTIVE_WORKSPACE_BINDING_FORMAT,
-    bind_active_workspace,
-    resolve_active_workspace,
-)
+
+
+def _workspace_api() -> tuple[str, Any, Any]:
+    try:
+        module = importlib.import_module("evidence_review.workspace_binding")
+    except ModuleNotFoundError:
+        pytest.fail("evidence_review.workspace_binding is not implemented", pytrace=False)
+    required = (
+        "ACTIVE_WORKSPACE_BINDING_FORMAT",
+        "bind_active_workspace",
+        "resolve_active_workspace",
+    )
+    missing = [name for name in required if not hasattr(module, name)]
+    if missing:
+        pytest.fail(f"workspace binding API missing: {missing}", pytrace=False)
+    return (
+        module.ACTIVE_WORKSPACE_BINDING_FORMAT,
+        module.bind_active_workspace,
+        module.resolve_active_workspace,
+    )
 
 
 def _ready_workspace(root: Path, marker: str = "a") -> Path:
@@ -32,6 +49,7 @@ def _ready_workspace(root: Path, marker: str = "a") -> Path:
 
 
 def test_binding_round_trips_exact_workspace_and_snapshot(tmp_path: Path) -> None:
+    binding_format, bind_active_workspace, resolve_active_workspace = _workspace_api()
     repository_root = tmp_path / "repo"
     repository_root.mkdir()
     workspace = _ready_workspace(tmp_path / "workspace")
@@ -48,11 +66,12 @@ def test_binding_round_trips_exact_workspace_and_snapshot(tmp_path: Path) -> Non
     document = json.loads(
         (repository_root / ".ers" / "active-workspace.json").read_text(encoding="utf-8")
     )
-    assert document["format"] == ACTIVE_WORKSPACE_BINDING_FORMAT
+    assert document["format"] == binding_format
     assert document["workspace"] == str(workspace)
 
 
 def test_rebinding_replaces_only_the_local_active_pointer(tmp_path: Path) -> None:
+    _binding_format, bind_active_workspace, resolve_active_workspace = _workspace_api()
     repository_root = tmp_path / "repo"
     repository_root.mkdir()
     first = _ready_workspace(tmp_path / "first", "a")
@@ -67,6 +86,7 @@ def test_rebinding_replaces_only_the_local_active_pointer(tmp_path: Path) -> Non
 
 
 def test_active_binding_fails_closed_after_evidence_snapshot_changes(tmp_path: Path) -> None:
+    _binding_format, bind_active_workspace, resolve_active_workspace = _workspace_api()
     repository_root = tmp_path / "repo"
     repository_root.mkdir()
     workspace = _ready_workspace(tmp_path / "workspace")
@@ -90,6 +110,7 @@ def test_active_binding_fails_closed_after_evidence_snapshot_changes(tmp_path: P
 
 
 def test_missing_active_binding_does_not_guess_from_available_databases(tmp_path: Path) -> None:
+    _binding_format, _bind_active_workspace, resolve_active_workspace = _workspace_api()
     repository_root = tmp_path / "repo"
     repository_root.mkdir()
     _ready_workspace(repository_root / "workspace-a")
