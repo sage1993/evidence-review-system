@@ -96,6 +96,59 @@ def _snapshot(*, include_links: bool = True) -> EvidenceSnapshot:
     )
 
 
+def _locality_snapshot() -> EvidenceSnapshot:
+    elements = (
+        _element("E-L1", "준공업지역 일반 설명", 0),
+        _element("E-L2", "용도별 비율 등", 1),
+        _element(
+            "E-L3",
+            "공장비율 10% 이상인 경우 산업부지 확보비율은 2분의 1까지 완화할 수 있다.",
+            2,
+        ),
+    )
+    return EvidenceSnapshot(
+        documents=({"id": "DOC-1", "title": "안심주택 운영기준"},),
+        revisions=(
+            {
+                "id": "REV-1",
+                "document_id": "DOC-1",
+                "source_hash": "a" * 64,
+                "byte_size": 100,
+                "page_count": 1,
+            },
+        ),
+        pages=(
+            {
+                "id": "P-1",
+                "revision_id": "REV-1",
+                "page_number": 1,
+                "width": 595.0,
+                "height": 842.0,
+            },
+        ),
+        elements=elements,
+        clauses=(
+            {
+                "id": "C-LOCAL",
+                "revision_id": "REV-1",
+                "title": "준공업지역 산업부지 확보비율",
+                "raw_text": " ".join(str(item["raw_text"]) for item in elements),
+                "normalized_text": " ".join(str(item["normalized_text"]) for item in elements),
+                "review_status": "AUTOMATIC",
+            },
+        ),
+        links=tuple(
+            {
+                "id": f"L-LOCAL-{index}",
+                "source_id": "C-LOCAL",
+                "target_id": evidence_id,
+                "relation_type": "source_element",
+            }
+            for index, evidence_id in enumerate(("E-L1", "E-L2", "E-L3"), start=1)
+        ),
+    )
+
+
 def test_clause_phrase_search_uses_semantic_clause_text_not_element_text(tmp_path: Path) -> None:
     with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
         ingest_snapshot(store, _snapshot())
@@ -145,6 +198,19 @@ def test_resolver_materializes_only_verified_citation_grade_evidence(tmp_path: P
         assert all(hit.bbox is not None for hit in evidence)
         assert all(hit.channel_scores[0].channel == "clause_citation" for hit in evidence)
         assert all("C-FAR" in hit.channel_scores[0].detail for hit in evidence)
+
+
+def test_resolver_prioritizes_match_local_source_element(tmp_path: Path) -> None:
+    with EvidenceStore(tmp_path / "evidence.sqlite", create=True) as store:
+        ingest_snapshot(store, _locality_snapshot())
+        connection = store.require_connection()
+        build_fts_index(connection)
+        clause_hit = search_clause_phrase(connection, "산업부지 확보비율")[0]
+
+        evidence = resolve_clause_to_evidence(connection, clause_hit, max_source_elements=1)
+
+        assert [hit.evidence_id for hit in evidence] == ["E-L3"]
+        assert "2분의 1까지" in evidence[0].text
 
 
 def test_unlinked_clause_remains_searchable_but_cannot_fabricate_citation(tmp_path: Path) -> None:
