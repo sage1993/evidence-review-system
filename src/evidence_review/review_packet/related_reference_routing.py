@@ -103,6 +103,24 @@ def _matching_search_request_ids(
     return tuple(sorted(request_id for score, request_id in scored if score == best))
 
 
+def _semantic_context_tokens(
+    finding: Mapping[str, object],
+    inputs: Mapping[str, object],
+    request_ids: frozenset[str],
+) -> frozenset[str]:
+    context: set[str] = set()
+    for value in (
+        finding.get("title"),
+        finding.get("category"),
+        finding.get("subject_value"),
+    ):
+        context.update(_tokens(value))
+    for request in _search_requests(inputs):
+        if _text(request.get("id")) in request_ids:
+            context.update(_tokens(request.get("text")))
+    return frozenset(context)
+
+
 def _lineage_by_evidence(
     inputs: Mapping[str, object],
 ) -> dict[str, tuple[Mapping[str, object], ...]]:
@@ -140,6 +158,24 @@ def _reference_document(evidence: Mapping[str, object]) -> dict[str, object] | N
     }
 
 
+def _lineage_matches_finding(
+    matches: Sequence[Mapping[str, object]],
+    *,
+    finding_issues: frozenset[str],
+    request_ids: frozenset[str],
+) -> bool:
+    for match in matches:
+        match_issues = _issue_ids(
+            match.get("issue_ids", []), "retrieval_lineage.match.issue_ids"
+        )
+        if (
+            _text(match.get("search_request_id")) in request_ids
+            and finding_issues.intersection(match_issues)
+        ):
+            return True
+    return False
+
+
 def bind_related_retrieval_references(
     bundle: Mapping[str, object],
     inputs: Mapping[str, object],
@@ -149,7 +185,9 @@ def bind_related_retrieval_references(
 
     The returned bindings never create direct references or change finding
     status. Evidence is eligible only when its retrieval lineage shares both a
-    finding issue and the best-matching QuestionPlan search request.
+    finding issue and the best-matching QuestionPlan search request. Eligible
+    evidence is then ranked against the finding and request semantics before
+    the result limit is applied, so input order cannot change the selection.
     """
     lineage = _lineage_by_evidence(inputs)
     evidence_values = tuple(
@@ -174,9 +212,9 @@ def bind_related_retrieval_references(
             if _text(item)
         ]
         if finding_issues and request_ids:
+            semantic_tokens = _semantic_context_tokens(finding, inputs, request_ids)
+            candidates: list[tuple[int, str, dict[str, object]]] = []
             for evidence in evidence_values:
-                if len(related_ids) >= _RELATED_REFERENCE_LIMIT:
-                    break
                 evidence_issues = _issue_ids(
                     evidence.get("issue_ids", []), "evidence.issue_ids"
                 )
@@ -184,28 +222,35 @@ def bind_related_retrieval_references(
                     continue
                 citation = _mapping(evidence.get("citation"), "evidence.citation")
                 evidence_id = _text(citation.get("evidence_id"))
-                matches = lineage.get(evidence_id, ())
-                matched = False
-                for match in matches:
-                    match_issues = _issue_ids(
-                        match.get("issue_ids", []), "retrieval_lineage.match.issue_ids"
-                    )
-                    if (
-                        _text(match.get("search_request_id")) in request_ids
-                        and finding_issues.intersection(match_issues)
-                    ):
-                        matched = True
-                        break
-                if not matched:
+                if not evidence_id or not _lineage_matches_finding(
+                    lineage.get(evidence_id, ()),
+                    finding_issues=finding_issues,
+                    request_ids=request_ids,
+                ):
                     continue
                 reference = _reference_document(evidence)
                 if reference is None:
                     continue
-                references_by_id.setdefault(evidence_id, reference)
-                related_ids.append(evidence_id)
-                claim_id = cast(str, reference["claim_id"])
-                if claim_id not in related_claim_ids:
-                    related_claim_ids.append(claim_id)
+                score = len(semantic_tokens.intersection(_tokens(evidence.get("text"))))
+                if score:
+                    candidates.append((score, evidence_id, reference))
+
+            if candidates:
+                best_score = max(score for score, _, _ in candidates)
+                selected = sorted(
+                    (
+                        (evidence_id, reference)
+                        for score, evidence_id, reference in candidates
+                        if score == best_score
+                    ),
+                    key=lambda item: item[0],
+                )[:_RELATED_REFERENCE_LIMIT]
+                for evidence_id, reference in selected:
+                    references_by_id.setdefault(evidence_id, reference)
+                    related_ids.append(evidence_id)
+                    claim_id = cast(str, reference["claim_id"])
+                    if claim_id not in related_claim_ids:
+                        related_claim_ids.append(claim_id)
 
         finding["related_evidence_ids"] = related_ids
         finding["related_claim_ids"] = related_claim_ids
@@ -218,8 +263,8 @@ def bind_related_retrieval_references(
     }
     related_references = [
         references_by_id[evidence_id]
-        for evidence_id in references_by_id
-        if evidence_id in referenced_ids
+        for evidence_id in sorted(referenced_ids)
+        if evidence_id in references_by_id
     ]
     return projected_findings, related_references
 
