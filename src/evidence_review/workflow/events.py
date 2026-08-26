@@ -83,6 +83,7 @@ _REASON_CODES: tuple[ReasonCode, ...] = (
 )
 _FINALIZER_STATUSES: tuple[FinalizerStatus, ...] = (
     "READY_FOR_HUMAN_REVIEW",
+    "PARTIALLY_RESOLVED",
     "ABSTAIN",
 )
 

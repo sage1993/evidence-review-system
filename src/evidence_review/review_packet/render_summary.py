@@ -10,7 +10,7 @@ from evidence_review.review_packet.presentation import (
     conclusion_text,
     localized_status,
 )
-from evidence_review.review_packet.render_case_visual import render_case_visual_review
+from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
 
 # ruff: noqa: E501
 
@@ -24,14 +24,15 @@ body:has(#case-visual-review) .review-workspace>.visual-review-grid-span{height:
 body:has(#case-visual-review) .review-workspace>:not(.visual-review-grid-span):not(#decision-form){display:none!important}
 body:has(#case-visual-review) #case-visual-review{height:100%;min-height:0;max-height:none;margin:0}
 body:has(#case-visual-review) .process-strip{display:none!important}
-body:has(#case-visual-review) .case-visual-transform,
-body:has(#case-visual-review) .case-visual-transform img{pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
-body:has(#case-visual-review) #decision-form{position:fixed;right:0;top:50%;z-index:30;width:min(380px,calc(100vw - 48px));max-height:86vh;overflow:auto;transform:translate(calc(100% - 42px),-50%);transition:transform .16s ease;box-shadow:0 12px 32px rgba(16,24,40,.18);background:#fff}
+body:has(#case-visual-review) .case-visual-transform{user-select:none;-webkit-user-select:none}
+body:has(#case-visual-review) #decision-form,
 body:has(#case-visual-review) #decision-form:hover,
-body:has(#case-visual-review) #decision-form:focus-within{transform:translate(0,-50%)}
-body:has(#case-visual-review) #decision-form::before{content:"검토 의견";position:absolute;left:0;top:0;width:42px;height:100%;display:grid;place-items:center;writing-mode:vertical-rl;background:#f8fafc;border-right:1px solid #d0d5dd;color:#475467;font-size:11px;font-weight:700;pointer-events:none}
-body:has(#case-visual-review) #decision-form>*{margin-left:42px}
-@media(max-width:720px){body:has(#case-visual-review) .app-shell{padding:6px}body:has(#case-visual-review) #decision-form{width:min(340px,calc(100vw - 24px))}}
+body:has(#case-visual-review) #decision-form:focus-within{position:fixed;right:12px;top:50%;z-index:30;width:min(380px,calc(100vw - 48px));max-height:86vh;overflow:auto;transform:translate(calc(100% + 28px),-50%)!important;transition:transform .16s ease,opacity .12s ease;box-shadow:0 12px 32px rgba(16,24,40,.18);background:#fff;pointer-events:none!important;visibility:hidden;opacity:0}
+body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form,
+body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form:hover,
+body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form:focus-within{transform:translate(0,-50%)!important;pointer-events:auto!important;visibility:visible;opacity:1}
+body:has(#case-visual-review) #decision-form .visual-decision-close{display:block;margin:8px 8px 0 auto;min-height:30px;padding:0 9px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;color:#344054;font-size:11px}
+@media(max-width:720px){body:has(#case-visual-review) .app-shell{padding:6px}body:has(#case-visual-review) #decision-form{right:6px;width:min(340px,calc(100vw - 18px))}}
 </style>
 """
 

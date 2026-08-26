@@ -9,6 +9,9 @@ import signal
 from pathlib import Path
 from threading import Thread
 
+from evidence_review.review_packet.case_visual_asset_server import (
+    configure_case_visual_server,
+)
 from evidence_review.review_packet.local_server import (
     create_review_server,
     serve_with_idle_timeout,
@@ -38,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         reviewer_ids=reviewer_ids,
         idle_timeout_seconds=args.idle_timeout_seconds,
     )
+    configure_case_visual_server(server)
     state_path = Path(args.workspace) / "runs" / args.run_id / "review-server.json"
     try:
         port = server.server_address[1]

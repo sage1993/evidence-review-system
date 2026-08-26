@@ -44,6 +44,10 @@ _COMMA_CANDIDATE = re.compile(
 _VALID_GROUPED = re.compile(
     r"[-+]?[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?%?"
 )
+_ATTACHED_MEASUREMENT_UNIT = re.compile(
+    r"(?:mm|cm|km|m²|m)(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
 
 
 def _is_ascii_digit(character: str) -> bool:
@@ -64,7 +68,9 @@ def _has_valid_left_boundary(text: str, start: int) -> bool:
 def _has_valid_right_boundary(text: str, end: int) -> bool:
     if end >= len(text):
         return True
-    return not _is_ascii_identifier_character(text[end])
+    if not _is_ascii_identifier_character(text[end]):
+        return True
+    return _ATTACHED_MEASUREMENT_UNIT.match(text, end) is not None
 
 
 def _scan_number_end(text: str, start: int) -> int | None:
@@ -149,6 +155,10 @@ def _consumed_mask(text: str, tokens: tuple[NumericToken, ...]) -> list[bool]:
             raise ValueError("numeric token spans are invalid")
         for index in range(token.start, token.end):
             consumed[index] = True
+        unit_match = _ATTACHED_MEASUREMENT_UNIT.match(text, token.end)
+        if unit_match is not None:
+            for index in range(unit_match.start(), unit_match.end()):
+                consumed[index] = True
         previous_end = token.end
     return consumed
 

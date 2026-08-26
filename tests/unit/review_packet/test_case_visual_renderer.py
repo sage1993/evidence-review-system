@@ -1,3 +1,5 @@
+import re
+
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
 from evidence_review.review_packet.render_summary import (
     render_additional_review,
@@ -71,6 +73,7 @@ def _model() -> dict[str, object]:
                                     "text": "차량 출입구 위치를 기준과 비교했다.",
                                     "issue_ids": ["I1"],
                                     "citation_ids": ["CIT-1"],
+                                    "relation": "direct",
                                 }
                             ],
                             "review_statuses": ["NOT_SATISFIED"],
@@ -78,6 +81,21 @@ def _model() -> dict[str, object]:
                             "display_value": "차량 출입구",
                         }
                     ],
+                }
+            ],
+            "findings": [
+                {
+                    "finding_id": "VF-1",
+                    "title": "차량 출입구",
+                    "category": "visual_observation",
+                    "status": "mismatch",
+                    "page_asset_key": "ATT-1-p1",
+                    "candidate_ids": ["CAND-1"],
+                    "issue_ids": ["I1"],
+                    "subject_value": "차량 출입구",
+                    "focus_bbox": [10.0, 20.0, 80.0, 90.0],
+                    "direct_claim_ids": ["CL-I1-1"],
+                    "related_claim_ids": [],
                 }
             ],
         },
@@ -93,16 +111,25 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert "대조 결과" in html
     assert "설계기준" in html
     assert "차량 출입구는 기준 위치를 확보해야 한다." in html
-    assert 'src="data:image/png;base64,ZmFrZQ=="' in html
+    assert 'data-case-page-src="data:image/png;base64,ZmFrZQ=="' in html
+    assert (
+        re.search(
+            r'(?<![\w-])src\s*=\s*"data:image/png;base64,ZmFrZQ=="',
+            html,
+        )
+        is None
+    )
     assert 'data-case-overlay="CAND-1"' in html
-    assert '<rect class="case-visual-shape" x="10" y="20" width="70" height="70"' in html
+    assert '<rect class="case-visual-geometry" fill="none"' in html
     assert 'data-case-divider' in html
     assert 'role="separator"' in html
     assert 'data-finding-prev' in html
     assert 'data-finding-next' in html
     assert 'data-case-zoom-in' in html
     assert 'data-case-zoom-out' in html
-    assert "마우스 휠로 커서 위치 기준 확대·축소" in html
+    assert 'data-case-overlay-mode="selected"' in html
+    assert "focusSubjectFinding" in html
+    assert "마우스 휠 Zoom" in html
     assert "http://" not in html
     assert "https://" not in html
 
@@ -140,8 +167,18 @@ def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None
     assert 'id="additional-review"' not in html
     assert "body:has(#case-visual-review){overflow:hidden}" in html
     assert ".review-workspace>:not(.visual-review-grid-span):not(#decision-form)" in html
-    assert ".case-visual-transform img{pointer-events:none" in html
+    assert 'body[data-visual-decision-open="true"]' in html
     assert "#decision-form:hover" in html
+    assert "#decision-form:focus-within" in html
+    assert "pointer-events:none!important" in html
+    assert 'data-case-decision-open' in html
+    assert 'data-case-decision-backdrop' in html
+    assert "e.key==='Escape'" in html
+    assert "data:image/png;base64,ZmFrZQ==" not in html
+    assert (
+        'data-case-page-src="./case-pages/ATT-1/1/' + "b" * 64 + '"'
+        in html
+    )
 
 
 def test_visual_workspace_does_not_duplicate_legacy_additional_review_strip() -> None:

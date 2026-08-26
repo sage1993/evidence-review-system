@@ -204,6 +204,7 @@ def _publish_validated_track_b(
                 "existing run-local Track B differs from validated submission",
             ) from None
 
+
 def _citation_document(citation: Citation) -> dict[str, object]:
     return {
         "citation_id": citation.citation_id,
@@ -513,6 +514,61 @@ def validate_track_a_submission(
     return output
 
 
+def _track_b_bundle_document(
+    run_directory: Path,
+    run_id: str,
+    track_a_document: object,
+) -> dict[str, object]:
+    """Project validated Track A claims and their immutable evidence for Track B."""
+    track_a = _mapping(track_a_document, "track_a")
+    claims = [
+        dict(_mapping(item, f"track_a.claims[{index}]"))
+        for index, item in enumerate(_sequence(track_a.get("claims", []), "track_a.claims"))
+    ]
+    cited_ids: set[str] = set()
+    for index, claim in enumerate(claims):
+        for citation_index, item in enumerate(
+            _sequence(claim.get("citation_ids", []), f"track_a.claims[{index}].citation_ids")
+        ):
+            cited_ids.add(
+                _string(item, f"track_a.claims[{index}].citation_ids[{citation_index}]")
+            )
+
+    request = _mapping(_json(run_directory / "review-request.json"), "review_request")
+    support_by_id: dict[str, dict[str, object]] = {}
+    for index, item in enumerate(_sequence(request.get("evidence", []), "review_request.evidence")):
+        evidence = _mapping(item, f"review_request.evidence[{index}]")
+        citation = _mapping(
+            evidence.get("citation"), f"review_request.evidence[{index}].citation"
+        )
+        citation_id = _string(
+            citation.get("citation_id"),
+            f"review_request.evidence[{index}].citation.citation_id",
+        )
+        if citation_id not in cited_ids:
+            continue
+        support_by_id[citation_id] = {
+            "citation": dict(citation),
+            "text": _string(
+                evidence.get("text"), f"review_request.evidence[{index}].text"
+            ),
+        }
+
+    missing = sorted(cited_ids - set(support_by_id))
+    if missing:
+        raise ValueError(
+            "validated Track A references unavailable immutable evidence: "
+            + ", ".join(missing)
+        )
+    return {
+        "format": "evidence-review/track-b-bundle",
+        "version": 1,
+        "run_id": run_id,
+        "claims": claims,
+        "evidence_support": [support_by_id[item] for item in sorted(cited_ids)],
+    }
+
+
 def _track_b_action(run_id: str) -> NextAction:
     return NextAction(
         format="evidence-review/next-action",
@@ -520,7 +576,7 @@ def _track_b_action(run_id: str) -> NextAction:
         run_id=run_id,
         workflow_state="WAITING_TRACK_B",
         action="PRODUCE_TRACK_B",
-        input_bundle="track-a-output.json",
+        input_bundle="track-b-bundle.json",
         instructions="TRACK_B_INSTRUCTIONS.md",
         expected_output="track-b-output.json",
         resume_command=(
@@ -540,6 +596,7 @@ def _recover_malformed_track_a_submission(run_directory: Path) -> None:
     """Discard only incomplete JSON left before the Track A handoff is journaled."""
     generated = (
         "track-a-output.json",
+        "track-b-bundle.json",
         "next-action-track-b.json",
         "track-a-validation.json",
     )
@@ -568,6 +625,10 @@ def submit_track_a(
         track_a_output,
         run_directory / "track-a-output.json",
         output,
+    )
+    _write_json_or_identical(
+        run_directory / "track-b-bundle.json",
+        _track_b_bundle_document(run_directory, run_id, output),
     )
     action_path = run_directory / "next-action-track-b.json"
     _write_json_or_identical(action_path, next_action_document(_track_b_action(run_id)))

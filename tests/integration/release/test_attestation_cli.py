@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 from evidence_review.release.attestation import REQUIRED_CHECK_IDS
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+_SOURCE_ROOT = _REPOSITORY_ROOT / "src"
+
+
+def _source_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    existing = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        str(_SOURCE_ROOT)
+        if not existing
+        else str(_SOURCE_ROOT) + os.pathsep + existing
+    )
+    return environment
 
 
 def _document(candidate_hash: str, packet_hash: str) -> dict[str, object]:
@@ -35,6 +50,8 @@ def _run(*arguments: str) -> subprocess.CompletedProcess[str]:
         check=False,
         capture_output=True,
         text=True,
+        cwd=_REPOSITORY_ROOT,
+        env=_source_environment(),
     )
 
 
