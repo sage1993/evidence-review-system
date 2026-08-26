@@ -1,44 +1,83 @@
 # PR-A Execution Bootstrap
 
-This file overrides only Task 1 bootstrap mechanics in `2026-08-26-pr-a-issue-116-correctness-convergence.md`.
+This file overrides Task 1 bootstrap mechanics in `2026-08-26-pr-a-issue-116-correctness-convergence.md`.
 
 ## Source-of-truth baseline
 
 - Code baseline parent: `main@3eb45de3d6d12265d6fa75f713b42a570955e949`
-- Execution branch bootstrap commit: `54469e72b4ca89cbe2e264b31c935babf9499b65`
 - Reference implementation: PR #117 HEAD `e8e17271888b6f4833776c4200a24fe40c5d7772`
-- Approved design/plan source branch: `docs/integrated-correctness-reference-viewer-design`
+- Actual PR #117 branch: `docs/issue-116-correctness-hardening-plan`
+- Approved design/plan branch: `docs/integrated-correctness-reference-viewer-design`
+- Execution branch: `agent/issue-116-correctness-convergence`
 
-The bootstrap commit changes documentation only. Production code must still match the exact `3eb45de3d6d12265d6fa75f713b42a570955e949` baseline before selective porting begins.
+The execution branch contains documentation-only bootstrap commits. Production code must still match `main@3eb45de3d6d12265d6fa75f713b42a570955e949` before selective porting.
 
-## Required local bootstrap
+## Correct local bootstrap
 
-Use the already-created remote execution branch:
+From the primary checkout:
 
 ```powershell
-git fetch origin main agent/issue-116-correctness-convergence docs/integrated-correctness-reference-viewer-design docs/issue-116-correctness-hardening
+Set-Location F:\2026-PJ\evidence-review-system
 
-git worktree add F:\2026-PJ\evidence-review-system-issue116-convergence `
-  origin/agent/issue-116-correctness-convergence
+git fetch --prune origin
 
-Set-Location F:\2026-PJ\evidence-review-system-issue116-convergence
+git branch -r --list `
+  "origin/agent/issue-116-correctness-convergence" `
+  "origin/docs/integrated-correctness-reference-viewer-design" `
+  "origin/docs/issue-116-correctness-hardening-plan"
+```
 
-git switch -c agent/issue-116-correctness-convergence --track origin/agent/issue-116-correctness-convergence
+All three refs must be listed. Verify PR #117 reference SHA:
 
-git rev-parse HEAD
-git status --short
-git diff --quiet 3eb45de3d6d12265d6fa75f713b42a570955e949 HEAD -- src tests web_runtime .agents skills AGENTS.md
+```powershell
+git rev-parse origin/docs/issue-116-correctness-hardening-plan
 ```
 
 Expected:
 
 ```text
-HEAD = bootstrap/document-only commits derived from 3eb45de3d6d12265d6fa75f713b42a570955e949
-working tree clean
-production-code diff command exits 0
+e8e17271888b6f4833776c4200a24fe40c5d7772
 ```
 
-Bring only the approved design and implementation plans into the execution branch before code edits:
+Remove only an empty failed target directory:
+
+```powershell
+$wt = "F:\2026-PJ\evidence-review-system-issue116-convergence"
+if (Test-Path $wt) {
+  if (@(Get-ChildItem -Force $wt).Count -eq 0) {
+    Remove-Item -Force $wt
+  } else {
+    throw "Worktree target is not empty: $wt"
+  }
+}
+```
+
+Create and enter the worktree. The earlier failed commands did not create a local branch, so create it while tracking the remote execution branch:
+
+```powershell
+git worktree add -b agent/issue-116-correctness-convergence `
+  $wt `
+  origin/agent/issue-116-correctness-convergence
+
+Set-Location $wt
+
+git status --short
+git branch --show-current
+git rev-parse HEAD
+```
+
+Do not run a second `git switch -c`; `git worktree add -b` already creates and checks out the local branch.
+
+Verify production code is unchanged from current main:
+
+```powershell
+git diff --quiet origin/main HEAD -- src tests web_runtime .agents skills AGENTS.md
+$LASTEXITCODE
+```
+
+Expected: `0`.
+
+Bring only the approved spec and implementation plans into the execution branch:
 
 ```powershell
 git checkout origin/docs/integrated-correctness-reference-viewer-design -- `
@@ -50,7 +89,7 @@ git add docs/superpowers/specs docs/superpowers/plans
 git commit -m "docs: add approved convergence execution plans"
 ```
 
-Then run the unchanged-production baseline gate before any production-code port:
+Then run the unchanged-production baseline gate:
 
 ```powershell
 py -3.13 -m pytest -q
