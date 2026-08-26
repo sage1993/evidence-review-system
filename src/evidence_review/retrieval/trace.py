@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from evidence_review.contracts.question_plan import QuestionPlan
 from evidence_review.retrieval.coverage import CoverageReport
 from evidence_review.retrieval.graph import ReferencePath
@@ -24,6 +26,8 @@ def retrieval_trace_document(
     plan: QuestionPlan,
     bundle: IssueRetrievalBundle,
     coverage: CoverageReport,
+    *,
+    snapshot_provenance: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return a JSON-ready trace that reconstructs issue retrieval decisions."""
     coverage_by_issue = {item.issue_id: item for item in coverage.issues}
@@ -153,10 +157,13 @@ def retrieval_trace_document(
             }
         )
 
-    return {
+    document: dict[str, object] = {
         "format": "evidence-review/retrieval-trace",
-        "version": 1,
+        "version": 2,
         "question": plan.original_question,
         "issues": issue_documents,
         "selected_evidence": selected_evidence,
     }
+    if snapshot_provenance is not None:
+        document["snapshot_provenance"] = dict(snapshot_provenance)
+    return document
