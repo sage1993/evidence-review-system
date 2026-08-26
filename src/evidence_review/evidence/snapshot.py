@@ -1,6 +1,7 @@
 """Canonical hashing and row counts for evidence snapshots."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from typing import Any
@@ -331,3 +332,32 @@ def compute_logical_snapshot_hash(connection: sqlite3.Connection) -> str:
     payload["tables"] = _logical_tables(connection, version)
     payload["visuals"] = _logical_visuals(connection, version)
     return sha256_json(payload)
+
+
+def _metadata_hash(connection: sqlite3.Connection, table: str) -> str:
+    row = connection.execute(
+        f"SELECT value FROM {table} WHERE key = 'snapshot_hash'"
+    ).fetchone()
+    if row is None or not isinstance(row[0], str) or len(row[0]) != 64:
+        raise RuntimeError(f"{table} snapshot hash is missing")
+    return row[0]
+
+
+def evidence_snapshot_provenance(connection: sqlite3.Connection) -> dict[str, object]:
+    """Return immutable identity metadata for the exact evidence DB used by retrieval."""
+    evidence_hash = _metadata_hash(connection, "snapshot_meta")
+    retrieval_hash = _metadata_hash(connection, "retrieval_meta")
+    if retrieval_hash != evidence_hash:
+        raise RuntimeError("retrieval index snapshot hash mismatch")
+    serialized = connection.serialize()
+    return {
+        "evidence_snapshot_hash": evidence_hash,
+        "evidence_db_sha256": hashlib.sha256(serialized).hexdigest(),
+        "schema_version": detect_schema_version(connection),
+        "retrieval_record_count": int(
+            connection.execute("SELECT COUNT(*) FROM retrieval_records").fetchone()[0]
+        ),
+        "clause_record_count": int(
+            connection.execute("SELECT COUNT(*) FROM clause_retrieval_records").fetchone()[0]
+        ),
+    }
