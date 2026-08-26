@@ -2,7 +2,7 @@
 
 You are producing **case-specific visual observations only** for an Evidence Review System formal review.
 
-Read `visual-analysis-bundle.json`. For every relevant page, open the exact local raster named by `asset_path` and inspect the image itself. Do not infer visual facts solely from the question text, filenames, QuestionPlan facts, or prior knowledge.
+Read `visual-analysis-bundle.json`. For every relevant page, open the exact local raster named by `asset_path` and inspect the image itself. `asset_path` is relative to the review workspace; resolve it from that workspace and do not substitute another file. Do not infer visual facts solely from the question text, filenames, QuestionPlan facts, or prior knowledge.
 
 Write only `visual-analysis-output.json` with this structure:
 
@@ -34,6 +34,10 @@ Rules:
 
 - Use only attachment IDs, source hashes, pages, issue IDs, coordinate systems and page bounds from the bundle.
 - Coordinates are pixels in the displayed raster, origin at the top-left.
+- Geometry must match its declared type. A POINT is `[x, y]`; a BBOX is `[left, top, right, bottom]`; LINESTRING and POLYGON coordinates are arrays of `[x, y]` points. For a POLYGON, the final point must exactly equal the first point.
+- `raw_value` must be a JSON string or null.
+- `normalized_candidate` must be a JSON string or null.
+- `raw_value` and `normalized_candidate` must never be an object, array, number, or boolean.
 - Create an observation only for something actually visible on the referenced page.
 - **Create semantic reviewable observations, not OCR token dumps.** Do not emit standalone fragments such as `3F`, `101동`, isolated dimension numbers, or individual room labels when adjacent visible elements jointly describe one reviewable fact.
 - When several visible labels/dimensions belong to one coherent fact, emit one observation using a tight enclosing BBOX/POLYGON and summarize the visible content concisely in `normalized_candidate`. Examples include one unit-space program, one area schedule, one set of related levels/elevations, one set of road/setback dimensions, or one building-identification group.
