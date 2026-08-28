@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from evidence_review.contracts.question_plan import QuestionPlan
 from evidence_review.retrieval.coverage import CoverageReport
@@ -28,6 +28,7 @@ def retrieval_trace_document(
     coverage: CoverageReport,
     *,
     snapshot_provenance: Mapping[str, object] | None = None,
+    facet_coverage: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object]:
     """Return a JSON-ready trace that reconstructs issue retrieval decisions."""
     coverage_by_issue = {item.issue_id: item for item in coverage.issues}
@@ -145,6 +146,11 @@ def retrieval_trace_document(
                 "missing_references": missing_references,
                 "budget_drops": budget_drops,
                 "relevance_decisions": relevance_decisions,
+                "facet_coverage": [
+                    dict(item)
+                    for item in facet_coverage
+                    if item.get("issue_id") == issue.id
+                ],
                 "coverage": {
                     "status": support.status,
                     "evidence_ids": list(support.evidence_ids),
