@@ -166,7 +166,9 @@ def _workspace(tmp_path: Path) -> Path:
     return workspace
 
 
-def test_planned_review_persists_generated_facet_query_and_coverage(tmp_path: Path) -> None:
+def test_planned_review_persists_generated_facet_query_and_comparison_lineage(
+    tmp_path: Path,
+) -> None:
     workspace = _workspace(tmp_path)
 
     prepared = prepare_planned_review_question(workspace, _plan())
@@ -205,4 +207,33 @@ def test_planned_review_persists_generated_facet_query_and_coverage(tmp_path: Pa
         }
     ]
     assert trace["issues"][0]["facet_coverage"] == facet_coverage
-    assert request["inputs"]["issue_coverage"][0]["status"] == "RESOLVED"
+
+    comparisons = {
+        item["facet_id"]: item
+        for item in request["inputs"]["fact_rule_comparisons"]
+        if item["issue_id"] == "I2"
+    }
+    assert set(comparisons) == {
+        "minimum-area-threshold",
+        "distance-normal-threshold",
+        "distance-conditional-threshold",
+    }
+    assert comparisons["minimum-area-threshold"]["fact_value"] == "1500"
+    assert comparisons["minimum-area-threshold"]["threshold_value"] == "1000"
+    assert comparisons["minimum-area-threshold"]["satisfied"] is True
+    assert comparisons["distance-normal-threshold"]["fact_value"] == "300"
+    assert comparisons["distance-normal-threshold"]["threshold_value"] == "250"
+    assert comparisons["distance-normal-threshold"]["satisfied"] is False
+    assert comparisons["distance-conditional-threshold"]["threshold_value"] == "350"
+    assert comparisons["distance-conditional-threshold"]["satisfied"] is True
+
+    issue_coverage = request["inputs"]["issue_coverage"][0]
+    assert issue_coverage["status"] == "CONDITIONAL"
+    assert issue_coverage["covered_facet_ids"] == facet_coverage[0]["covered_facet_ids"]
+    assert issue_coverage["missing_facet_ids"] == []
+    assert set(issue_coverage["comparison_ids"]) == {
+        item["comparison_id"] for item in comparisons.values()
+    }
+    assert {
+        item["comparison_id"] for item in trace["issues"][0]["comparisons"]
+    } == set(issue_coverage["comparison_ids"])
