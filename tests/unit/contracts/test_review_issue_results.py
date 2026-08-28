@@ -31,6 +31,9 @@ def test_review_packet_decodes_claim_issue_ids_and_issue_results() -> None:
                     "covered_roles": ["rule"],
                     "missing_roles": [],
                     "gap_codes": [],
+                    "covered_facet_ids": ["minimum-area-threshold"],
+                    "missing_facet_ids": [],
+                    "comparison_ids": ["CMP-123"],
                 },
                 {
                     "issue_id": "I2",
@@ -46,4 +49,9 @@ def test_review_packet_decodes_claim_issue_ids_and_issue_results() -> None:
 
     assert packet.claims[0].issue_ids == ("I1",)
     assert packet.issue_results[0].status == "RESOLVED"
+    assert packet.issue_results[0].covered_facet_ids == ("minimum-area-threshold",)
+    assert packet.issue_results[0].missing_facet_ids == ()
+    assert packet.issue_results[0].comparison_ids == ("CMP-123",)
     assert packet.issue_results[1].gap_codes == ("RETRIEVAL_MISS",)
+    assert packet.issue_results[1].covered_facet_ids == ()
+    assert packet.issue_results[1].comparison_ids == ()
