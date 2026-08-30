@@ -181,6 +181,25 @@ def _delete_derived_reference_links(connection: sqlite3.Connection) -> None:
     )
 
 
+def _existing_derived_reference_links(
+    connection: sqlite3.Connection,
+) -> tuple[tuple[str, str, str, str], ...]:
+    placeholders = ", ".join("?" for _ in _DERIVED_REFERENCE_RELATIONS)
+    rows = connection.execute(
+        f"""
+        SELECT id, source_id, target_id, relation_type
+        FROM links
+        WHERE id GLOB 'AUTO-REF-LINK-*'
+          AND relation_type IN ({placeholders})
+        ORDER BY id, source_id, target_id, relation_type
+        """,
+        _DERIVED_REFERENCE_RELATIONS,
+    ).fetchall()
+    return tuple(
+        (str(row[0]), str(row[1]), str(row[2]), str(row[3])) for row in rows
+    )
+
+
 def materialize_legal_reference_links(connection: sqlite3.Connection) -> int:
     """Rebuild explicit legal citation links from the current ingested source set."""
     links: dict[tuple[str, str, str], tuple[str, str, str, str]] = {}
@@ -227,17 +246,20 @@ def materialize_legal_reference_links(connection: sqlite3.Connection) -> int:
                     relation_type,
                 )
 
+    desired = tuple(sorted(links.values()))
+    if _existing_derived_reference_links(connection) == desired:
+        return 0
     before = connection.total_changes
     connection.execute("BEGIN IMMEDIATE")
     try:
         _delete_derived_reference_links(connection)
-        if links:
+        if desired:
             connection.executemany(
                 """
                 INSERT INTO links(id, source_id, target_id, relation_type)
                 VALUES(?, ?, ?, ?)
                 """,
-                tuple(links.values()),
+                desired,
             )
     except BaseException:
         connection.rollback()

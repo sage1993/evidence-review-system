@@ -13,7 +13,6 @@ from evidence_review.workspace_binding import (
     bind_active_workspace,
     resolve_active_workspace,
 )
-
 from tests.integration.retrieval.test_external_reference_resolution import (
     _article_source,
     _snapshot,
