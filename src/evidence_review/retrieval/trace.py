@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from evidence_review.contracts.question_plan import QuestionPlan
 from evidence_review.retrieval.coverage import CoverageReport
 from evidence_review.retrieval.graph import ReferencePath
@@ -24,6 +26,10 @@ def retrieval_trace_document(
     plan: QuestionPlan,
     bundle: IssueRetrievalBundle,
     coverage: CoverageReport,
+    *,
+    snapshot_provenance: Mapping[str, object] | None = None,
+    facet_coverage: Sequence[Mapping[str, object]] = (),
+    comparisons: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object]:
     """Return a JSON-ready trace that reconstructs issue retrieval decisions."""
     coverage_by_issue = {item.issue_id: item for item in coverage.issues}
@@ -38,18 +44,40 @@ def retrieval_trace_document(
     issue_documents: list[dict[str, object]] = []
     for issue in plan.issues:
         support = coverage_by_issue[issue.id]
-        fallback = [
-            {
-                "search_request_id": item.search_request_id,
-                "role": item.role,
-                "stage": item.stage.value,
-                "input_query": item.input_query,
-                "derived_query": item.derived_query,
-                "hit_count": item.hit_count,
-            }
-            for item in bundle.fallback_traces
-            if item.issue_id == issue.id
-        ]
+        fallback: list[dict[str, object]] = []
+        relevance_decisions: list[dict[str, object]] = []
+        for item in bundle.fallback_traces:
+            if item.issue_id != issue.id:
+                continue
+            decision_documents = [
+                {
+                    "clause_id": decision.clause_id,
+                    "accepted": decision.accepted,
+                    "reason_codes": list(decision.reason_codes),
+                }
+                for decision in item.relevance_decisions
+            ]
+            fallback.append(
+                {
+                    "search_request_id": item.search_request_id,
+                    "role": item.role,
+                    "stage": item.stage.value,
+                    "input_query": item.input_query,
+                    "derived_query": item.derived_query,
+                    "hit_count": item.hit_count,
+                    "relevance_decisions": decision_documents,
+                }
+            )
+            relevance_decisions.extend(
+                {
+                    "search_request_id": item.search_request_id,
+                    "stage": item.stage.value,
+                    "clause_id": decision.clause_id,
+                    "accepted": decision.accepted,
+                    "reason_codes": list(decision.reason_codes),
+                }
+                for decision in item.relevance_decisions
+            )
         candidates: list[dict[str, object]] = []
         for candidate in bundle.candidates:
             matches = [item for item in candidate.matches if item.issue_id == issue.id]
@@ -118,6 +146,17 @@ def retrieval_trace_document(
                 "references": references,
                 "missing_references": missing_references,
                 "budget_drops": budget_drops,
+                "relevance_decisions": relevance_decisions,
+                "facet_coverage": [
+                    dict(item)
+                    for item in facet_coverage
+                    if item.get("issue_id") == issue.id
+                ],
+                "comparisons": [
+                    dict(item)
+                    for item in comparisons
+                    if item.get("issue_id") == issue.id
+                ],
                 "coverage": {
                     "status": support.status,
                     "evidence_ids": list(support.evidence_ids),
@@ -153,10 +192,13 @@ def retrieval_trace_document(
             }
         )
 
-    return {
+    document: dict[str, object] = {
         "format": "evidence-review/retrieval-trace",
-        "version": 1,
+        "version": 2,
         "question": plan.original_question,
         "issues": issue_documents,
         "selected_evidence": selected_evidence,
     }
+    if snapshot_provenance is not None:
+        document["snapshot_provenance"] = dict(snapshot_provenance)
+    return document

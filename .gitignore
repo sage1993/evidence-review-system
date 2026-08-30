@@ -24,6 +24,9 @@ venv/
 # Local acceptance evidence generated during manual verification
 .acceptance/
 
+# Repository-local ERS runtime control state
+/.ers/
+
 # Local and agent-generated work products
 tmp/
 output/

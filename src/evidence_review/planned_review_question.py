@@ -15,6 +15,7 @@ from evidence_review.contracts.question_plan import QuestionPlan, question_plan_
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.drawing_review.visual_pages import VisualPageAsset
 from evidence_review.evidence.clause_rebuild import ensure_clause_index
+from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
@@ -23,8 +24,13 @@ from evidence_review.question_planning import (
     bind_retrieval_lineage_to_review_request,
     issue_retrieval_bundle_document,
 )
-from evidence_review.retrieval.conditional import infer_conditional_issue_ids
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
+from evidence_review.retrieval.facets import (
+    augment_plan_with_facet_search_requests,
+    bind_facet_coverage_to_review_request,
+    evaluate_facet_coverage,
+    facet_coverage_document,
+)
 from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.issue_bundle import retrieve_issue_bundle
 from evidence_review.retrieval.reference_projection import (
@@ -41,6 +47,12 @@ from evidence_review.review_question import (
     _track_a_action,
     _write_or_identical,
     build_review_run_request,
+)
+from evidence_review.rule_engine.fact_rule_comparison import (
+    bind_comparisons_to_review_request,
+    comparison_documents,
+    conditional_issue_ids_from_comparisons,
+    evaluate_fact_rule_comparisons,
 )
 from evidence_review.user_expansions import (
     apply_search_request_origins,
@@ -71,7 +83,9 @@ def prepare_planned_review_question(
     retrieval merely because a source is a PDF.
     """
     normalization_timer = start_stage()
-    effective_plan = plan_with_user_expansions(question_plan, user_expansions)
+    effective_plan = augment_plan_with_facet_search_requests(
+        plan_with_user_expansions(question_plan, user_expansions)
+    )
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
     retrieval_timer = start_stage()
@@ -79,27 +93,39 @@ def prepare_planned_review_question(
         connection = store.require_connection()
         ensure_clause_index(connection)
         snapshot_hash = require_fresh_index(connection)
+        provenance = evidence_snapshot_provenance(connection)
         issue_bundle = retrieve_issue_bundle(connection, effective_plan)
-        conditional_issue_ids = infer_conditional_issue_ids(
+        facet_report = evaluate_facet_coverage(effective_plan, issue_bundle)
+        fact_rule_comparisons = evaluate_fact_rule_comparisons(
             effective_plan,
             issue_bundle,
+            facet_report,
         )
         coverage_report = evaluate_issue_coverage(
             effective_plan,
             issue_bundle,
-            conditional_issue_ids=conditional_issue_ids,
+            facet_report=facet_report,
+            conditional_issue_ids=conditional_issue_ids_from_comparisons(
+                fact_rule_comparisons,
+                facet_report,
+            ),
         )
         bundle = issue_retrieval_bundle_document(
             effective_plan,
             issue_bundle,
             snapshot_hash=snapshot_hash,
         )
+        bundle["snapshot_provenance"] = provenance
         bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
         bundle = apply_search_request_origins(bundle, effective_plan)
+        facet_documents = facet_coverage_document(facet_report)
         trace_document = retrieval_trace_document(
             effective_plan,
             issue_bundle,
             coverage_report,
+            snapshot_provenance=provenance,
+            facet_coverage=facet_documents,
+            comparisons=comparison_documents(fact_rule_comparisons),
         )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
@@ -116,6 +142,15 @@ def prepare_planned_review_question(
     review_request = bind_issue_coverage_to_review_request(
         review_request,
         coverage_report,
+    )
+    review_request = bind_facet_coverage_to_review_request(
+        review_request,
+        facet_report,
+    )
+    review_request = bind_comparisons_to_review_request(
+        review_request,
+        fact_rule_comparisons,
+        facet_report=facet_report,
     )
     review_request = apply_issue_coverage_factors(
         review_request,

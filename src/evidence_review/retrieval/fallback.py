@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -20,6 +20,7 @@ from evidence_review.retrieval.clause_resolution import (
 )
 from evidence_review.retrieval.index import require_fresh_index
 from evidence_review.retrieval.models import ChannelScore
+from evidence_review.retrieval.relevance import evaluate_issue_clause_relevance
 
 
 class FallbackStage(StrEnum):
@@ -46,12 +47,23 @@ class ClauseSearch(Protocol):
     ) -> tuple[ClauseRetrievalHit, ...]: ...
 
 
+HitFilter = Callable[[ClauseRetrievalHit], bool]
+
+
+@dataclass(frozen=True, slots=True)
+class FallbackRelevanceDecision:
+    clause_id: str
+    accepted: bool
+    reason_codes: tuple[str, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class FallbackTrace:
     stage: FallbackStage
     input_query: str
     derived_query: str
     hit_count: int
+    relevance_decisions: tuple[FallbackRelevanceDecision, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,7 +235,6 @@ def _fact_decontaminated_query(
 
 
 def _protected_core_tokens(value: str) -> frozenset[str]:
-    """Keep explicit legal mechanisms when pruning broad core-token fallbacks."""
     protected: set[str] = set()
     for token in _tokenize(value):
         cleaned = _clean_token(token)
@@ -236,7 +247,6 @@ def _protected_numeric_tokens(
     value: str,
     fact_texts: Sequence[str],
 ) -> frozenset[str]:
-    """Protect numeric literals unless validated user facts authorize relaxation."""
     removable = _numeric_values(fact_texts)
     protected: set[str] = set()
     for token in _tokenize(value):
@@ -252,7 +262,6 @@ def _core_token_queries(
     *,
     required_tokens: Iterable[str] = (),
 ) -> tuple[str, ...]:
-    """Return bounded AND subsets; never emit unrestricted token-OR queries."""
     tokens = list(_tokenize(value))
     if len(tokens) <= 2:
         return ()
@@ -360,14 +369,46 @@ def _heading_scoped_search(
     return tuple(hits)
 
 
+def _accepted_hits(
+    original_query: str,
+    hits: Sequence[ClauseRetrievalHit],
+    hit_filter: HitFilter | None,
+) -> tuple[tuple[ClauseRetrievalHit, ...], tuple[FallbackRelevanceDecision, ...]]:
+    accepted: list[ClauseRetrievalHit] = []
+    decisions: list[FallbackRelevanceDecision] = []
+    for hit in hits:
+        relevance = evaluate_issue_clause_relevance(
+            issue_id="QUERY",
+            issue_question=original_query,
+            search_request_id="QUERY",
+            query_text=original_query,
+            clause=hit,
+        )
+        accepted_by_filter = hit_filter is None or hit_filter(hit)
+        is_accepted = relevance.accepted and accepted_by_filter
+        reason_codes = relevance.reason_codes
+        if relevance.accepted and not accepted_by_filter:
+            reason_codes = ("REJECT_CALLER_FILTER",)
+        decisions.append(
+            FallbackRelevanceDecision(
+                clause_id=hit.clause_id,
+                accepted=is_accepted,
+                reason_codes=reason_codes,
+            )
+        )
+        if is_accepted:
+            accepted.append(hit)
+    return tuple(accepted), tuple(decisions)
+
+
 def search_clause_with_fallback(
     connection: sqlite3.Connection,
     query: str,
     *,
     fact_texts: Sequence[str] = (),
     limit: int = 20,
+    hit_filter: HitFilter | None = None,
 ) -> FallbackResult:
-    """Search clauses through a deterministic bounded, fact-safe fallback ladder."""
     normalized = _normalize_text(query)
     if not normalized:
         raise ValueError("query must be non-empty")
@@ -443,13 +484,15 @@ def search_clause_with_fallback(
         if key in seen:
             continue
         seen.add(key)
-        hits = search(connection, derived_query, limit=limit)
+        raw_hits = search(connection, derived_query, limit=limit)
+        hits, decisions = _accepted_hits(normalized, raw_hits, hit_filter)
         traces.append(
             FallbackTrace(
                 stage=stage,
                 input_query=normalized,
                 derived_query=derived_query,
                 hit_count=len(hits),
+                relevance_decisions=decisions,
             )
         )
         if hits:
@@ -461,7 +504,7 @@ def search_clause_with_fallback(
             )
 
     heading_query = decontaminated or normalized
-    heading_hits = (
+    raw_heading_hits = (
         ()
         if protected_numerics
         else _heading_scoped_search(
@@ -471,12 +514,18 @@ def search_clause_with_fallback(
             limit=limit,
         )
     )
+    heading_hits, heading_decisions = _accepted_hits(
+        normalized,
+        raw_heading_hits,
+        hit_filter,
+    )
     traces.append(
         FallbackTrace(
             stage=FallbackStage.HEADING_SCOPED,
             input_query=normalized,
             derived_query=heading_query,
             hit_count=len(heading_hits),
+            relevance_decisions=heading_decisions,
         )
     )
     if heading_hits:

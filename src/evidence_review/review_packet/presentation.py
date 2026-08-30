@@ -11,6 +11,9 @@ _STATUS_LABELS = {
     "REVIEW_COMPLETED": "검토 완료",
     "INDETERMINATE": "판단 보류",
     "COMPLETE": "근거 연결 완료",
+    "RESOLVED": "확인",
+    "PARTIALLY_RESOLVED": "일부 확인됨",
+    "SOURCE_MISSING": "원문 추가 확인 필요",
     "MISSING_REQUIRED_INPUT": "필요한 자료가 부족합니다",
     "SATISFIED": "충족",
     "NOT_SATISFIED": "미충족",
@@ -24,6 +27,13 @@ _ISSUE_LABELS = {
     "UNRESOLVED_CONFLICT": "해결되지 않은 근거 충돌이 있습니다.",
     "LOW_CONFIDENCE": "근거 신뢰도를 추가로 확인해야 합니다.",
     "TRACK_B_REJECTED": "교차 검증에서 추가 확인이 필요하다고 판단했습니다.",
+}
+
+_GAP_LABELS = {
+    "SOURCE_NOT_INGESTED": "참조 법령 원문 미수록",
+    "REFERENCE_TARGET_MISSING": "참조 대상 원문 미확인",
+    "RETRIEVAL_MISS": "관련 근거 추가 확인 필요",
+    "PARSE_GAP": "원문 해석을 추가 확인해야 합니다.",
 }
 
 _NO_ANSWER_FALLBACK = "질문에 대한 결론이 제공되지 않았습니다."
@@ -64,6 +74,9 @@ def conclusion_text(model: Mapping[str, object]) -> str:
     value = model.get("answer_summary")
     if isinstance(value, str) and value.strip():
         return value.strip()
+    if _sequence(model.get("issue_results")):
+        raw_status = str(model.get("display_status", model.get("status", "")))
+        return f"전체 검토 상태: {localized_status(raw_status)} ({raw_status})"
     return _NO_ANSWER_FALLBACK
 
 
@@ -75,6 +88,10 @@ def _human_issue(value: object) -> str:
 def additional_review_items(model: Mapping[str, object]) -> tuple[str, ...]:
     """Return only present missing/conflict/exception/abstention items."""
     values: list[str] = []
+
+    for gap_item in issue_result_gap_items(model):
+        if gap_item not in values:
+            values.append(gap_item)
 
     for item in _sequence(model.get("missing_inputs")):
         human = _human_issue(item)
@@ -100,6 +117,23 @@ def additional_review_items(model: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(values)
 
 
+def issue_result_gap_items(model: Mapping[str, object]) -> tuple[str, ...]:
+    """Describe issue-level gaps while retaining machine codes in the audit view."""
+    values: list[str] = []
+    for raw_item in _sequence(model.get("issue_results")):
+        item = _mapping(raw_item)
+        issue_id = str(item.get("issue_id", ""))
+        gap_codes = tuple(str(code) for code in _sequence(item.get("gap_codes", [])))
+        if not gap_codes and str(item.get("status", "")) == "SOURCE_MISSING":
+            gap_codes = ("SOURCE_MISSING",)
+        for code in gap_codes:
+            label = _GAP_LABELS.get(code, "원문 또는 관련 근거 추가 확인 필요")
+            description = f"{issue_id}: {label}"
+            if description not in values:
+                values.append(description)
+    return tuple(values)
+
+
 def has_rules_or_calculations(model: Mapping[str, object]) -> bool:
     return bool(_sequence(model.get("rules")) or _sequence(model.get("calculations")))
 
@@ -109,5 +143,6 @@ __all__ = [
     "conclusion_text",
     "evidence_type_label",
     "has_rules_or_calculations",
+    "issue_result_gap_items",
     "localized_status",
 ]

@@ -28,6 +28,7 @@ The system never makes the final human decision. `READY_FOR_HUMAN_REVIEW` means 
 - All natural-language user questions use the formal `review-question` flow and pass through Question Planner before deterministic retrieval. There is no quick mode and no whole-sentence direct-retrieval bypass.
 - Users do not hand-author QuestionPlan, query bundles, review-run requests, Track handoff metadata, packet hashes, or timestamps.
 - Question Planner may structure issues and search requests but must not answer, decide compliance/eligibility/legality, assign confidence, or create rule status.
+- `$ERS_REVIEW` must resolve the repository-local active workspace binding. Never recursively search for `evidence.sqlite`, choose the newest workspace, or guess from previous run paths.
 
 ## 3. PDF preparation
 
@@ -57,7 +58,28 @@ Verified page images are revision-scoped reusable cache artifacts under:
 
 Review rendering verifies the cached image hash and PDF geometry. It must not re-render the same source page for every question.
 
+Only after parser-ready evidence ingest, required page-image verification, and `READY_TO_EVALUATE` are all satisfied, bind that exact workspace for the next formal review:
+
+```powershell
+evidence-review workspace bind `
+  --repository-root . `
+  --workspace <workspace>
+```
+
+The binding at `.ers/active-workspace.json` is local control state. It records the exact absolute workspace path and evidence snapshot identity; it does not modify source evidence. Do not bind a `PENDING_*`, `BLOCKED`, or `FAILED` workspace.
+
 ## 4. Mandatory formal question flow
+
+### 4.0 Resolve the active workspace
+
+Before Question Planner handoff, revalidate the workspace selected by `$ERS_PDF`:
+
+```powershell
+evidence-review workspace active `
+  --repository-root .
+```
+
+Use only the returned `workspace` path for every subsequent `--workspace` argument in this review. `ACTIVE_WORKSPACE_NOT_BOUND` requires `$ERS_PDF` preparation; `ACTIVE_WORKSPACE_STALE` requires workspace revalidation and rebinding. Neither state permits filesystem guessing or fallback to another evidence database.
 
 ### 4.1 Prepare the Question Planner handoff
 

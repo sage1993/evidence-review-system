@@ -14,6 +14,9 @@ _ARTICLE_RE = re.compile(
     re.DOTALL,
 )
 _OPERATION_RE = re.compile(r"^\s*(\d+(?:-\d+){1,3})\.\s*(.*)$", re.DOTALL)
+_OPERATION_ALPHA_DOT_RE = re.compile(r"^\s*([가-힣])\.\s*(.*)$", re.DOTALL)
+_OPERATION_NUMBER_PAREN_RE = re.compile(r"^\s*(\d+)\)\s*(.*)$", re.DOTALL)
+_OPERATION_ALPHA_PAREN_RE = re.compile(r"^\s*([가-힣])\)\s*(.*)$", re.DOTALL)
 _PARAGRAPH_CHARS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 _PARAGRAPH_INDEX = {value: index + 1 for index, value in enumerate(_PARAGRAPH_CHARS)}
 _PARAGRAPH_RE = re.compile(f"([{_PARAGRAPH_CHARS}])")
@@ -114,6 +117,9 @@ def derive_legal_clauses(
     current_revision: str | None = None
     current_article: str | None = None
     current_article_title: str | None = None
+    operation_root: str | None = None
+    operation_alpha: str | None = None
+    operation_number: str | None = None
     active_builder: dict[str, object] | None = None
 
     def start_clause(
@@ -136,6 +142,25 @@ def derive_legal_clauses(
         builders.append(builder)
         return builder
 
+    def start_operational_leaf(
+        *,
+        path: tuple[str, ...],
+        remainder: str,
+        revision_id: str,
+        element_id: str,
+        raw_text: str,
+    ) -> dict[str, object]:
+        structural_key = "/".join(path)
+        text = remainder or raw_text
+        return start_clause(
+            revision_id=revision_id,
+            structural_key=structural_key,
+            title=f"{structural_key} {remainder}".strip(),
+            text=text,
+            source_id=element_id,
+            article_key=None,
+        )
+
     for row in ordered:
         revision_id = _normalize(_element_value(row, "revision_id"))
         element_id = _normalize(_element_value(row, "id"))
@@ -148,6 +173,9 @@ def derive_legal_clauses(
             current_revision = revision_id
             current_article = None
             current_article_title = None
+            operation_root = None
+            operation_alpha = None
+            operation_number = None
             active_builder = None
 
         article_match = _ARTICLE_RE.match(raw_text)
@@ -157,6 +185,9 @@ def derive_legal_clauses(
             current_article_title = (
                 f"{current_article}({heading})" if heading else current_article
             )
+            operation_root = None
+            operation_alpha = None
+            operation_number = None
             active_builder = None
             remainder = _normalize(article_match.group(3))
             if remainder:
@@ -203,17 +234,67 @@ def derive_legal_clauses(
         if operation_match:
             current_article = None
             current_article_title = None
-            structural_key = operation_match.group(1)
+            operation_root = operation_match.group(1)
+            operation_alpha = None
+            operation_number = None
             remainder = _normalize(operation_match.group(2))
-            active_builder = start_clause(
+            active_builder = start_operational_leaf(
+                path=(operation_root,),
+                remainder=remainder,
                 revision_id=revision_id,
-                structural_key=structural_key,
-                title=structural_key,
-                text=remainder or raw_text,
-                source_id=element_id,
-                article_key=None,
+                element_id=element_id,
+                raw_text=raw_text,
             )
             continue
+
+        if current_article is None and operation_root is not None:
+            alpha_dot_match = _OPERATION_ALPHA_DOT_RE.match(raw_text)
+            if alpha_dot_match:
+                operation_alpha = alpha_dot_match.group(1)
+                operation_number = None
+                active_builder = start_operational_leaf(
+                    path=(operation_root, operation_alpha),
+                    remainder=_normalize(alpha_dot_match.group(2)),
+                    revision_id=revision_id,
+                    element_id=element_id,
+                    raw_text=raw_text,
+                )
+                continue
+
+            number_match = _OPERATION_NUMBER_PAREN_RE.match(raw_text)
+            if number_match:
+                operation_number = number_match.group(1)
+                path = (
+                    (operation_root, operation_number)
+                    if operation_alpha is None
+                    else (operation_root, operation_alpha, operation_number)
+                )
+                active_builder = start_operational_leaf(
+                    path=path,
+                    remainder=_normalize(number_match.group(2)),
+                    revision_id=revision_id,
+                    element_id=element_id,
+                    raw_text=raw_text,
+                )
+                continue
+
+            alpha_paren_match = _OPERATION_ALPHA_PAREN_RE.match(raw_text)
+            if alpha_paren_match:
+                leaf = alpha_paren_match.group(1)
+                path_parts = [operation_root]
+                if operation_alpha is not None:
+                    path_parts.append(operation_alpha)
+                if operation_number is not None:
+                    path_parts.append(operation_number)
+                path_parts.append(leaf)
+                active_builder = start_operational_leaf(
+                    path=tuple(path_parts),
+                    remainder=_normalize(alpha_paren_match.group(2)),
+                    revision_id=revision_id,
+                    element_id=element_id,
+                    raw_text=raw_text,
+                )
+                continue
 
         if current_article is not None and active_builder is None:
             active_builder = start_clause(

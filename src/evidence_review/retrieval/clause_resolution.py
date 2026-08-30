@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass
@@ -206,13 +207,64 @@ def search_clause_token_prefix_and(
     )
 
 
+_TOKEN_RE = re.compile(r"[0-9A-Za-z가-힣%㎡²]+")
+
+
+def _normalized_locality_text(value: str) -> str:
+    return unicodedata.normalize("NFKC", " ".join(value.split())).casefold()
+
+
+def _query_phrases(clause_hit: ClauseRetrievalHit) -> tuple[str, ...]:
+    phrases: list[str] = []
+    for channel in clause_hit.channel_scores:
+        detail = channel.detail.strip()
+        if not detail or detail.startswith("clause:"):
+            continue
+        if detail.startswith("heading-token:"):
+            detail = detail.split(":", 1)[1]
+        normalized = _normalized_locality_text(detail)
+        if normalized and normalized not in phrases:
+            phrases.append(normalized)
+    return tuple(phrases)
+
+
+def _tokens(value: str) -> frozenset[str]:
+    return frozenset(_TOKEN_RE.findall(_normalized_locality_text(value)))
+
+
+def _locality_sort_key(
+    row: sqlite3.Row | tuple[object, ...],
+    phrases: tuple[str, ...],
+) -> tuple[int, int, int, int, str]:
+    evidence_id = str(row[0])
+    relation_type = str(row[1])
+    raw_text = "" if row[2] is None else str(row[2])
+    normalized_text = "" if row[3] is None else str(row[3])
+    parser_order_value = row[4]
+    parser_order = (
+        2**31 - 1 if parser_order_value is None else int(str(parser_order_value))
+    )
+    searchable = _normalized_locality_text(normalized_text or raw_text)
+    phrase_match = any(phrase in searchable for phrase in phrases)
+    query_tokens = frozenset(token for phrase in phrases for token in _tokens(phrase))
+    overlap = len(query_tokens & _tokens(searchable))
+    relation_rank = 0 if relation_type == "source_element" else 1
+    return (
+        0 if phrase_match else 1,
+        -overlap,
+        relation_rank,
+        parser_order,
+        evidence_id,
+    )
+
+
 def resolve_clause_to_evidence(
     connection: sqlite3.Connection,
     clause_hit: ClauseRetrievalHit,
     *,
     max_source_elements: int = 5,
 ) -> tuple[RetrievalHit, ...]:
-    """Materialize only verified same-revision citation-grade evidence.
+    """Materialize verified same-revision evidence nearest to the semantic match.
 
     A semantic clause with no verified page/bbox source remains a valid retrieval
     hit, but this function returns no evidence rather than inventing a citation.
@@ -222,23 +274,24 @@ def resolve_clause_to_evidence(
         return ()
     rows = connection.execute(
         """
-        SELECT cel.evidence_id, cel.relation_type
+        SELECT cel.evidence_id, cel.relation_type, rr.raw_text,
+               rr.normalized_text, e.parser_order
         FROM clause_evidence_links cel
         JOIN retrieval_records rr ON rr.evidence_id = cel.evidence_id
+        LEFT JOIN elements e ON e.id = cel.evidence_id
         WHERE cel.clause_id = ?
           AND rr.revision_id = ?
           AND rr.bbox_json <> 'null'
-        ORDER BY
-            CASE WHEN cel.relation_type = 'source_element' THEN 0 ELSE 1 END,
-            cel.relation_type ASC,
-            cel.evidence_id ASC
-        LIMIT ?
         """,
-        (clause_hit.clause_id, clause_hit.revision_id, max_source_elements),
+        (clause_hit.clause_id, clause_hit.revision_id),
     ).fetchall()
+    phrases = _query_phrases(clause_hit)
+    ordered_rows = sorted(rows, key=lambda row: _locality_sort_key(row, phrases))[
+        :max_source_elements
+    ]
     semantic_score = clause_hit.score or Decimal("1")
     hits: list[RetrievalHit] = []
-    for evidence_id, relation_type in rows:
+    for evidence_id, relation_type, _raw_text, _normalized_text, _parser_order in ordered_rows:
         hit = load_indexed_hit(
             connection,
             str(evidence_id),

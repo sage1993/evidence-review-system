@@ -8,9 +8,11 @@ from evidence_review.review_packet.icons import icon_svg
 from evidence_review.review_packet.presentation import (
     additional_review_items,
     conclusion_text,
+    issue_result_gap_items,
     localized_status,
 )
 from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
+from evidence_review.review_packet.render_issue_results import render_issue_results
 
 # ruff: noqa: E501
 
@@ -90,10 +92,15 @@ def render_summary(model: Mapping[str, object]) -> str:
     missing = summary.get("missing_input_count", 0)
     conflicts = summary.get("conflict_count", 0)
     exceptions = summary.get("exception_count", 0)
-    additional_count = sum(
-        value
-        for value in (missing, conflicts, exceptions)
-        if isinstance(value, int) and not isinstance(value, bool)
+    issue_gaps = issue_result_gap_items(model)
+    additional_count = (
+        len(issue_gaps)
+        if model.get("issue_results")
+        else sum(
+            value
+            for value in (missing, conflicts, exceptions)
+            if isinstance(value, int) and not isinstance(value, bool)
+        )
     )
     return "".join(
         (
@@ -119,6 +126,7 @@ def render_summary(model: Mapping[str, object]) -> str:
             _text(localized_status(model.get("display_status", model.get("status")))),
             "</span>",
             "</section>",
+            render_issue_results(model),
         )
     )
 

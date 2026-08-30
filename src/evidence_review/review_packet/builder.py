@@ -406,6 +406,9 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         "exceptions": exceptions,
         "conflicts": conflicts,
         "abstention_reasons": reasons,
+        "issue_results": _list_of_mappings(
+            document.get("issue_results", []), "issue_results"
+        ),
         "missing_inputs": packet_missing_inputs,
         "metadata": metadata,
         "summary": _summary(

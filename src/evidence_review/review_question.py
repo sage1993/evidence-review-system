@@ -17,6 +17,7 @@ from evidence_review.contracts.next_action import NextAction, next_action_docume
 from evidence_review.contracts.review import FinalizerStatus
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.contracts.workflow import WorkflowState
+from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.observability.run_metrics import (
     append_stage,
@@ -53,6 +54,14 @@ class PreparedReviewQuestion:
     next_action_path: Path | None
     resumed: bool
     retrieval_guidance_path: Path | None
+
+
+class ReviewEvidenceSnapshotError(RuntimeError):
+    """Stable fail-closed error when a prepared run no longer matches its workspace."""
+
+    def __init__(self, reason_code: str, message: str) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -99,6 +108,30 @@ def canonical_query_request(question: str, expansions: Sequence[str]) -> dict[st
     }
 
 
+def _validated_snapshot_provenance(value: object, snapshot_hash: str) -> dict[str, object] | None:
+    if value is None:
+        return None
+    provenance = dict(_mapping(value, "evidence_bundle.snapshot_provenance"))
+    required = {
+        "evidence_snapshot_hash",
+        "evidence_db_sha256",
+        "schema_version",
+        "retrieval_record_count",
+        "clause_record_count",
+    }
+    if set(provenance) != required:
+        raise ValueError("evidence_bundle.snapshot_provenance has invalid fields")
+    if provenance["evidence_snapshot_hash"] != snapshot_hash:
+        raise ValueError("evidence snapshot provenance does not match bundle snapshot")
+    db_sha = provenance["evidence_db_sha256"]
+    if not isinstance(db_sha, str) or len(db_sha) != 64:
+        raise ValueError("evidence_snapshot_provenance.evidence_db_sha256 must be SHA-256")
+    for field in ("schema_version", "retrieval_record_count", "clause_record_count"):
+        if isinstance(provenance[field], bool) or not isinstance(provenance[field], int):
+            raise ValueError(f"evidence_snapshot_provenance.{field} must be an integer")
+    return provenance
+
+
 def build_review_run_request(
     bundle: object,
     *,
@@ -115,6 +148,10 @@ def build_review_run_request(
     snapshot_hash = payload.get("snapshot_hash")
     if not isinstance(snapshot_hash, str) or len(snapshot_hash) != 64:
         raise ValueError("evidence_bundle.snapshot_hash must be a SHA-256")
+    provenance = _validated_snapshot_provenance(
+        payload.get("snapshot_provenance"),
+        snapshot_hash,
+    )
 
     evidence: list[dict[str, object]] = []
     for index, hit in enumerate(_sequence(payload.get("hits"), "evidence_bundle.hits")):
@@ -143,11 +180,14 @@ def build_review_run_request(
         "traceability",
         "input completeness",
     }
+    inputs: dict[str, object] = {"snapshot_hash": snapshot_hash}
+    if provenance is not None:
+        inputs["evidence_snapshot_provenance"] = provenance
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
         "question": question,
-        "inputs": {"snapshot_hash": snapshot_hash},
+        "inputs": inputs,
         "evidence": evidence,
         "calculations": calculation_documents,
         "rules": rule_documents,
@@ -175,6 +215,52 @@ def _evidence_database(workspace: Path) -> Path:
     return path
 
 
+def _run_expected_snapshot_hash(run_directory: Path) -> str:
+    request_path = run_directory / "review-request.json"
+    if not request_path.is_file():
+        raise FileNotFoundError(request_path)
+    request = _mapping(_json(request_path), "review_request")
+    inputs = _mapping(request.get("inputs"), "review_request.inputs")
+    expected = inputs.get("snapshot_hash")
+    if not isinstance(expected, str) or len(expected) != 64:
+        raise ReviewEvidenceSnapshotError(
+            "STALE_REVIEW_RUN",
+            "prepared review run does not contain a valid evidence snapshot identity",
+        )
+    provenance = inputs.get("evidence_snapshot_provenance")
+    if provenance is not None:
+        bound = _mapping(provenance, "review_request.inputs.evidence_snapshot_provenance")
+        if bound.get("evidence_snapshot_hash") != expected:
+            raise ReviewEvidenceSnapshotError(
+                "STALE_REVIEW_RUN",
+                "prepared review run snapshot provenance is internally inconsistent",
+            )
+    return expected
+
+
+def _assert_run_evidence_snapshot(run_directory: Path) -> dict[str, object]:
+    """Fail closed when a prepared run is resumed against a different evidence snapshot."""
+    expected = _run_expected_snapshot_hash(run_directory)
+    workspace = run_directory.parent.parent
+    try:
+        with EvidenceStore(_evidence_database(workspace)) as store:
+            active = evidence_snapshot_provenance(store.require_connection())
+    except ReviewEvidenceSnapshotError:
+        raise
+    except Exception as error:
+        raise ReviewEvidenceSnapshotError(
+            "WORKSPACE_EVIDENCE_MISMATCH",
+            f"active workspace evidence identity cannot be verified: {error}",
+        ) from error
+    actual = active.get("evidence_snapshot_hash")
+    if actual != expected:
+        raise ReviewEvidenceSnapshotError(
+            "EVIDENCE_SNAPSHOT_MISMATCH",
+            f"prepared run snapshot {expected} does not match active workspace snapshot {actual}",
+        )
+    return active
+
+
 def _track_a_action(run_id: str) -> NextAction:
     return NextAction(
         format="evidence-review/next-action",
@@ -184,7 +270,7 @@ def _track_a_action(run_id: str) -> NextAction:
         action="PRODUCE_TRACK_A",
         input_bundle="track-a-bundle.json",
         instructions="TRACK_A_INSTRUCTIONS.md",
-        expected_output="track-a-output.json",
+        expected_output="track-a-attempt-1.json",
         resume_command=(
             "python",
             "-m",
@@ -260,6 +346,7 @@ def _initialize_events(run_directory: Path) -> None:
 
 
 def _resume_state(run_directory: Path) -> tuple[str, Path | None]:
+    _assert_run_evidence_snapshot(run_directory)
     events = load_workflow_events(run_directory / "events")
     if not events:
         _initialize_events(run_directory)
@@ -358,6 +445,17 @@ def _required_finalizing_track_b_hash(run_directory: Path) -> str:
     return finalizing[-1].payload_sha256
 
 
+def _has_valid_finalizing_canonical_track_b(run_directory: Path) -> bool:
+    canonical = run_directory / "track-b-output.json"
+    if not canonical.is_file():
+        return False
+    try:
+        _json(canonical)
+        return _sha256(canonical) == _required_finalizing_track_b_hash(run_directory)
+    except (OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+
+
 def _validate_finalizing_retry_identity(
     run_directory: Path,
     track_b_output: Path,
@@ -369,6 +467,7 @@ def _validate_finalizing_retry_identity(
             "TRACK_B_RETRY_MISMATCH",
             "retry Track B does not match the artifact that entered FINALIZING",
         )
+
 
 def _prepare_from_document(workspace: Path, document: dict[str, object]) -> PreparedReviewRun:
     with tempfile.NamedTemporaryFile("wb", suffix=".json", delete=False) as stream:
@@ -396,7 +495,9 @@ def prepare_review_question(
 
     retrieval_timer = start_stage()
     with EvidenceStore(_evidence_database(workspace)) as store:
-        bundle = build_evidence_bundle(store.require_connection(), query_request)
+        connection = store.require_connection()
+        bundle = dict(build_evidence_bundle(connection, query_request))
+        bundle["snapshot_provenance"] = evidence_snapshot_provenance(connection)
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
     request_timer = start_stage()
@@ -469,6 +570,10 @@ def submit_question_track_a(
 ) -> SubmittedTrackA:
     """Advance the journal only after Track A's full validation succeeds."""
     run_directory = workspace / "runs" / run_id
+    _assert_run_evidence_snapshot(run_directory)
+    state, _action = _resume_state(run_directory)
+    if state != "WAITING_TRACK_A":
+        raise ValueError("review question run is not waiting for Track A")
     record_external_wait(
         run_directory,
         "track-a-external-wait",
@@ -511,8 +616,18 @@ def submit_question_track_b(
     if state not in {"WAITING_TRACK_B", "FINALIZING"}:
         raise ValueError("review question run is not waiting for Track B")
 
+    track_b_input = track_b_output
     if state == "FINALIZING":
-        _validate_finalizing_retry_identity(run_directory, track_b_output)
+        canonical = run_directory / "track-b-output.json"
+        if _has_valid_finalizing_canonical_track_b(run_directory):
+            if track_b_output.resolve() != canonical.resolve():
+                raise TrackBContractError(
+                    "TRACK_B_REGENERATION_FORBIDDEN",
+                    "finalizing recovery must reuse the runtime-owned canonical Track B",
+                )
+            track_b_input = canonical
+        else:
+            _validate_finalizing_retry_identity(run_directory, track_b_output)
 
     record_external_wait(
         run_directory,
@@ -521,7 +636,7 @@ def submit_question_track_b(
     )
     validation_timer = start_stage()
     try:
-        validate_track_b_submission(workspace, run_id, track_b_output)
+        validate_track_b_submission(workspace, run_id, track_b_input)
     except Exception as error:
         append_stage(
             run_directory,
@@ -550,11 +665,11 @@ def submit_question_track_b(
                 finalizer_status=finalized.packet.status,
             )
             return finalized
-        _recover_incomplete_finalization(run_directory, track_b_output)
+        _recover_incomplete_finalization(run_directory, track_b_input)
     result = submit_track_b(
         workspace,
         run_id,
-        track_b_output,
+        track_b_input,
         publish=publish,
         prevalidated=True,
     )
@@ -569,6 +684,7 @@ def submit_question_track_b(
 
 __all__ = [
     "PreparedReviewQuestion",
+    "ReviewEvidenceSnapshotError",
     "build_review_run_request",
     "canonical_query_request",
     "prepare_review_question",

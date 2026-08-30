@@ -29,6 +29,11 @@ from evidence_review.rule_engine.selection import (
     load_rule_selection_context_bytes,
     rule_selection_result_bytes,
 )
+from evidence_review.workspace_binding import (
+    ActiveWorkspaceBinding,
+    bind_active_workspace,
+    resolve_active_workspace,
+)
 
 
 def _approval_entries(directory: Path) -> tuple[Path, ...]:
@@ -40,6 +45,44 @@ def _approval_entries(directory: Path) -> tuple[Path, ...]:
             key=lambda path: path.name,
         )
     )
+
+
+def _workspace_status_document(
+    binding: ActiveWorkspaceBinding,
+    *,
+    stage: str,
+    status: str,
+) -> dict[str, object]:
+    return {
+        "format": "evidence-review/active-workspace-status",
+        "version": 1,
+        "stage": stage,
+        "status": status,
+        "workspace": str(binding.workspace),
+        "evidence_snapshot_hash": binding.evidence_snapshot_hash,
+        "evidence_db_sha256": binding.evidence_db_sha256,
+        "schema_version": binding.schema_version,
+        "retrieval_record_count": binding.retrieval_record_count,
+        "clause_record_count": binding.clause_record_count,
+    }
+
+
+def _workspace_dispatch(args: argparse.Namespace) -> int:
+    repository_root = cast(Path, args.repository_root)
+    try:
+        if args.workspace_stage == "bind":
+            binding = bind_active_workspace(repository_root, cast(Path, args.workspace))
+            document = _workspace_status_document(binding, stage="bind", status="BOUND")
+        elif args.workspace_stage == "active":
+            binding = resolve_active_workspace(repository_root)
+            document = _workspace_status_document(binding, stage="active", status="ACTIVE")
+        else:
+            raise RuntimeError("unreachable workspace command state")
+    except (FileNotFoundError, OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    sys.stdout.buffer.write(dump_bytes(document))
+    return 0
 
 
 def _build_active(args: argparse.Namespace) -> int:
@@ -192,6 +235,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Dispatch strict commands and delegate the remaining legacy-compatible CLI."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     install_network_guard()
+
+    if arguments and arguments[0] == "workspace":
+        args = runtime_handlers.build_parser().parse_args(arguments)
+        return _workspace_dispatch(args)
 
     if len(arguments) >= 2 and arguments[0] == "review-question":
         from evidence_review.question_planner_cli import dispatch_question_planning
