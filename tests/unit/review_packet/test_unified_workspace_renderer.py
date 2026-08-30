@@ -33,7 +33,11 @@ def _generic_model() -> dict[str, object]:
             {
                 "issue_id": "I2",
                 "status": "CONDITIONAL",
-                "covered_facet_ids": ["minimum-area-threshold", "distance-normal-threshold", "distance-expanded-threshold"],
+                "covered_facet_ids": [
+                    "minimum-area-threshold",
+                    "distance-normal-threshold",
+                    "distance-expanded-threshold",
+                ],
                 "missing_facet_ids": [],
                 "comparison_ids": ["CMP-1", "CMP-2", "CMP-3"],
                 "gap_codes": [],

@@ -27,6 +27,7 @@ from evidence_review.review_packet.render_summary import (
     render_status_band,
     render_summary,
 )
+from evidence_review.review_packet.render_workspace import render_workspace
 
 _GEOMETRY_TOLERANCE = 0.5
 _PAGE_IMAGE_FORMAT = "evidence-review/page-image"
@@ -860,21 +861,26 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
             f"<title>근거 검토 · {_text(model.get('question'))}</title><style>{css_bundle}</style>",
             '</head><body><div class="app-shell" data-viewer-mode="compare">',
             render_status_band(model),
-            '<main class="review-workspace">',
-            render_summary(model),
-            render_additional_review(model),
-            _render_evidence_list(items, claim_mappings, citations),
-            _render_evidence_viewer(documents, overlays),
-            _render_detail_tabs(
-                items=items,
-                claims=claim_mappings,
-                citations=citations,
-                calculations=calculations,
-                rules=rules,
+            render_workspace(
+                model,
+                "".join(
+                    (
+                        render_summary(model),
+                        render_additional_review(model),
+                        _render_evidence_list(items, claim_mappings, citations),
+                        _render_evidence_viewer(documents, overlays),
+                        _render_detail_tabs(
+                            items=items,
+                            claims=claim_mappings,
+                            citations=citations,
+                            calculations=calculations,
+                            rules=rules,
+                        ),
+                        render_decision_form(model),
+                        render_audit_details(model),
+                    )
+                ),
             ),
-            render_decision_form(model),
-            render_audit_details(model),
-            "</main>",
             _render_process_footer(model),
             "</div>",
             f'<script id="review-model" type="application/json">{_model_json(model)}</script>',
