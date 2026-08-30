@@ -165,6 +165,12 @@ evidence-review review-question submit-track-b `
 
 Track B 통과 후 finalizer가 `final-review-packet.json`과 `review.html`을 만든다. `READY_FOR_HUMAN_REVIEW`는 자동 승인 상태가 아니다. `ABSTAIN`은 기록된 사유를 유지한다.
 
+## 5.1 Attempt ownership and retry boundary
+
+External Track outputs use numbered attempt files: `track-a-attempt-<N>.json` and `track-b-attempt-<N>.json`. The first handoff expects attempt 1. After successful validation, the runtime owns and creates the canonical `track-a-output.json` or `track-b-output.json`; external files remain preserved as submitted.
+
+After Track A validation, the run is `WAITING_TRACK_B` and Track A must not be resubmitted. If finalization enters `FINALIZING` and the finalizer fails, recovery reuses only the runtime-owned canonical `track-b-output.json`. A hash-mismatched retry remains `TRACK_B_RETRY_MISMATCH`; an external Track B attempt after a valid canonical exists is `TRACK_B_REGENERATION_FORBIDDEN`. **do not regenerate** an external Track B attempt.
+
 ## 6. Review Workspace와 사람 결정
 
 시각자료가 있는 경우 Review Workspace는 실제 source page/image와 validated geometry overlay를 함께 보여준다. 법규 citation viewer와 case drawing viewer는 구분하되 같은 claim/finding에서 연결할 수 있다. 시각자료가 없는 질문에서는 drawing viewer를 만들지 않는다.

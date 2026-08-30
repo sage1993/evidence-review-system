@@ -270,7 +270,7 @@ def _track_a_action(run_id: str) -> NextAction:
         action="PRODUCE_TRACK_A",
         input_bundle="track-a-bundle.json",
         instructions="TRACK_A_INSTRUCTIONS.md",
-        expected_output="track-a-output.json",
+        expected_output="track-a-attempt-1.json",
         resume_command=(
             "python",
             "-m",
@@ -445,6 +445,17 @@ def _required_finalizing_track_b_hash(run_directory: Path) -> str:
     return finalizing[-1].payload_sha256
 
 
+def _has_valid_finalizing_canonical_track_b(run_directory: Path) -> bool:
+    canonical = run_directory / "track-b-output.json"
+    if not canonical.is_file():
+        return False
+    try:
+        _json(canonical)
+        return _sha256(canonical) == _required_finalizing_track_b_hash(run_directory)
+    except (OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+
+
 def _validate_finalizing_retry_identity(
     run_directory: Path,
     track_b_output: Path,
@@ -560,6 +571,9 @@ def submit_question_track_a(
     """Advance the journal only after Track A's full validation succeeds."""
     run_directory = workspace / "runs" / run_id
     _assert_run_evidence_snapshot(run_directory)
+    state, _action = _resume_state(run_directory)
+    if state != "WAITING_TRACK_A":
+        raise ValueError("review question run is not waiting for Track A")
     record_external_wait(
         run_directory,
         "track-a-external-wait",
@@ -602,8 +616,18 @@ def submit_question_track_b(
     if state not in {"WAITING_TRACK_B", "FINALIZING"}:
         raise ValueError("review question run is not waiting for Track B")
 
+    track_b_input = track_b_output
     if state == "FINALIZING":
-        _validate_finalizing_retry_identity(run_directory, track_b_output)
+        canonical = run_directory / "track-b-output.json"
+        if _has_valid_finalizing_canonical_track_b(run_directory):
+            if track_b_output.resolve() != canonical.resolve():
+                raise TrackBContractError(
+                    "TRACK_B_REGENERATION_FORBIDDEN",
+                    "finalizing recovery must reuse the runtime-owned canonical Track B",
+                )
+            track_b_input = canonical
+        else:
+            _validate_finalizing_retry_identity(run_directory, track_b_output)
 
     record_external_wait(
         run_directory,
@@ -612,7 +636,7 @@ def submit_question_track_b(
     )
     validation_timer = start_stage()
     try:
-        validate_track_b_submission(workspace, run_id, track_b_output)
+        validate_track_b_submission(workspace, run_id, track_b_input)
     except Exception as error:
         append_stage(
             run_directory,
@@ -641,11 +665,11 @@ def submit_question_track_b(
                 finalizer_status=finalized.packet.status,
             )
             return finalized
-        _recover_incomplete_finalization(run_directory, track_b_output)
+        _recover_incomplete_finalization(run_directory, track_b_input)
     result = submit_track_b(
         workspace,
         run_id,
-        track_b_output,
+        track_b_input,
         publish=publish,
         prevalidated=True,
     )

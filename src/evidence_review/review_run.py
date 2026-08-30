@@ -578,7 +578,7 @@ def _track_b_action(run_id: str) -> NextAction:
         action="PRODUCE_TRACK_B",
         input_bundle="track-b-bundle.json",
         instructions="TRACK_B_INSTRUCTIONS.md",
-        expected_output="track-b-output.json",
+        expected_output="track-b-attempt-1.json",
         resume_command=(
             "python",
             "-m",
