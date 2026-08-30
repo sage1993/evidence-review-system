@@ -92,6 +92,7 @@ def test_review_packet_serializes_optional_issue_lineage() -> None:
             "missing_roles": [],
             "gap_codes": [],
             "covered_facet_ids": ["distance-normal-threshold"],
+            "missing_facet_ids": [],
             "comparison_ids": ["CMP-1"],
         }
     ]

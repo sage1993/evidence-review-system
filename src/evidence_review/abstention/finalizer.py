@@ -269,9 +269,8 @@ def _issue_result_document(result: IssueResult) -> dict[str, object]:
         "missing_roles": list(result.missing_roles),
         "gap_codes": list(result.gap_codes),
     }
-    if result.covered_facet_ids:
+    if result.covered_facet_ids or result.missing_facet_ids:
         document["covered_facet_ids"] = list(result.covered_facet_ids)
-    if result.missing_facet_ids:
         document["missing_facet_ids"] = list(result.missing_facet_ids)
     if result.comparison_ids:
         document["comparison_ids"] = list(result.comparison_ids)
