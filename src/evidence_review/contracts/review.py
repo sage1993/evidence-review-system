@@ -46,6 +46,9 @@ class IssueResult:
     covered_roles: tuple[str, ...] = ()
     missing_roles: tuple[str, ...] = ()
     gap_codes: tuple[str, ...] = ()
+    covered_facet_ids: tuple[str, ...] = ()
+    missing_facet_ids: tuple[str, ...] = ()
+    comparison_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -48,6 +48,12 @@ from evidence_review.review_question import (
     _write_or_identical,
     build_review_run_request,
 )
+from evidence_review.rule_engine.fact_rule_comparison import (
+    bind_comparisons_to_review_request,
+    comparison_documents,
+    conditional_issue_ids_from_comparisons,
+    evaluate_fact_rule_comparisons,
+)
 from evidence_review.user_expansions import (
     apply_search_request_origins,
     plan_with_user_expansions,
@@ -90,10 +96,19 @@ def prepare_planned_review_question(
         provenance = evidence_snapshot_provenance(connection)
         issue_bundle = retrieve_issue_bundle(connection, effective_plan)
         facet_report = evaluate_facet_coverage(effective_plan, issue_bundle)
+        fact_rule_comparisons = evaluate_fact_rule_comparisons(
+            effective_plan,
+            issue_bundle,
+            facet_report,
+        )
         coverage_report = evaluate_issue_coverage(
             effective_plan,
             issue_bundle,
             facet_report=facet_report,
+            conditional_issue_ids=conditional_issue_ids_from_comparisons(
+                fact_rule_comparisons,
+                facet_report,
+            ),
         )
         bundle = issue_retrieval_bundle_document(
             effective_plan,
@@ -110,6 +125,7 @@ def prepare_planned_review_question(
             coverage_report,
             snapshot_provenance=provenance,
             facet_coverage=facet_documents,
+            comparisons=comparison_documents(fact_rule_comparisons),
         )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
@@ -130,6 +146,11 @@ def prepare_planned_review_question(
     review_request = bind_facet_coverage_to_review_request(
         review_request,
         facet_report,
+    )
+    review_request = bind_comparisons_to_review_request(
+        review_request,
+        fact_rule_comparisons,
+        facet_report=facet_report,
     )
     review_request = apply_issue_coverage_factors(
         review_request,

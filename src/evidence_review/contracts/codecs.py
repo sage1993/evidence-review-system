@@ -181,6 +181,9 @@ def decode_issue_result(value: object) -> IssueResult:
         "covered_roles",
         "missing_roles",
         "gap_codes",
+        "covered_facet_ids",
+        "missing_facet_ids",
+        "comparison_ids",
     }
     _reject_unknown(payload, allowed, "issue_result")
     return IssueResult(
@@ -194,6 +197,15 @@ def decode_issue_result(value: object) -> IssueResult:
             payload.get("missing_roles", []), "missing_roles"
         ),
         gap_codes=_expect_unique_string_tuple(payload.get("gap_codes", []), "gap_codes"),
+        covered_facet_ids=_expect_unique_string_tuple(
+            payload.get("covered_facet_ids", []), "covered_facet_ids"
+        ),
+        missing_facet_ids=_expect_unique_string_tuple(
+            payload.get("missing_facet_ids", []), "missing_facet_ids"
+        ),
+        comparison_ids=_expect_unique_string_tuple(
+            payload.get("comparison_ids", []), "comparison_ids"
+        ),
     )
 
 

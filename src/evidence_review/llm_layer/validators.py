@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import cast
 
+from evidence_review.canonical_json import sha256_json
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 from evidence_review.llm_layer.numeric_grammar import (
     NumericToken,
@@ -40,6 +43,154 @@ _COMPARAND_UNITS = (
     "%",
 )
 _COMPARAND_PARTICLES = frozenset({"", "은", "는", "이", "가"})
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedComparison:
+    comparison_id: str
+    issue_id: str
+    fact_value: str
+    threshold_value: str
+    evidence_ids: tuple[str, ...]
+
+
+def _comparison_string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field} must be a non-empty string")
+    return value
+
+
+def _comparison_decimal(value: str, field: str) -> Decimal:
+    try:
+        decimal = Decimal(value)
+    except InvalidOperation as error:
+        raise ValueError(f"{field} must be a decimal") from error
+    if not decimal.is_finite():
+        raise ValueError(f"{field} must be a finite decimal")
+    return decimal
+
+
+def _comparison_evidence_ids(value: object) -> tuple[str, ...]:
+    if (
+        isinstance(value, (str, bytes, bytearray))
+        or not isinstance(value, Sequence)
+    ):
+        raise ValueError("comparison.evidence_ids must be an array")
+    evidence_ids = tuple(
+        _comparison_string(item, f"comparison.evidence_ids[{index}]")
+        for index, item in enumerate(value)
+    )
+    if len(evidence_ids) != len(set(evidence_ids)):
+        raise ValueError("comparison.evidence_ids must contain unique values")
+    return evidence_ids
+
+
+def _canonical_decimal_text(value: Decimal) -> str:
+    return format(value.normalize(), "f")
+
+
+def _validated_comparisons(bundle: TrackABundle) -> tuple[_ValidatedComparison, ...]:
+    value = bundle.inputs.get("fact_rule_comparisons", [])
+    if (
+        isinstance(value, (str, bytes, bytearray))
+        or not isinstance(value, Sequence)
+    ):
+        raise ValueError("inputs.fact_rule_comparisons must be an array")
+    required = {
+        "comparison_id",
+        "issue_id",
+        "facet_id",
+        "operator",
+        "fact_value",
+        "threshold_value",
+        "unit",
+        "satisfied",
+        "evidence_ids",
+        "result_hash",
+    }
+    comparisons: list[_ValidatedComparison] = []
+    seen_ids: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping) or not all(
+            isinstance(key, str) for key in item
+        ):
+            raise ValueError(f"comparison[{index}] must be an object")
+        if set(item) != required:
+            raise ValueError(f"comparison[{index}] fields are invalid")
+        comparison_id = _comparison_string(
+            item.get("comparison_id"),
+            f"comparison[{index}].comparison_id",
+        )
+        if comparison_id in seen_ids:
+            raise ValueError(f"duplicate comparison_id: {comparison_id}")
+        seen_ids.add(comparison_id)
+        issue_id = _comparison_string(item.get("issue_id"), f"comparison[{index}].issue_id")
+        facet_id = _comparison_string(item.get("facet_id"), f"comparison[{index}].facet_id")
+        operator = _comparison_string(item.get("operator"), f"comparison[{index}].operator")
+        if operator not in {">=", "<="}:
+            raise ValueError(f"unsupported comparison operator: {operator}")
+        fact_value = _comparison_string(
+            item.get("fact_value"),
+            f"comparison[{index}].fact_value",
+        )
+        threshold_value = _comparison_string(
+            item.get("threshold_value"),
+            f"comparison[{index}].threshold_value",
+        )
+        fact_decimal = _comparison_decimal(
+            fact_value,
+            f"comparison[{index}].fact_value",
+        )
+        threshold_decimal = _comparison_decimal(
+            threshold_value,
+            f"comparison[{index}].threshold_value",
+        )
+        if fact_value != _canonical_decimal_text(fact_decimal):
+            raise ValueError("COMPARISON_HASH_MISMATCH: non-canonical fact_value")
+        if threshold_value != _canonical_decimal_text(threshold_decimal):
+            raise ValueError("COMPARISON_HASH_MISMATCH: non-canonical threshold_value")
+        unit = _comparison_string(item.get("unit"), f"comparison[{index}].unit")
+        satisfied = item.get("satisfied")
+        if not isinstance(satisfied, bool):
+            raise ValueError(f"comparison[{index}].satisfied must be boolean")
+        expected_satisfied = (
+            fact_decimal >= threshold_decimal
+            if operator == ">="
+            else fact_decimal <= threshold_decimal
+        )
+        if satisfied is not expected_satisfied:
+            raise ValueError("COMPARISON_HASH_MISMATCH: satisfied value is invalid")
+        evidence_ids = _comparison_evidence_ids(item.get("evidence_ids"))
+        result_hash = _comparison_string(
+            item.get("result_hash"),
+            f"comparison[{index}].result_hash",
+        )
+        payload = {
+            "issue_id": issue_id,
+            "facet_id": facet_id,
+            "operator": operator,
+            "fact_value": fact_value,
+            "threshold_value": threshold_value,
+            "unit": unit,
+            "satisfied": satisfied,
+            "evidence_ids": list(evidence_ids),
+        }
+        expected_hash = sha256_json(payload)
+        expected_id = f"CMP-{expected_hash[:20].upper()}"
+        if result_hash != expected_hash or comparison_id != expected_id:
+            raise ValueError(
+                f"COMPARISON_HASH_MISMATCH: {comparison_id}"
+            )
+        comparisons.append(
+            _ValidatedComparison(
+                comparison_id=comparison_id,
+                issue_id=issue_id,
+                fact_value=fact_value,
+                threshold_value=threshold_value,
+                evidence_ids=evidence_ids,
+            )
+        )
+    return tuple(comparisons)
 
 
 def _calculation_tokens(calculation: CalculationResult) -> set[str]:
@@ -206,6 +357,9 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
     evidence_by_citation = {
         item.citation.citation_id: item.text for item in bundle.evidence
     }
+    evidence_id_by_citation = {
+        item.citation.citation_id: item.citation.evidence_id for item in bundle.evidence
+    }
     citation_issue_ids = _citation_issue_ids(bundle)
     calculation_by_id = _calculation_map(bundle)
     rule_by_id = _rule_map(bundle)
@@ -213,6 +367,7 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
         references.claim_id: references for references in validated.claim_references
     }
     input_numeric_tokens = _input_numeric_tokens(bundle)
+    comparisons = _validated_comparisons(bundle)
 
     for claim in validated.draft.claims:
         _require_claim_issue_coverage(
@@ -239,6 +394,20 @@ def validate_track_a_integrity(validated: ValidatedTrackA, bundle: TrackABundle)
             if calculation is None or calculation.status != "SUCCESS":
                 raise ValueError(f"invalid calculation reference: {calculation_id}")
             allowed_tokens.update(_calculation_tokens(calculation))
+        cited_evidence_ids = {
+            evidence_id_by_citation[citation_id]
+            for citation_id in claim.citation_ids
+            if citation_id in evidence_id_by_citation
+        }
+        for comparison in comparisons:
+            if (
+                comparison.issue_id in claim.issue_ids
+                and set(comparison.evidence_ids).issubset(cited_evidence_ids)
+            ):
+                allowed_tokens.update(extract_numeric_tokens(comparison.fact_value))
+                allowed_tokens.update(
+                    extract_numeric_tokens(comparison.threshold_value)
+                )
         for token in claim.numeric_tokens:
             if token not in allowed_tokens:
                 raise ValueError(f"unregistered numeric token: {token}")

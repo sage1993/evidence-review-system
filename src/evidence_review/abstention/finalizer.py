@@ -261,7 +261,7 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
 
 
 def _issue_result_document(result: IssueResult) -> dict[str, object]:
-    return {
+    document: dict[str, object] = {
         "issue_id": result.issue_id,
         "status": result.status,
         "evidence_ids": list(result.evidence_ids),
@@ -269,6 +269,13 @@ def _issue_result_document(result: IssueResult) -> dict[str, object]:
         "missing_roles": list(result.missing_roles),
         "gap_codes": list(result.gap_codes),
     }
+    if result.covered_facet_ids:
+        document["covered_facet_ids"] = list(result.covered_facet_ids)
+    if result.missing_facet_ids:
+        document["missing_facet_ids"] = list(result.missing_facet_ids)
+    if result.comparison_ids:
+        document["comparison_ids"] = list(result.comparison_ids)
+    return document
 
 
 def review_packet_document(packet: ReviewPacket) -> dict[str, object]:

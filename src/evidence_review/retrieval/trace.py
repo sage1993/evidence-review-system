@@ -29,6 +29,7 @@ def retrieval_trace_document(
     *,
     snapshot_provenance: Mapping[str, object] | None = None,
     facet_coverage: Sequence[Mapping[str, object]] = (),
+    comparisons: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object]:
     """Return a JSON-ready trace that reconstructs issue retrieval decisions."""
     coverage_by_issue = {item.issue_id: item for item in coverage.issues}
@@ -149,6 +150,11 @@ def retrieval_trace_document(
                 "facet_coverage": [
                     dict(item)
                     for item in facet_coverage
+                    if item.get("issue_id") == issue.id
+                ],
+                "comparisons": [
+                    dict(item)
+                    for item in comparisons
                     if item.get("issue_id") == issue.id
                 ],
                 "coverage": {
