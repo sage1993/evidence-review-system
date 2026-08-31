@@ -366,6 +366,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         for citation_id, provided_citation in provided_citations.items():
             resolved = _resolve_citation(connection, citation_id)
             _verify_citation_identity(provided_citation, resolved)
+            resolved_citations.setdefault(citation_id, resolved)
 
     reasons = [
         _string(item, "abstention_reason")
@@ -414,6 +415,10 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         "question": _string(document.get("question"), "question"),
         "answer_summary": answer_summary,
         "claims": claims,
+        "reference_citations": [
+            resolved_citations[citation_id]
+            for citation_id in sorted(resolved_citations)
+        ],
         "calculations": calculations,
         "rules": rule_documents,
         "confidence": confidence,
