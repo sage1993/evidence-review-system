@@ -50,6 +50,28 @@ def _db(path: Path) -> None:
                 "정규화",
             ),
         )
+        connection.execute(
+            """
+            INSERT INTO retrieval_records(
+                evidence_id, evidence_type, document_id, revision_id, page_id,
+                page_number, bbox_json, source_hash, title, raw_text,
+                normalized_text
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "E2",
+                "clause",
+                "DOC1",
+                "REV1",
+                "REV1-P3",
+                3,
+                json.dumps([20, 50, 100, 70]),
+                "a" * 64,
+                "Section 3 related",
+                "unused related citation",
+                "unused related citation",
+            ),
+        )
         connection.commit()
 
 
@@ -243,3 +265,44 @@ def test_view_model_requires_explicit_v1_migration(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="schema version 1"):
         build_review_view_model(_packet(), database)
+
+
+def test_v2_exposes_resolved_reference_citations_in_deterministic_order(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _v2_packet()
+    evidence = packet["evidence"]
+    assert isinstance(evidence, list)
+    evidence.append(
+        {
+            "evidence_id": "E2",
+            "citation": {
+                "citation_id": "CIT-E2",
+                "evidence_id": "E2",
+                "document_id": "DOC1",
+                "revision_id": "REV1",
+                "page_number": 3,
+                "bbox": [20, 50, 100, 70],
+                "source_hash": "a" * 64,
+            },
+            "quote": "unused related citation",
+            "numeric_tokens": [],
+        }
+    )
+
+    model = build_review_view_model(packet, database)
+
+    reference_citations = model["reference_citations"]
+    assert [item["citation_id"] for item in reference_citations] == [
+        "CIT-E1",
+        "CIT-E2",
+    ]
+    related = next(
+        item for item in reference_citations if item["citation_id"] == "CIT-E2"
+    )
+    assert related["document_page_count"] == 3
+    assert related["reference"]["type"] == "TEXT"
+    assert related["page_width"] == 120.0
+    assert related["page_height"] == 200.0
