@@ -22,6 +22,29 @@ def _fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
     image_path = workspace / "case-page-images" / attachment_id / "page-0001.png"
     image_path.parent.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(image_bytes)
+    reference_image_bytes = b"verified-related-reference-page"
+    reference_image_path = (
+        workspace / "page-images" / "REV-001" / "page-0024.png"
+    )
+    reference_image_path.parent.mkdir(parents=True, exist_ok=True)
+    reference_image_path.write_bytes(reference_image_bytes)
+    _write_json(
+        reference_image_path.with_suffix(".json"),
+        {
+            "format": "evidence-review/page-image",
+            "version": 1,
+            "revision_id": "REV-001",
+            "page_number": 24,
+            "source_hash": "c" * 64,
+            "pdf_width": 120.0,
+            "pdf_height": 200.0,
+            "origin_x": 0.0,
+            "origin_y": 0.0,
+            "rotation": 0,
+            "box_kind": "MEDIA_BOX",
+            "image_sha256": hashlib.sha256(reference_image_bytes).hexdigest(),
+        },
+    )
 
     candidate = {
         "candidate_id": "CAND-SPACE-1",
@@ -168,7 +191,36 @@ def _fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
         },
     )
     _write_json(run_dir / "track-a-output.json", {"claims": []})
-    return {"run_id": run_id, "review_items": []}, workspace
+    return {
+        "run_id": run_id,
+        "review_items": [],
+        "reference_citations": [
+            {
+                "citation_id": "CIT-UNIT",
+                "evidence_id": "E-UNIT",
+                "document_id": "REF-001",
+                "revision_id": "REV-001",
+                "page_number": 24,
+                "bbox": [10.0, 20.0, 30.0, 40.0],
+                "source_hash": "c" * 64,
+                "document_name": "unit-rules.pdf",
+                "document_page_count": 30,
+                "page_width": 120.0,
+                "page_height": 200.0,
+                "page_origin_x": 0.0,
+                "page_origin_y": 0.0,
+                "page_rotation": 0,
+                "page_box_kind": "MEDIA_BOX",
+                "title": "Unit rule",
+                "quote": "2-5-8. Unit planning requirement.",
+                "reference": {
+                    "type": "TEXT",
+                    "table": None,
+                    "visual": None,
+                },
+            }
+        ],
+    }, workspace
 
 
 def test_projection_routes_retrieved_issue_evidence_as_related_reference(
@@ -186,6 +238,16 @@ def test_projection_routes_retrieved_issue_evidence_as_related_reference(
     assert [item["evidence_id"] for item in result.get("related_references", [])] == [
         "E-UNIT"
     ]
+    finding = result["findings"][0]
+    assert finding["direct_reference_anchors"] == []
+    assert len(finding["related_reference_anchors"]) == 1
+    anchor = finding["related_reference_anchors"][0]
+    assert anchor["reference_role"] == "related"
+    assert anchor["anchor_id"] == "CIT-UNIT"
+    assert anchor["page"] == 24
+    assert {
+        item["anchor_id"] for item in finding["related_reference_anchors"]
+    } == {"CIT-UNIT"}
 
 
 def test_renderer_shows_related_retrieval_reference_without_track_a_claim(
