@@ -115,6 +115,43 @@ def _packet() -> dict[str, object]:
     }
 
 
+def _v2_packet() -> dict[str, object]:
+    packet = _packet()
+    packet.update(
+        {
+            "format": "evidence-review/review-packet",
+            "version": 2,
+            "case_id": "CASE-1",
+            "finalizer_status": "ABSTAIN",
+            "snapshot_sha256": "a" * 64,
+            "rule_manifest_sha256": "b" * 64,
+            "formula_manifest_sha256": "c" * 64,
+            "evidence": [
+                {
+                    "evidence_id": "E1",
+                    "citation": {
+                        "citation_id": "CIT-E1",
+                        "evidence_id": "E1",
+                        "document_id": "DOC1",
+                        "revision_id": "REV1",
+                        "page_number": 3,
+                        "bbox": [10, 20, 110, 40],
+                        "source_hash": "a" * 64,
+                    },
+                    "quote": "\uc815\ud655\ud55c \uc778\uc6a9\ubb38",
+                    "numeric_tokens": [],
+                }
+            ],
+            "drawing_evidence": [],
+            "confirmed_inputs": [],
+            "rule_evaluations": [],
+            "exceptions": [],
+            "conflicts": [],
+        }
+    )
+    return packet
+
+
 def test_view_model_resolves_all_required_sections_and_blank_decision(
     tmp_path: Path,
 ) -> None:
@@ -138,6 +175,12 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert citation["bbox"] == [10.0, 20.0, 110.0, 40.0]
     assert citation["page_width"] == 120.0
     assert citation["page_height"] == 200.0
+    assert citation["document_page_count"] == 3
+    assert citation["reference"] == {
+        "type": "TEXT",
+        "table": None,
+        "visual": None,
+    }
     assert calculations[0]["display_result"] == "9.375%"
     assert rules[0]["rule_version"] == "1"
     assert confidence["factors"][0]["source"] == "evidence"
@@ -150,6 +193,31 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert model["summary"]["citation_count"] == 1
     assert model["review_items"][0]["claim_id"] == "C1"
     assert model["decision"]["human_decision"] is None
+
+
+def test_v2_citation_identity_ignores_projection_metadata_but_rejects_authority_change(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _v2_packet()
+
+    model = build_review_view_model(packet, database)
+
+    citation = model["claims"][0]["citations"][0]
+    assert citation["document_page_count"] == 3
+    assert citation["reference"] == {
+        "type": "TEXT",
+        "table": None,
+        "visual": None,
+    }
+
+    packet["evidence"][0]["citation"]["page_number"] = 2
+    with pytest.raises(
+        ValueError,
+        match="citation identity does not match evidence database",
+    ):
+        build_review_view_model(packet, database)
 
 
 def test_view_model_projects_packet_missing_inputs_into_summary(tmp_path: Path) -> None:
