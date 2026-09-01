@@ -3,9 +3,9 @@ from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
+from tests.unit.review_packet.test_case_visual_renderer import _typed_reference_model
 
 from .test_html_renderer import _model, _write_page_assets
-from tests.unit.review_packet.test_case_visual_renderer import _typed_reference_model
 
 
 def _inline_css(html: str) -> str:

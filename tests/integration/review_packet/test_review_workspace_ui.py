@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 import json
 import re
 import subprocess
@@ -5,9 +6,9 @@ from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
+from tests.unit.review_packet.test_case_visual_renderer import _typed_reference_model
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
-from tests.unit.review_packet.test_case_visual_renderer import _typed_reference_model
 
 
 def _inline_controller(html: str) -> str:
@@ -401,6 +402,7 @@ function classList() {
   const values = new Set();
   return {
     add(value) { values.add(value); },
+    remove(value) { values.delete(value); },
     toggle(value, enabled) { if (enabled) values.add(value); else values.delete(value); },
     contains(value) { return values.has(value); }
   };
@@ -462,7 +464,16 @@ const relatedDetails = attach(referenceScope, node()); relatedDetails.tagName = 
 const relatedItem = attach(relatedDetails, node({referenceRole: "related"}));
 const relatedStage = attach(relatedItem, node({referenceStage: "", referencePage: "reference-page-1", pageWidth: "595", pageHeight: "842"}, {left: 0, top: 0, width: 600, height: 600}));
 attach(relatedStage, node({referenceTransform: ""}));
+const relatedOnlyScope = attach(root, node({caseReference: "VF-2"}));
+const relatedOnlyDetails = attach(relatedOnlyScope, node()); relatedOnlyDetails.tagName = "DETAILS";
+const relatedOnlyItem = attach(relatedOnlyDetails, node({referenceRole: "related"}));
+const relatedOnlyStage = attach(relatedOnlyItem, node({referenceStage: "", referencePage: "reference-page-1", pageWidth: "595", pageHeight: "842"}, {left: 0, top: 0, width: 600, height: 600}));
+const relatedOnlyTransform = attach(relatedOnlyStage, node({referenceTransform: ""}));
+const relatedOnlyAnchor = attach(relatedOnlyTransform, node({referenceAnchor: "CIT-RELATED"}));
+relatedOnlyAnchor.setAttribute("x", "10"); relatedOnlyAnchor.setAttribute("y", "802");
+relatedOnlyAnchor.setAttribute("width", "90"); relatedOnlyAnchor.setAttribute("height", "20");
 const card = attach(root, node({caseFinding: "VF-1", casePageKey: "ATT-1-p1", caseFocusBbox: "10,20,80,90", caseCandidateIds: "CAND-1"}));
+const card2 = attach(root, node({caseFinding: "VF-2", casePageKey: "ATT-1-p1", caseFocusBbox: "10,20,80,90", caseCandidateIds: "CAND-1"}));
 attach(root, node({caseOverlay: "CAND-1"}));
 global.window = { addEventListener() {}, prompt() { return ""; } };
 global.document = { body: { dataset: {} }, addEventListener() {},
@@ -477,25 +488,23 @@ if (!subjectPage.classList.contains("is-active")) throw new Error("subject page 
 if (!directItem.classList.contains("is-active")) throw new Error("direct reference was not activated");
 const subjectFocused = subjectTransform.style.transform;
 const referenceFocused = directTransform.style.transform;
-directStage.listeners.wheel({preventDefault() {}, deltaY: -1, clientX: 300, clientY: 300});
+directStage.listeners.wheel({preventDefault() {}, deltaY: 1, clientX: 300, clientY: 300});
 if (directTransform.style.transform === referenceFocused) throw new Error("reference transform unchanged after wheel");
 if (subjectTransform.style.transform !== subjectFocused) throw new Error("subject changed after reference wheel");
 const referenceAfterWheel = directTransform.style.transform;
-subjectStage.listeners.wheel({preventDefault() {}, deltaY: -1, clientX: 450, clientY: 300});
+directStage.listeners.pointerdown({button: 0, pointerId: 1, clientX: 100, clientY: 100});
+directStage.listeners.pointermove({pointerId: 1, clientX: 120, clientY: 130});
+directStage.listeners.pointerup({pointerId: 1});
+if (directTransform.style.transform === referenceAfterWheel) throw new Error("reference transform unchanged after pan");
+const referenceAfterPan = directTransform.style.transform;
+subjectStage.listeners.wheel({preventDefault() {}, deltaY: 1, clientX: 450, clientY: 300});
 if (subjectTransform.style.transform === subjectFocused) throw new Error("subject transform unchanged after wheel");
-if (directTransform.style.transform !== referenceAfterWheel) throw new Error("reference changed after subject wheel");
-"""
-    completed = _run_node_harness(controller, harness)
-    assert completed.returncode == 0, completed.stderr
-
-
-def test_finding_click_falls_back_to_related_reference_and_opens_details() -> None:
-    controller = _inline_controller(render_case_visual_review(_typed_reference_model()))
-    harness = r"""
-if (!controller.includes("function focusReferenceFinding") ||
-    !controller.includes("details.open=true")) {
-  throw new Error("related reference fallback focus missing");
-}
+if (directTransform.style.transform !== referenceAfterPan) throw new Error("reference changed after subject wheel");
+directStage.listeners.dblclick();
+if (directTransform.style.transform !== "translate(0px,0px) scale(1)") throw new Error("reference reset failed");
+card2.listeners.click();
+if (!relatedOnlyItem.classList.contains("is-active")) throw new Error("related reference fallback was not activated");
+if (!relatedOnlyDetails.open) throw new Error("related reference details remained closed");
 """
     completed = _run_node_harness(controller, harness)
     assert completed.returncode == 0, completed.stderr
