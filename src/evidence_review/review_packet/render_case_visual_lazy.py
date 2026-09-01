@@ -22,7 +22,14 @@ _FIGURE_RE = re.compile(
 _PAGE_SOURCE_RE = re.compile(r'data-case-page-src="[^"]+"')
 _TILE_TAG_RE = re.compile(r'<image\b(?P<attrs>[^>]*\bdata-case-tile\b[^>]*)/?>')
 _TILE_SOURCE_RE = re.compile(r'data-case-tile-src="[^"]+"')
+_REFERENCE_IMAGE_RE = re.compile(
+    r'(?P<before><div class="reference-page-stage"[^>]*\bdata-reference-page="(?P<asset>[^"]+)"[^>]*>.*?)'
+    r'(?P<image><image\b[^>]*\bdata-reference-page-image\b[^>]*/?>)',
+    re.DOTALL,
+)
+_REFERENCE_SOURCE_RE = re.compile(r'data-reference-page-src="[^"]*"')
 _DATA_ATTR_RE = re.compile(r'\b(?P<name>data-[a-z-]+)="(?P<value>[^"]*)"')
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -59,6 +66,25 @@ def _page_index(model: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
         asset_key = _text(page.get("asset_key"), "case visual asset_key")
         if asset_key in result:
             raise ValueError("duplicate case visual asset_key")
+        result[asset_key] = page
+    return result
+
+
+def _reference_page_index(model: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+    visual = _mapping(model.get("case_visual_review"), "case_visual_review")
+    result: dict[str, Mapping[str, object]] = {}
+    for index, raw_page in enumerate(
+        _sequence(visual.get("reference_pages", []), "case_visual_review.reference_pages")
+    ):
+        page = _mapping(raw_page, f"case_visual_review.reference_pages[{index}]")
+        asset_key = _text(page.get("asset_key"), "reference page asset_key")
+        if asset_key in result:
+            raise ValueError("duplicate reference page asset_key")
+        source_hash = _text(page.get("source_hash"), "reference page source_hash")
+        if not _SHA256_RE.fullmatch(source_hash):
+            raise ValueError("reference page source_hash is invalid")
+        _text(page.get("revision_id"), "reference page revision_id")
+        _integer(page.get("page"), "reference page page")
         result[asset_key] = page
     return result
 
@@ -107,6 +133,7 @@ def externalize_case_visual_sources(
 ) -> str:
     """Replace embedded case raster bytes with protected-server relative URLs."""
     pages = _page_index(model)
+    reference_pages = _reference_page_index(model)
 
     def rewrite_figure(match: re.Match[str]) -> str:
         page = pages.get(match.group("asset"))
@@ -152,6 +179,27 @@ def externalize_case_visual_sources(
         return _TILE_TAG_RE.sub(rewrite_tile, block)
 
     externalized = _FIGURE_RE.sub(rewrite_figure, fragment)
+
+    def rewrite_reference(match: re.Match[str]) -> str:
+        page = reference_pages.get(match.group("asset"))
+        if page is None:
+            raise ValueError("reference page is missing from review model")
+        revision_id = escape(
+            _text(page.get("revision_id"), "reference page revision_id"), quote=True
+        )
+        page_number = _integer(page.get("page"), "reference page page")
+        source_hash = escape(
+            _text(page.get("source_hash"), "reference page source_hash"), quote=True
+        )
+        url = f"./page-images/{revision_id}/{page_number}/{source_hash}"
+        image = _REFERENCE_SOURCE_RE.sub(
+            f'data-reference-page-src="{url}"',
+            match.group("image"),
+            count=1,
+        )
+        return match.group("before") + image
+
+    externalized = _REFERENCE_IMAGE_RE.sub(rewrite_reference, externalized)
     if "data:image/png;base64," in externalized:
         raise ValueError("case visual fragment still contains embedded raster bytes")
     return externalized
