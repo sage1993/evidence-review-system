@@ -71,3 +71,27 @@ def test_protected_visual_tiles_use_lazy_relative_urls() -> None:
         f'data-case-tile-src="./case-tiles/ATT-1/1/2048/0/{tile_hash}"'
         in protected
     )
+
+
+def test_case_asset_protector_leaves_reference_page_on_generic_namespace() -> None:
+    source_hash = "c" * 64
+    html = _review_html(
+        {
+            "asset_key": "ATT-1-p1",
+            "attachment_id": "ATT-1",
+            "page": 1,
+            "image_sha256": "a" * 64,
+        },
+        (
+            '<image data-reference-page-image '
+            f'data-reference-page-src="./page-images/REV-REF/12/{source_hash}"/>'
+        ),
+    )
+
+    protected = protect_case_visual_sources(html).decode("utf-8")
+
+    assert (
+        f'data-reference-page-src="./page-images/REV-REF/12/{source_hash}"'
+        in protected
+    )
+    assert "./reference-pages/" not in protected

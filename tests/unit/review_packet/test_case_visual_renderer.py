@@ -1,6 +1,9 @@
 import re
 
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
+from evidence_review.review_packet.render_case_visual_lazy import (
+    render_case_visual_review as render_lazy_case_visual_review,
+)
 from evidence_review.review_packet.render_summary import (
     render_additional_review,
     render_status_band,
@@ -361,3 +364,39 @@ def test_visual_workspace_does_not_duplicate_legacy_additional_review_strip() ->
 
     assert 'id="case-visual-review"' in html
     assert 'id="additional-review"' not in html
+
+
+def test_lazy_renderer_binds_reference_page_identity_without_eager_href() -> None:
+    model = _typed_reference_model()
+    html = render_lazy_case_visual_review(model)
+
+    assert 'data-reference-page-image' in html
+    assert (
+        'data-reference-page-src="./page-images/REV-REF/12/'
+        + "c" * 64
+        + '"'
+    ) in html
+    assert (
+        re.search(
+            r'<image[^>]+data-reference-page-image[^>]+href="[^"]+"',
+            html,
+        )
+        is None
+    )
+    urls = set(re.findall(r'data-reference-page-src="([^"]+)"', html))
+    assert urls == {"./page-images/REV-REF/12/" + "c" * 64}
+    assert 'data-case-page-src="./case-pages/' in html
+    assert 'data-reference-page-src="./page-images/' in html
+
+
+def test_reference_pages_remain_metadata_only_in_visual_model() -> None:
+    model = _typed_reference_model()
+    render_lazy_case_visual_review(model)
+
+    visual = model["case_visual_review"]
+    assert isinstance(visual, dict)
+    reference_pages = visual["reference_pages"]
+    assert isinstance(reference_pages, list)
+    assert all("data_uri" not in page for page in reference_pages)
+    assert all("image_bytes" not in page for page in reference_pages)
+    assert all("image_path" not in page for page in reference_pages)
