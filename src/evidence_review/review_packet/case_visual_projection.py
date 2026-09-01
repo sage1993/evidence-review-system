@@ -22,6 +22,7 @@ from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
     ensure_visual_page_tiles,
 )
+from evidence_review.review_packet.reference_pages import build_reference_projection
 from evidence_review.review_packet.related_reference_routing import (
     bind_related_retrieval_references,
 )
@@ -277,6 +278,181 @@ def _page_tile_documents(
     return documents
 
 
+def _reference_citation_index(
+    view_model: Mapping[str, object],
+) -> dict[str, Mapping[str, object]]:
+    if "reference_citations" not in view_model:
+        return {}
+
+    citations: dict[str, Mapping[str, object]] = {}
+    for index, item in enumerate(
+        _sequence(view_model.get("reference_citations"), "reference_citations")
+    ):
+        citation = _mapping(item, f"reference_citations[{index}]")
+        citation_id = _string(
+            citation.get("citation_id"),
+            f"reference_citations[{index}].citation_id",
+        )
+        prior = citations.get(citation_id)
+        if prior is not None and dict(prior) != dict(citation):
+            raise ValueError("conflicting reference citation payload")
+        citations.setdefault(citation_id, citation)
+    return citations
+
+
+def _direct_citation_ids(
+    view_model: Mapping[str, object],
+    direct_claim_ids: object,
+) -> tuple[str, ...]:
+    target_claim_ids = {
+        _string(item, "finding.direct_claim_ids")
+        for item in _sequence(direct_claim_ids, "finding.direct_claim_ids")
+    }
+    citation_ids: set[str] = set()
+    for index, item in enumerate(_sequence(view_model.get("claims", []), "claims")):
+        claim = _mapping(item, f"claims[{index}]")
+        claim_id = _string(claim.get("claim_id"), f"claims[{index}].claim_id")
+        if claim_id not in target_claim_ids:
+            continue
+        for citation_index, raw_citation in enumerate(
+            _sequence(claim.get("citations", []), f"claims[{index}].citations")
+        ):
+            citation = _mapping(
+                raw_citation,
+                f"claims[{index}].citations[{citation_index}]",
+            )
+            citation_ids.add(
+                _string(
+                    citation.get("citation_id"),
+                    f"claims[{index}].citations[{citation_index}].citation_id",
+                )
+            )
+    return tuple(sorted(citation_ids))
+
+
+def _related_citation_ids(
+    finding: Mapping[str, object],
+    related_references: Mapping[str, Mapping[str, object]],
+) -> tuple[str, ...]:
+    citation_ids: set[str] = set()
+    for index, raw_evidence_id in enumerate(
+        _sequence(finding.get("related_evidence_ids", []), "finding.related_evidence_ids")
+    ):
+        evidence_id = _string(
+            raw_evidence_id,
+            f"finding.related_evidence_ids[{index}]",
+        )
+        reference = related_references.get(evidence_id)
+        if reference is None:
+            raise ValueError("selected related reference is missing")
+        citation = _mapping(reference.get("citation"), "related_reference.citation")
+        citation_ids.add(
+            _string(citation.get("citation_id"), "related_reference.citation_id")
+        )
+    return tuple(sorted(citation_ids))
+
+
+def _project_reference_anchors(
+    view_model: Mapping[str, object],
+    findings: Sequence[Mapping[str, object]],
+    related_references: Sequence[Mapping[str, object]],
+    *,
+    page_root: Path,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
+    if "reference_citations" not in view_model:
+        return (
+            [],
+            [],
+            [
+                {
+                    **dict(finding),
+                    "direct_reference_anchors": [],
+                    "related_reference_anchors": [],
+                }
+                for finding in findings
+            ],
+        )
+
+    citation_index = _reference_citation_index(view_model)
+    related_by_evidence: dict[str, Mapping[str, object]] = {}
+    for index, raw_reference in enumerate(related_references):
+        reference = _mapping(raw_reference, f"related_references[{index}]")
+        evidence_id = _string(
+            reference.get("evidence_id"),
+            f"related_references[{index}].evidence_id",
+        )
+        citation = _mapping(
+            reference.get("citation"),
+            f"related_references[{index}].citation",
+        )
+        _string(
+            citation.get("citation_id"),
+            f"related_references[{index}].citation.citation_id",
+        )
+        prior = related_by_evidence.get(evidence_id)
+        if prior is not None and dict(prior) != dict(reference):
+            raise ValueError("conflicting selected related reference")
+        related_by_evidence.setdefault(evidence_id, reference)
+
+    direct_ids_by_finding: list[tuple[str, ...]] = []
+    related_ids_by_finding: list[tuple[str, ...]] = []
+    selected_ids: set[str] = set()
+    for finding in findings:
+        direct_ids = _direct_citation_ids(
+            view_model,
+            finding.get("direct_claim_ids", []),
+        )
+        related_ids = _related_citation_ids(finding, related_by_evidence)
+        direct_ids_by_finding.append(direct_ids)
+        related_ids_by_finding.append(related_ids)
+        selected_ids.update(direct_ids)
+        selected_ids.update(related_ids)
+
+    missing_ids = sorted(
+        citation_id
+        for citation_id in selected_ids
+        if citation_id not in citation_index
+    )
+    if missing_ids:
+        raise ValueError("reference citation projection missing selected citation")
+
+    selected_citations = [
+        citation_index[citation_id] for citation_id in sorted(selected_ids)
+    ]
+    documents, pages, anchors = build_reference_projection(
+        selected_citations,
+        page_root=page_root,
+    )
+
+    projected_findings: list[dict[str, object]] = []
+    for finding, direct_ids, related_ids in zip(
+        findings,
+        direct_ids_by_finding,
+        related_ids_by_finding,
+        strict=True,
+    ):
+        projected_findings.append(
+            {
+                **dict(finding),
+                "direct_reference_anchors": [
+                    {
+                        **anchors[citation_id],
+                        "reference_role": "direct",
+                    }
+                    for citation_id in direct_ids
+                ],
+                "related_reference_anchors": [
+                    {
+                        **anchors[citation_id],
+                        "reference_role": "related",
+                    }
+                    for citation_id in related_ids
+                ],
+            }
+        )
+    return documents, pages, projected_findings
+
+
 def build_case_visual_projection(
     view_model: Mapping[str, object],
     *,
@@ -464,6 +640,12 @@ def build_case_visual_projection(
         inputs,
         findings,
     )
+    reference_documents, reference_pages, findings = _project_reference_anchors(
+        view_model,
+        findings,
+        related_references,
+        page_root=workspace_root / "page-images",
+    )
     return {
         "status": "VISUAL_ANALYSIS_VALIDATED",
         "attachment_count": len(attachments),
@@ -472,6 +654,8 @@ def build_case_visual_projection(
         "pages": pages,
         "findings": findings,
         "related_references": related_references,
+        "reference_documents": reference_documents,
+        "reference_pages": reference_pages,
     }
 
 
