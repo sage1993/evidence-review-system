@@ -4,8 +4,10 @@ import subprocess
 from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.render_case_visual import render_case_visual_review
 
 from .test_html_renderer import _decision_form_html, _model, _write_page_assets
+from tests.unit.review_packet.test_case_visual_renderer import _typed_reference_model
 
 
 def _inline_controller(html: str) -> str:
@@ -386,6 +388,113 @@ if (!page2.classList.contains("is-active")) {
 item1.listeners.keydown({ key: " ", preventDefault() {} });
 if (!page1.classList.contains("is-active")) {
   throw new Error("Space did not activate item 1 evidence");
+}
+"""
+    completed = _run_node_harness(controller, harness)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_finding_click_keeps_subject_focus_and_focuses_reference_independently() -> None:
+    controller = _inline_controller(render_case_visual_review(_typed_reference_model()))
+    harness = r"""
+function classList() {
+  const values = new Set();
+  return {
+    add(value) { values.add(value); },
+    toggle(value, enabled) { if (enabled) values.add(value); else values.delete(value); },
+    contains(value) { return values.has(value); }
+  };
+}
+function dataKey(selector) {
+  const match = selector.match(/\[data-([a-z0-9-]+)/i);
+  if (!match) return null;
+  return match[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+function node(dataset, rect) {
+  return {
+    dataset: dataset || {}, classList: classList(), listeners: {}, attributes: {},
+    children: [], parent: null, hidden: false, style: {}, open: false,
+    addEventListener(type, handler) { this.listeners[type] = handler; },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    getAttribute(name) { return this.attributes[name] ?? null; },
+    getBoundingClientRect() { return rect || {left: 0, top: 0, width: 600, height: 600}; },
+    setPointerCapture() {}, releasePointerCapture() {}, scrollIntoView() {}, focus() {},
+    contains(target) { return this === target || this.children.some((child) => child.contains(target)); },
+    closest(selector) {
+      let current = this.parent;
+      while (current) {
+        if (selector === "details" && current.tagName === "DETAILS") return current;
+        current = current.parent;
+      }
+      return null;
+    },
+    querySelectorAll(selector) {
+      const selectors = selector.split(",").map((item) => item.trim());
+      const matches = (item) => selectors.some((candidate) => {
+        const key = dataKey(candidate);
+        if (!key) return false;
+        const expected = candidate.match(/data-[a-z0-9-]+="([^"]+)"/i)?.[1];
+        return Object.prototype.hasOwnProperty.call(this.dataset, key) &&
+          (expected === undefined || String(this.dataset[key]) === expected);
+      });
+      const result = matches(selector) ? [this] : [];
+      for (const child of this.children) result.push(...child.querySelectorAll(selector));
+      return result;
+    },
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  };
+}
+function attach(parent, child) { child.parent = parent; parent.children.push(child); return child; }
+const root = node({caseVisualReview: ""});
+const subjectPage = attach(root, node({casePage: "ATT-1-p1", pageWidth: "100", pageHeight: "120"}));
+const subjectStage = attach(subjectPage, node({caseStage: ""}, {left: 0, top: 0, width: 900, height: 600}));
+const subjectTransform = attach(subjectStage, node({caseTransform: ""}));
+const referenceScope = attach(root, node({caseReference: "VF-1"}));
+const directGroup = attach(referenceScope, node({directReference: ""}));
+const directItem = attach(directGroup, node({referenceRole: "direct"}));
+const directStage = attach(directItem, node({referenceStage: "", referencePage: "reference-page-1", pageWidth: "595", pageHeight: "842"}, {left: 0, top: 0, width: 600, height: 600}));
+const directTransform = attach(directStage, node({referenceTransform: ""}));
+const directAnchor = attach(directTransform, node({referenceAnchor: "CIT-TEXT"}));
+directAnchor.setAttribute("x", "10"); directAnchor.setAttribute("y", "802");
+directAnchor.setAttribute("width", "90"); directAnchor.setAttribute("height", "20");
+const directImage = attach(directTransform, node({referencePageImage: "", referencePageSrc: "page-1.png"}));
+const relatedDetails = attach(referenceScope, node()); relatedDetails.tagName = "DETAILS";
+const relatedItem = attach(relatedDetails, node({referenceRole: "related"}));
+const relatedStage = attach(relatedItem, node({referenceStage: "", referencePage: "reference-page-1", pageWidth: "595", pageHeight: "842"}, {left: 0, top: 0, width: 600, height: 600}));
+attach(relatedStage, node({referenceTransform: ""}));
+const card = attach(root, node({caseFinding: "VF-1", casePageKey: "ATT-1-p1", caseFocusBbox: "10,20,80,90", caseCandidateIds: "CAND-1"}));
+attach(root, node({caseOverlay: "CAND-1"}));
+global.window = { addEventListener() {}, prompt() { return ""; } };
+global.document = { body: { dataset: {} }, addEventListener() {},
+  getElementById(id) { return id === "case-visual-review" ? root : null; },
+  querySelector() { return null; }, querySelectorAll() { return []; } };
+global.requestAnimationFrame = (callback) => { callback(); return 1; };
+eval(controller);
+if (typeof directStage.listeners.wheel !== "function") throw new Error("reference wheel listener missing");
+if (typeof directStage.listeners.pointerdown !== "function") throw new Error("reference drag listener missing");
+card.listeners.click();
+if (!subjectPage.classList.contains("is-active")) throw new Error("subject page was not activated");
+if (!directItem.classList.contains("is-active")) throw new Error("direct reference was not activated");
+const subjectFocused = subjectTransform.style.transform;
+const referenceFocused = directTransform.style.transform;
+directStage.listeners.wheel({preventDefault() {}, deltaY: -1, clientX: 300, clientY: 300});
+if (directTransform.style.transform === referenceFocused) throw new Error("reference transform unchanged after wheel");
+if (subjectTransform.style.transform !== subjectFocused) throw new Error("subject changed after reference wheel");
+const referenceAfterWheel = directTransform.style.transform;
+subjectStage.listeners.wheel({preventDefault() {}, deltaY: -1, clientX: 450, clientY: 300});
+if (subjectTransform.style.transform === subjectFocused) throw new Error("subject transform unchanged after wheel");
+if (directTransform.style.transform !== referenceAfterWheel) throw new Error("reference changed after subject wheel");
+"""
+    completed = _run_node_harness(controller, harness)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_finding_click_falls_back_to_related_reference_and_opens_details() -> None:
+    controller = _inline_controller(render_case_visual_review(_typed_reference_model()))
+    harness = r"""
+if (!controller.includes("function focusReferenceFinding") ||
+    !controller.includes("details.open=true")) {
+  throw new Error("related reference fallback focus missing");
 }
 """
     completed = _run_node_harness(controller, harness)

@@ -292,6 +292,33 @@ def test_renderer_projects_reference_pdf_bottom_left_bbox_to_svg_top_left() -> N
     assert 'x="10" y="802" width="90" height="20"' in html
 
 
+def test_reference_stage_keeps_anchor_content_outside_independent_transform() -> None:
+    html = render_case_visual_review(_typed_reference_model())
+
+    article_start = html.index('<article class="reference-viewer-item"')
+    article_end = html.index("</article>", article_start)
+    article = html[article_start:article_end]
+    transform_start = article.index('<div class="reference-page-transform"')
+
+    assert 'data-reference-stage' in article
+    assert 'tabindex="0"' in article
+    assert 'data-reference-transform' in article
+    assert article.index("<blockquote>") < transform_start
+    assert transform_start < article.index('class="reference-raster-layer"')
+    assert transform_start < article.index('class="reference-overlay-layer"')
+
+
+def test_renderer_exposes_independent_subject_and_reference_focus_contract() -> None:
+    html = render_case_visual_review(_typed_reference_model())
+
+    assert "function focusSubjectFinding" in html
+    assert "function focusReferenceFinding" in html
+    assert "referenceStates" in html
+    assert "function preferredReferenceItem" in html
+    assert 'data-reference-role="direct"' in html
+    assert 'data-reference-role="related"' in html
+
+
 def test_related_only_finding_keeps_not_comparable_status() -> None:
     model = _typed_reference_model()
     visual = model["case_visual_review"]

@@ -2,8 +2,10 @@ import re
 from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.render_case_visual import render_case_visual_review
 
 from .test_html_renderer import _model, _write_page_assets
+from tests.unit.review_packet.test_case_visual_renderer import _typed_reference_model
 
 
 def _inline_css(html: str) -> str:
@@ -65,6 +67,15 @@ def test_accessibility_contract_has_visible_focus_and_44px_targets(tmp_path: Pat
     assert ".pdf-page-controls button, .pdf-zoom-controls button" in css
     assert "min-height: 44px" in css
     assert "review_responsive.css" in html
+
+
+def test_reference_viewer_preserves_split_and_responsive_contract(tmp_path: Path) -> None:
+    html = render_case_visual_review(_typed_reference_model())
+
+    assert "--reference-width" in html
+    assert 'aria-valuemin="26"' in html
+    assert 'aria-valuemax="70"' in html
+    assert "@media(max-width:720px)" in html
 
 
 def test_print_hides_audit_navigation_and_interactive_controls(tmp_path: Path) -> None:
