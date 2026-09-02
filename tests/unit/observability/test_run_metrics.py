@@ -169,6 +169,23 @@ def test_hard_budget_checks_deterministic_and_browser_handoff(tmp_path: Path) ->
     append_stage(run, make_stage("browser-dispatch", _at(3), _at(4), duration_ms=1000))
     assert_hard_budgets(load_run_metrics(run))
 
-    append_stage(run, make_stage("view-model-build", _at(4), _at(7), duration_ms=3001))
+    over_budget_run = tmp_path / "runs" / "RUN-0123456789ABCDEF0456"
+    over_budget_run.mkdir(parents=True)
+    append_stage(
+        over_budget_run,
+        make_stage("finalizer", _at(0), _at(2), duration_ms=2000),
+    )
+    append_stage(
+        over_budget_run,
+        make_stage("view-model-build", _at(2), _at(5), duration_ms=3001),
+    )
+    append_stage(
+        over_budget_run,
+        make_stage("protected-server-start", _at(5), _at(6), duration_ms=1000),
+    )
+    append_stage(
+        over_budget_run,
+        make_stage("browser-dispatch", _at(6), _at(7), duration_ms=1000),
+    )
     with pytest.raises(RuntimeError, match="deterministic review budget exceeded"):
-        assert_hard_budgets(load_run_metrics(run))
+        assert_hard_budgets(load_run_metrics(over_budget_run))
