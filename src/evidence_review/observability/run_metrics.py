@@ -2,6 +2,8 @@
 
 The event directory is the source of truth. ``run-metrics.json`` is a derived,
 non-authoritative snapshot and is deliberately excluded from run/packet hashes.
+Once the first browser handoff completes, formal/release metrics are frozen at
+that boundary while later operational events remain in the append-only event log.
 """
 from __future__ import annotations
 
@@ -131,6 +133,14 @@ def _event_documents(run_directory: Path) -> list[dict[str, object]]:
     return documents
 
 
+def _formal_stages(stages: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Return the immutable formal-run prefix ending at first successful handoff."""
+    for index, item in enumerate(stages):
+        if item.get("name") == "browser-dispatch" and item.get("status") == "COMPLETED":
+            return stages[: index + 1]
+    return stages
+
+
 def _duration_ms(item: dict[str, object]) -> int:
     value = item.get("duration_ms")
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -223,7 +233,7 @@ def _retry_count(stages: list[dict[str, object]]) -> int:
 
 
 def load_run_metrics(run_directory: Path) -> dict[str, object]:
-    stages = _event_documents(run_directory)
+    stages = _formal_stages(_event_documents(run_directory))
     deterministic_total_ms = sum(
         _duration_ms(item)
         for item in stages
