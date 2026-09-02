@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from evidence_review.abstention.finalizer import verify_finalized_run
-from evidence_review.canonical_json import dump_bytes
+from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.next_action import NextAction, next_action_document
 from evidence_review.contracts.review import FinalizerStatus
@@ -298,6 +298,11 @@ def _json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _track_b_identity(path: Path) -> str:
+    """Return Track B identity independent of JSON serialization details."""
+    return sha256_json(_json(path))
+
+
 def _append_event(
     run_directory: Path,
     next_state: WorkflowState,
@@ -450,8 +455,9 @@ def _has_valid_finalizing_canonical_track_b(run_directory: Path) -> bool:
     if not canonical.is_file():
         return False
     try:
-        _json(canonical)
-        return _sha256(canonical) == _required_finalizing_track_b_hash(run_directory)
+        return _track_b_identity(canonical) == _required_finalizing_track_b_hash(
+            run_directory
+        )
     except (OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
         return False
 
@@ -461,7 +467,7 @@ def _validate_finalizing_retry_identity(
     track_b_output: Path,
 ) -> None:
     expected = _required_finalizing_track_b_hash(run_directory)
-    actual = _sha256(track_b_output)
+    actual = _track_b_identity(track_b_output)
     if actual != expected:
         raise TrackBContractError(
             "TRACK_B_RETRY_MISMATCH",
@@ -651,7 +657,7 @@ def submit_question_track_b(
     append_stage(run_directory, finish_stage("track-b-validation", validation_timer))
 
     if state == "WAITING_TRACK_B":
-        _append_event(run_directory, "FINALIZING", _sha256(track_b_output))
+        _append_event(run_directory, "FINALIZING", _track_b_identity(track_b_output))
     else:
         try:
             finalized = _existing_finalized_run(run_directory)
