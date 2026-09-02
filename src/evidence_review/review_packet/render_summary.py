@@ -29,11 +29,32 @@ body:has(#case-visual-review) .process-strip{display:none!important}
 body:has(#case-visual-review) .case-visual-transform{user-select:none;-webkit-user-select:none}
 body:has(#case-visual-review) #decision-form,
 body:has(#case-visual-review) #decision-form:hover,
-body:has(#case-visual-review) #decision-form:focus-within{position:fixed;right:12px;top:50%;z-index:30;width:min(380px,calc(100vw - 48px));max-height:86vh;overflow:auto;transform:translate(calc(100% + 28px),-50%)!important;transition:transform .16s ease,opacity .12s ease;box-shadow:0 12px 32px rgba(16,24,40,.18);background:#fff;pointer-events:none!important;visibility:hidden;opacity:0}
+body:has(#case-visual-review) #decision-form:focus-within{position:fixed;right:12px;top:50%;z-index:30;width:min(380px,calc(100vw - 48px));max-height:86vh;overflow:auto;transform:translate(calc(100% + 28px),-50%)!important;transition:none;box-shadow:0 12px 32px rgba(16,24,40,.18);background:#fff;pointer-events:none!important;visibility:hidden;opacity:0}
 body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form,
 body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form:hover,
-body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form:focus-within{transform:translate(0,-50%)!important;pointer-events:auto!important;visibility:visible;opacity:1}
+body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form:focus-within{transform:translate(0,-50%)!important;pointer-events:auto!important;visibility:visible!important;opacity:1!important}
 body:has(#case-visual-review) #decision-form .visual-decision-close{display:block;margin:8px 8px 0 auto;min-height:30px;padding:0 9px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;color:#344054;font-size:11px}
+@media(min-width:2560px){
+body:has(#case-visual-review) .workspace-grid{grid-template-columns:minmax(0,1fr) minmax(380px,420px)}
+body:has(#case-visual-review) .reference-viewer,body:has(#case-visual-review) .subject-viewer{grid-template-rows:52px minmax(0,1fr)}
+body:has(#case-visual-review) .findings-panel{grid-template-rows:52px 44px minmax(0,1fr) 56px}
+body:has(#case-visual-review) .reference-viewer>header,body:has(#case-visual-review) .findings-panel>header,body:has(#case-visual-review) .subject-toolbar{padding:0 16px;font-size:14px}
+body:has(#case-visual-review) .reference-viewer header span,body:has(#case-visual-review) .findings-panel header span,body:has(#case-visual-review) .subject-toolbar span{font-size:12px}
+body:has(#case-visual-review) .overlay-modes button{height:34px;padding:0 10px;font-size:12px}
+body:has(#case-visual-review) .viewer-controls button{width:36px;height:36px}
+body:has(#case-visual-review) .toolbar-icon{width:18px;height:18px}
+body:has(#case-visual-review) .finding-filter{height:34px;padding:0 9px;font-size:12px}
+body:has(#case-visual-review) .findings-body{padding:10px;gap:9px}
+body:has(#case-visual-review) .finding-card{padding:12px}
+body:has(#case-visual-review) .finding-number,body:has(#case-visual-review) .finding-status{font-size:12px}
+body:has(#case-visual-review) .finding-card h3{font-size:15px}
+body:has(#case-visual-review) .comparison-grid dt{font-size:11px}
+body:has(#case-visual-review) .comparison-grid dd{font-size:12.5px}
+body:has(#case-visual-review) .finding-pagination{font-size:12px}
+body:has(#case-visual-review) .finding-pagination>button:not(.decision-open){width:36px;height:36px}
+body:has(#case-visual-review) .decision-open{height:38px;padding:0 12px;font-size:12px}
+body:has(#case-visual-review) .case-visual-help{padding:7px 16px;font-size:12px}
+}
 @media(max-width:720px){body:has(#case-visual-review) .app-shell{padding:6px}body:has(#case-visual-review) #decision-form{right:6px;width:min(340px,calc(100vw - 18px))}}
 </style>
 """
