@@ -55,6 +55,42 @@ body:has(#case-visual-review) .finding-pagination>button:not(.decision-open){wid
 body:has(#case-visual-review) .decision-open{height:38px;padding:0 12px;font-size:12px}
 body:has(#case-visual-review) .case-visual-help{padding:7px 16px;font-size:12px}
 }
+@media(min-width:3200px){
+body:has(#case-visual-review) .workspace-grid{grid-template-columns:minmax(0,1fr) minmax(600px,660px)}
+body:has(#case-visual-review) .reference-viewer,body:has(#case-visual-review) .subject-viewer{grid-template-rows:68px minmax(0,1fr)}
+body:has(#case-visual-review) .findings-panel{grid-template-rows:68px 56px minmax(0,1fr) 68px}
+body:has(#case-visual-review) .reference-viewer>header,body:has(#case-visual-review) .findings-panel>header,body:has(#case-visual-review) .subject-toolbar{padding:0 20px;font-size:17px}
+body:has(#case-visual-review) .reference-viewer header span,body:has(#case-visual-review) .findings-panel header span,body:has(#case-visual-review) .subject-toolbar span{font-size:14px}
+body:has(#case-visual-review) .reference-body{padding:18px}
+body:has(#case-visual-review) .reference-empty{font-size:15px}
+body:has(#case-visual-review) .reference-empty strong{font-size:17px}
+body:has(#case-visual-review) .reference-empty p{max-width:440px;line-height:1.6}
+body:has(#case-visual-review) .reference-kind{padding:5px 9px;font-size:13px}
+body:has(#case-visual-review) .reference-card{padding:16px;margin-bottom:12px}
+body:has(#case-visual-review) .reference-source{font-size:13px}
+body:has(#case-visual-review) .reference-card blockquote{font-size:15px}
+body:has(#case-visual-review) .related-reference summary{font-size:14px}
+body:has(#case-visual-review) .overlay-modes button{height:42px;padding:0 13px;font-size:14px}
+body:has(#case-visual-review) .viewer-controls{gap:8px}
+body:has(#case-visual-review) .viewer-controls button{width:48px;height:48px}
+body:has(#case-visual-review) .toolbar-icon{width:22px;height:22px}
+body:has(#case-visual-review) .control-separator{height:26px;margin:0 5px}
+body:has(#case-visual-review) .finding-filters{gap:6px;padding:7px 10px}
+body:has(#case-visual-review) .finding-filter{height:42px;padding:0 12px;font-size:14px}
+body:has(#case-visual-review) .findings-body{padding:14px;gap:12px}
+body:has(#case-visual-review) .finding-card{padding:16px;border-radius:12px}
+body:has(#case-visual-review) .finding-number,body:has(#case-visual-review) .finding-status{font-size:14px}
+body:has(#case-visual-review) .finding-status{padding:5px 9px}
+body:has(#case-visual-review) .finding-card h3{font-size:18px;margin:10px 0 9px}
+body:has(#case-visual-review) .comparison-grid{gap:8px}
+body:has(#case-visual-review) .comparison-grid div{padding:9px 10px}
+body:has(#case-visual-review) .comparison-grid dt{font-size:13px;margin-bottom:4px}
+body:has(#case-visual-review) .comparison-grid dd{font-size:15px;line-height:1.45}
+body:has(#case-visual-review) .finding-pagination{gap:12px;padding:10px 12px;font-size:14px}
+body:has(#case-visual-review) .finding-pagination>button:not(.decision-open){width:46px;height:46px}
+body:has(#case-visual-review) .decision-open{height:48px;padding:0 16px;font-size:14px}
+body:has(#case-visual-review) .case-visual-help{padding:9px 20px;font-size:14px}
+}
 @media(max-width:720px){body:has(#case-visual-review) .app-shell{padding:6px}body:has(#case-visual-review) #decision-form{right:6px;width:min(340px,calc(100vw - 18px))}}
 </style>
 """
