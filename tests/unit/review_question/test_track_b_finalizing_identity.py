@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from evidence_review.canonical_json import dump_bytes, sha256_json
+from evidence_review.contracts.workflow import WorkflowState
 from evidence_review.review_question import (
     _append_event,
     _has_valid_finalizing_canonical_track_b,
@@ -23,7 +24,7 @@ def _track_b_document(run_id: str) -> dict[str, object]:
 
 
 def _enter_finalizing(run_directory: Path, track_b_hash: str) -> None:
-    for state in (
+    states: tuple[WorkflowState, ...] = (
         "RECEIVED",
         "CLASSIFYING_INPUTS",
         "READY_TO_EVALUATE",
@@ -32,8 +33,9 @@ def _enter_finalizing(run_directory: Path, track_b_hash: str) -> None:
         "RUNNING_RULES",
         "WAITING_TRACK_A",
         "WAITING_TRACK_B",
-    ):
-        _append_event(run_directory, state, "a" * 64)  # type: ignore[arg-type]
+    )
+    for state in states:
+        _append_event(run_directory, state, "a" * 64)
     _append_event(run_directory, "FINALIZING", track_b_hash)
 
 
