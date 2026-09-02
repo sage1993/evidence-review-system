@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,6 +41,15 @@ def _write_or_identical(path: Path, content: bytes) -> None:
             raise FileExistsError(message) from None
 
 
+def _instruction_template_bytes() -> bytes:
+    return (
+        Path(__file__).parents[1]
+        / "llm_layer"
+        / "templates"
+        / "visual-analysis.md"
+    ).read_bytes()
+
+
 def _page_identity(page: VisualPageAsset) -> dict[str, object]:
     return {
         "attachment_id": page.attachment_id,
@@ -69,6 +79,8 @@ def prepare_visual_analysis_handoff(
     pages = prepare_visual_page_assets(workspace, attachments)
     if not pages:
         raise ValueError("VISUAL_SOURCE_RENDER_FAILED")
+    template = _instruction_template_bytes()
+    instruction_contract_sha256 = hashlib.sha256(template).hexdigest()
     identity = {
         "question_plan": question_plan_document(question_plan),
         "attachments": [
@@ -76,6 +88,7 @@ def prepare_visual_analysis_handoff(
             for item in sorted(attachments, key=lambda item: item.attachment_id)
         ],
         "pages": [_page_identity(item) for item in pages],
+        "instruction_contract_sha256": instruction_contract_sha256,
     }
     visual_analysis_id = f"VIS-{sha256_json(identity)[:20].upper()}"
     directory = workspace / "visual-analysis" / visual_analysis_id
@@ -86,6 +99,7 @@ def prepare_visual_analysis_handoff(
         "format": "evidence-review/visual-analysis-bundle",
         "version": 1,
         "visual_analysis_id": visual_analysis_id,
+        "instruction_contract_sha256": instruction_contract_sha256,
         "question": question_plan.original_question,
         "issues": [
             {"id": item.id, "question": item.question}
@@ -97,12 +111,6 @@ def prepare_visual_analysis_handoff(
         ],
         "pages": [_page_document(workspace, item) for item in pages],
     }
-    template = (
-        Path(__file__).parents[1]
-        / "llm_layer"
-        / "templates"
-        / "visual-analysis.md"
-    ).read_bytes()
     _write_or_identical(bundle_path, dump_bytes(bundle))
     _write_or_identical(instructions_path, template)
     return VisualAnalysisHandoff(
