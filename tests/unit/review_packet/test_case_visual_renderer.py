@@ -220,6 +220,22 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert "https://" not in html
 
 
+def test_multi_page_renderer_removes_hidden_pages_from_layout_and_pointer_events() -> None:
+    model = _model()
+    visual = model["case_visual_review"]
+    assert isinstance(visual, dict)
+    pages = visual["pages"]
+    assert isinstance(pages, list)
+    second_page = dict(pages[0])
+    second_page["asset_key"] = "ATT-1-p2"
+    second_page["page"] = 2
+    pages.append(second_page)
+
+    html = render_case_visual_review(model)
+
+    assert ".case-visual-page[hidden]{display:none!important}" in html
+
+
 def test_renderer_exposes_all_six_reference_types() -> None:
     html = render_case_visual_review(_typed_reference_model())
 
