@@ -47,15 +47,15 @@ def test_semantic_grouping_splits_distant_candidates_before_focus_bbox_union() -
     assert findings[1]["focus_bbox"] == [1300.0, 720.0, 1540.0, 780.0]
 
 
-def test_semantic_grouping_keeps_nearby_ocr_fragments_together() -> None:
+def test_semantic_grouping_keeps_nearby_visual_ocr_fragments_together() -> None:
     pages = [
         {
             "asset_key": "ATT-1-p1",
-            "width": 100.0,
-            "height": 120.0,
+            "width": 1000.0,
+            "height": 800.0,
             "candidates": [
-                _candidate("CAND-1", [10.0, 20.0, 35.0, 40.0], "101동"),
-                _candidate("CAND-2", [40.0, 20.0, 65.0, 40.0], "102동"),
+                _candidate("CAND-1", [100.0, 100.0, 220.0, 140.0], "프로젝트명"),
+                _candidate("CAND-2", [240.0, 102.0, 360.0, 142.0], "신축공사"),
             ],
         }
     ]
@@ -63,5 +63,6 @@ def test_semantic_grouping_keeps_nearby_ocr_fragments_together() -> None:
     findings = build_semantic_visual_findings(pages)
 
     assert len(findings) == 1
+    assert findings[0]["category"] == "visual_observation"
     assert findings[0]["candidate_ids"] == ["CAND-1", "CAND-2"]
-    assert findings[0]["focus_bbox"] == [10.0, 20.0, 65.0, 40.0]
+    assert findings[0]["focus_bbox"] == [100.0, 100.0, 360.0, 142.0]
