@@ -117,3 +117,19 @@ def test_visual_handoff_is_reusable_for_identical_source(tmp_path: Path) -> None
 
     assert second.visual_analysis_id == first.visual_analysis_id
     assert second.bundle_path.read_bytes() == first.bundle_path.read_bytes()
+
+
+def test_visual_handoff_requires_semantically_tight_geometry(tmp_path: Path) -> None:
+    source = tmp_path / "drawing.png"
+    Image.new("RGB", (40, 30), "white").save(source)
+    workspace = tmp_path / "workspace"
+    attachments = prepare_case_visual_sources(workspace, case_drawings=[source])
+
+    handoff = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+    instructions = handoff.instructions_path.read_text(encoding="utf-8")
+
+    assert "Geometry is source evidence, not a navigation hint" in instructions
+    assert "Every boundary of a BBOX or POLYGON must be justified" in instructions
+    assert "Do not include large blank areas" in instructions
+    assert "project title or project-identification text" in instructions
+    assert "page-scale observation" in instructions
