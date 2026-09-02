@@ -12,6 +12,19 @@ def test_visual_review_scales_controls_and_findings_for_large_desktop() -> None:
     assert ".comparison-grid dd{font-size:12.5px}" in html
 
 
+def test_visual_review_adds_true_4k_scale_tier() -> None:
+    html = render_additional_review(_model())
+
+    assert "@media(min-width:3200px)" in html
+    assert "minmax(600px,660px)" in html
+    assert ".viewer-controls button{width:48px;height:48px}" in html
+    assert ".finding-card h3{font-size:18px}" in html
+    assert ".comparison-grid dd{font-size:15px}" in html
+    assert ".reference-empty strong{font-size:17px}" in html
+    assert ".reference-empty p{max-width:440px" in html
+    assert ".decision-open{height:48px" in html
+
+
 def test_visual_review_decision_drawer_open_state_is_atomic_and_visible() -> None:
     html = render_additional_review(_model())
 
