@@ -166,7 +166,12 @@ def _geometry_bounds(
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _axis_gap(first_start: float, first_end: float, second_start: float, second_end: float) -> float:
+def _axis_gap(
+    first_start: float,
+    first_end: float,
+    second_start: float,
+    second_end: float,
+) -> float:
     return max(0.0, max(first_start, second_start) - min(first_end, second_end))
 
 
