@@ -13,6 +13,7 @@ from evidence_review.contracts.question_plan import (
     QuestionPlan,
     SearchRequest,
 )
+from evidence_review.drawing_review import visual_handoff as visual_handoff_module
 from evidence_review.drawing_review.visual_handoff import prepare_visual_analysis_handoff
 
 
@@ -117,6 +118,34 @@ def test_visual_handoff_is_reusable_for_identical_source(tmp_path: Path) -> None
 
     assert second.visual_analysis_id == first.visual_analysis_id
     assert second.bundle_path.read_bytes() == first.bundle_path.read_bytes()
+
+
+def test_visual_handoff_id_changes_when_instruction_contract_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "drawing.png"
+    Image.new("RGB", (20, 10), "white").save(source)
+    workspace = tmp_path / "workspace"
+    attachments = prepare_case_visual_sources(workspace, supporting_images=[source])
+
+    monkeypatch.setattr(
+        visual_handoff_module,
+        "_instruction_template_bytes",
+        lambda: b"# visual contract v1\n",
+    )
+    first = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    monkeypatch.setattr(
+        visual_handoff_module,
+        "_instruction_template_bytes",
+        lambda: b"# visual contract v2\n",
+    )
+    second = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    assert second.visual_analysis_id != first.visual_analysis_id
+    assert first.instructions_path.read_bytes() == b"# visual contract v1\n"
+    assert second.instructions_path.read_bytes() == b"# visual contract v2\n"
 
 
 def test_visual_handoff_requires_semantically_tight_geometry(tmp_path: Path) -> None:
