@@ -8,25 +8,26 @@ from evidence_review.review_packet import case_visual_projection, render_case_vi
 
 
 def test_tiled_projection_reuses_verified_metadata_without_tile_payload_read(
-    tmp_path: Path,
     monkeypatch,
+    tmp_path: Path,
 ) -> None:
-    workspace = tmp_path / "workspace"
-    page = VisualPageAsset(
-        attachment_id="ATT-TEST",
-        page_number=1,
-        width_px=4764,
-        height_px=3368,
-        image_path=workspace / "missing-page.png",
-        image_sha256="a" * 64,
-    )
     tile = VisualPageTile(
+        path=tmp_path / "tile-must-not-be-read.png",
         x=0,
         y=0,
         width=2048,
         height=2048,
-        path=workspace / "missing-tile.png",
         image_sha256="b" * 64,
+    )
+    asset = VisualPageAsset(
+        attachment_id="ATT-1",
+        source_sha256="a" * 64,
+        page=1,
+        width=4764.0,
+        height=3368.0,
+        coordinate_system="IMAGE_TOP_LEFT_PIXELS",
+        image_path=tmp_path / "page.png",
+        image_sha256="c" * 64,
     )
     monkeypatch.setattr(
         case_visual_projection,
@@ -34,9 +35,9 @@ def test_tiled_projection_reuses_verified_metadata_without_tile_payload_read(
         lambda _workspace, _asset: (tile,),
     )
 
-    documents = case_visual_projection._page_tile_documents(workspace, page)
+    projected = case_visual_projection._page_tile_documents(tmp_path, asset)
 
-    assert documents == [
+    assert projected == [
         {
             "x": 0,
             "y": 0,
@@ -50,14 +51,15 @@ def test_tiled_projection_reuses_verified_metadata_without_tile_payload_read(
 def test_lazy_renderer_externalizes_metadata_only_tile_without_mutating_model(
     monkeypatch,
 ) -> None:
-    model = {
+    tile_hash = "b" * 64
+    model: dict[str, object] = {
+        "claims": [],
         "case_visual_review": {
             "pages": [
                 {
-                    "attachment_id": "ATT-TEST",
-                    "page_number": 1,
-                    "width_px": 4764,
-                    "height_px": 3368,
+                    "asset_key": "ATT-1-p1",
+                    "attachment_id": "ATT-1",
+                    "page": 1,
                     "image_sha256": "a" * 64,
                     "tiles": [
                         {
@@ -65,23 +67,23 @@ def test_lazy_renderer_externalizes_metadata_only_tile_without_mutating_model(
                             "y": 0,
                             "width": 2048,
                             "height": 2048,
-                            "image_sha256": "b" * 64,
+                            "image_sha256": tile_hash,
                         }
                     ],
                 }
             ]
-        }
+        },
     }
-
     monkeypatch.setattr(
         render_case_visual_lazy,
         "related_reference_claims",
-        lambda _model: [],
+        lambda _visual: [],
     )
 
-    def fake_embedded_renderer(rendered_model: object) -> str:
-        assert isinstance(rendered_model, dict)
-        visual = rendered_model["case_visual_review"]
+    def fake_embedded(rendered_model: object) -> str:
+        rendered = rendered_model
+        assert isinstance(rendered, dict)
+        visual = rendered["case_visual_review"]
         assert isinstance(visual, dict)
         pages = visual["pages"]
         assert isinstance(pages, list)
@@ -91,28 +93,38 @@ def test_lazy_renderer_externalizes_metadata_only_tile_without_mutating_model(
         assert isinstance(tiles, list)
         tile = tiles[0]
         assert isinstance(tile, dict)
-        data_uri = tile["data_uri"]
-        assert isinstance(data_uri, str)
-        assert data_uri.startswith("data:image/")
+        placeholder = tile["data_uri"]
+        assert isinstance(placeholder, str)
+        assert placeholder.startswith("data:image/png;base64,")
         return (
-            '<img data-case-tile-src="'
-            + data_uri
-            + '" data-case-attachment-id="ATT-TEST" '
-            + 'data-case-page-number="1" data-case-tile-x="0" '
-            + 'data-case-tile-y="0">'
+            '<figure class="case-visual-page" data-case-page="ATT-1-p1">'
+            '<image data-case-page-image data-case-page-src="placeholder"/>'
+            '<image data-case-tile data-case-tile-src="placeholder" '
+            'data-tile-x="0" data-tile-y="0" '
+            'data-tile-width="2048" data-tile-height="2048"/>'
+            "</figure>"
         )
 
     monkeypatch.setattr(
         render_case_visual_lazy,
-        "_render_case_visual_review_embedded",
-        fake_embedded_renderer,
+        "_render_embedded_case_visual_review",
+        fake_embedded,
     )
 
     html = render_case_visual_lazy.render_case_visual_review(model)
 
     assert (
-        './case-tiles/ATT-TEST/1/0/0/' + "b" * 64
-    ) in html
-    assert "data:image/png;base64," not in html
-    tile = model["case_visual_review"]["pages"][0]["tiles"][0]
+        f'data-case-tile-src="./case-tiles/ATT-1/1/0/0/{tile_hash}"'
+        in html
+    )
+    visual = model["case_visual_review"]
+    assert isinstance(visual, dict)
+    pages = visual["pages"]
+    assert isinstance(pages, list)
+    page = pages[0]
+    assert isinstance(page, dict)
+    tiles = page["tiles"]
+    assert isinstance(tiles, list)
+    tile = tiles[0]
+    assert isinstance(tile, dict)
     assert "data_uri" not in tile
