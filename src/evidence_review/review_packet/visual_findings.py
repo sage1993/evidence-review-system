@@ -166,6 +166,80 @@ def _geometry_bounds(
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def _axis_gap(first_start: float, first_end: float, second_start: float, second_end: float) -> float:
+    return max(0.0, max(first_start, second_start) - min(first_end, second_end))
+
+
+def _spatially_related(
+    first: tuple[float, float, float, float],
+    second: tuple[float, float, float, float],
+) -> bool:
+    first_left, first_top, first_right, first_bottom = first
+    second_left, second_top, second_right, second_bottom = second
+    horizontal_gap = _axis_gap(first_left, first_right, second_left, second_right)
+    vertical_gap = _axis_gap(first_top, first_bottom, second_top, second_bottom)
+
+    first_height = max(first_bottom - first_top, 1.0)
+    second_height = max(second_bottom - second_top, 1.0)
+    first_width = max(first_right - first_left, 1.0)
+    second_width = max(second_right - second_left, 1.0)
+    text_height = min(first_height, second_height)
+    text_width = min(first_width, second_width)
+
+    same_row = (
+        vertical_gap <= max(16.0, text_height * 0.75)
+        and horizontal_gap <= max(32.0, text_height * 4.0)
+    )
+    same_column = (
+        horizontal_gap <= max(16.0, text_width * 0.25)
+        and vertical_gap <= max(32.0, text_height * 2.0)
+    )
+    return same_row or same_column
+
+
+def _spatial_components(
+    candidates: Sequence[Mapping[str, object]],
+) -> list[list[Mapping[str, object]]]:
+    if len(candidates) < 2:
+        return [list(candidates)]
+
+    bounds = [_geometry_bounds(candidate) for candidate in candidates]
+    order = sorted(
+        range(len(candidates)),
+        key=lambda index: (
+            bounds[index][1],
+            bounds[index][0],
+            _text(candidates[index].get("candidate_id")),
+        ),
+    )
+    visited: set[int] = set()
+    components: list[list[Mapping[str, object]]] = []
+    for start in order:
+        if start in visited:
+            continue
+        visited.add(start)
+        pending = [start]
+        component_indexes: list[int] = []
+        while pending:
+            current = pending.pop()
+            component_indexes.append(current)
+            for other in order:
+                if other in visited:
+                    continue
+                if _spatially_related(bounds[current], bounds[other]):
+                    visited.add(other)
+                    pending.append(other)
+        component_indexes.sort(
+            key=lambda index: (
+                bounds[index][1],
+                bounds[index][0],
+                _text(candidates[index].get("candidate_id")),
+            )
+        )
+        components.append([candidates[index] for index in component_indexes])
+    return components
+
+
 def _claim_ids(
     candidate: Mapping[str, object], relation: str
 ) -> tuple[str, ...]:
@@ -237,6 +311,61 @@ def _display_values(candidates: Sequence[Mapping[str, object]]) -> str:
     return " · ".join(values) if values else "도면에서 확인된 시각 요소"
 
 
+def _finding(
+    asset_key: str,
+    issue_ids: tuple[str, ...],
+    category: str,
+    candidates: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    candidate_ids = sorted(
+        {
+            _text(item.get("candidate_id"))
+            for item in candidates
+            if _text(item.get("candidate_id"))
+        }
+    )
+    bounds = [_geometry_bounds(item) for item in candidates]
+    focus_bbox = [
+        min(item[0] for item in bounds),
+        min(item[1] for item in bounds),
+        max(item[2] for item in bounds),
+        max(item[3] for item in bounds),
+    ]
+    direct_claim_ids = sorted(
+        {
+            claim_id
+            for candidate in candidates
+            for claim_id in _claim_ids(candidate, "direct")
+        }
+    )
+    related_claim_ids = sorted(
+        {
+            claim_id
+            for candidate in candidates
+            for claim_id in _claim_ids(candidate, "related")
+        }
+    )
+    identity = {
+        "asset_key": asset_key,
+        "issue_ids": list(issue_ids),
+        "category": category,
+        "candidate_ids": candidate_ids,
+    }
+    return {
+        "finding_id": f"VF-{sha256_json(identity)[:20].upper()}",
+        "title": _CATEGORY_TITLES[category],
+        "category": category,
+        "status": _status(candidates),
+        "page_asset_key": asset_key,
+        "candidate_ids": candidate_ids,
+        "issue_ids": list(issue_ids),
+        "subject_value": _display_values(candidates),
+        "focus_bbox": focus_bbox,
+        "direct_claim_ids": direct_claim_ids,
+        "related_claim_ids": related_claim_ids,
+    }
+
+
 def build_semantic_visual_findings(
     pages: Sequence[Mapping[str, object]],
 ) -> list[dict[str, object]]:
@@ -270,54 +399,14 @@ def build_semantic_visual_findings(
 
     findings: list[dict[str, object]] = []
     for (asset_key, issue_ids, category), candidates in sorted(grouped.items()):
-        candidate_ids = sorted(
-            {
-                _text(item.get("candidate_id"))
-                for item in candidates
-                if _text(item.get("candidate_id"))
-            }
+        candidate_groups = (
+            _spatial_components(candidates)
+            if category == "visual_observation"
+            else [candidates]
         )
-        bounds = [_geometry_bounds(item) for item in candidates]
-        focus_bbox = [
-            min(item[0] for item in bounds),
-            min(item[1] for item in bounds),
-            max(item[2] for item in bounds),
-            max(item[3] for item in bounds),
-        ]
-        direct_claim_ids = sorted(
-            {
-                claim_id
-                for candidate in candidates
-                for claim_id in _claim_ids(candidate, "direct")
-            }
-        )
-        related_claim_ids = sorted(
-            {
-                claim_id
-                for candidate in candidates
-                for claim_id in _claim_ids(candidate, "related")
-            }
-        )
-        identity = {
-            "asset_key": asset_key,
-            "issue_ids": list(issue_ids),
-            "category": category,
-            "candidate_ids": candidate_ids,
-        }
-        findings.append(
-            {
-                "finding_id": f"VF-{sha256_json(identity)[:20].upper()}",
-                "title": _CATEGORY_TITLES[category],
-                "category": category,
-                "status": _status(candidates),
-                "page_asset_key": asset_key,
-                "candidate_ids": candidate_ids,
-                "issue_ids": list(issue_ids),
-                "subject_value": _display_values(candidates),
-                "focus_bbox": focus_bbox,
-                "direct_claim_ids": direct_claim_ids,
-                "related_claim_ids": related_claim_ids,
-            }
+        findings.extend(
+            _finding(asset_key, issue_ids, category, component)
+            for component in candidate_groups
         )
     return findings
 
