@@ -259,23 +259,17 @@ def _page_tile_documents(
     workspace_root: Path,
     asset: VisualPageAsset,
 ) -> list[dict[str, object]]:
-    tiles = ensure_visual_page_tiles(workspace_root, asset)
-    documents: list[dict[str, object]] = []
-    for tile in tiles:
-        data = tile.path.read_bytes()
-        if hashlib.sha256(data).hexdigest() != tile.image_sha256:
-            raise ValueError("case visual tile hash mismatch")
-        documents.append(
-            {
-                "x": tile.x,
-                "y": tile.y,
-                "width": tile.width,
-                "height": tile.height,
-                "image_sha256": tile.image_sha256,
-                "data_uri": "data:image/png;base64," + base64.b64encode(data).decode("ascii"),
-            }
-        )
-    return documents
+    """Project already-verified tile metadata without rereading raster payloads."""
+    return [
+        {
+            "x": tile.x,
+            "y": tile.y,
+            "width": tile.width,
+            "height": tile.height,
+            "image_sha256": tile.image_sha256,
+        }
+        for tile in ensure_visual_page_tiles(workspace_root, asset)
+    ]
 
 
 def _reference_citation_index(
@@ -522,7 +516,6 @@ def build_case_visual_projection(
             page_number,
             image_sha256,
         )
-        image_bytes = image_path.read_bytes()
         asset = VisualPageAsset(
             attachment_id=attachment_id,
             source_sha256=source_sha256,
@@ -549,6 +542,7 @@ def build_case_visual_projection(
         if tile_documents:
             page_record["tiles"] = tile_documents
         else:
+            image_bytes = image_path.read_bytes()
             page_record["data_uri"] = "data:image/png;base64," + base64.b64encode(
                 image_bytes
             ).decode("ascii")

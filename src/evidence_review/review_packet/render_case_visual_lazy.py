@@ -30,6 +30,7 @@ _REFERENCE_IMAGE_RE = re.compile(
 _REFERENCE_SOURCE_RE = re.compile(r'data-reference-page-src="[^"]*"')
 _DATA_ATTR_RE = re.compile(r'\b(?P<name>data-[a-z-]+)="(?P<value>[^"]*)"')
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_LAZY_TILE_PLACEHOLDER = "data:image/png;base64,AA=="
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -127,6 +128,41 @@ def _with_related_reference_claims(model: Mapping[str, object]) -> Mapping[str, 
     return rendered_model
 
 
+def _with_lazy_raster_placeholders(
+    model: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Copy case pages for rendering and synthesize only non-payload tile placeholders."""
+    raw_visual = model.get("case_visual_review")
+    if raw_visual is None:
+        return model
+    visual = _mapping(raw_visual, "case_visual_review")
+    rendered_model = dict(model)
+    rendered_visual = dict(visual)
+    rendered_pages: list[dict[str, object]] = []
+    for page_index, raw_page in enumerate(
+        _sequence(visual.get("pages", []), "case_visual_review.pages")
+    ):
+        page = dict(_mapping(raw_page, f"case_visual_review.pages[{page_index}]"))
+        raw_tiles = _sequence(page.get("tiles", []), f"case_visual_review.pages[{page_index}].tiles")
+        if raw_tiles:
+            tiles: list[dict[str, object]] = []
+            for tile_index, raw_tile in enumerate(raw_tiles):
+                tile = dict(
+                    _mapping(
+                        raw_tile,
+                        f"case_visual_review.pages[{page_index}].tiles[{tile_index}]",
+                    )
+                )
+                if "data_uri" not in tile:
+                    tile["data_uri"] = _LAZY_TILE_PLACEHOLDER
+                tiles.append(tile)
+            page["tiles"] = tiles
+        rendered_pages.append(page)
+    rendered_visual["pages"] = rendered_pages
+    rendered_model["case_visual_review"] = rendered_visual
+    return rendered_model
+
+
 def externalize_case_visual_sources(
     fragment: str,
     model: Mapping[str, object],
@@ -207,9 +243,10 @@ def externalize_case_visual_sources(
 
 def render_case_visual_review(model: Mapping[str, object]) -> str:
     """Render Visual Review without embedding case raster bytes in review.html."""
-    fragment = _render_embedded_case_visual_review(
+    rendered_model = _with_lazy_raster_placeholders(
         _with_related_reference_claims(model)
     )
+    fragment = _render_embedded_case_visual_review(rendered_model)
     if not fragment:
         return ""
     return externalize_case_visual_sources(fragment, model)
