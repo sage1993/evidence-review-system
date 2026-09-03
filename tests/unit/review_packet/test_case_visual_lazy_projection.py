@@ -31,7 +31,7 @@ def test_tiled_projection_reuses_verified_metadata_without_tile_payload_read(
     )
     monkeypatch.setattr(
         case_visual_projection,
-        "ensure_visual_page_tiles",
+        "load_visual_page_tiles",
         lambda _workspace, _asset: (tile,),
     )
 
