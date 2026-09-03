@@ -20,7 +20,7 @@ from evidence_review.contracts.drawing import (
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
-    ensure_visual_page_tiles,
+    load_visual_page_tiles,
 )
 from evidence_review.review_packet.reference_pages import build_reference_projection
 from evidence_review.review_packet.related_reference_routing import (
@@ -268,7 +268,7 @@ def _page_tile_documents(
             "height": tile.height,
             "image_sha256": tile.image_sha256,
         }
-        for tile in ensure_visual_page_tiles(workspace_root, asset)
+        for tile in load_visual_page_tiles(workspace_root, asset)
     ]
 
 
