@@ -13,6 +13,7 @@ from evidence_review.contracts.question_plan import (
     QuestionPlan,
     SearchRequest,
 )
+from evidence_review.drawing_review import visual_handoff as visual_handoff_module
 from evidence_review.drawing_review.visual_handoff import prepare_visual_analysis_handoff
 
 
@@ -63,6 +64,26 @@ def test_visual_handoff_exposes_actual_raster_page_without_reference_parser(
     assert asset.is_file()
     assert asset.suffix == ".png"
     assert "parser" not in bundle["attachments"][0]
+
+
+def test_visual_handoff_prewarms_tiles_for_large_page(tmp_path: Path) -> None:
+    source = tmp_path / "large-drawing.png"
+    Image.new("RGB", (4097, 3906), "white").save(source)
+    workspace = tmp_path / "workspace"
+    attachments = prepare_case_visual_sources(workspace, supporting_images=[source])
+
+    handoff = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    assert len(handoff.pages) == 1
+    page = handoff.pages[0]
+    manifest = (
+        workspace
+        / "case-page-tiles-v1"
+        / page.attachment_id
+        / "page-0001"
+        / "manifest.json"
+    )
+    assert manifest.is_file()
 
 
 def test_visual_handoff_rasterizes_case_pdf_without_reference_ingestion(
@@ -117,3 +138,47 @@ def test_visual_handoff_is_reusable_for_identical_source(tmp_path: Path) -> None
 
     assert second.visual_analysis_id == first.visual_analysis_id
     assert second.bundle_path.read_bytes() == first.bundle_path.read_bytes()
+
+
+def test_visual_handoff_id_changes_when_instruction_contract_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "drawing.png"
+    Image.new("RGB", (20, 10), "white").save(source)
+    workspace = tmp_path / "workspace"
+    attachments = prepare_case_visual_sources(workspace, supporting_images=[source])
+
+    monkeypatch.setattr(
+        visual_handoff_module,
+        "_instruction_template_bytes",
+        lambda: b"# visual contract v1\n",
+    )
+    first = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    monkeypatch.setattr(
+        visual_handoff_module,
+        "_instruction_template_bytes",
+        lambda: b"# visual contract v2\n",
+    )
+    second = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    assert second.visual_analysis_id != first.visual_analysis_id
+    assert first.instructions_path.read_bytes() == b"# visual contract v1\n"
+    assert second.instructions_path.read_bytes() == b"# visual contract v2\n"
+
+
+def test_visual_handoff_requires_semantically_tight_geometry(tmp_path: Path) -> None:
+    source = tmp_path / "drawing.png"
+    Image.new("RGB", (40, 30), "white").save(source)
+    workspace = tmp_path / "workspace"
+    attachments = prepare_case_visual_sources(workspace, case_drawings=[source])
+
+    handoff = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+    instructions = handoff.instructions_path.read_text(encoding="utf-8")
+
+    assert "Geometry is source evidence, not a navigation hint" in instructions
+    assert "Every boundary of a BBOX or POLYGON must be justified" in instructions
+    assert "Do not include large blank areas" in instructions
+    assert "project title or project-identification text" in instructions
+    assert "page-scale observation" in instructions

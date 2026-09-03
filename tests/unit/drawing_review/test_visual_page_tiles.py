@@ -1,18 +1,17 @@
 import hashlib
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 import evidence_review.drawing_review.visual_pages as visual_pages
 
 
-def test_large_visual_page_builds_verified_tile_manifest(tmp_path: Path) -> None:
-    assert hasattr(visual_pages, "ensure_visual_page_tiles")
-
+def _large_page(tmp_path: Path) -> visual_pages.VisualPageAsset:
     image_path = tmp_path / "page-0001.png"
     Image.new("RGB", (5000, 4200), "white").save(image_path, format="PNG")
     image_sha256 = hashlib.sha256(image_path.read_bytes()).hexdigest()
-    page = visual_pages.VisualPageAsset(
+    return visual_pages.VisualPageAsset(
         attachment_id="ATT-VISUAL-1",
         source_sha256="a" * 64,
         page=1,
@@ -22,6 +21,29 @@ def test_large_visual_page_builds_verified_tile_manifest(tmp_path: Path) -> None
         image_path=image_path,
         image_sha256=image_sha256,
     )
+
+
+def test_large_visual_page_loader_does_not_materialize_missing_cache(
+    tmp_path: Path,
+) -> None:
+    page = _large_page(tmp_path)
+    tile_directory = (
+        tmp_path
+        / "case-page-tiles-v1"
+        / page.attachment_id
+        / "page-0001"
+    )
+
+    with pytest.raises(FileNotFoundError, match="case visual tile cache is missing"):
+        visual_pages.load_visual_page_tiles(tmp_path, page)
+
+    assert not tile_directory.exists()
+
+
+def test_large_visual_page_builds_verified_tile_manifest(tmp_path: Path) -> None:
+    assert hasattr(visual_pages, "ensure_visual_page_tiles")
+
+    page = _large_page(tmp_path)
 
     tiles = visual_pages.ensure_visual_page_tiles(tmp_path, page)
 
@@ -40,6 +62,7 @@ def test_large_visual_page_builds_verified_tile_manifest(tmp_path: Path) -> None
 
     second = visual_pages.ensure_visual_page_tiles(tmp_path, page)
     assert second == tiles
+    assert visual_pages.load_visual_page_tiles(tmp_path, page) == tiles
 
 
 def test_small_visual_page_does_not_tile(tmp_path: Path) -> None:
@@ -60,3 +83,4 @@ def test_small_visual_page_does_not_tile(tmp_path: Path) -> None:
     )
 
     assert visual_pages.ensure_visual_page_tiles(tmp_path, page) == ()
+    assert visual_pages.load_visual_page_tiles(tmp_path, page) == ()

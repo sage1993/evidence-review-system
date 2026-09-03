@@ -179,7 +179,8 @@ def _citation_cards(claim: Mapping[str, object]) -> tuple[list[str], list[str]]:
     return cards, criteria
 
 
-def _references_for_finding(
+
+def _legacy_references_for_finding(
     finding: Mapping[str, object],
     claims: Mapping[str, Mapping[str, object]],
 ) -> tuple[str, str]:
@@ -237,6 +238,313 @@ def _references_for_finding(
         )
     criterion = direct_criteria[0] if direct_criteria else "직접 비교 가능한 기준 없음"
     return "".join(parts), criterion
+
+
+_REFERENCE_TYPE_LABELS = {
+    "TEXT": "텍스트",
+    "TABLE": "표",
+    "PDF_PAGE": "PDF 페이지",
+    "IMAGE": "이미지",
+    "DIAGRAM": "다이어그램",
+    "DRAWING": "도면",
+}
+
+
+def _reference_page_index(
+    reference_pages: Sequence[Mapping[str, object]],
+) -> dict[str, Mapping[str, object]]:
+    result: dict[str, Mapping[str, object]] = {}
+    for index, page in enumerate(reference_pages):
+        asset_key = _raw_text(page.get("asset_key"))
+        if not asset_key:
+            raise ValueError(f"reference_pages[{index}].asset_key is required")
+        if asset_key in result:
+            raise ValueError(f"duplicate reference page asset key: {asset_key}")
+        result[asset_key] = page
+    return result
+
+
+def _reference_anchor_bbox(
+    anchor: Mapping[str, object],
+    page: Mapping[str, object],
+) -> tuple[float, float, float, float]:
+    bbox = _mapping(anchor.get("bbox"), "reference.anchor.bbox")
+    if bbox.get("coordinate_system") != "PDF_BOTTOM_LEFT_POINTS":
+        raise ValueError(
+            "reference anchor bbox requires PDF_BOTTOM_LEFT_POINTS coordinates"
+        )
+    raw_coordinates = _sequence(
+        bbox.get("coordinates"), "reference.anchor.bbox.coordinates"
+    )
+    if len(raw_coordinates) != 4:
+        raise ValueError("reference anchor bbox requires four coordinates")
+    rotation = _number(page.get("rotation", 0), "reference_page.rotation")
+    if rotation != 0:
+        raise ValueError(
+            "reference anchor rendering currently supports rotation=0 only"
+        )
+    left, bottom, right, top = (
+        _number(raw_coordinates[index], "reference.anchor.bbox.coordinate")
+        for index in range(4)
+    )
+    page_height = _number(page.get("height"), "reference_page.height")
+    if right < left or top < bottom:
+        raise ValueError("reference anchor bbox has invalid bounds")
+    return left, page_height - top, right - left, top - bottom
+
+
+def _reference_anchor_overlay(
+    anchor: Mapping[str, object],
+    page: Mapping[str, object],
+) -> str:
+    anchor_id = _raw_text(anchor.get("anchor_id"))
+    if not anchor_id:
+        raise ValueError("reference anchor anchor_id is required")
+    x, y, width, height = _reference_anchor_bbox(anchor, page)
+    page_width = _number(page.get("width"), "reference_page.width")
+    page_height = _number(page.get("height"), "reference_page.height")
+    return (
+        f'<svg class="reference-overlay-layer" viewBox="0 0 {page_width:g} {page_height:g}" '
+        'preserveAspectRatio="xMidYMid meet" aria-hidden="true">'
+        '<rect class="reference-anchor-box" '
+        f'data-reference-anchor="{_text(anchor_id)}" '
+        f'x="{x:g}" y="{y:g}" width="{width:g}" height="{height:g}"/>'
+        "</svg>"
+    )
+
+
+def _reference_raster_svg(page: Mapping[str, object]) -> str:
+    width = _number(page.get("width"), "reference_page.width")
+    height = _number(page.get("height"), "reference_page.height")
+    return (
+        f'<svg class="reference-raster-layer" viewBox="0 0 {width:g} {height:g}" '
+        'preserveAspectRatio="xMidYMid meet" aria-hidden="true">'
+        '<image data-reference-page-image data-reference-page-src="" '
+        f'x="0" y="0" width="{width:g}" height="{height:g}" '
+        'preserveAspectRatio="none"/>'
+        "</svg>"
+    )
+
+
+def _reference_table(anchor: Mapping[str, object]) -> str:
+    raw_table = anchor.get("table")
+    if raw_table is None:
+        return ""
+    table = _mapping(raw_table, "reference.anchor.table")
+    row_cells: dict[int, list[tuple[int, Mapping[str, object]]]] = {}
+    for index, raw_cell in enumerate(
+        _sequence(table.get("cells", []), "reference.anchor.table.cells")
+    ):
+        cell = _mapping(raw_cell, f"reference.anchor.table.cells[{index}]")
+        row = int(_number(cell.get("row"), "reference.table.cell.row"))
+        column = int(_number(cell.get("column"), "reference.table.cell.column"))
+        row_cells.setdefault(row, []).append((column, cell))
+    rows: list[str] = []
+    for row in sorted(row_cells):
+        cells: list[str] = []
+        for _, cell in sorted(row_cells[row], key=lambda item: item[0]):
+            row_span = int(_number(cell.get("row_span", 1), "reference.table.cell.row_span"))
+            column_span = int(
+                _number(cell.get("column_span", 1), "reference.table.cell.column_span")
+            )
+            class_name = (
+                "reference-table-cell is-target"
+                if cell.get("selected") is True
+                else "reference-table-cell"
+            )
+            cells.append(
+                f'<td class="{class_name}" data-table-cell="{row}:{int(_number(cell.get("column"), "reference.table.cell.column"))}" '
+                f'rowspan="{row_span}" colspan="{column_span}">{_text(cell.get("text"))}</td>'
+            )
+        rows.append(f"<tr>{''.join(cells)}</tr>")
+    return '<table class="reference-table"><tbody>' + "".join(rows) + "</tbody></table>"
+
+
+def _reference_anchor_content(
+    anchor: Mapping[str, object],
+    page: Mapping[str, object],
+    quote_override: str | None = None,
+) -> tuple[str, str]:
+    reference_type = _raw_text(anchor.get("type")).upper()
+    label = _REFERENCE_TYPE_LABELS.get(reference_type)
+    if label is None:
+        raise ValueError(f"unsupported reference anchor type: {reference_type}")
+    document_name = _raw_text(anchor.get("document_name")) or "기준 근거"
+    page_number = anchor.get("page")
+    title = _raw_text(anchor.get("title"))
+    quote = quote_override or _raw_text(anchor.get("quote"))
+    visual = anchor.get("visual")
+    visual_kind = ""
+    if isinstance(visual, Mapping):
+        visual_kind = _raw_text(visual.get("kind"))
+    metadata = (
+        f'<div class="reference-anchor-source"><strong>{_text(document_name)}</strong>'
+        f'<span>p.{_text(page_number)}</span></div>'
+    )
+    body: list[str] = [f'<span class="reference-type-label">{_text(label)}</span>']
+    if title:
+        body.append(f"<h4>{_text(title)}</h4>")
+    if quote:
+        body.append(f"<blockquote>{_text(quote)}</blockquote>")
+    if reference_type == "TABLE":
+        body.append(_reference_table(anchor))
+    elif reference_type in {"IMAGE", "DIAGRAM", "DRAWING"} and visual_kind:
+        body.append(f'<p class="reference-visual-kind">{_text(visual_kind)}</p>')
+    if reference_type == "PDF_PAGE" and not title and not quote:
+        body.append('<p class="reference-page-only">페이지 전체 기준</p>')
+    body_html = "".join(body)
+    return metadata + f'<div class="reference-anchor-content">{body_html}</div>', reference_type
+
+
+def _reference_anchor_card(
+    anchor: Mapping[str, object],
+    page: Mapping[str, object],
+    role: str,
+    quote_override: str | None = None,
+) -> str:
+    content, reference_type = _reference_anchor_content(anchor, page, quote_override)
+    asset_key = _raw_text(page.get("asset_key"))
+    image_sha256 = _raw_text(page.get("image_sha256"))
+    width = _number(page.get("width"), "reference_page.width")
+    height = _number(page.get("height"), "reference_page.height")
+    return (
+        f'<article class="reference-viewer-item" data-reference-type="{_text(reference_type)}" '
+        f'data-reference-role="{_text(role)}">'
+        f'<div class="reference-anchor-fixed">{content}</div>'
+        f'<div class="reference-page-stage" data-reference-page="{_text(asset_key)}" '
+        f'data-reference-asset-key="{_text(asset_key)}" '
+        f'data-reference-image-sha256="{_text(image_sha256)}" '
+        f'data-page-width="{width:g}" data-page-height="{height:g}" '
+        'data-reference-stage tabindex="0">'
+        '<div class="reference-page-transform" data-reference-transform>'
+        f"{_reference_raster_svg(page)}{_reference_anchor_overlay(anchor, page)}"
+        "</div>"
+        "</div></article>"
+    )
+
+
+def _related_reference_text_index(
+    related_references: object,
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for index, raw_reference in enumerate(
+        _sequence(related_references, "case_visual_review.related_references")
+    ):
+        reference = _mapping(
+            raw_reference, f"case_visual_review.related_references[{index}]"
+        )
+        citation = _mapping(
+            reference.get("citation"),
+            f"case_visual_review.related_references[{index}].citation",
+        )
+        citation_id = _raw_text(citation.get("citation_id"))
+        text = _raw_text(reference.get("text"))
+        if citation_id and text:
+            result[citation_id] = text
+    return result
+
+
+def _typed_references_for_finding(
+    finding: Mapping[str, object],
+    reference_pages: Sequence[Mapping[str, object]],
+    related_reference_texts: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    direct_anchors = [
+        _mapping(item, f"finding.direct_reference_anchors[{index}]")
+        for index, item in enumerate(
+            _sequence(
+                finding.get("direct_reference_anchors", []),
+                "finding.direct_reference_anchors",
+            )
+        )
+    ]
+    related_anchors = [
+        _mapping(item, f"finding.related_reference_anchors[{index}]")
+        for index, item in enumerate(
+            _sequence(
+                finding.get("related_reference_anchors", []),
+                "finding.related_reference_anchors",
+            )
+        )
+    ]
+    pages = _reference_page_index(reference_pages)
+    related_texts = related_reference_texts or {}
+
+    def render_group(
+        anchors: Sequence[Mapping[str, object]],
+        role: str,
+    ) -> str:
+        cards: list[str] = []
+        for anchor in anchors:
+            asset_key = _raw_text(anchor.get("page_asset_key"))
+            page = pages.get(asset_key)
+            if page is None:
+                raise ValueError(f"reference page not found: {asset_key}")
+            quote_override = (
+                related_texts.get(_raw_text(anchor.get("anchor_id")))
+                if role == "related"
+                else None
+            )
+            cards.append(_reference_anchor_card(anchor, page, role, quote_override))
+        return "".join(cards)
+
+    parts: list[str] = []
+    if direct_anchors:
+        parts.append(
+            '<div class="direct-reference" data-direct-reference>'
+            '<span class="reference-kind">직접 근거</span>'
+            + render_group(direct_anchors, "direct")
+            + "</div>"
+        )
+    else:
+        parts.append(
+            '<div class="reference-empty" data-direct-reference-empty>'
+            '<strong>직접 대조 가능한 기준을 찾지 못했습니다.</strong>'
+            '<p>현재 자료만으로는 이 도면 요소를 법규·설계기준과 직접 비교할 수 없습니다.</p>'
+            "</div>"
+        )
+    if related_anchors:
+        parts.append(
+            '<details class="related-reference"><summary>관련 근거 '
+            f'{len(related_anchors)}건</summary><div class="related-reference-list">'
+            + render_group(related_anchors, "related")
+            + "</div></details>"
+        )
+    elif not direct_anchors:
+        parts.append(
+            '<p class="reference-related-empty">관련 근거도 연결되지 않았습니다.</p>'
+        )
+    criterion = "직접 비교 가능한 기준 없음"
+    if direct_anchors:
+        first = direct_anchors[0]
+        criterion = (
+            _raw_text(first.get("quote"))
+            or _raw_text(first.get("title"))
+            or _raw_text(first.get("document_name"))
+            or criterion
+        )
+    return "".join(parts), criterion
+
+
+def _references_for_finding(
+    finding: Mapping[str, object],
+    claims: Mapping[str, Mapping[str, object]],
+    reference_pages: Sequence[Mapping[str, object]] | None = None,
+    related_reference_texts: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    direct = _sequence(
+        finding.get("direct_reference_anchors", []),
+        "finding.direct_reference_anchors",
+    )
+    related = _sequence(
+        finding.get("related_reference_anchors", []),
+        "finding.related_reference_anchors",
+    )
+    if direct or related:
+        return _typed_references_for_finding(
+            finding, reference_pages or [], related_reference_texts
+        )
+    return _legacy_references_for_finding(finding, claims)
 
 
 def _fallback_findings(pages: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
@@ -401,6 +709,12 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
     ]
     if not pages:
         raise ValueError("validated case visual review requires at least one page")
+    reference_pages = [
+        _mapping(item, f"case_visual_review.reference_pages[{index}]")
+        for index, item in enumerate(
+            _sequence(visual.get("reference_pages", []), "case_visual_review.reference_pages")
+        )
+    ]
     raw_findings = visual.get("findings")
     findings = (
         [
@@ -411,6 +725,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
         else _fallback_findings(pages)
     )
     claims = _claim_index(model)
+    related_reference_texts = _related_reference_text_index(
+        visual.get("related_references", [])
+    )
 
     candidate_finding_number: dict[str, int] = {}
     for number, finding in enumerate(findings, start=1):
@@ -470,7 +787,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
     any_direct = False
     for index, finding in enumerate(findings):
         finding_id = _raw_text(finding.get("finding_id")) or f"VF-{index + 1}"
-        refs, criterion = _references_for_finding(finding, claims)
+        refs, criterion = _references_for_finding(
+            finding, claims, reference_pages, related_reference_texts
+        )
         direct_ids = _sequence(finding.get("direct_claim_ids", []), "finding.direct_claim_ids")
         any_direct = any_direct or bool(direct_ids)
         reference_html.append(
@@ -590,13 +909,29 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
 
 
 CASE_VISUAL_CSS = r"""
-#case-visual-review{--line:#d0d5dd;--muted:#667085;--panel:#fff;--canvas:#e9edf2;height:100%;min-height:0;background:#fff;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr) 30px;position:relative}.visual-abstain{position:absolute;z-index:12;left:12px;top:10px;max-width:min(520px,42vw);display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid #fedf89;border-radius:8px;background:rgba(255,250,235,.96);box-shadow:0 2px 8px rgba(16,24,40,.06);font-size:11px;color:#93370d}.visual-abstain strong{white-space:nowrap;color:#7a2e0e}.visual-abstain span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace-grid{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,326px)}.comparison-workspace{min-width:0;min-height:0;display:grid;grid-template-columns:var(--reference-width,42%) 10px minmax(0,1fr)}.reference-viewer,.subject-viewer,.findings-panel{min-width:0;min-height:0;background:var(--panel);display:grid}.reference-viewer,.subject-viewer{grid-template-rows:42px minmax(0,1fr)}.findings-panel{grid-template-rows:42px 38px minmax(0,1fr) 46px;border-left:1px solid var(--line)}.reference-viewer>header,.findings-panel>header,.subject-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);background:#f8fafc;font-size:12px}.reference-viewer header span,.findings-panel header span,.subject-toolbar span{font-size:10px;color:var(--muted)}.reference-body{min-height:0;overflow:hidden;padding:12px}.reference-focus{height:100%;overflow:auto;scrollbar-width:thin}.reference-kind{display:inline-flex;padding:3px 6px;border-radius:5px;background:#eef4ff;color:#3538cd;font-size:10px;font-weight:700;margin-bottom:7px}.reference-card{border:1px solid #e4e7ec;border-radius:9px;padding:12px;margin-bottom:9px;background:#fff}.reference-source{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}.reference-source strong{color:#344054}.reference-card blockquote{margin:10px 0 0;padding:0;font-size:13px;line-height:1.65;color:#101828}.reference-empty{display:grid;place-content:center;min-height:58%;text-align:center;color:var(--muted);font-size:12px}.reference-empty strong{color:#344054;font-size:13px}.reference-empty p{max-width:320px;line-height:1.55}.related-reference{margin-top:12px;border-top:1px solid #e4e7ec;padding-top:10px}.related-reference summary{cursor:pointer;color:#475467;font-size:11px;font-weight:700}.related-reference-list{margin-top:8px;opacity:.82}.reference-related-empty{text-align:center;color:#98a2b3;font-size:10px}.viewer-divider{padding:0;border:0;border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec;background:#f2f4f7;cursor:col-resize;display:grid;place-items:center}.viewer-divider span{width:3px;height:42px;border-radius:2px;background:#98a2b3}.viewer-divider:hover,.viewer-divider:focus-visible{background:#e4e7ec;outline:none}.subject-toolbar{display:grid;grid-template-columns:auto auto 1fr}.subject-toolbar>div:first-child{display:flex;align-items:baseline;gap:7px}.overlay-modes{display:flex;gap:4px}.overlay-modes button{height:27px;padding:0 7px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;color:#475467;font-size:10px}.overlay-modes button.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.viewer-controls{display:flex;align-items:center;justify-self:end;gap:5px}.viewer-controls button{width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;display:grid;place-items:center;color:#344054}.toolbar-icon{width:15px;height:15px}.control-separator{width:1px;height:18px;background:#d0d5dd;margin:0 3px}.subject-body{position:relative;min-height:0;overflow:hidden;background:var(--canvas)}.case-visual-page{position:absolute;inset:0;margin:0;display:grid;grid-template-rows:minmax(0,1fr) 26px}.case-visual-stage{position:relative;overflow:hidden;cursor:grab;touch-action:none}.case-visual-stage.is-dragging{cursor:grabbing}.case-visual-transform{position:absolute;inset:0;transform-origin:0 0;will-change:transform}.case-raster-layer,.case-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}.case-visual-page figcaption{display:grid;place-items:center;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px}.case-visual-overlay{stroke-width:2.5;vector-effect:non-scaling-stroke}.case-visual-geometry{fill:none;stroke:currentColor;vector-effect:non-scaling-stroke}.case-visual-marker .marker-ring{stroke:#fff;stroke-width:4;vector-effect:non-scaling-stroke}.case-visual-marker .marker-core{fill:currentColor;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}.marker-text{fill:#fff;font-size:11px;font-weight:800;text-anchor:middle;dominant-baseline:central;stroke:none;pointer-events:none}.case-visual-overlay.tone-issue{color:#d92d20;stroke:#d92d20}.case-visual-overlay.tone-review{color:#f79009;stroke:#f79009}.case-visual-overlay.tone-observation{color:#2e90fa;stroke:#2e90fa}.case-visual-overlay.tone-compliant{color:#12b76a;stroke:#12b76a}.case-visual-overlay:not(.is-active) .case-visual-geometry{opacity:.18}.case-visual-overlay.is-active .case-visual-geometry{stroke-width:4;filter:drop-shadow(0 0 2px rgba(0,0,0,.18))}#case-visual-review[data-overlay-mode="selected"] .case-visual-overlay:not(.is-active){display:none}.finding-filters{display:flex;align-items:center;gap:4px;padding:5px 7px;border-bottom:1px solid var(--line);background:#fbfcfe;overflow:hidden}.finding-filter{height:27px;padding:0 6px;border:1px solid #e4e7ec;border-radius:6px;background:#fff;color:#475467;font-size:10px;white-space:nowrap}.finding-filter.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.findings-body{min-height:0;overflow:hidden;padding:8px;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:7px}.finding-card{min-height:0;overflow:hidden;padding:9px;border:1px solid #e4e7ec;border-radius:9px;background:#fff;text-align:left;color:#101828}.finding-card:hover{background:#fcfcfd}.finding-card.is-active{border-color:#84adff;box-shadow:inset 3px 0 0 #2e90fa;background:linear-gradient(90deg,#eff8ff,#fff 72%)}.finding-title-row{display:flex;align-items:center;justify-content:space-between}.finding-number{font:600 10px ui-monospace,monospace;color:var(--muted)}.finding-status{font-size:10px;font-weight:700;padding:3px 6px;border-radius:999px}.status-mismatch .finding-status{color:#b42318;background:#fef3f2}.status-match .finding-status{color:#027a48;background:#ecfdf3}.status-needs-check .finding-status{color:#b54708;background:#fffaeb}.status-not-comparable .finding-status{color:#175cd3;background:#eff8ff}.finding-card h3{font-size:13px;margin:7px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.comparison-grid{display:grid;gap:5px;margin:0}.comparison-grid div{padding:6px 7px;border-radius:6px;background:#f8fafc}.comparison-grid dt{font-size:9px;color:var(--muted);margin-bottom:2px}.comparison-grid dd{margin:0;font-size:10.5px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.findings-empty{grid-row:1/-1;display:grid;place-content:center;text-align:center;color:var(--muted)}.finding-pagination{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid var(--line);background:#f8fafc;font-size:10px}.finding-pagination>button:not(.decision-open){width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff}.decision-open{margin-left:auto;height:30px;padding:0 9px;border:1px solid #1570ef;border-radius:6px;background:#1570ef;color:#fff;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700}.case-visual-help{margin:0;padding:6px 12px;border-top:1px solid #e4e7ec;color:var(--muted);font-size:10px;background:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.case-decision-backdrop{position:fixed;inset:0;z-index:29;border:0;background:rgba(16,24,40,.22)}body[data-visual-decision-open="true"] .case-decision-backdrop{display:block!important}@media(max-width:900px){.workspace-grid{grid-template-columns:minmax(0,1fr) 292px}.comparison-workspace{--reference-width:38%}.visual-abstain{max-width:48vw}}@media(max-width:720px){.workspace-grid{grid-template-columns:1fr}.findings-panel{position:absolute;right:6px;top:46px;bottom:34px;width:min(86vw,310px);z-index:5;box-shadow:0 8px 28px rgba(16,24,40,.18)}.comparison-workspace{grid-template-columns:0 0 1fr}.reference-viewer,.viewer-divider{visibility:hidden}.visual-abstain{left:8px;top:6px;max-width:70vw}.subject-toolbar{grid-template-columns:auto 1fr}.overlay-modes{display:none}}
+#case-visual-review{--line:#d0d5dd;--muted:#667085;--panel:#fff;--canvas:#e9edf2;height:100%;min-height:0;background:#fff;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr) 30px;position:relative}.visual-abstain{position:absolute;z-index:12;left:12px;top:10px;max-width:min(520px,42vw);display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid #fedf89;border-radius:8px;background:rgba(255,250,235,.96);box-shadow:0 2px 8px rgba(16,24,40,.06);font-size:11px;color:#93370d}.visual-abstain strong{white-space:nowrap;color:#7a2e0e}.visual-abstain span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace-grid{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,326px)}.comparison-workspace{min-width:0;min-height:0;display:grid;grid-template-columns:var(--reference-width,42%) 10px minmax(0,1fr)}.reference-viewer,.subject-viewer,.findings-panel{min-width:0;min-height:0;background:var(--panel);display:grid}.reference-viewer,.subject-viewer{grid-template-rows:42px minmax(0,1fr)}.findings-panel{grid-template-rows:42px 38px minmax(0,1fr) 46px;border-left:1px solid var(--line)}.reference-viewer>header,.findings-panel>header,.subject-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);background:#f8fafc;font-size:12px}.reference-viewer header span,.findings-panel header span,.subject-toolbar span{font-size:10px;color:var(--muted)}.reference-body{min-height:0;overflow:hidden;padding:12px}.reference-focus{height:100%;overflow:auto;scrollbar-width:thin}.reference-kind{display:inline-flex;padding:3px 6px;border-radius:5px;background:#eef4ff;color:#3538cd;font-size:10px;font-weight:700;margin-bottom:7px}.reference-card{border:1px solid #e4e7ec;border-radius:9px;padding:12px;margin-bottom:9px;background:#fff}.reference-source{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}.reference-source strong{color:#344054}.reference-card blockquote{margin:10px 0 0;padding:0;font-size:13px;line-height:1.65;color:#101828}.reference-empty{display:grid;place-content:center;min-height:58%;text-align:center;color:var(--muted);font-size:12px}.reference-empty strong{color:#344054;font-size:13px}.reference-empty p{max-width:320px;line-height:1.55}.reference-viewer-item{border:1px solid #e4e7ec;border-radius:9px;padding:10px;margin-bottom:9px;background:#fff}.reference-page-stage{position:relative;min-height:150px;padding:10px;border:1px solid #f2f4f7;border-radius:7px;background:#fcfcfd;overflow:hidden}.reference-anchor-source{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}.reference-anchor-source strong{color:#344054}.reference-anchor-content{position:relative;z-index:1;padding-right:4px}.reference-type-label{display:inline-flex;margin:8px 0 2px;padding:3px 6px;border-radius:5px;background:#eef4ff;color:#3538cd;font-size:10px;font-weight:700}.reference-anchor-content h4{margin:5px 0;font-size:12px}.reference-anchor-content blockquote{margin:6px 0 0;padding:0;font-size:12px;line-height:1.55;color:#101828}.reference-visual-kind,.reference-page-only{margin:6px 0 0;color:var(--muted);font-size:10px}.reference-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.reference-anchor-box{fill:rgba(46,144,250,.12);stroke:#2e90fa;stroke-width:2;vector-effect:non-scaling-stroke}.reference-table{width:100%;margin-top:8px;border-collapse:collapse;background:#fff;font-size:10px}.reference-table-cell{padding:5px 6px;border:1px solid #d0d5dd;text-align:left;color:#344054}.reference-table-cell.is-target{background:#fff4e5;box-shadow:inset 0 0 0 2px #f79009;color:#7a2e0e}.related-reference{margin-top:12px;border-top:1px solid #e4e7ec;padding-top:10px}.related-reference summary{cursor:pointer;color:#475467;font-size:11px;font-weight:700}.related-reference-list{margin-top:8px;opacity:.82}.reference-related-empty{text-align:center;color:#98a2b3;font-size:10px}.viewer-divider{padding:0;border:0;border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec;background:#f2f4f7;cursor:col-resize;display:grid;place-items:center}.viewer-divider span{width:3px;height:42px;border-radius:2px;background:#98a2b3}.viewer-divider:hover,.viewer-divider:focus-visible{background:#e4e7ec;outline:none}.subject-toolbar{display:grid;grid-template-columns:auto auto 1fr}.subject-toolbar>div:first-child{display:flex;align-items:baseline;gap:7px}.overlay-modes{display:flex;gap:4px}.overlay-modes button{height:27px;padding:0 7px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;color:#475467;font-size:10px}.overlay-modes button.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.viewer-controls{display:flex;align-items:center;justify-self:end;gap:5px}.viewer-controls button{width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;display:grid;place-items:center;color:#344054}.toolbar-icon{width:15px;height:15px}.control-separator{width:1px;height:18px;background:#d0d5dd;margin:0 3px}.subject-body{position:relative;min-height:0;overflow:hidden;background:var(--canvas)}.case-visual-page{position:absolute;inset:0;margin:0;display:grid;grid-template-rows:minmax(0,1fr) 26px}.case-visual-stage{position:relative;overflow:hidden;cursor:grab;touch-action:none}.case-visual-stage.is-dragging{cursor:grabbing}.case-visual-transform{position:absolute;inset:0;transform-origin:0 0;will-change:transform}.case-raster-layer,.case-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}.case-visual-page figcaption{display:grid;place-items:center;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px}.case-visual-overlay{stroke-width:2.5;vector-effect:non-scaling-stroke}.case-visual-geometry{fill:none;stroke:currentColor;vector-effect:non-scaling-stroke}.case-visual-marker .marker-ring{stroke:#fff;stroke-width:4;vector-effect:non-scaling-stroke}.case-visual-marker .marker-core{fill:currentColor;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}.marker-text{fill:#fff;font-size:11px;font-weight:800;text-anchor:middle;dominant-baseline:central;stroke:none;pointer-events:none}.case-visual-overlay.tone-issue{color:#d92d20;stroke:#d92d20}.case-visual-overlay.tone-review{color:#f79009;stroke:#f79009}.case-visual-overlay.tone-observation{color:#2e90fa;stroke:#2e90fa}.case-visual-overlay.tone-compliant{color:#12b76a;stroke:#12b76a}.case-visual-overlay:not(.is-active) .case-visual-geometry{opacity:.18}.case-visual-overlay.is-active .case-visual-geometry{stroke-width:4;filter:drop-shadow(0 0 2px rgba(0,0,0,.18))}#case-visual-review[data-overlay-mode="selected"] .case-visual-overlay:not(.is-active){display:none}.finding-filters{display:flex;align-items:center;gap:4px;padding:5px 7px;border-bottom:1px solid var(--line);background:#fbfcfe;overflow:hidden}.finding-filter{height:27px;padding:0 6px;border:1px solid #e4e7ec;border-radius:6px;background:#fff;color:#475467;font-size:10px;white-space:nowrap}.finding-filter.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.findings-body{min-height:0;overflow:hidden;padding:8px;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:7px}.finding-card{min-height:0;overflow:hidden;padding:9px;border:1px solid #e4e7ec;border-radius:9px;background:#fff;text-align:left;color:#101828}.finding-card:hover{background:#fcfcfd}.finding-card.is-active{border-color:#84adff;box-shadow:inset 3px 0 0 #2e90fa;background:linear-gradient(90deg,#eff8ff,#fff 72%)}.finding-title-row{display:flex;align-items:center;justify-content:space-between}.finding-number{font:600 10px ui-monospace,monospace;color:var(--muted)}.finding-status{font-size:10px;font-weight:700;padding:3px 6px;border-radius:999px}.status-mismatch .finding-status{color:#b42318;background:#fef3f2}.status-match .finding-status{color:#027a48;background:#ecfdf3}.status-needs-check .finding-status{color:#b54708;background:#fffaeb}.status-not-comparable .finding-status{color:#175cd3;background:#eff8ff}.finding-card h3{font-size:13px;margin:7px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.comparison-grid{display:grid;gap:5px;margin:0}.comparison-grid div{padding:6px 7px;border-radius:6px;background:#f8fafc}.comparison-grid dt{font-size:9px;color:var(--muted);margin-bottom:2px}.comparison-grid dd{margin:0;font-size:10.5px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.findings-empty{grid-row:1/-1;display:grid;place-content:center;text-align:center;color:var(--muted)}.finding-pagination{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid var(--line);background:#f8fafc;font-size:10px}.finding-pagination>button:not(.decision-open){width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff}.decision-open{margin-left:auto;height:30px;padding:0 9px;border:1px solid #1570ef;border-radius:6px;background:#1570ef;color:#fff;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700}.case-visual-help{margin:0;padding:6px 12px;border-top:1px solid #e4e7ec;color:var(--muted);font-size:10px;background:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.case-decision-backdrop{position:fixed;inset:0;z-index:29;border:0;background:rgba(16,24,40,.22)}body[data-visual-decision-open="true"] .case-decision-backdrop{display:block!important}@media(max-width:900px){.workspace-grid{grid-template-columns:minmax(0,1fr) 292px}.comparison-workspace{--reference-width:38%}.visual-abstain{max-width:48vw}}@media(max-width:720px){.workspace-grid{grid-template-columns:1fr}.findings-panel{position:absolute;right:6px;top:46px;bottom:34px;width:min(86vw,310px);z-index:5;box-shadow:0 8px 28px rgba(16,24,40,.18)}.comparison-workspace{grid-template-columns:0 0 1fr}.reference-viewer,.viewer-divider{visibility:hidden}.visual-abstain{left:8px;top:6px;max-width:70vw}.subject-toolbar{grid-template-columns:auto 1fr}.overlay-modes{display:none}}
+.reference-raster-layer,.reference-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.reference-page-stage{cursor:grab;touch-action:none}.reference-page-stage.is-dragging{cursor:grabbing}.reference-page-transform{position:absolute;inset:0;transform-origin:0 0;will-change:transform}
+.case-visual-page[hidden]{display:none!important}
 """
 
 
 CASE_VISUAL_SCRIPT = r"""
 (()=>{const root=document.getElementById('case-visual-review');if(!root||root.dataset.bound==='1')return;root.dataset.bound='1';const pages=[...root.querySelectorAll('[data-case-page]')],cards=[...root.querySelectorAll('[data-case-finding]')],refs=[...root.querySelectorAll('[data-case-reference]')],overlays=[...root.querySelectorAll('[data-case-overlay]')],filterButtons=[...root.querySelectorAll('[data-case-filter]')];let pageIndex=0,activeCardIndex=cards.length?0:-1,filter='all',resultPage=0;const PAGE_SIZE=3,states=new WeakMap(),pageNo=root.querySelector('[data-case-page-number]'),zoomLabel=root.querySelector('[data-case-zoom]'),resultPageNo=root.querySelector('[data-finding-page-number]'),resultPageTotal=root.querySelector('[data-finding-page-total]');let tileFrame=0;function state(stage){let s=states.get(stage);if(!s){s={scale:1,x:0,y:0,drag:false,px:0,py:0};states.set(stage,s)}return s}function pageDimensions(page){return [Number(page?.dataset.pageWidth||0),Number(page?.dataset.pageHeight||0)]}function apply(stage){const s=state(stage),t=stage.querySelector('[data-case-transform]');if(t)t.style.transform=`translate(${s.x}px,${s.y}px) scale(${s.scale})`;if(zoomLabel&&pages[pageIndex]?.contains(stage))zoomLabel.textContent=`${Math.round(s.scale*100)}%`;scheduleVisibleTiles(pages[pageIndex])}function reset(stage){states.set(stage,{scale:1,x:0,y:0,drag:false,px:0,py:0});apply(stage)}function ensurePageRaster(page){if(!page)return;const full=page.querySelector('[data-case-page-image]');if(full&&!full.getAttribute('href'))full.setAttribute('href',full.dataset.casePageSrc||'');scheduleVisibleTiles(page)}function scheduleVisibleTiles(page){if(!page||tileFrame)return;tileFrame=requestAnimationFrame(()=>{tileFrame=0;ensureVisibleTiles(page)})}function ensureVisibleTiles(page){const stage=page?.querySelector('[data-case-stage]');if(!stage)return;const tiles=[...page.querySelectorAll('[data-case-tile]')];if(!tiles.length)return;const [pw,ph]=pageDimensions(page),rect=stage.getBoundingClientRect();if(!(pw>0&&ph>0&&rect.width>0&&rect.height>0))return;const fit=Math.min(rect.width/pw,rect.height/ph),ox=(rect.width-pw*fit)/2,oy=(rect.height-ph*fit)/2,s=state(stage),margin=Math.max(160,Math.min(rect.width,rect.height)*.25);tiles.forEach(tile=>{if(tile.getAttribute('href'))return;const x=Number(tile.dataset.tileX||0),y=Number(tile.dataset.tileY||0),w=Number(tile.dataset.tileWidth||0),h=Number(tile.dataset.tileHeight||0),left=s.x+(ox+x*fit)*s.scale,top=s.y+(oy+y*fit)*s.scale,right=left+w*fit*s.scale,bottom=top+h*fit*s.scale;if(right>=-margin&&bottom>=-margin&&left<=rect.width+margin&&top<=rect.height+margin)tile.setAttribute('href',tile.dataset.caseTileSrc||'')})}function showPage(key){const idx=pages.findIndex(p=>p.dataset.casePage===key);if(idx<0)return;pageIndex=idx;pages.forEach((p,i)=>{p.hidden=i!==idx;p.classList.toggle('is-active',i===idx)});if(pageNo)pageNo.textContent=String(idx+1);ensurePageRaster(pages[idx]);const stage=pages[idx].querySelector('[data-case-stage]');if(stage)apply(stage)}function candidateIds(card){return new Set((card?.dataset.caseCandidateIds||'').split('|').filter(Boolean))}function focusSubjectFinding(card){if(!card)return;showPage(card.dataset.casePageKey||'');requestAnimationFrame(()=>{const page=pages[pageIndex],stage=page?.querySelector('[data-case-stage]');if(!page||!stage)return;const bbox=(card.dataset.caseFocusBbox||'').split(',').map(Number);if(bbox.length!==4||bbox.some(v=>!Number.isFinite(v)))return;const [pw,ph]=pageDimensions(page),rect=stage.getBoundingClientRect();if(!(pw>0&&ph>0&&rect.width>0&&rect.height>0))return;const fit=Math.min(rect.width/pw,rect.height/ph),ox=(rect.width-pw*fit)/2,oy=(rect.height-ph*fit)/2,[l,t,r,b]=bbox,bw=Math.max(1,(r-l)*fit),bh=Math.max(1,(b-t)*fit),target=Math.min(5,Math.max(1,Math.min(rect.width*.58/bw,rect.height*.58/bh))),cx=ox+((l+r)/2)*fit,cy=oy+((t+b)/2)*fit,s=state(stage);s.scale=target;s.x=rect.width/2-cx*target;s.y=rect.height/2-cy*target;apply(stage)})}function activateCard(index,{focus=true}={}){if(index<0||index>=cards.length)return;activeCardIndex=index;const card=cards[index],id=card.dataset.caseFinding||'',ids=candidateIds(card);cards.forEach((item,i)=>item.classList.toggle('is-active',i===index));refs.forEach(ref=>{const on=ref.dataset.caseReference===id;ref.hidden=!on;ref.classList.toggle('is-active',on);if(on){const direct=ref.querySelector('[data-direct-reference], [data-direct-reference-empty]');direct?.scrollIntoView({block:'nearest'})}});overlays.forEach(overlay=>overlay.classList.toggle('is-active',ids.has(overlay.dataset.caseOverlay||'')));if(focus)focusSubjectFinding(card)}function filteredCardIndexes(){return cards.map((card,index)=>({card,index})).filter(({card})=>filter==='all'||card.dataset.findingStatus===filter).map(({index})=>index)}function renderResultPage({activate=true}={}){const indexes=filteredCardIndexes(),total=Math.max(1,Math.ceil(indexes.length/PAGE_SIZE));resultPage=Math.max(0,Math.min(resultPage,total-1));const slice=new Set(indexes.slice(resultPage*PAGE_SIZE,(resultPage+1)*PAGE_SIZE));cards.forEach((card,index)=>{card.hidden=!slice.has(index)});if(resultPageNo)resultPageNo.textContent=String(resultPage+1);if(resultPageTotal)resultPageTotal.textContent=String(total);if(activate&&indexes.length){const preferred=slice.has(activeCardIndex)?activeCardIndex:indexes[resultPage*PAGE_SIZE];activateCard(preferred,{focus:true})}}cards.forEach((card,index)=>card.addEventListener('click',()=>activateCard(index,{focus:true})));filterButtons.forEach(button=>button.addEventListener('click',()=>{filter=button.dataset.caseFilter||'all';filterButtons.forEach(item=>item.classList.toggle('is-active',item===button));resultPage=0;renderResultPage({activate:true})}));root.querySelector('[data-finding-prev]')?.addEventListener('click',()=>{resultPage--;renderResultPage({activate:true})});root.querySelector('[data-finding-next]')?.addEventListener('click',()=>{resultPage++;renderResultPage({activate:true})});root.querySelector('[data-case-prev]')?.addEventListener('click',()=>showPage(pages[(pageIndex-1+pages.length)%pages.length]?.dataset.casePage||''));root.querySelector('[data-case-next]')?.addEventListener('click',()=>showPage(pages[(pageIndex+1)%pages.length]?.dataset.casePage||''));root.querySelectorAll('[data-case-overlay-mode]').forEach(button=>button.addEventListener('click',()=>{const mode=button.dataset.caseOverlayMode||'all';root.dataset.overlayMode=mode;root.querySelectorAll('[data-case-overlay-mode]').forEach(item=>item.classList.toggle('is-active',item===button))}));function zoom(factor,clientX,clientY){const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(!stage)return;const s=state(stage),rect=stage.getBoundingClientRect(),cx=clientX??rect.left+rect.width/2,cy=clientY??rect.top+rect.height/2,lx=(cx-rect.left-s.x)/s.scale,ly=(cy-rect.top-s.y)/s.scale,next=Math.min(5,Math.max(.5,s.scale*factor));s.x=cx-rect.left-lx*next;s.y=cy-rect.top-ly*next;s.scale=next;apply(stage)}root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-reset]')?.addEventListener('click',()=>{const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(stage)reset(stage)});pages.forEach(page=>{const stage=page.querySelector('[data-case-stage]');if(!stage)return;stage.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.12:.89,e.clientX,e.clientY)},{passive:false});stage.addEventListener('dblclick',()=>reset(stage));stage.addEventListener('pointerdown',e=>{if(e.button!==0)return;const s=state(stage);s.drag=true;s.px=e.clientX;s.py=e.clientY;stage.setPointerCapture(e.pointerId);stage.classList.add('is-dragging')});stage.addEventListener('pointermove',e=>{const s=state(stage);if(!s.drag)return;s.x+=e.clientX-s.px;s.y+=e.clientY-s.py;s.px=e.clientX;s.py=e.clientY;apply(stage)});const stop=e=>{state(stage).drag=false;stage.classList.remove('is-dragging');try{stage.releasePointerCapture(e.pointerId)}catch(_){}};stage.addEventListener('pointerup',stop);stage.addEventListener('pointercancel',stop)});const split=root.querySelector('[data-case-split]'),divider=root.querySelector('[data-case-divider]');function setSplit(percent){if(!split||!divider)return;const value=Math.min(70,Math.max(26,percent));split.style.setProperty('--reference-width',`${value}%`);divider.setAttribute('aria-valuenow',String(Math.round(value)))}if(split&&divider){let dragging=false;divider.addEventListener('pointerdown',e=>{if(e.button!==0)return;dragging=true;divider.setPointerCapture(e.pointerId)});divider.addEventListener('pointermove',e=>{if(!dragging)return;const rect=split.getBoundingClientRect();setSplit((e.clientX-rect.left)/rect.width*100)});const stop=e=>{dragging=false;try{divider.releasePointerCapture(e.pointerId)}catch(_){}};divider.addEventListener('pointerup',stop);divider.addEventListener('pointercancel',stop);divider.addEventListener('dblclick',()=>setSplit(cards.some(card=>card.dataset.findingStatus!=='not_comparable')?42:30));divider.addEventListener('keydown',e=>{const now=Number(divider.getAttribute('aria-valuenow')||42);if(e.key==='ArrowLeft'){e.preventDefault();setSplit(now-2)}if(e.key==='ArrowRight'){e.preventDefault();setSplit(now+2)}})}function setDecision(open){document.body.dataset.visualDecisionOpen=open?'true':'false';const backdrop=root.querySelector('[data-case-decision-backdrop]');if(backdrop)backdrop.hidden=!open;const form=document.getElementById('decision-form');if(form){form.setAttribute('aria-hidden',open?'false':'true');if(open){let close=form.querySelector('[data-visual-decision-close]');if(!close){close=document.createElement('button');close.type='button';close.dataset.visualDecisionClose='';close.className='visual-decision-close';close.textContent='닫기';form.prepend(close);close.addEventListener('click',()=>setDecision(false))}form.querySelector('input,textarea,button')?.focus()}}}root.querySelector('[data-case-decision-open]')?.addEventListener('click',()=>setDecision(true));root.querySelector('[data-case-decision-backdrop]')?.addEventListener('click',()=>setDecision(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.dataset.visualDecisionOpen==='true')setDecision(false)});showPage(pages[0]?.dataset.casePage||'');renderResultPage({activate:false});if(cards.length)activateCard(0,{focus:false})})();
 """
+
+
+CASE_VISUAL_SCRIPT = (
+    CASE_VISUAL_SCRIPT.replace(
+        "function activateCard(index,{focus=true}={}){",
+        "function ensureReferenceRaster(scope){if(!scope)return;scope.querySelectorAll('[data-reference-page-image]').forEach(image=>{if(image.getAttribute('href'))return;const src=image.dataset.referencePageSrc||'';if(src)image.setAttribute('href',src)})}const referenceStates=new WeakMap();function referenceState(stage){let s=referenceStates.get(stage);if(!s){s={scale:1,x:0,y:0,drag:false,px:0,py:0};referenceStates.set(stage,s)}return s}function applyReference(stage){const s=referenceState(stage),t=stage.querySelector('[data-reference-transform]');if(t)t.style.transform=`translate(${s.x}px,${s.y}px) scale(${s.scale})`}function resetReference(stage){referenceStates.set(stage,{scale:1,x:0,y:0,drag:false,px:0,py:0});applyReference(stage)}function preferredReferenceItem(scope){return scope.querySelector('[data-reference-role=\"direct\"]')||scope.querySelector('[data-reference-role=\"related\"]')}function focusReferenceFinding(scope){if(!scope)return;const item=preferredReferenceItem(scope);if(!item)return;const details=item.closest('details');if(details)details.open=true;const stage=item.querySelector('[data-reference-stage]'),anchor=item.querySelector('[data-reference-anchor]');if(!stage||!anchor)return;requestAnimationFrame(()=>{const pw=Number(stage.dataset.pageWidth||0),ph=Number(stage.dataset.pageHeight||0),rect=stage.getBoundingClientRect(),x=Number(anchor.getAttribute('x')),y=Number(anchor.getAttribute('y')),w=Number(anchor.getAttribute('width')),h=Number(anchor.getAttribute('height'));if(!(pw>0&&ph>0&&rect.width>0&&rect.height>0&&[x,y,w,h].every(Number.isFinite)))return;const fit=Math.min(rect.width/pw,rect.height/ph),ox=(rect.width-pw*fit)/2,oy=(rect.height-ph*fit)/2,bw=Math.max(1,w*fit),bh=Math.max(1,h*fit),target=Math.min(5,Math.max(1,Math.min(rect.width*.58/bw,rect.height*.58/bh))),cx=ox+(x+w/2)*fit,cy=oy+(y+h/2)*fit,s=referenceState(stage);s.scale=target;s.x=rect.width/2-cx*target;s.y=rect.height/2-cy*target;applyReference(stage)})}function referenceZoom(stage,factor,clientX,clientY){if(!stage)return;const s=referenceState(stage),rect=stage.getBoundingClientRect(),cx=clientX??rect.left+rect.width/2,cy=clientY??rect.top+rect.height/2,lx=(cx-rect.left-s.x)/s.scale,ly=(cy-rect.top-s.y)/s.scale,next=Math.min(5,Math.max(.5,s.scale*factor));s.x=cx-rect.left-lx*next;s.y=cy-rect.top-ly*next;s.scale=next;applyReference(stage)}function activateCard(index,{focus=true}={}){",
+    ).replace(
+        "ref.classList.toggle('is-active',on);if(on){const direct=",
+        "ref.classList.toggle('is-active',on);if(on){const item=preferredReferenceItem(ref);ref.querySelectorAll('[data-reference-role]').forEach(candidate=>candidate.classList.toggle('is-active',candidate===item));if(item){ensureReferenceRaster(item);if(focus)focusReferenceFinding(ref)}const direct=",
+    ).replace(
+        "root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-reset]')?.addEventListener('click',()=>{const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(stage)reset(stage)});pages.forEach(page=>{const stage=page.querySelector('[data-case-stage]');",
+        "root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-reset]')?.addEventListener('click',()=>{const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(stage)reset(stage)});root.querySelectorAll('[data-reference-stage]').forEach(stage=>{stage.addEventListener('wheel',e=>{e.preventDefault();referenceZoom(stage,e.deltaY<0?1.12:.89,e.clientX,e.clientY)},{passive:false});stage.addEventListener('dblclick',()=>resetReference(stage));stage.addEventListener('pointerdown',e=>{if(e.button!==0)return;const s=referenceState(stage);s.drag=true;s.px=e.clientX;s.py=e.clientY;stage.setPointerCapture(e.pointerId);stage.classList.add('is-dragging')});stage.addEventListener('pointermove',e=>{const s=referenceState(stage);if(!s.drag)return;s.x+=e.clientX-s.px;s.y+=e.clientY-s.py;s.px=e.clientX;s.py=e.clientY;applyReference(stage)});const stop=e=>{referenceState(stage).drag=false;stage.classList.remove('is-dragging');try{stage.releasePointerCapture(e.pointerId)}catch(_){}};stage.addEventListener('pointerup',stop);stage.addEventListener('pointercancel',stop)});pages.forEach(page=>{const stage=page.querySelector('[data-case-stage]');",
+    )
+)
 
 
 __all__ = ["render_case_visual_review"]

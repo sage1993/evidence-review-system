@@ -13,6 +13,7 @@ from evidence_review.review_packet.local_server import create_review_server
 RUN_ID = "RUN-0123456789ABCDEF0123"
 TOKEN = "b" * 43
 SOURCE_HASH = "a" * 64
+REFERENCE_SOURCE_HASH = "c" * 64
 
 
 def _model() -> dict[str, object]:
@@ -83,6 +84,28 @@ def _page(root: Path, image_bytes: bytes) -> None:
                 "source_hash": SOURCE_HASH,
                 "pdf_width": 100.0,
                 "pdf_height": 200.0,
+                "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _reference_page(root: Path, image_bytes: bytes) -> None:
+    directory = root / "page-images" / "REV-REF"
+    directory.mkdir(parents=True)
+    image = directory / "page-0012.png"
+    image.write_bytes(image_bytes)
+    (directory / "page-0012.json").write_text(
+        json.dumps(
+            {
+                "format": "evidence-review/page-image",
+                "version": 1,
+                "revision_id": "REV-REF",
+                "page_number": 12,
+                "source_hash": REFERENCE_SOURCE_HASH,
+                "pdf_width": 595.0,
+                "pdf_height": 842.0,
                 "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
             }
         ),
@@ -165,6 +188,42 @@ def test_protected_page_image_route_rejects_wrong_identity_and_tampering(tmp_pat
         status, _, body = _get(server, base + f"/page-images/REV1/3/{SOURCE_HASH}")
         assert status == 404
         assert b"tampered" not in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_protected_reference_page_uses_generic_verified_page_route(tmp_path: Path) -> None:
+    image_bytes = b"\x89PNG\r\n\x1a\nreference"
+    _run(tmp_path, b"subject")
+    _reference_page(tmp_path, image_bytes)
+    server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"/runs/{RUN_ID}/{TOKEN}"
+        status, headers, body = _get(
+            server,
+            base + f"/page-images/REV-REF/12/{REFERENCE_SOURCE_HASH}",
+        )
+        assert status == 200
+        assert headers["content-type"] == "image/png"
+        assert headers["cache-control"] == "no-store"
+        assert headers["x-content-type-options"] == "nosniff"
+        assert body == image_bytes
+
+        status, _, _ = _get(
+            server,
+            base + f"/page-images/REV-REF/12/{'0' * 64}",
+        )
+        assert status == 404
+
+        status, _, _ = _get(
+            server,
+            f"/runs/{RUN_ID}/{'x' * 43}/page-images/REV-REF/12/{REFERENCE_SOURCE_HASH}",
+        )
+        assert status == 403
     finally:
         server.shutdown()
         server.server_close()

@@ -12,6 +12,7 @@ from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.review import ReviewPacket
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
+from evidence_review.review_packet.reference_projection import project_reference_record
 
 _DECISION_OPTIONS = (
     "SATISFIED",
@@ -84,10 +85,15 @@ def _resolve_citation(
         """SELECT r.evidence_id, r.document_id, r.revision_id, r.page_number,
                   r.bbox_json, r.source_hash, d.title, r.title, r.raw_text,
                   r.evidence_type, p.width, p.height, p.origin_x, p.origin_y,
-                  p.rotation, p.box_kind
+                  p.rotation, p.box_kind, rev.page_count, e.element_type,
+                  e.raw_json, t.raw_json, v.kind
              FROM retrieval_records AS r
              JOIN pages AS p ON p.id = r.page_id
+             JOIN revisions AS rev ON rev.id = r.revision_id
              LEFT JOIN documents AS d ON d.id = r.document_id
+             LEFT JOIN elements AS e ON e.id = r.evidence_id
+             LEFT JOIN tables AS t ON t.id = r.evidence_id
+             LEFT JOIN visuals AS v ON v.id = r.evidence_id
             WHERE r.evidence_id = ?""",
         (evidence_id,),
     ).fetchone()
@@ -114,6 +120,14 @@ def _resolve_citation(
         "page_origin_y": float(row[13]),
         "page_rotation": int(row[14]),
         "page_box_kind": row[15],
+        "document_page_count": int(row[16]),
+        "reference": project_reference_record(
+            evidence_type=row[9],
+            element_type=row[17],
+            element_raw_json=row[18],
+            table_raw_json=row[19],
+            visual_kind=row[20],
+        ),
     }
 
 
@@ -352,6 +366,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         for citation_id, provided_citation in provided_citations.items():
             resolved = _resolve_citation(connection, citation_id)
             _verify_citation_identity(provided_citation, resolved)
+            resolved_citations.setdefault(citation_id, resolved)
 
     reasons = [
         _string(item, "abstention_reason")
@@ -400,6 +415,10 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         "question": _string(document.get("question"), "question"),
         "answer_summary": answer_summary,
         "claims": claims,
+        "reference_citations": [
+            resolved_citations[citation_id]
+            for citation_id in sorted(resolved_citations)
+        ],
         "calculations": calculations,
         "rules": rule_documents,
         "confidence": confidence,

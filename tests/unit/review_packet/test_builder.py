@@ -50,6 +50,28 @@ def _db(path: Path) -> None:
                 "정규화",
             ),
         )
+        connection.execute(
+            """
+            INSERT INTO retrieval_records(
+                evidence_id, evidence_type, document_id, revision_id, page_id,
+                page_number, bbox_json, source_hash, title, raw_text,
+                normalized_text
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "E2",
+                "clause",
+                "DOC1",
+                "REV1",
+                "REV1-P3",
+                3,
+                json.dumps([20, 50, 100, 70]),
+                "a" * 64,
+                "Section 3 related",
+                "unused related citation",
+                "unused related citation",
+            ),
+        )
         connection.commit()
 
 
@@ -115,6 +137,43 @@ def _packet() -> dict[str, object]:
     }
 
 
+def _v2_packet() -> dict[str, object]:
+    packet = _packet()
+    packet.update(
+        {
+            "format": "evidence-review/review-packet",
+            "version": 2,
+            "case_id": "CASE-1",
+            "finalizer_status": "ABSTAIN",
+            "snapshot_sha256": "a" * 64,
+            "rule_manifest_sha256": "b" * 64,
+            "formula_manifest_sha256": "c" * 64,
+            "evidence": [
+                {
+                    "evidence_id": "E1",
+                    "citation": {
+                        "citation_id": "CIT-E1",
+                        "evidence_id": "E1",
+                        "document_id": "DOC1",
+                        "revision_id": "REV1",
+                        "page_number": 3,
+                        "bbox": [10, 20, 110, 40],
+                        "source_hash": "a" * 64,
+                    },
+                    "quote": "\uc815\ud655\ud55c \uc778\uc6a9\ubb38",
+                    "numeric_tokens": [],
+                }
+            ],
+            "drawing_evidence": [],
+            "confirmed_inputs": [],
+            "rule_evaluations": [],
+            "exceptions": [],
+            "conflicts": [],
+        }
+    )
+    return packet
+
+
 def test_view_model_resolves_all_required_sections_and_blank_decision(
     tmp_path: Path,
 ) -> None:
@@ -138,6 +197,12 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert citation["bbox"] == [10.0, 20.0, 110.0, 40.0]
     assert citation["page_width"] == 120.0
     assert citation["page_height"] == 200.0
+    assert citation["document_page_count"] == 3
+    assert citation["reference"] == {
+        "type": "TEXT",
+        "table": None,
+        "visual": None,
+    }
     assert calculations[0]["display_result"] == "9.375%"
     assert rules[0]["rule_version"] == "1"
     assert confidence["factors"][0]["source"] == "evidence"
@@ -150,6 +215,31 @@ def test_view_model_resolves_all_required_sections_and_blank_decision(
     assert model["summary"]["citation_count"] == 1
     assert model["review_items"][0]["claim_id"] == "C1"
     assert model["decision"]["human_decision"] is None
+
+
+def test_v2_citation_identity_ignores_projection_metadata_but_rejects_authority_change(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _v2_packet()
+
+    model = build_review_view_model(packet, database)
+
+    citation = model["claims"][0]["citations"][0]
+    assert citation["document_page_count"] == 3
+    assert citation["reference"] == {
+        "type": "TEXT",
+        "table": None,
+        "visual": None,
+    }
+
+    packet["evidence"][0]["citation"]["page_number"] = 2
+    with pytest.raises(
+        ValueError,
+        match="citation identity does not match evidence database",
+    ):
+        build_review_view_model(packet, database)
 
 
 def test_view_model_projects_packet_missing_inputs_into_summary(tmp_path: Path) -> None:
@@ -175,3 +265,44 @@ def test_view_model_requires_explicit_v1_migration(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="schema version 1"):
         build_review_view_model(_packet(), database)
+
+
+def test_v2_exposes_resolved_reference_citations_in_deterministic_order(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _v2_packet()
+    evidence = packet["evidence"]
+    assert isinstance(evidence, list)
+    evidence.append(
+        {
+            "evidence_id": "E2",
+            "citation": {
+                "citation_id": "CIT-E2",
+                "evidence_id": "E2",
+                "document_id": "DOC1",
+                "revision_id": "REV1",
+                "page_number": 3,
+                "bbox": [20, 50, 100, 70],
+                "source_hash": "a" * 64,
+            },
+            "quote": "unused related citation",
+            "numeric_tokens": [],
+        }
+    )
+
+    model = build_review_view_model(packet, database)
+
+    reference_citations = model["reference_citations"]
+    assert [item["citation_id"] for item in reference_citations] == [
+        "CIT-E1",
+        "CIT-E2",
+    ]
+    related = next(
+        item for item in reference_citations if item["citation_id"] == "CIT-E2"
+    )
+    assert related["document_page_count"] == 3
+    assert related["reference"]["type"] == "TEXT"
+    assert related["page_width"] == 120.0
+    assert related["page_height"] == 200.0

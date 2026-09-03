@@ -316,6 +316,21 @@ def _load_visual_page_tiles(
     return tuple(tiles)
 
 
+def load_visual_page_tiles(
+    workspace: Path,
+    page: VisualPageAsset,
+) -> tuple[VisualPageTile, ...]:
+    """Load and verify precomputed tiles without materializing cache state."""
+    if not _tile_required(page):
+        return ()
+    directory = _tile_directory(workspace, page)
+    if not directory.exists():
+        raise FileNotFoundError(f"case visual tile cache is missing: {directory}")
+    if not directory.is_dir():
+        raise ValueError("case visual tile cache path is invalid")
+    return _load_visual_page_tiles(directory, page)
+
+
 def ensure_visual_page_tiles(
     workspace: Path,
     page: VisualPageAsset,
@@ -327,9 +342,7 @@ def ensure_visual_page_tiles(
         raise ValueError("case visual tile source hash mismatch")
     directory = _tile_directory(workspace, page)
     if directory.exists():
-        if not directory.is_dir():
-            raise ValueError("case visual tile cache path is invalid")
-        return _load_visual_page_tiles(directory, page)
+        return load_visual_page_tiles(workspace, page)
 
     parent = directory.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -375,7 +388,7 @@ def ensure_visual_page_tiles(
             os.rename(temporary, directory)
         except FileExistsError:
             shutil.rmtree(temporary, ignore_errors=True)
-        return _load_visual_page_tiles(directory, page)
+        return load_visual_page_tiles(workspace, page)
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
         raise
@@ -403,5 +416,6 @@ __all__ = [
     "VisualPageAsset",
     "VisualPageTile",
     "ensure_visual_page_tiles",
+    "load_visual_page_tiles",
     "prepare_visual_page_assets",
 ]
