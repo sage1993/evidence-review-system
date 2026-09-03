@@ -14,6 +14,7 @@ from evidence_review.contracts.attachments import (
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
+    ensure_visual_page_tiles,
     prepare_visual_page_assets,
 )
 
@@ -79,6 +80,8 @@ def prepare_visual_analysis_handoff(
     pages = prepare_visual_page_assets(workspace, attachments)
     if not pages:
         raise ValueError("VISUAL_SOURCE_RENDER_FAILED")
+    for page in pages:
+        ensure_visual_page_tiles(workspace, page)
     template = _instruction_template_bytes()
     instruction_contract_sha256 = hashlib.sha256(template).hexdigest()
     identity = {
