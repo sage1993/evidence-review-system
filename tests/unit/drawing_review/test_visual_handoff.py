@@ -66,6 +66,26 @@ def test_visual_handoff_exposes_actual_raster_page_without_reference_parser(
     assert "parser" not in bundle["attachments"][0]
 
 
+def test_visual_handoff_prewarms_tiles_for_large_page(tmp_path: Path) -> None:
+    source = tmp_path / "large-drawing.png"
+    Image.new("RGB", (4097, 3906), "white").save(source)
+    workspace = tmp_path / "workspace"
+    attachments = prepare_case_visual_sources(workspace, supporting_images=[source])
+
+    handoff = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    assert len(handoff.pages) == 1
+    page = handoff.pages[0]
+    manifest = (
+        workspace
+        / "case-page-tiles-v1"
+        / page.attachment_id
+        / "page-0001"
+        / "manifest.json"
+    )
+    assert manifest.is_file()
+
+
 def test_visual_handoff_rasterizes_case_pdf_without_reference_ingestion(
     tmp_path: Path,
 ) -> None:
