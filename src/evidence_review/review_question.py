@@ -303,6 +303,11 @@ def _track_b_identity(path: Path) -> str:
     return sha256_json(_json(path))
 
 
+def _matches_track_b_identity(path: Path, expected: str) -> bool:
+    """Match canonical identity, with exact raw bytes for legacy FINALIZING events."""
+    return _track_b_identity(path) == expected or _sha256(path) == expected
+
+
 def _append_event(
     run_directory: Path,
     next_state: WorkflowState,
@@ -455,8 +460,9 @@ def _has_valid_finalizing_canonical_track_b(run_directory: Path) -> bool:
     if not canonical.is_file():
         return False
     try:
-        return _track_b_identity(canonical) == _required_finalizing_track_b_hash(
-            run_directory
+        return _matches_track_b_identity(
+            canonical,
+            _required_finalizing_track_b_hash(run_directory),
         )
     except (OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
         return False
@@ -467,8 +473,7 @@ def _validate_finalizing_retry_identity(
     track_b_output: Path,
 ) -> None:
     expected = _required_finalizing_track_b_hash(run_directory)
-    actual = _track_b_identity(track_b_output)
-    if actual != expected:
+    if not _matches_track_b_identity(track_b_output, expected):
         raise TrackBContractError(
             "TRACK_B_RETRY_MISMATCH",
             "retry Track B does not match the artifact that entered FINALIZING",
