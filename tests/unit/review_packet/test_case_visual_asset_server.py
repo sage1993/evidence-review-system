@@ -1,6 +1,7 @@
 import json
 
 from evidence_review.review_packet.case_visual_asset_server import (
+    _protected_review_html,
     protect_case_visual_sources,
 )
 
@@ -95,3 +96,53 @@ def test_case_asset_protector_leaves_reference_page_on_generic_namespace() -> No
         in protected
     )
     assert "./reference-pages/" not in protected
+
+
+def test_protected_review_html_removes_case_payload_from_review_model() -> None:
+    source_hash = "c" * 64
+    model = {
+        "claims": [
+            {
+                "citations": [
+                    {
+                        "citation_id": "CIT-1",
+                        "revision_id": "REV-1",
+                        "page_number": 1,
+                        "source_hash": source_hash,
+                    }
+                ]
+            }
+        ],
+        "case_visual_review": {
+            "pages": [
+                {
+                    "asset_key": "ATT-1-p1",
+                    "attachment_id": "ATT-1",
+                    "page": 1,
+                    "image_sha256": "a" * 64,
+                    "data_uri": "data:image/png;base64,AAAA",
+                    "tiles": [],
+                }
+            ]
+        },
+    }
+    html = (
+        '<div class="app-shell"></div>'
+        '<article class="citation" data-asset-key="page-1" '
+        'data-citation-id="CIT-1"></article>'
+        '<figure class="evidence-page" data-asset-key="page-1">'
+        '<img data-page-image-source="page-1" src="data:image/png;base64,BBBB">'
+        "</figure>"
+        '<figure class="case-visual-page" data-case-page="ATT-1-p1">'
+        '<image data-case-page-src="./case-pages/ATT-1/1/'
+        + "a" * 64
+        + '"></figure>'
+        '<script id="review-model" type="application/json">'
+        + json.dumps(model, sort_keys=True, separators=(",", ":"))
+        + "</script>"
+    ).encode("utf-8")
+
+    protected = _protected_review_html(html).decode("utf-8")
+
+    assert '"data_uri"' not in protected
+    assert 'data-page-src="./page-images/REV-1/1/' + source_hash + '"' in protected

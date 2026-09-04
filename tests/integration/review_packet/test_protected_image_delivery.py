@@ -7,13 +7,20 @@ import re
 from pathlib import Path
 from threading import Thread
 
+from evidence_review.review_packet.case_visual_asset_server import (
+    configure_case_visual_server,
+)
 from evidence_review.review_packet.html_renderer import render_review_html
 from evidence_review.review_packet.local_server import create_review_server
+from tests.integration.review_packet.test_review_workspace_performance import (
+    VALID_MINIMAL_PNG,
+)
 
 RUN_ID = "RUN-0123456789ABCDEF0123"
 TOKEN = "b" * 43
 SOURCE_HASH = "a" * 64
 REFERENCE_SOURCE_HASH = "c" * 64
+CASE_ATTACHMENT_ID = "ATT-1"
 
 
 def _model() -> dict[str, object]:
@@ -136,6 +143,42 @@ def _get(server: object, path: str) -> tuple[int, dict[str, str], bytes]:
     return status, headers, body
 
 
+def _case_page(root: Path, image_bytes: bytes) -> str:
+    image_sha256 = hashlib.sha256(image_bytes).hexdigest()
+    directory = root / "case-page-images-hq-v1" / CASE_ATTACHMENT_ID
+    directory.mkdir(parents=True)
+    (directory / "page-0001.png").write_bytes(image_bytes)
+    return image_sha256
+
+
+def _review_model_from_html(html: bytes) -> dict[str, object]:
+    match = re.search(
+        rb'<script id="review-model" type="application/json">(?P<model>.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    assert match is not None
+    model = json.loads(match.group("model"))
+    assert isinstance(model, dict)
+    return model
+
+
+def _embedded_raster_values(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value.startswith("data:image/") else []
+    if isinstance(value, dict):
+        values: list[str] = []
+        for item in value.values():
+            values.extend(_embedded_raster_values(item))
+        return values
+    if isinstance(value, list):
+        values: list[str] = []
+        for item in value:
+            values.extend(_embedded_raster_values(item))
+        return values
+    return []
+
+
 def test_archive_stays_embedded_but_protected_review_is_lazy(tmp_path: Path) -> None:
     image_bytes = b"\x89PNG\r\n\x1a\n" + b"x" * (1024 * 1024)
     run, _ = _run(tmp_path, image_bytes)
@@ -165,6 +208,116 @@ def test_archive_stays_embedded_but_protected_review_is_lazy(tmp_path: Path) -> 
         assert headers["cache-control"] == "no-store"
         assert headers["x-content-type-options"] == "nosniff"
         assert delivered == image_bytes
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> None:
+    image_bytes = VALID_MINIMAL_PNG
+    image_sha256 = _case_page(tmp_path, image_bytes)
+    run = tmp_path / "runs" / RUN_ID
+    run.mkdir(parents=True)
+    (run / "final-review-packet.json").write_bytes(b"{}")
+    model = {
+        "case_visual_review": {
+            "pages": [
+                {
+                    "asset_key": f"{CASE_ATTACHMENT_ID}-p1",
+                    "attachment_id": CASE_ATTACHMENT_ID,
+                    "page": 1,
+                    "image_sha256": image_sha256,
+                    "data_uri": "data:image/png;base64,AAAA",
+                    "tiles": [
+                        {
+                            "x": 0,
+                            "y": 0,
+                            "width": 2048,
+                            "height": 2048,
+                            "image_sha256": "b" * 64,
+                            "data_uri": "data:image/webp;base64,BBBB",
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    (run / "review.html").write_text(
+        '<div class="app-shell"></div>'
+        f'<figure class="case-visual-page" data-case-page="{CASE_ATTACHMENT_ID}-p1">'
+        '<image data-case-page-src="data:image/png;base64,AAAA">'
+        "</figure>"
+        '<script id="review-model" type="application/json">'
+        + json.dumps(model, sort_keys=True, separators=(",", ":"))
+        + "</script>",
+        encoding="utf-8",
+    )
+
+    server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
+    configure_case_visual_server(server)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"/runs/{RUN_ID}/{TOKEN}"
+        status, _, protected = _get(server, base + "/review")
+        assert status == 200
+        assert b"data:image/png;base64," not in protected
+        assert b"data:image/webp;base64," not in protected
+        assert (
+            b"./case-pages/"
+            + CASE_ATTACHMENT_ID.encode()
+            + b"/1/"
+            + image_sha256.encode()
+            in protected
+        )
+        protected_model = _review_model_from_html(protected)
+        assert _embedded_raster_values(protected_model) == []
+
+        status, headers, delivered = _get(
+            server,
+            base + f"/case-pages/{CASE_ATTACHMENT_ID}/1/{image_sha256}",
+        )
+        assert status == 200
+        assert headers["content-type"] == "image/png"
+        assert headers["cache-control"] == "no-store"
+        assert headers["x-content-type-options"] == "nosniff"
+        assert delivered == image_bytes
+
+        status, _, body = _get(
+            server,
+            base + f"/case-pages/{CASE_ATTACHMENT_ID}/1/{'0' * 64}",
+        )
+        assert status == 404
+        assert image_bytes not in body
+
+        status, _, body = _get(
+            server,
+            base + f"/case-pages/{CASE_ATTACHMENT_ID}/2/{image_sha256}",
+        )
+        assert status == 404
+        assert image_bytes not in body
+
+        status, _, body = _get(
+            server,
+            f"/runs/{RUN_ID}/{'c' * 43}/case-pages/{CASE_ATTACHMENT_ID}/1/{image_sha256}",
+        )
+        assert status == 403
+        assert image_bytes not in body
+
+        tampered_bytes = b"tampered-case-page"
+        (
+            tmp_path
+            / "case-page-images-hq-v1"
+            / CASE_ATTACHMENT_ID
+            / "page-0001.png"
+        ).write_bytes(tampered_bytes)
+        status, _, body = _get(
+            server,
+            base + f"/case-pages/{CASE_ATTACHMENT_ID}/1/{image_sha256}",
+        )
+        assert status == 404
+        assert tampered_bytes not in body
     finally:
         server.shutdown()
         server.server_close()

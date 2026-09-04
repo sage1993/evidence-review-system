@@ -153,6 +153,56 @@ def protect_case_visual_sources(html_bytes: bytes) -> bytes:
     return _FIGURE_RE.sub(rewrite_figure, html).encode("utf-8")
 
 
+def _strip_case_raster_payload_from_model(html_bytes: bytes) -> bytes:
+    """Remove case raster bytes from the protected presentation model only."""
+    try:
+        html = html_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("review HTML must be UTF-8") from error
+    model_match = local_server._MODEL_SCRIPT.search(html)
+    if model_match is None:
+        return html_bytes
+    try:
+        model = _mapping(json.loads(model_match.group("model")), "review model")
+    except json.JSONDecodeError as error:
+        raise ValueError("review model is invalid JSON") from error
+    raw_visual = model.get("case_visual_review")
+    if raw_visual is None:
+        return html_bytes
+    visual = _mapping(raw_visual, "case_visual_review")
+    pages = _sequence(visual.get("pages", []), "case_visual_review.pages")
+    cleaned_pages: list[dict[str, object]] = []
+    for index, raw_page in enumerate(pages):
+        page = dict(_mapping(raw_page, f"case_visual_review.pages[{index}]"))
+        page.pop("data_uri", None)
+        raw_tiles = page.get("tiles")
+        if isinstance(raw_tiles, list):
+            cleaned_tiles: list[dict[str, object]] = []
+            for tile_index, raw_tile in enumerate(raw_tiles):
+                tile = dict(
+                    _mapping(
+                        raw_tile,
+                        f"case_visual_review.pages[{index}].tiles[{tile_index}]",
+                    )
+                )
+                tile.pop("data_uri", None)
+                cleaned_tiles.append(tile)
+            page["tiles"] = cleaned_tiles
+        cleaned_pages.append(page)
+    cleaned_visual = dict(visual)
+    cleaned_visual["pages"] = cleaned_pages
+    cleaned_model = dict(model)
+    cleaned_model["case_visual_review"] = cleaned_visual
+    serialized = json.dumps(
+        cleaned_model,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    start, end = model_match.span("model")
+    return (html[:start] + serialized + html[end:]).encode("utf-8")
+
+
 def _case_asset_route(path: str) -> _CaseAssetRoute | None:
     parsed = urlsplit(path)
     if parsed.query or parsed.fragment:
@@ -297,7 +347,8 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
 
 
 def _protected_review_html(html_bytes: bytes) -> bytes:
-    return _ORIGINAL_PROTECTED_REVIEW_HTML(protect_case_visual_sources(html_bytes))
+    sanitized = _strip_case_raster_payload_from_model(html_bytes)
+    return _ORIGINAL_PROTECTED_REVIEW_HTML(protect_case_visual_sources(sanitized))
 
 
 class CaseVisualReviewHandler(local_server._ReviewHandler):
