@@ -298,7 +298,7 @@ For development and validation:
 python -m pip install -e ".[dev]"
 ```
 
-Runtime dependencies are pinned to pypdf>=5,<6, pypdfium2>=5.12,<6, and Pillow>=12,<13.
+Runtime dependencies are pinned to pypdf>=6.17,<7, pypdfium2>=5.12,<6, and Pillow>=12,<13.
 
 Canonical entrypoints:
 
