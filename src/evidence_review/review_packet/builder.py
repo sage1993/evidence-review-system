@@ -6,6 +6,7 @@ import json
 import sqlite3
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import cast
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.review import ReviewPacket
@@ -25,13 +26,13 @@ _DECISION_OPTIONS = (
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise ValueError(f"{field} must be an object")
-    return value
+    return cast(Mapping[str, object], value)
 
 
 def _sequence(value: object, field: str) -> Sequence[object]:
     if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
         raise ValueError(f"{field} must be an array")
-    return value
+    return cast(Sequence[object], value)
 
 
 def _string(value: object, field: str, *, allow_empty: bool = False) -> str:
