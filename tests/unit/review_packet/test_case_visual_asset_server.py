@@ -1,148 +1,71 @@
-import json
+from types import SimpleNamespace
 
+import pytest
+
+from evidence_review.review_packet import local_server
 from evidence_review.review_packet.case_visual_asset_server import (
-    _protected_review_html,
-    protect_case_visual_sources,
+    CaseVisualReviewHandler,
+    _case_asset_route,
+    configure_case_visual_server,
 )
 
-
-def _review_html(page: dict[str, object], raster_markup: str) -> bytes:
-    model = {"case_visual_review": {"pages": [page]}}
-    return (
-        '<script id="review-model" type="application/json">'
-        + json.dumps(model, sort_keys=True, separators=(",", ":"))
-        + "</script>"
-        + '<figure class="case-visual-page" data-case-page="ATT-1-p1">'
-        + raster_markup
-        + "</figure>"
-    ).encode("utf-8")
+RUN_ID = "RUN-0123456789ABCDEF0123"
+TOKEN = "a" * 43
+PAGE_HASH = "b" * 64
+TILE_HASH = "c" * 64
 
 
-def test_protected_visual_page_source_uses_lazy_relative_url() -> None:
-    image_hash = "a" * 64
-    html = _review_html(
-        {
-            "asset_key": "ATT-1-p1",
-            "attachment_id": "ATT-1",
-            "page": 1,
-            "image_sha256": image_hash,
-        },
-        '<image data-case-page-image data-case-page-src="data:image/png;base64,AAAA"/>',
+def test_case_page_route_parses_normalized_protected_identity() -> None:
+    route = _case_asset_route(
+        f"/runs/{RUN_ID}/{TOKEN}/case-pages/ATT-CASE/12/{PAGE_HASH}"
     )
 
-    protected = protect_case_visual_sources(html).decode("utf-8")
+    assert route is not None
+    assert route.run_id == RUN_ID
+    assert route.token == TOKEN
+    assert route.kind == "page"
+    assert route.attachment_id == "ATT-CASE"
+    assert route.page_number == 12
+    assert route.image_sha256 == PAGE_HASH
+    assert route.tile_x is None
+    assert route.tile_y is None
 
-    assert "data:image/png;base64" not in protected
-    assert (
-        f'data-case-page-src="./case-pages/ATT-1/1/{image_hash}"'
-        in protected
+
+def test_case_tile_route_parses_normalized_protected_identity() -> None:
+    route = _case_asset_route(
+        f"/runs/{RUN_ID}/{TOKEN}/case-tiles/ATT-CASE/12/2048/0/{TILE_HASH}"
     )
 
-
-def test_protected_visual_tiles_use_lazy_relative_urls() -> None:
-    page_hash = "a" * 64
-    tile_hash = "b" * 64
-    html = _review_html(
-        {
-            "asset_key": "ATT-1-p1",
-            "attachment_id": "ATT-1",
-            "page": 1,
-            "image_sha256": page_hash,
-            "tiles": [
-                {
-                    "x": 2048,
-                    "y": 0,
-                    "width": 2048,
-                    "height": 2048,
-                    "image_sha256": tile_hash,
-                }
-            ],
-        },
-        (
-            '<image data-case-tile data-case-tile-src="data:image/png;base64,BBBB" '
-            'data-tile-x="2048" data-tile-y="0" '
-            'data-tile-width="2048" data-tile-height="2048"/>'
-        ),
-    )
-
-    protected = protect_case_visual_sources(html).decode("utf-8")
-
-    assert "data:image/png;base64" not in protected
-    assert (
-        f'data-case-tile-src="./case-tiles/ATT-1/1/2048/0/{tile_hash}"'
-        in protected
-    )
+    assert route is not None
+    assert route.kind == "tile"
+    assert route.attachment_id == "ATT-CASE"
+    assert route.page_number == 12
+    assert route.tile_x == 2048
+    assert route.tile_y == 0
+    assert route.image_sha256 == TILE_HASH
 
 
-def test_case_asset_protector_leaves_reference_page_on_generic_namespace() -> None:
-    source_hash = "c" * 64
-    html = _review_html(
-        {
-            "asset_key": "ATT-1-p1",
-            "attachment_id": "ATT-1",
-            "page": 1,
-            "image_sha256": "a" * 64,
-        },
-        (
-            '<image data-reference-page-image '
-            f'data-reference-page-src="./page-images/REV-REF/12/{source_hash}"/>'
-        ),
-    )
-
-    protected = protect_case_visual_sources(html).decode("utf-8")
-
-    assert (
-        f'data-reference-page-src="./page-images/REV-REF/12/{source_hash}"'
-        in protected
-    )
-    assert "./reference-pages/" not in protected
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"/runs/{RUN_ID}/{TOKEN}/case-pages/ATT-CASE/12/{PAGE_HASH}?probe=1",
+        f"/runs/{RUN_ID}/{TOKEN}/case-pages/%2E%2E/12/{PAGE_HASH}",
+        f"/runs/{RUN_ID}/{TOKEN}/case-pages/ATT%2FCASE/12/{PAGE_HASH}",
+        f"/runs/{RUN_ID}/{TOKEN}/case-pages/ATT-CASE/0/{PAGE_HASH}",
+        f"/runs/{RUN_ID}/{TOKEN}/case-pages/ATT-CASE/12/not-a-hash",
+        f"/runs/{RUN_ID}/{TOKEN}/case-tiles/ATT-CASE/12/-1/0/{TILE_HASH}",
+        f"/runs/{RUN_ID}/short/case-pages/ATT-CASE/12/{PAGE_HASH}",
+    ],
+)
+def test_case_asset_route_rejects_noncanonical_or_invalid_paths(path: str) -> None:
+    assert _case_asset_route(path) is None
 
 
-def test_protected_review_html_removes_case_payload_from_review_model() -> None:
-    source_hash = "c" * 64
-    model = {
-        "claims": [
-            {
-                "citations": [
-                    {
-                        "citation_id": "CIT-1",
-                        "revision_id": "REV-1",
-                        "page_number": 1,
-                        "source_hash": source_hash,
-                    }
-                ]
-            }
-        ],
-        "case_visual_review": {
-            "pages": [
-                {
-                    "asset_key": "ATT-1-p1",
-                    "attachment_id": "ATT-1",
-                    "page": 1,
-                    "image_sha256": "a" * 64,
-                    "data_uri": "data:image/png;base64,AAAA",
-                    "tiles": [],
-                }
-            ]
-        },
-    }
-    html = (
-        '<div class="app-shell"></div>'
-        '<article class="citation" data-asset-key="page-1" '
-        'data-citation-id="CIT-1"></article>'
-        '<figure class="evidence-page" data-asset-key="page-1">'
-        '<img data-page-image-source="page-1" src="data:image/png;base64,BBBB">'
-        "</figure>"
-        '<figure class="case-visual-page" data-case-page="ATT-1-p1">'
-        '<image data-case-page-src="./case-pages/ATT-1/1/'
-        + "a" * 64
-        + '"></figure>'
-        '<script id="review-model" type="application/json">'
-        + json.dumps(model, sort_keys=True, separators=(",", ":"))
-        + "</script>"
-    ).encode("utf-8")
+def test_configure_case_visual_server_only_installs_asset_handler() -> None:
+    protected_renderer = local_server._protected_review_html
+    server = SimpleNamespace(RequestHandlerClass=None)
 
-    protected = _protected_review_html(html).decode("utf-8")
+    configure_case_visual_server(server)  # type: ignore[arg-type]
 
-    assert '"data_uri"' not in protected
-    assert 'data-page-src="./page-images/REV-1/1/' + source_hash + '"' in protected
+    assert server.RequestHandlerClass is CaseVisualReviewHandler
+    assert local_server._protected_review_html is protected_renderer
