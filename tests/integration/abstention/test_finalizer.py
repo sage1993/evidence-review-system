@@ -217,7 +217,7 @@ def test_partial_issue_coverage_yields_partial_status_and_preserves_issue_result
     assert document["issue_results"][1]["issue_id"] == "I2"
 
 
-def test_partial_issue_coverage_preserves_resolved_claim_when_track_b_is_incomplete(
+def test_partial_issue_coverage_does_not_preserve_track_b_unsupported_resolved_claim(
     tmp_path: Path,
 ) -> None:
     packet = finalize_run(
@@ -228,9 +228,11 @@ def test_partial_issue_coverage_preserves_resolved_claim_when_track_b_is_incompl
         )
     )
 
-    assert packet.status == "PARTIALLY_RESOLVED"
-    assert packet.claims[0].issue_ids == ("I1",)
-    assert "UNCITED_OR_UNRESOLVED_CLAIM" not in packet.abstention_reasons
+    by_issue = {item.issue_id: item for item in packet.issue_results}
+    assert by_issue["I1"].status == "UNRESOLVED"
+    assert by_issue["I2"].status == "SOURCE_MISSING"
+    assert packet.status == "ABSTAIN"
+    assert "UNCITED_OR_UNRESOLVED_CLAIM" in packet.abstention_reasons
 
 
 def test_partial_issue_coverage_does_not_suppress_rule_missing_input_hard_gate(
