@@ -1,0 +1,40 @@
+name: PR4 Autopatch
+
+on:
+  push:
+    branches:
+      - fix/stab-pr4-filesystem-trust
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/stab-pr4-filesystem-trust
+          fetch-depth: 0
+      - name: Apply remaining PR-4 patch
+        run: python scripts/_pr4_apply_remaining.py
+      - name: Check patch diff
+        run: git diff --check
+      - name: Commit generated patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No patch changes produced"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/evidence_review/review_packet/html_renderer.py \
+            src/evidence_review/review_packet/case_visual_projection.py \
+            src/evidence_review/review_packet/local_server.py \
+            tests/unit/review_packet/test_case_visual_projection.py \
+            tests/unit/test_active_workspace_binding.py
+          git commit -m "fix(filesystem): complete canonical visual asset trust boundary"
+          git push origin HEAD:fix/stab-pr4-filesystem-trust
