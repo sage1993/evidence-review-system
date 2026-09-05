@@ -72,6 +72,14 @@ def _db(path: Path) -> None:
                 "unused related citation",
             ),
         )
+        connection.execute(
+            "INSERT INTO snapshot_meta(key, value) VALUES('snapshot_hash', ?)",
+            ("a" * 64,),
+        )
+        connection.execute(
+            "INSERT INTO retrieval_meta(key, value) VALUES('snapshot_hash', ?)",
+            ("a" * 64,),
+        )
         connection.commit()
 
 
@@ -160,7 +168,7 @@ def _v2_packet() -> dict[str, object]:
                         "bbox": [10, 20, 110, 40],
                         "source_hash": "a" * 64,
                     },
-                    "quote": "\uc815\ud655\ud55c \uc778\uc6a9\ubb38",
+                    "quote": "정확한 인용문",
                     "numeric_tokens": [],
                 }
             ],
@@ -240,6 +248,39 @@ def test_v2_citation_identity_ignores_projection_metadata_but_rejects_authority_
         match="citation identity does not match evidence database",
     ):
         build_review_view_model(packet, database)
+
+
+def test_v2_packet_quote_is_display_authority(tmp_path: Path) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _v2_packet()
+    packet["evidence"][0]["quote"] = "PACKET QUOTE"
+
+    model = build_review_view_model(packet, database)
+
+    assert model["claims"][0]["citations"][0]["quote"] == "PACKET QUOTE"
+    assert model["reference_citations"][0]["quote"] == "PACKET QUOTE"
+
+
+def test_v2_packet_snapshot_must_match_evidence_database(tmp_path: Path) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _v2_packet()
+    packet["snapshot_sha256"] = "f" * 64
+
+    with pytest.raises(ValueError, match="snapshot does not match evidence database"):
+        build_review_view_model(packet, database)
+
+
+def test_v1_compatibility_does_not_require_packet_snapshot_match(tmp_path: Path) -> None:
+    database = tmp_path / "evidence.sqlite"
+    _db(database)
+    packet = _packet()
+    packet["snapshot_sha256"] = "f" * 64
+
+    model = build_review_view_model(packet, database)
+
+    assert model["claims"][0]["citations"][0]["quote"] == "정확한 인용문"
 
 
 def test_view_model_projects_packet_missing_inputs_into_summary(tmp_path: Path) -> None:
