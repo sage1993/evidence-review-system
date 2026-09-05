@@ -8,6 +8,9 @@ from typing import Literal
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 
 FinalizerStatus = Literal["READY_FOR_HUMAN_REVIEW", "PARTIALLY_RESOLVED", "ABSTAIN"]
+TERMINAL_FINALIZER_STATUSES: frozenset[FinalizerStatus] = frozenset(
+    {"READY_FOR_HUMAN_REVIEW", "PARTIALLY_RESOLVED", "ABSTAIN"}
+)
 HumanDecision = Literal[
     "SATISFIED",
     "NOT_SATISFIED",
