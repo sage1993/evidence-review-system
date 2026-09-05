@@ -83,6 +83,31 @@ def _require_regular_file(path: Path) -> os.stat_result:
     return info
 
 
+def _runtime_inventory(root: Path) -> set[str]:
+    inventory: set[str] = set()
+    try:
+        paths = tuple(root.rglob("*"))
+    except OSError:
+        _fail("RUNTIME_FILE_NOT_REGULAR")
+    for path in paths:
+        try:
+            info = path.lstat()
+        except OSError:
+            _fail("RUNTIME_FILE_NOT_REGULAR")
+        if stat.S_ISLNK(info.st_mode):
+            _fail("UNSAFE_RUNTIME_PATH")
+        if getattr(info, "st_file_attributes", 0) & _REPARSE_POINT:
+            _fail("UNSAFE_RUNTIME_PATH")
+        if stat.S_ISDIR(info.st_mode):
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            _fail("RUNTIME_FILE_NOT_REGULAR")
+        relative = path.relative_to(root).as_posix()
+        if relative != "runtime-manifest.json":
+            inventory.add(relative)
+    return inventory
+
+
 def load_manifest(path: Path) -> tuple[ManifestEntry, ...]:
     """Decode the exact runtime-manifest v1 contract."""
     try:
@@ -190,6 +215,9 @@ def self_test(root: Path) -> None:
             _fail("RUNTIME_FILE_SIZE_MISMATCH")
         if sha256_file(path) != entry.sha256:
             _fail("RUNTIME_FILE_HASH_MISMATCH")
+
+    if _runtime_inventory(root) != entry_paths:
+        _fail("RUNTIME_MANIFEST_INCOMPLETE")
 
     if public_runtime:
         print("WEB_RUNTIME_PUBLIC_SELF_TEST_PASS")
