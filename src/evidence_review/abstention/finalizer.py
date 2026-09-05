@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -15,6 +14,10 @@ from evidence_review.abstention.issue_policy import (
     has_partial_issue_resolution,
     issue_results_require_global_abstain,
     reconcile_issue_results,
+)
+from evidence_review.abstention.verified_artifacts import (
+    VerifiedRunSnapshot,
+    verify_run_snapshot,
 )
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.scorer import FactorInput, score_confidence
@@ -75,39 +78,8 @@ def _string(value: object, field: str, *, allow_empty: bool = False) -> str:
 def _json_file(path: Path) -> object:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError(f"invalid JSON artifact: {path.name}") from error
-
-
-def _verify_manifest(run_directory: Path) -> tuple[str, dict[str, Path]]:
-    manifest = _mapping(_json_file(run_directory / "run-manifest.json"), "run_manifest")
-    unknown = sorted(set(manifest) - {"run_id", "artifacts"})
-    if unknown:
-        raise ValueError(f"run_manifest has unknown fields: {', '.join(unknown)}")
-    run_id = _string(manifest.get("run_id"), "run_manifest.run_id")
-    if run_directory.name != run_id:
-        raise ValueError("run directory name does not match manifest run_id")
-    artifacts = _mapping(manifest.get("artifacts"), "run_manifest.artifacts")
-    missing = sorted(set(_REQUIRED_ARTIFACTS) - set(artifacts))
-    if missing:
-        raise ValueError(f"run manifest is missing artifacts: {', '.join(missing)}")
-    verified: dict[str, Path] = {}
-    for name in _REQUIRED_ARTIFACTS:
-        if Path(name).name != name:
-            raise ValueError(f"invalid artifact path: {name}")
-        expected = _string(artifacts.get(name), f"run_manifest.artifacts.{name}")
-        if not _SHA256.fullmatch(expected):
-            raise ValueError(f"invalid artifact hash: {name}")
-        artifact_path = run_directory / name
-        try:
-            data = artifact_path.read_bytes()
-        except OSError as error:
-            raise ValueError(f"missing artifact: {name}") from error
-        actual = hashlib.sha256(data).hexdigest()
-        if actual != expected:
-            raise ValueError(f"artifact hash mismatch: {name}")
-        verified[name] = artifact_path
-    return run_id, verified
 
 
 def _decode_bundle(value: object) -> TrackABundle:
@@ -318,11 +290,7 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
 
 
 def _finding_codes(claim_audits: Sequence[ClaimAudit]) -> set[str]:
-    return {
-        code
-        for audit in claim_audits
-        for code in audit.finding_codes
-    }
+    return {code for audit in claim_audits for code in audit.finding_codes}
 
 
 def _issue_results_from_inputs(inputs: Mapping[str, object]) -> tuple[IssueResult, ...]:
@@ -339,19 +307,21 @@ def _issue_results_from_inputs(inputs: Mapping[str, object]) -> tuple[IssueResul
     return results
 
 
-def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
-    """Derive the only valid machine packet from manifest-bound artifacts."""
-    manifest_run_id, paths = _verify_manifest(run_directory)
-    bundle = _decode_bundle(_json_file(paths["track-a-bundle.json"]))
+def expected_final_review_packet_from_snapshot(
+    snapshot: VerifiedRunSnapshot,
+) -> ReviewPacket:
+    """Derive a machine packet exclusively from already-verified artifact content."""
+    manifest_run_id = snapshot.run_id
+    bundle = _decode_bundle(snapshot.document("track-a-bundle.json"))
     if bundle.run_id != manifest_run_id:
         raise ValueError("bundle run_id does not match manifest")
-    track_a_output = _json_file(paths["track-a-output.json"])
+    track_a_output = snapshot.document("track-a-output.json")
     validated_a = validate_track_a_output(track_a_output, bundle)
     validate_track_a_integrity(validated_a, bundle)
-    track_b_output = _json_file(paths["track-b-output.json"])
+    track_b_output = snapshot.document("track-b-output.json")
     audit = validate_track_b_output(track_b_output, validated_a)
     confidence = score_confidence(
-        _decode_confidence_inputs(_json_file(paths["confidence-input.json"]))
+        _decode_confidence_inputs(snapshot.document("confidence-input.json"))
     )
 
     snapshot_value = bundle.inputs.get("snapshot_hash")
@@ -419,7 +389,7 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         status = "PARTIALLY_RESOLVED"
     else:
         status = "READY_FOR_HUMAN_REVIEW"
-    packet = ReviewPacket(
+    return ReviewPacket(
         run_id=manifest_run_id,
         status=status,
         human_decision=None,
@@ -434,7 +404,15 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         issue_results=issue_results,
         _serialized_lineage_fields=lineage_fields,
     )
-    return packet
+
+
+def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
+    """Verify the run once, then derive the packet only from that verified snapshot."""
+    snapshot = verify_run_snapshot(
+        run_directory,
+        required_artifacts=_REQUIRED_ARTIFACTS,
+    )
+    return expected_final_review_packet_from_snapshot(snapshot)
 
 
 def verify_finalized_run(run_directory: Path) -> ReviewPacket:
