@@ -1,5 +1,8 @@
-from evidence_review.abstention.issue_policy import reconcile_issue_results
-from evidence_review.contracts.review import Claim, IssueResult
+from evidence_review.abstention.issue_policy import (
+    has_partial_issue_resolution,
+    reconcile_issue_results,
+)
+from evidence_review.contracts.review import Claim, ClaimAudit, IssueResult
 
 
 def _issue(status: str = "RESOLVED", issue_id: str = "I1") -> IssueResult:
@@ -11,9 +14,9 @@ def _issue(status: str = "RESOLVED", issue_id: str = "I1") -> IssueResult:
     )
 
 
-def _claim(issue_id: str = "I1") -> Claim:
+def _claim(issue_id: str = "I1", claim_id: str = "CL-1") -> Claim:
     return Claim(
-        claim_id="CL-1",
+        claim_id=claim_id,
         text="supported",
         citation_ids=("CIT-1",),
         issue_ids=(issue_id,),
@@ -62,3 +65,18 @@ def test_existing_unresolved_status_is_preserved() -> None:
     )
 
     assert result[0].status == "SOURCE_MISSING"
+
+
+def test_mixed_track_b_audits_downgrade_only_nonaccepted_claim_issue() -> None:
+    reconciled = reconcile_issue_results(
+        (_issue(issue_id="I1"), _issue(issue_id="I2")),
+        claims=(_claim("I1", "CL-I1"), _claim("I2", "CL-I2")),
+        track_a_missing_inputs=(),
+        claim_audits=(
+            ClaimAudit(claim_id="CL-I1", disposition="INCOMPLETE"),
+            ClaimAudit(claim_id="CL-I2", disposition="ACCEPT"),
+        ),
+    )
+
+    assert [item.status for item in reconciled] == ["UNRESOLVED", "RESOLVED"]
+    assert has_partial_issue_resolution(reconciled) is True
