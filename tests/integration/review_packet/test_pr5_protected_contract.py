@@ -133,7 +133,11 @@ def test_browser_dispatch_does_not_count_as_http_ready(monkeypatch, tmp_path: Pa
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr(browser_launcher, "_start_review_server", lambda *args, **kwargs: FakeServer())
+    monkeypatch.setattr(
+        browser_launcher,
+        "_start_review_server",
+        lambda *args, **kwargs: FakeServer(),
+    )
     monkeypatch.setattr(browser_launcher, "append_stage", lambda *args, **kwargs: None)
 
     try:
