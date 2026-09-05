@@ -24,7 +24,7 @@ def _write_run(
 ) -> Path:
     run_id = "RUN-VERIFIED-SNAPSHOT"
     run_directory = tmp_path / run_id
-    run_directory.mkdir()
+    run_directory.mkdir(parents=True)
     effective_hashes = (
         {name: hashlib.sha256(data).hexdigest() for name, data in artifacts.items()}
         if hashes is None
