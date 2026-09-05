@@ -1,4 +1,4 @@
-"""Protected lazy asset support for case-specific Visual Review rasters."""
+"""Protected lazy asset delivery for case-specific Visual Review rasters."""
 from __future__ import annotations
 
 import hashlib
@@ -16,19 +16,7 @@ from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.review_packet import local_server
 
-# ruff: noqa: E501
-
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_FIGURE_RE = re.compile(
-    r'<figure class="case-visual-page[^\"]*"[^>]*\bdata-case-page="(?P<asset>[^"]+)"[^>]*>.*?</figure>',
-    re.DOTALL,
-)
-_PAGE_SOURCE_RE = re.compile(r'data-case-page-src="data:image/[^\"]+"')
-_TILE_TAG_RE = re.compile(r'<image\b(?P<attrs>[^>]*\bdata-case-tile\b[^>]*)/?>')
-_TILE_SOURCE_RE = re.compile(r'data-case-tile-src="data:image/[^\"]+"')
-_DATA_ATTR_RE = re.compile(r'\b(?P<name>data-[a-z-]+)="(?P<value>[^"]*)"')
-_ORIGINAL_PROTECTED_REVIEW_HTML = local_server._protected_review_html
-_PROTECTED_HTML_INSTALLED = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,148 +47,6 @@ def _integer(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{field} must be an integer")
     return value
-
-
-def _case_page_index(model: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
-    visual = model.get("case_visual_review")
-    if visual is None:
-        return {}
-    visual_mapping = _mapping(visual, "case_visual_review")
-    result: dict[str, Mapping[str, object]] = {}
-    for index, raw_page in enumerate(
-        _sequence(visual_mapping.get("pages", []), "case_visual_review.pages")
-    ):
-        page = _mapping(raw_page, f"case_visual_review.pages[{index}]")
-        asset_key = page.get("asset_key")
-        if isinstance(asset_key, str) and asset_key:
-            result[asset_key] = page
-    return result
-
-
-def _tile_index(page: Mapping[str, object]) -> dict[tuple[int, int], str]:
-    result: dict[tuple[int, int], str] = {}
-    for index, raw_tile in enumerate(_sequence(page.get("tiles", []), "page.tiles")):
-        tile = _mapping(raw_tile, f"page.tiles[{index}]")
-        x = _integer(tile.get("x"), "tile.x")
-        y = _integer(tile.get("y"), "tile.y")
-        image_sha256 = tile.get("image_sha256")
-        if not isinstance(image_sha256, str) or not _SHA256_RE.fullmatch(image_sha256):
-            raise ValueError("case visual tile hash is invalid")
-        result[(x, y)] = image_sha256
-    return result
-
-
-def protect_case_visual_sources(html_bytes: bytes) -> bytes:
-    """Replace embedded case raster payloads with protected relative asset URLs."""
-    try:
-        html = html_bytes.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise ValueError("review HTML must be UTF-8") from error
-    model_match = local_server._MODEL_SCRIPT.search(html)
-    if model_match is None:
-        return html_bytes
-    try:
-        model = _mapping(json.loads(model_match.group("model")), "review model")
-    except json.JSONDecodeError as error:
-        raise ValueError("review model is invalid JSON") from error
-    pages = _case_page_index(model)
-    if not pages:
-        return html_bytes
-
-    def rewrite_figure(match: re.Match[str]) -> str:
-        block = match.group(0)
-        page = pages.get(match.group("asset"))
-        if page is None:
-            raise ValueError("case visual page asset is missing from review model")
-        attachment_id = validate_identifier(page.get("attachment_id"), "attachment_id")
-        page_number = _integer(page.get("page"), "case visual page")
-        image_sha256 = page.get("image_sha256")
-        if not isinstance(image_sha256, str) or not _SHA256_RE.fullmatch(image_sha256):
-            raise ValueError("case visual page hash is invalid")
-        page_url = f"./case-pages/{attachment_id}/{page_number}/{image_sha256}"
-        block = _PAGE_SOURCE_RE.sub(
-            f'data-case-page-src="{page_url}"',
-            block,
-            count=1,
-        )
-        tile_hashes = _tile_index(page)
-
-        def rewrite_tile(tile_match: re.Match[str]) -> str:
-            tag = tile_match.group(0)
-            attrs = {
-                item.group("name"): item.group("value")
-                for item in _DATA_ATTR_RE.finditer(tile_match.group("attrs"))
-            }
-            try:
-                x = int(attrs["data-tile-x"])
-                y = int(attrs["data-tile-y"])
-            except (KeyError, ValueError) as error:
-                raise ValueError("case visual tile coordinates are invalid") from error
-            tile_hash = tile_hashes.get((x, y))
-            if tile_hash is None:
-                raise ValueError("case visual tile asset is missing from review model")
-            tile_url = (
-                f"./case-tiles/{attachment_id}/{page_number}/{x}/{y}/{tile_hash}"
-            )
-            return _TILE_SOURCE_RE.sub(
-                f'data-case-tile-src="{tile_url}"',
-                tag,
-                count=1,
-            )
-
-        return _TILE_TAG_RE.sub(rewrite_tile, block)
-
-    return _FIGURE_RE.sub(rewrite_figure, html).encode("utf-8")
-
-
-def _strip_case_raster_payload_from_model(html_bytes: bytes) -> bytes:
-    """Remove case raster bytes from the protected presentation model only."""
-    try:
-        html = html_bytes.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise ValueError("review HTML must be UTF-8") from error
-    model_match = local_server._MODEL_SCRIPT.search(html)
-    if model_match is None:
-        return html_bytes
-    try:
-        model = _mapping(json.loads(model_match.group("model")), "review model")
-    except json.JSONDecodeError as error:
-        raise ValueError("review model is invalid JSON") from error
-    raw_visual = model.get("case_visual_review")
-    if raw_visual is None:
-        return html_bytes
-    visual = _mapping(raw_visual, "case_visual_review")
-    pages = _sequence(visual.get("pages", []), "case_visual_review.pages")
-    cleaned_pages: list[dict[str, object]] = []
-    for index, raw_page in enumerate(pages):
-        page = dict(_mapping(raw_page, f"case_visual_review.pages[{index}]"))
-        page.pop("data_uri", None)
-        raw_tiles = page.get("tiles")
-        if isinstance(raw_tiles, list):
-            cleaned_tiles: list[dict[str, object]] = []
-            for tile_index, raw_tile in enumerate(raw_tiles):
-                tile = dict(
-                    _mapping(
-                        raw_tile,
-                        f"case_visual_review.pages[{index}].tiles[{tile_index}]",
-                    )
-                )
-                tile.pop("data_uri", None)
-                cleaned_tiles.append(tile)
-            page["tiles"] = cleaned_tiles
-        cleaned_pages.append(page)
-    cleaned_visual = dict(visual)
-    cleaned_visual["pages"] = cleaned_pages
-    cleaned_model = dict(model)
-    cleaned_model["case_visual_review"] = cleaned_visual
-    serialized = json.dumps(
-        cleaned_model,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    start, end = model_match.span("model")
-    return (html[:start] + serialized + html[end:]).encode("utf-8")
 
 
 def _case_asset_route(path: str) -> _CaseAssetRoute | None:
@@ -304,7 +150,10 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
     if manifest_path is None:
         return None
     try:
-        manifest = _mapping(json.loads(manifest_path.read_text(encoding="utf-8")), "tile manifest")
+        manifest = _mapping(
+            json.loads(manifest_path.read_text(encoding="utf-8")),
+            "tile manifest",
+        )
         records = _sequence(manifest.get("tiles", []), "tile manifest.tiles")
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
         return None
@@ -334,11 +183,6 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
             return None
         return body if hashlib.sha256(body).hexdigest() == route.image_sha256 else None
     return None
-
-
-def _protected_review_html(html_bytes: bytes) -> bytes:
-    sanitized = _strip_case_raster_payload_from_model(html_bytes)
-    return _ORIGINAL_PROTECTED_REVIEW_HTML(protect_case_visual_sources(sanitized))
 
 
 class CaseVisualReviewHandler(local_server._ReviewHandler):
@@ -385,4 +229,4 @@ def configure_case_visual_server(server: ThreadingHTTPServer) -> None:
     server.RequestHandlerClass = CaseVisualReviewHandler
 
 
-__all__ = ["configure_case_visual_server", "protect_case_visual_sources"]
+__all__ = ["configure_case_visual_server"]
