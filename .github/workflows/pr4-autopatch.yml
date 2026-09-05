@@ -34,8 +34,8 @@ jobs:
         run: python -m pytest -q
       - name: Ruff
         run: python -m ruff check src tests
-      - name: Mypy
-        run: python -m mypy src/evidence_review
+      - name: Mypy Windows target
+        run: python -m mypy --platform win32 src/evidence_review
       - name: Diff check
         run: git diff --check
 
@@ -57,5 +57,7 @@ jobs:
           tests/unit/review_packet/test_case_visual_projection.py
           tests/unit/review_packet/test_case_visual_asset_server.py
           tests/integration/review_packet/test_protected_image_delivery.py
+      - name: Mypy native Windows
+        run: python -m mypy src/evidence_review
       - name: Diff check
         run: git diff --check
