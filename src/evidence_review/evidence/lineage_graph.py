@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Literal
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.evidence.lineage_contract import (
@@ -18,7 +18,7 @@ from evidence_review.evidence.lineage_contract import (
     RevisionMapping,
 )
 
-PlanStatus: TypeAlias = Literal["READY", "BLOCKED"]
+type PlanStatus = Literal["READY", "BLOCKED"]
 
 _EXPECTED_USER_TABLES = {
     "schema_meta",

@@ -12,7 +12,11 @@ def test_extracts_article_paragraph_and_annex_references() -> None:
 
     references = extract_legal_references(text)
 
-    assert [(item.authority_title, item.article, item.paragraph, item.annex) for item in references] == [
+    actual = [
+        (item.authority_title, item.article, item.paragraph, item.annex)
+        for item in references
+    ]
+    assert actual == [
         ("주택건설기준 등에 관한 규정", "제27조", None, None),
         ("서울특별시 주차장 설치 및 관리 조례", "제20조", "제1항", "별표 2"),
         ("국토의 계획 및 이용에 관한 법률 시행령", "제46조", "제6항", None),
