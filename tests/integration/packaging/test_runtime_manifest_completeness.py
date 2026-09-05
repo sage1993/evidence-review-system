@@ -36,8 +36,10 @@ def _write_runtime(
     omitted_manifest_paths: frozenset[str] = frozenset(),
 ) -> None:
     required = _PUBLIC_REQUIRED if public else _PRIVATE_REQUIRED
+    inventory = list(required)
     if public:
         _write_file(root, "public-runtime.txt", b"public runtime\n")
+        inventory.append("public-runtime.txt")
     else:
         database = root / "evidence" / "evidence.sqlite"
         database.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +53,7 @@ def _write_runtime(
     _write_file(root, "examples/sample-request.json", b"{}")
 
     entries: list[dict[str, object]] = []
-    for relative in required:
+    for relative in inventory:
         if relative in omitted_manifest_paths:
             continue
         path = root / relative
@@ -107,9 +109,31 @@ def test_public_required_file_must_be_manifest_bound(tmp_path: Path) -> None:
         self_test(tmp_path)
 
 
-def test_complete_required_manifest_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_unlisted_nonrequired_runtime_file_is_incomplete(tmp_path: Path) -> None:
+    _write_runtime(tmp_path)
+    _write_file(tmp_path, "runtime_runner.py", b"print('unbound')\n")
+
+    with pytest.raises(SystemExit, match="RUNTIME_MANIFEST_INCOMPLETE"):
+        self_test(tmp_path)
+
+
+def test_complete_required_manifest_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     _write_runtime(tmp_path)
 
     self_test(tmp_path)
 
     assert capsys.readouterr().out.strip() == "WEB_RUNTIME_SELF_TEST_PASS"
+
+
+def test_complete_public_manifest_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_runtime(tmp_path, public=True)
+
+    self_test(tmp_path)
+
+    assert capsys.readouterr().out.strip() == "WEB_RUNTIME_PUBLIC_SELF_TEST_PASS"
