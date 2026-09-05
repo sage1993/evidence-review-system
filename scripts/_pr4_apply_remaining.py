@@ -249,7 +249,7 @@ def patch_case_visual_test() -> None:
     with pytest.raises(ValueError, match="symlink|reparse"):
         build_case_visual_projection(view_model, workspace_root=workspace)
 '''
-    path.write_text(text.rstrip() + addition + "\n", encoding="utf-8", newline="\n")
+    path.write_text(text.rstrip() + addition.rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
 def patch_workspace_test() -> None:
@@ -272,7 +272,7 @@ def patch_workspace_test() -> None:
     with pytest.raises(ValueError, match="symlink|reparse"):
         bind_active_workspace(repository_root, link)
 '''
-    path.write_text(text.rstrip() + addition + "\n", encoding="utf-8", newline="\n")
+    path.write_text(text.rstrip() + addition.rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
 def main() -> None:
