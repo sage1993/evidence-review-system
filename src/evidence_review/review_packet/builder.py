@@ -6,10 +6,10 @@ import json
 import sqlite3
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import cast
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.review import ReviewPacket
+from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
 from evidence_review.review_packet.reference_projection import project_reference_record
@@ -25,13 +25,13 @@ _DECISION_OPTIONS = (
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise ValueError(f"{field} must be an object")
-    return cast(Mapping[str, object], value)
+    return value
 
 
 def _sequence(value: object, field: str) -> Sequence[object]:
     if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
         raise ValueError(f"{field} must be an array")
-    return cast(Sequence[object], value)
+    return value
 
 
 def _string(value: object, field: str, *, allow_empty: bool = False) -> str:
@@ -192,23 +192,72 @@ def _verify_citation_identity(
             raise ValueError("citation identity does not match evidence database")
 
 
-def _v2_citations(document: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+def _v2_evidence_records(
+    document: Mapping[str, object],
+) -> dict[str, Mapping[str, object]]:
     if document.get("version") != 2:
         return {}
-    citations: dict[str, Mapping[str, object]] = {}
+    records: dict[str, Mapping[str, object]] = {}
+    evidence_citations: dict[str, str] = {}
     for index, item in enumerate(_sequence(document.get("evidence", []), "evidence")):
         record = _mapping(item, f"evidence[{index}]")
         evidence_id = _string(record.get("evidence_id"), f"evidence[{index}].evidence_id")
         citation = _mapping(record.get("citation"), f"evidence[{index}].citation")
+        citation_id = _string(
+            citation.get("citation_id"),
+            f"evidence[{index}].citation.citation_id",
+        )
+        _string(record.get("quote"), f"evidence[{index}].quote")
         identity = _citation_identity(citation)
         if identity["evidence_id"] != evidence_id:
             raise ValueError("citation identity does not match evidence record")
-        citation_id = cast(str, identity["citation_id"])
-        prior = citations.get(citation_id)
-        if prior is not None and _citation_identity(prior) != identity:
-            raise ValueError("conflicting citation identity")
-        citations[citation_id] = citation
-    return citations
+        prior = records.get(citation_id)
+        if prior is not None and dict(prior) != dict(record):
+            raise ValueError("conflicting v2 evidence record")
+        prior_citation_id = evidence_citations.get(evidence_id)
+        if prior_citation_id is not None and prior_citation_id != citation_id:
+            raise ValueError("conflicting v2 evidence record")
+        records[citation_id] = record
+        evidence_citations[evidence_id] = citation_id
+    return records
+
+
+def _verify_v2_snapshot_provenance(
+    document: Mapping[str, object],
+    connection: sqlite3.Connection,
+) -> None:
+    if document.get("version") != 2:
+        return
+    expected = _string(document.get("snapshot_sha256"), "snapshot_sha256")
+    provenance = evidence_snapshot_provenance(connection)
+    actual = provenance.get("evidence_snapshot_hash")
+    if actual != expected:
+        raise ValueError("review packet snapshot does not match evidence database")
+
+
+def _requires_packet_quote(document: Mapping[str, object]) -> bool:
+    return document.get("version") == 2 and document.get("compatibility_source_version") != 1
+
+
+def _resolve_display_citation(
+    connection: sqlite3.Connection,
+    citation_id: str,
+    provided_records: Mapping[str, Mapping[str, object]],
+    *,
+    require_packet_quote: bool,
+) -> dict[str, object]:
+    resolved = _resolve_citation(connection, citation_id)
+    provided = provided_records.get(citation_id)
+    if provided is None:
+        if require_packet_quote:
+            raise ValueError("native v2 citation is missing immutable evidence record")
+        return resolved
+    citation = _mapping(provided.get("citation"), "evidence.citation")
+    _verify_citation_identity(citation, resolved)
+    return {
+        **resolved,
+        "quote": _string(provided.get("quote"), "evidence.quote"),
+    }
 
 
 def _build_review_items(
@@ -326,11 +375,13 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
     packet_sha256 = _packet_sha256(packet_bytes)
     rule_documents = _rules(document)
     packet_missing_inputs = _strings(document.get("missing_inputs", []), "missing_inputs")
-    provided_citations = _v2_citations(document)
+    provided_records = _v2_evidence_records(document)
+    require_packet_quote = _requires_packet_quote(document)
     claims: list[dict[str, object]] = []
     resolved_citations: dict[str, dict[str, object]] = {}
     with EvidenceStore(evidence_db) as store:
         connection = store.require_connection()
+        _verify_v2_snapshot_provenance(document, connection)
         for index, item in enumerate(_sequence(document.get("claims", []), "claims")):
             claim = _mapping(item, f"claims[{index}]")
             citation_ids = tuple(
@@ -339,10 +390,12 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
             )
             citations = []
             for citation_id in citation_ids:
-                resolved = _resolve_citation(connection, citation_id)
-                provided = provided_citations.get(citation_id)
-                if provided is not None:
-                    _verify_citation_identity(provided, resolved)
+                resolved = _resolve_display_citation(
+                    connection,
+                    citation_id,
+                    provided_records,
+                    require_packet_quote=require_packet_quote,
+                )
                 resolved_citations.setdefault(citation_id, resolved)
                 citations.append(resolved)
             claims.append(
@@ -360,12 +413,21 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         for rule in rule_documents:
             for citation in _list_of_mappings(rule.get("citations", []), "rule.citations"):
                 citation_id = _string(citation.get("citation_id"), "rule.citation_id")
-                resolved = _resolve_citation(connection, citation_id)
+                resolved = _resolve_display_citation(
+                    connection,
+                    citation_id,
+                    provided_records,
+                    require_packet_quote=require_packet_quote,
+                )
                 _verify_citation_identity(citation, resolved)
                 resolved_citations.setdefault(citation_id, resolved)
-        for citation_id, provided_citation in provided_citations.items():
-            resolved = _resolve_citation(connection, citation_id)
-            _verify_citation_identity(provided_citation, resolved)
+        for citation_id in provided_records:
+            resolved = _resolve_display_citation(
+                connection,
+                citation_id,
+                provided_records,
+                require_packet_quote=require_packet_quote,
+            )
             resolved_citations.setdefault(citation_id, resolved)
 
     reasons = [
