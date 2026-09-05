@@ -58,3 +58,47 @@ def test_server_status_retries_transient_windows_identity_query(
 
     assert browser_launcher.review_server_status(tmp_path, "RUN-123")["running"] is True
     assert state_path.is_file()
+
+
+
+def test_http_readiness_and_browser_dispatch_are_tracked_separately(
+    monkeypatch, tmp_path
+) -> None:
+    run_id = "RUN-READINESS-0001"
+    run = tmp_path / "runs" / run_id
+    run.mkdir(parents=True)
+    fake_server = SimpleNamespace(
+        url="http://127.0.0.1:8123/runs/RUN-READINESS-0001/token/review",
+        _readiness_status="DISPATCHED",
+        _browser_dispatched=False,
+        close=lambda: None,
+    )
+    monkeypatch.setattr(
+        browser_launcher,
+        "review_server_status",
+        lambda *_args, **_kwargs: {"running": False, "run_id": run_id},
+    )
+    monkeypatch.setattr(
+        browser_launcher,
+        "_start_review_server",
+        lambda *_args, **_kwargs: fake_server,
+    )
+    monkeypatch.setattr(
+        browser_launcher,
+        "_wait_for_protected_http_ready",
+        lambda _url: "HTTP_READY",
+    )
+    monkeypatch.setattr(browser_launcher, "append_stage", lambda *_args, **_kwargs: None)
+
+    url = browser_launcher.open_protected_review_workspace(
+        tmp_path,
+        run_id,
+        browser=lambda _url: True,
+    )
+    try:
+        assert url == fake_server.url
+        assert fake_server._readiness_status == "HTTP_READY"
+        assert fake_server._browser_dispatched is True
+        assert "VISUAL_READY" in browser_launcher.ReviewOpenStatus.__args__
+    finally:
+        browser_launcher.close_open_review_servers()

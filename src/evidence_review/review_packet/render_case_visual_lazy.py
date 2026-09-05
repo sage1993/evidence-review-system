@@ -144,6 +144,8 @@ def _with_lazy_raster_placeholders(
     ):
         page = dict(_mapping(raw_page, f"case_visual_review.pages[{page_index}]"))
         raw_tiles = _sequence(page.get("tiles", []), f"case_visual_review.pages[{page_index}].tiles")
+        if not raw_tiles and "data_uri" not in page:
+            page["data_uri"] = _LAZY_TILE_PLACEHOLDER
         if raw_tiles:
             tiles: list[dict[str, object]] = []
             for tile_index, raw_tile in enumerate(raw_tiles):

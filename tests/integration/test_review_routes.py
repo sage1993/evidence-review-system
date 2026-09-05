@@ -19,11 +19,33 @@ from web_runtime.review_server import create_review_server
 TOKEN = "a" * 32
 
 
-def _review_artifacts(root: Path, *, html: bytes = b"<html>final</html>") -> tuple[Path, bytes]:
+def _review_artifacts(root: Path, *, html: bytes | None = None) -> tuple[Path, bytes]:
     run_dir = root / "runs" / "RUN-001"
     run_dir.mkdir(parents=True)
     packet = b'{"human_decision":null,"run_id":"RUN-001"}'
     (run_dir / "final-review-packet.json").write_bytes(packet)
+    if html is None:
+        model = {
+            "run_id": "RUN-001",
+            "status": "READY_FOR_HUMAN_REVIEW",
+            "display_status": "READY_FOR_HUMAN_REVIEW",
+            "question": "protected route fixture",
+            "claims": [],
+            "review_items": [],
+            "calculations": [],
+            "rules": [],
+            "exceptions": [],
+            "conflicts": [],
+            "abstention_reasons": [],
+            "summary": {},
+            "audit": {},
+        }
+        html = (
+            '<div class="app-shell"></div>'
+            '<script id="review-model" type="application/json">'
+            + json.dumps(model, sort_keys=True, separators=(",", ":"))
+            + "</script>"
+        ).encode("utf-8")
     (run_dir / "review.html").write_bytes(html)
     return run_dir, packet
 
@@ -122,7 +144,9 @@ def test_review_server_binds_loopback_and_serves_protected_read_only_artifacts(
     with _server(tmp_path) as (server, base):
         assert server.server_address[0] == "127.0.0.1"
         review = _request(f"{base}/runs/RUN-001/{TOKEN}/review")
-        assert review == b"<html>final</html>"
+        assert b'data-protected-presentation="true"' in review
+        assert b"data:image/" not in review
+        assert b'<script id="review-model" type="application/json">' in review
         assert _request(f"{base}/runs/RUN-001/{TOKEN}/packet") == packet
         assert json.loads(_request(f"{base}/runs/RUN-001/{TOKEN}/packet/hash")) == {
             "packet_hash": hashlib.sha256(packet).hexdigest()

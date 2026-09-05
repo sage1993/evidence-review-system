@@ -221,12 +221,29 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
     run.mkdir(parents=True)
     (run / "final-review-packet.json").write_bytes(b"{}")
     model = {
+        "run_id": RUN_ID,
+        "status": "READY_FOR_HUMAN_REVIEW",
+        "display_status": "READY_FOR_HUMAN_REVIEW",
+        "question": "protected tiled case page",
+        "claims": [],
+        "review_items": [],
+        "calculations": [],
+        "rules": [],
+        "exceptions": [],
+        "conflicts": [],
+        "abstention_reasons": [],
+        "summary": {},
+        "audit": {},
         "case_visual_review": {
+            "status": "VISUAL_ANALYSIS_VALIDATED",
             "pages": [
                 {
                     "asset_key": f"{CASE_ATTACHMENT_ID}-p1",
                     "attachment_id": CASE_ATTACHMENT_ID,
                     "page": 1,
+                    "width": 2048.0,
+                    "height": 2048.0,
+                    "document_name": "case.png",
                     "image_sha256": image_sha256,
                     "data_uri": "data:image/png;base64,AAAA",
                     "tiles": [
@@ -239,9 +256,13 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
                             "data_uri": "data:image/webp;base64,BBBB",
                         }
                     ],
+                    "candidates": [],
                 }
-            ]
-        }
+            ],
+            "reference_pages": [],
+            "findings": [],
+            "related_references": [],
+        },
     }
     (run / "review.html").write_text(
         '<div class="app-shell"></div>'
@@ -264,15 +285,13 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
         assert status == 200
         assert b"data:image/png;base64," not in protected
         assert b"data:image/webp;base64," not in protected
-        assert (
-            b"./case-pages/"
-            + CASE_ATTACHMENT_ID.encode()
-            + b"/1/"
-            + image_sha256.encode()
-            in protected
-        )
         protected_model = _review_model_from_html(protected)
         assert _embedded_raster_values(protected_model) == []
+        protected_page = protected_model["case_visual_review"]["pages"][0]
+        assert protected_page["protected_asset"] == {
+            "kind": "case-page",
+            "route_key": f"case-page/{CASE_ATTACHMENT_ID}/1/{image_sha256}",
+        }
 
         status, headers, delivered = _get(
             server,
@@ -347,7 +366,7 @@ def test_protected_page_image_route_rejects_wrong_identity_and_tampering(tmp_pat
         thread.join(timeout=5)
 
 
-def test_protected_reference_page_uses_generic_verified_page_route(tmp_path: Path) -> None:
+def test_unreferenced_reference_page_is_not_a_run_capability(tmp_path: Path) -> None:
     image_bytes = b"\x89PNG\r\n\x1a\nreference"
     _run(tmp_path, b"subject")
     _reference_page(tmp_path, image_bytes)
@@ -356,15 +375,12 @@ def test_protected_reference_page_uses_generic_verified_page_route(tmp_path: Pat
     thread.start()
     try:
         base = f"/runs/{RUN_ID}/{TOKEN}"
-        status, headers, body = _get(
+        status, _, body = _get(
             server,
             base + f"/page-images/REV-REF/12/{REFERENCE_SOURCE_HASH}",
         )
-        assert status == 200
-        assert headers["content-type"] == "image/png"
-        assert headers["cache-control"] == "no-store"
-        assert headers["x-content-type-options"] == "nosniff"
-        assert body == image_bytes
+        assert status == 404
+        assert image_bytes not in body
 
         status, _, _ = _get(
             server,

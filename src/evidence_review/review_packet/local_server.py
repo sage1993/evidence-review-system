@@ -28,7 +28,16 @@ from evidence_review.review_packet.decision_record import (
     validate_human_decision_request,
     write_human_decision,
 )
+from evidence_review.review_packet.html_renderer import render_protected_review_html
 from evidence_review.review_packet.page_image_verifier import read_verified_page_image
+from evidence_review.review_packet.protected_projection import (
+    AssetKind,
+    ProtectedReviewProjection,
+    ProtectedRouteIdentity,
+    build_protected_review_projection,
+    load_archive_review_model,
+    protected_route_identity,
+)
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
@@ -300,12 +309,16 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         workspace_root: Path,
         run_tokens: Mapping[str, str],
         reviewer_ids: Mapping[str, str],
+        protected_projections: Mapping[str, ProtectedReviewProjection],
+        run_asset_allowlists: Mapping[str, frozenset[ProtectedRouteIdentity]],
         max_body_bytes: int,
         idle_timeout_seconds: float | None,
     ) -> None:
         self.workspace_root = workspace_root
         self.run_tokens = dict(run_tokens)
         self.reviewer_ids = dict(reviewer_ids)
+        self.protected_projections = dict(protected_projections)
+        self.run_asset_allowlists = dict(run_asset_allowlists)
         self.max_body_bytes = max_body_bytes
         self.idle_timeout_seconds = idle_timeout_seconds
         self._activity_lock = Lock()
@@ -316,6 +329,12 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         host, port = cast(tuple[str, int], self.server_address)
         self.expected_host = f"{host}:{port}"
         self.origin = f"http://{self.expected_host}"
+
+    def asset_allowed(self, run_id: str, asset_kind: str, route_key: str) -> bool:
+        if asset_kind not in {"reference-page", "case-page", "case-tile"}:
+            return False
+        identity = protected_route_identity(cast(AssetKind, asset_kind), route_key)
+        return identity in self.run_asset_allowlists.get(run_id, frozenset())
 
     def mark_activity(self) -> bool:
         with self._activity_lock:
@@ -458,6 +477,12 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         if route.revision_id is None or route.page_number is None or route.source_hash is None:
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
+        route_key = (
+            f"reference-page/{route.revision_id}/{route.page_number}/{route.source_hash}"
+        )
+        if not self.state.asset_allowed(route.run_id, "reference-page", route_key):
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
         try:
             verified = read_verified_page_image(
                 self.state.workspace_root / "page-images",
@@ -525,23 +550,18 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
         if route.endpoint == "review":
-            html = self._artifact(route.run_id, "review.html")
-            if html is None:
+            projection = self.state.protected_projections.get(route.run_id)
+            if projection is None:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
             try:
-                html_bytes = html.read_bytes()
-                protected = _protected_review_html(html_bytes)
-            except OSError:
+                protected = render_protected_review_html(
+                    projection.model,
+                    self.state.workspace_root / "page-images",
+                ).encode("utf-8")
+            except (OSError, ValueError):
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
-            except ValueError as error:
-                if str(error) not in {"review model missing", "review HTML app shell missing"}:
-                    self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
-                    return
-                # Keep compatibility with pre-protected archival fixtures; canonical
-                # review HTML still takes the lazy protected path above.
-                protected = html_bytes
             self._send_bytes(HTTPStatus.OK, protected, "text/html; charset=utf-8")
             return
         if route.endpoint == "packet":
@@ -669,13 +689,47 @@ def create_review_server(
     root = _validated_workspace_root(workspace_root)
     tokens = _validated_tokens(run_tokens)
     reviewers = _validated_reviewer_ids(tokens, reviewer_ids)
-    return _ReviewHTTPServer(
+    protected_projections: dict[str, ProtectedReviewProjection] = {}
+    for run_id in tokens:
+        archive = _regular_child(
+            root,
+            "runs",
+            run_id,
+            "review.html",
+            final_is_file=True,
+        )
+        if archive is None:
+            continue
+        try:
+            model = load_archive_review_model(archive.read_bytes())
+            protected_projections[run_id] = build_protected_review_projection(
+                model,
+                root / "page-images",
+            )
+        except (FileNotFoundError, OSError, UnicodeError, ValueError):
+            continue
+    run_asset_allowlists = {
+        run_id: frozenset(
+            protected_route_identity(asset.asset_kind, asset.route_key)
+            for asset in projection.assets
+        )
+        for run_id, projection in protected_projections.items()
+    }
+    server = _ReviewHTTPServer(
         root,
         tokens,
         reviewers,
+        protected_projections,
+        run_asset_allowlists,
         max_body_bytes,
         None if idle_timeout_seconds is None else float(idle_timeout_seconds),
     )
+    from evidence_review.review_packet.case_visual_asset_server import (
+        configure_case_visual_server,
+    )
+
+    configure_case_visual_server(server)
+    return server
 
 
 def serve_with_idle_timeout(server: ThreadingHTTPServer) -> None:

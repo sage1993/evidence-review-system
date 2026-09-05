@@ -23,8 +23,27 @@ def _workspace(tmp_path: Path) -> Path:
     (run_directory / "final-review-packet.json").write_text(
         '{"human_decision":null}', encoding="utf-8"
     )
+    model = {
+        "run_id": RUN_ID,
+        "status": "READY_FOR_HUMAN_REVIEW",
+        "display_status": "READY_FOR_HUMAN_REVIEW",
+        "question": "idle-timeout protected review",
+        "claims": [],
+        "review_items": [],
+        "calculations": [],
+        "rules": [],
+        "exceptions": [],
+        "conflicts": [],
+        "abstention_reasons": [],
+        "summary": {},
+        "audit": {},
+    }
     (run_directory / "review.html").write_text(
-        "<html><body>protected review</body></html>", encoding="utf-8"
+        '<div class="app-shell"></div>'
+        '<script id="review-model" type="application/json">'
+        + json.dumps(model, sort_keys=True, separators=(",", ":"))
+        + "</script>",
+        encoding="utf-8",
     )
     return tmp_path
 
