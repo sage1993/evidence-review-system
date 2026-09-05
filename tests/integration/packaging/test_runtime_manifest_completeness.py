@@ -109,12 +109,16 @@ def test_public_required_file_must_be_manifest_bound(tmp_path: Path) -> None:
         self_test(tmp_path)
 
 
-def test_unlisted_nonrequired_runtime_file_is_incomplete(tmp_path: Path) -> None:
+def test_unlisted_runtime_cache_does_not_invalidate_manifest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     _write_runtime(tmp_path)
-    _write_file(tmp_path, "runtime_runner.py", b"print('unbound')\n")
+    _write_file(tmp_path, "evidence_review/__pycache__/module.cpython-313.pyc", b"cache")
 
-    with pytest.raises(SystemExit, match="RUNTIME_MANIFEST_INCOMPLETE"):
-        self_test(tmp_path)
+    self_test(tmp_path)
+
+    assert capsys.readouterr().out.strip() == "WEB_RUNTIME_SELF_TEST_PASS"
 
 
 def test_complete_required_manifest_passes(
