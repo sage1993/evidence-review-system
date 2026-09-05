@@ -1,4 +1,4 @@
-name: PR6 TDD Gate
+name: PR6 Final Acceptance
 
 on:
   push:
@@ -10,19 +10,202 @@ permissions:
   contents: read
 
 jobs:
-  focused:
+  linux-release-gate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: pip
-      - name: Install project and dev dependencies
-        run: python -m pip install -e '.[dev]'
-      - name: Task 6.1 focused tests
-        run: python -m pytest -q tests/unit/review_packet/test_decision_record.py tests/unit/review_packet/test_decision_state.py tests/integration/review_packet/test_persisted_decision_ui.py
-      - name: Task 6.2 manifest completeness tests
-        run: python -m pytest -q tests/integration/packaging/test_runtime_manifest_completeness.py tests/integration/packaging/test_web_bundle.py
-      - name: Task 6.3 pypdf policy and parser regressions
-        run: python -m pytest -q tests/unit/parsing/test_pdf_page_geometry.py tests/unit/parsing/test_coordinate_normalization.py tests/unit/parsing/test_odl_adapter.py tests/integration/parsing/test_generic_source_matrix.py tests/integration/packaging/test_python_support_policy.py
+      - name: Install development and build tools
+        run: |
+          python -m pip install build
+          python -m pip install -e '.[dev]'
+          python -c "import pypdf; print('PYPDF_VERSION=' + pypdf.__version__)"
+      - id: pytest
+        name: Full pytest
+        continue-on-error: true
+        run: python -m pytest -q
+      - id: ruff
+        name: Ruff
+        continue-on-error: true
+        run: python -m ruff check src tests
+      - id: mypy
+        name: mypy
+        continue-on-error: true
+        run: python -m mypy src/evidence_review
+      - id: compileall
+        name: compileall
+        continue-on-error: true
+        run: python -m compileall -q src web_runtime scripts
+      - id: legacy_workspace
+        name: Planned validate_workspace gate
+        continue-on-error: true
+        run: python scripts/validate_workspace.py .
+      - id: release_scripts
+        name: Canonical release scripts on deterministic fixture
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$RUNNER_TEMP/release-workspace"
+          BLOCKED="$RUNNER_TEMP/release-blocked"
+          READY="$RUNNER_TEMP/release-ready"
+          export WORKSPACE BLOCKED READY
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from tests.integration.release.test_release_builder import _workspace
+          _workspace(Path(os.environ['WORKSPACE']))
+          PY
+          python scripts/validate_release.py "$WORKSPACE" --output "$RUNNER_TEMP/release-validation.json"
+          set +e
+          python scripts/build_release.py "$WORKSPACE" "$BLOCKED"
+          blocked_exit=$?
+          set -e
+          test "$blocked_exit" -eq 2
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from tests.integration.release.test_release_builder import _attestation
+          workspace = Path(os.environ['WORKSPACE'])
+          blocked = Path(os.environ['BLOCKED'])
+          manifest = json.loads((blocked / 'release-manifest.json').read_text(encoding='utf-8'))
+          assert manifest['status'] == 'BLOCKED'
+          assert manifest['reason_codes'] == ['PROCESS_ATTESTATION_MISSING']
+          target = workspace / 'releases/evidence-review-v1.0/human-attestation.json'
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(
+              json.dumps(_attestation(manifest['candidate_hash'], manifest['packet_hash'])),
+              encoding='utf-8',
+          )
+          PY
+          python scripts/build_release.py "$WORKSPACE" "$READY"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          ready = Path(os.environ['READY'])
+          manifest = json.loads((ready / 'release-manifest.json').read_text(encoding='utf-8'))
+          validation = json.loads((ready / 'release-validation.json').read_text(encoding='utf-8'))
+          assert manifest['status'] == 'RELEASE_READY'
+          assert manifest['tag_allowed'] is True
+          assert validation['status'] == 'PASS'
+          assert validation['release_output']['status'] == 'PASS'
+          print('RELEASE_READY_ACCEPTANCE_PASS')
+          PY
+      - id: wheel
+        name: Clean wheel installed-runtime smoke
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m build --wheel
+          VENV="$RUNNER_TEMP/wheel-venv"
+          SMOKE="$RUNNER_TEMP/wheel-smoke"
+          export VENV SMOKE GITHUB_WORKSPACE
+          python -m venv "$VENV"
+          "$VENV/bin/python" -m pip install --upgrade pip
+          "$VENV/bin/python" -m pip install dist/*.whl
+          mkdir -p "$SMOKE"
+          cd "$SMOKE"
+          "$VENV/bin/evidence-review" --help >/dev/null
+          "$VENV/bin/ansim-review" --help >/dev/null
+          "$VENV/bin/python" - <<'PY'
+          import os
+          import zipfile
+          from pathlib import Path
+          import pypdf
+          from pypdf import PdfWriter
+          from evidence_review.packaging.web_bundle import build_web_runtime_zip
+          from evidence_review.parsing.pdf_page_geometry import read_pdf_page_geometries
+
+          assert tuple(map(int, pypdf.__version__.split('.')[:2])) >= (6, 17)
+          smoke = Path(os.environ['SMOKE'])
+          pdf = smoke / 'geometry.pdf'
+          writer = PdfWriter()
+          writer.add_blank_page(width=595.0, height=842.0)
+          with pdf.open('wb') as stream:
+              writer.write(stream)
+          page = read_pdf_page_geometries(pdf)[0]
+          assert (page.width, page.height) == (595.0, 842.0)
+
+          runtime_zip = smoke / 'runtime.zip'
+          build_web_runtime_zip(Path(os.environ['GITHUB_WORKSPACE']), runtime_zip)
+          extracted = smoke / 'runtime'
+          with zipfile.ZipFile(runtime_zip) as archive:
+              archive.extractall(extracted)
+          print('INSTALLED_PYPDF=' + pypdf.__version__)
+          print('INSTALLED_GEOMETRY_SMOKE_PASS')
+          print('RUNTIME_ROOT=' + str(extracted))
+          PY
+          runtime_root="$SMOKE/runtime"
+          if [ -f "$runtime_root/bootstrap.py" ]; then
+            "$VENV/bin/python" "$runtime_root/bootstrap.py" --self-test
+          elif [ -f "$runtime_root/web_runtime/bootstrap.py" ]; then
+            "$VENV/bin/python" "$runtime_root/web_runtime/bootstrap.py" --self-test
+          else
+            echo 'runtime bootstrap missing' >&2
+            exit 1
+          fi
+      - id: diff
+        name: git diff check
+        continue-on-error: true
+        run: git diff --check
+      - name: Enforce Linux gate results
+        if: always()
+        shell: bash
+        run: |
+          echo "pytest=${{ steps.pytest.outcome }}"
+          echo "ruff=${{ steps.ruff.outcome }}"
+          echo "mypy=${{ steps.mypy.outcome }}"
+          echo "compileall=${{ steps.compileall.outcome }}"
+          echo "validate_workspace=${{ steps.legacy_workspace.outcome }}"
+          echo "release_scripts=${{ steps.release_scripts.outcome }}"
+          echo "wheel=${{ steps.wheel.outcome }}"
+          echo "diff=${{ steps.diff.outcome }}"
+          test "${{ steps.pytest.outcome }}" = success
+          test "${{ steps.ruff.outcome }}" = success
+          test "${{ steps.mypy.outcome }}" = success
+          test "${{ steps.compileall.outcome }}" = success
+          test "${{ steps.legacy_workspace.outcome }}" = success
+          test "${{ steps.release_scripts.outcome }}" = success
+          test "${{ steps.wheel.outcome }}" = success
+          test "${{ steps.diff.outcome }}" = success
+
+  windows-regression-gate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install project
+        shell: pwsh
+        run: |
+          python -m pip install -e ".[dev]"
+          python -c "import pypdf; print('PYPDF_VERSION=' + pypdf.__version__)"
+      - id: pytest_windows
+        name: Full pytest on Windows
+        continue-on-error: true
+        shell: pwsh
+        run: python -m pytest -q
+      - id: protected_windows
+        name: Protected route and large workspace regressions
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/integration/review_packet/test_protected_image_delivery.py tests/integration/review_packet/test_review_workspace_performance.py
+      - name: Enforce Windows gate results
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "pytest=$${{ steps.pytest_windows.outcome }}"
+          Write-Host "protected=$${{ steps.protected_windows.outcome }}"
+          if ("${{ steps.pytest_windows.outcome }}" -ne "success") { exit 1 }
+          if ("${{ steps.protected_windows.outcome }}" -ne "success") { exit 1 }
