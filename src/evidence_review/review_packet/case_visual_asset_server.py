@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -14,6 +13,7 @@ from typing import cast
 from urllib.parse import unquote, urlsplit
 
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.review_packet import local_server
 
 # ruff: noqa: E501
@@ -261,31 +261,21 @@ def _case_asset_route(path: str) -> _CaseAssetRoute | None:
     return None
 
 
-def _regular_file(root: Path, *parts: str) -> Path | None:
+def _trusted_file(workspace_root: Path, *parts: str) -> Path | None:
     try:
-        resolved_root = root.resolve(strict=True)
-        candidate = resolved_root
-        for index, part in enumerate(parts):
-            candidate = candidate / part
-            status = candidate.lstat()
-            if stat.S_ISLNK(status.st_mode) or local_server._is_reparse_point(status):
-                return None
-            if index == len(parts) - 1:
-                if not stat.S_ISREG(status.st_mode):
-                    return None
-            elif not stat.S_ISDIR(status.st_mode):
-                return None
-        resolved = candidate.resolve(strict=True)
-        resolved.relative_to(resolved_root)
-        return resolved
-    except (OSError, ValueError):
+        return verified_regular_file_below(
+            workspace_root,
+            parts,
+            field="case visual asset",
+        )
+    except (FileNotFoundError, OSError, ValueError):
         return None
 
 
 def _page_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
     filename = f"page-{route.page_number:04d}.png"
     for cache_name in ("case-page-images-hq-v1", "case-page-images"):
-        path = _regular_file(
+        path = _trusted_file(
             workspace_root,
             cache_name,
             route.attachment_id,
@@ -310,7 +300,7 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
         route.attachment_id,
         f"page-{route.page_number:04d}",
     )
-    manifest_path = _regular_file(workspace_root, *directory_parts, "manifest.json")
+    manifest_path = _trusted_file(workspace_root, *directory_parts, "manifest.json")
     if manifest_path is None:
         return None
     try:
@@ -335,7 +325,7 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
             or image_sha256 != route.image_sha256
         ):
             return None
-        path = _regular_file(workspace_root, *directory_parts, filename)
+        path = _trusted_file(workspace_root, *directory_parts, filename)
         if path is None:
             return None
         try:
