@@ -34,7 +34,8 @@ _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
 _ACTIVE_SERVERS_LOCK = Lock()
 _READY_TIMEOUT_SECONDS = 2.0
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-_SERVER_IDENTITY_RETRY_SECONDS = 1.0
+_SERVER_IDENTITY_ATTEMPTS = 3
+_WINDOWS_IDENTITY_QUERY_TIMEOUT_SECONDS = 3.0
 _SERVER_IDENTITY_POLL_SECONDS = 0.05
 _STILL_ACTIVE = 259
 ReviewOpenStatus = Literal["DISPATCHED", "HTTP_READY", "VISUAL_READY", "FAILED"]
@@ -71,16 +72,14 @@ def _process_is_alive(pid: int) -> bool:
 def _verified_process_is_alive(
     pid: int, run_id: str, token_hash: object
 ) -> bool:
-    deadline = time.monotonic() + _SERVER_IDENTITY_RETRY_SECONDS
-    while True:
+    for attempt in range(_SERVER_IDENTITY_ATTEMPTS):
         if not _process_is_alive(pid):
             return False
         if _matches_server_process(pid, run_id, token_hash):
             return True
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return False
-        time.sleep(min(_SERVER_IDENTITY_POLL_SECONDS, remaining))
+        if attempt + 1 < _SERVER_IDENTITY_ATTEMPTS:
+            time.sleep(_SERVER_IDENTITY_POLL_SECONDS)
+    return False
 
 
 
@@ -322,7 +321,7 @@ def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
                 capture_output=True,
                 check=False,
                 text=True,
-                timeout=1,
+                timeout=_WINDOWS_IDENTITY_QUERY_TIMEOUT_SECONDS,
             ).stdout.strip()
         except (OSError, subprocess.SubprocessError):
             return False
