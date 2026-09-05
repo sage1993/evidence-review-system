@@ -44,3 +44,16 @@ def test_object_contract_schemas_reject_additional_properties() -> None:
         document = json.loads((SCHEMAS / name).read_text(encoding="utf-8"))
         assert document["type"] == "object"
         assert document["additionalProperties"] is False
+
+
+def test_review_packet_v2_claim_schema_requires_unique_issue_lineage() -> None:
+    document = json.loads(
+        (SCHEMAS / "review-packet-v2.schema.json").read_text(encoding="utf-8")
+    )
+    claim_schema = document["properties"]["claims"]["items"]
+
+    assert "issue_ids" in claim_schema["required"]
+    issue_ids = claim_schema["properties"]["issue_ids"]
+    assert issue_ids["type"] == "array"
+    assert issue_ids["uniqueItems"] is True
+    assert issue_ids["items"] == {"type": "string", "minLength": 1}

@@ -29,6 +29,7 @@ from evidence_review.contracts.common import Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 from evidence_review.contracts.question_plan import EvidenceRole
 from evidence_review.contracts.review import (
+    ClaimAudit,
     ConfidenceResult,
     FinalizerStatus,
     IssueResult,
@@ -316,14 +317,12 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
     return document
 
 
-def _finding_codes(track_b_output: object) -> set[str]:
-    payload = _mapping(track_b_output, "track_b")
-    codes: set[str] = set()
-    for item in _sequence(payload.get("claim_audits"), "claim_audits"):
-        audit = _mapping(item, "claim_audit")
-        for code in _sequence(audit.get("finding_codes", []), "finding_codes"):
-            codes.add(_string(code, "finding_code"))
-    return codes
+def _finding_codes(claim_audits: Sequence[ClaimAudit]) -> set[str]:
+    return {
+        code
+        for audit in claim_audits
+        for code in audit.finding_codes
+    }
 
 
 def _issue_results_from_inputs(inputs: Mapping[str, object]) -> tuple[IssueResult, ...]:
@@ -374,9 +373,10 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
         _issue_results_from_inputs(bundle.inputs),
         claims=validated_a.draft.claims,
         track_a_missing_inputs=validated_a.draft.missing_inputs,
+        claim_audits=audit.claim_audits,
     )
     partial_issue_resolution = has_partial_issue_resolution(issue_results)
-    finding_codes = _finding_codes(track_b_output)
+    finding_codes = _finding_codes(audit.claim_audits)
     approved = set(bundle.approved_rule_result_ids)
     missing_required_input = (
         issue_results_require_global_abstain(

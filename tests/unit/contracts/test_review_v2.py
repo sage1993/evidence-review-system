@@ -42,6 +42,7 @@ def _payload() -> dict[str, object]:
                 "text": "도로 폭은 8 m이다.",
                 "citation_ids": ["CIT-1"],
                 "numeric_tokens": ["8"],
+                "issue_ids": [],
             }
         ],
         "evidence": [
@@ -134,6 +135,23 @@ def test_v2_accepts_partially_resolved_finalizer_status() -> None:
     packet = review_v2.decode_review_packet_v2(payload)
 
     assert packet.finalizer_status == "PARTIALLY_RESOLVED"
+
+
+def test_v2_preserves_claim_issue_ids_through_document_round_trip() -> None:
+    review_v2 = _review_v2()
+    payload = _payload()
+    claims = payload["claims"]
+    assert isinstance(claims, list)
+    claims[0]["issue_ids"] = ["I1", "I2"]
+
+    packet = review_v2.decode_review_packet_v2(payload)
+    document = review_v2.review_packet_v2_document(packet)
+
+    document_claims = document["claims"]
+    assert isinstance(document_claims, list)
+    assert document_claims[0]["issue_ids"] == ["I1", "I2"]
+    round_tripped = review_v2.decode_review_packet_v2(document)
+    assert round_tripped.claims[0].issue_ids == ("I1", "I2")
 
 
 def test_v2_document_round_trips() -> None:

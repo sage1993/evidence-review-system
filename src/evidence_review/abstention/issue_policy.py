@@ -6,7 +6,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import replace
 
-from evidence_review.contracts.review import Claim, IssueResult, IssueStatus
+from evidence_review.contracts.review import Claim, ClaimAudit, IssueResult, IssueStatus
 
 _SUPPORTED_STATUSES = frozenset({"RESOLVED", "CONDITIONAL"})
 
@@ -20,19 +20,46 @@ def _missing_input_targets_issue(value: str, issue_id: str) -> bool:
     ) is not None
 
 
+def _nonaccepted_claim_ids(claim_audits: Sequence[ClaimAudit]) -> frozenset[str]:
+    return frozenset(
+        audit.claim_id for audit in claim_audits if audit.disposition != "ACCEPT"
+    )
+
+
 def reconcile_issue_results(
     issue_results: Sequence[IssueResult],
     *,
     claims: Sequence[Claim],
     track_a_missing_inputs: Sequence[str],
+    claim_audits: Sequence[ClaimAudit] = (),
 ) -> tuple[IssueResult, ...]:
-    """Reconcile retrieval coverage with the evidence Track A actually used.
+    """Reconcile retrieval coverage with validated Track A and Track B authority.
 
     Retrieval coverage is necessary but not sufficient for final resolution. A
     RESOLVED/CONDITIONAL issue must have at least one Track A claim linked to the
     issue. An explicitly issue-scoped missing input prevents a final RESOLVED
-    state even when retrieval coverage looked complete.
+    state. A non-ACCEPT Track B audit makes every issue linked to that claim
+    non-determinate, so a supported status is downgraded to UNRESOLVED.
     """
+    audit_claim_ids = [audit.claim_id for audit in claim_audits]
+    if len(audit_claim_ids) != len(set(audit_claim_ids)):
+        raise ValueError("duplicate claim audit identifiers")
+
+    known_claim_ids = {claim.claim_id for claim in claims}
+    unknown_audit_claim_ids = sorted(set(audit_claim_ids) - known_claim_ids)
+    if unknown_audit_claim_ids:
+        raise ValueError(
+            "unknown claim audit identifiers: " + ", ".join(unknown_audit_claim_ids)
+        )
+
+    nonaccepted_claim_ids = _nonaccepted_claim_ids(claim_audits)
+    blocked_issue_ids = {
+        issue_id
+        for claim in claims
+        if claim.claim_id in nonaccepted_claim_ids
+        for issue_id in claim.issue_ids
+    }
+
     claim_counts: dict[str, int] = {}
     for claim in claims:
         for issue_id in claim.issue_ids:
@@ -55,6 +82,8 @@ def reconcile_issue_results(
             status = "CONDITIONAL"
         else:
             status = result.status
+        if result.issue_id in blocked_issue_ids and status in _SUPPORTED_STATUSES:
+            status = "UNRESOLVED"
         reconciled.append(replace(result, status=status))
     return tuple(reconciled)
 

@@ -14,7 +14,10 @@ from evidence_review.abstention.finalizer import verify_finalized_run
 from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.next_action import NextAction, next_action_document
-from evidence_review.contracts.review import FinalizerStatus
+from evidence_review.contracts.review import (
+    TERMINAL_FINALIZER_STATUSES,
+    FinalizerStatus,
+)
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.contracts.workflow import WorkflowState
 from evidence_review.evidence.snapshot import evidence_snapshot_provenance
@@ -619,7 +622,7 @@ def submit_question_track_b(
     """Finalize idempotently from a Track B handoff or interrupted finalization."""
     run_directory = workspace / "runs" / run_id
     state, _action = _resume_state(run_directory)
-    if state == "READY_FOR_HUMAN_REVIEW" or state == "ABSTAIN":
+    if state in TERMINAL_FINALIZER_STATUSES:
         finalized = _existing_finalized_run(run_directory)
         if finalized is None:
             raise ValueError("final review artifacts are incomplete")

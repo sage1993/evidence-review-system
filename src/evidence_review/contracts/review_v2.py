@@ -105,6 +105,7 @@ def _claim_document(claim: Claim) -> dict[str, object]:
         "text": claim.text,
         "citation_ids": list(claim.citation_ids),
         "numeric_tokens": list(claim.numeric_tokens),
+        "issue_ids": list(claim.issue_ids),
     }
 
 

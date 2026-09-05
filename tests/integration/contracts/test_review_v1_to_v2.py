@@ -54,6 +54,9 @@ def test_ready_v1_packet_adapts_without_inventing_drawing_evidence() -> None:
     assert document["drawing_evidence"] == []
     assert document["confirmed_inputs"] == []
     assert document["evidence"] == []
+    claims = document["claims"]
+    assert isinstance(claims, list)
+    assert claims[0]["issue_ids"] == []
     assert document["compatibility_source_version"] == 1
     assert document["human_decision"] is None
 
