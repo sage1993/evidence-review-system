@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -139,6 +140,52 @@ def test_output_created_during_import_is_preserved(
     with pytest.raises(FileExistsError):
         source_batch_importer.import_source_batch(tmp_path, batch, output)
 
+    assert output.read_bytes() == sentinel
+    assert _temporary_artifacts(output) == ()
+
+
+def test_output_created_after_last_exists_check_is_never_overwritten(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    batch = _ready_batch(tmp_path)
+    output = tmp_path / "evidence.sqlite"
+    sentinel = b"publish-boundary competitor must survive"
+    original_exists = Path.exists
+    output_exists_calls = 0
+    publication_barrier = threading.Barrier(2)
+    competitor_written = threading.Event()
+
+    def competing_writer() -> None:
+        publication_barrier.wait()
+        output.write_bytes(sentinel)
+        competitor_written.set()
+
+    competitor = threading.Thread(target=competing_writer, daemon=True)
+    competitor.start()
+
+    def release_competitor_after_last_check(path: Path) -> bool:
+        nonlocal output_exists_calls
+        exists = original_exists(path)
+        if path == output:
+            output_exists_calls += 1
+            if output_exists_calls == 2 and not exists:
+                publication_barrier.wait()
+                if not competitor_written.wait(timeout=5):
+                    raise AssertionError("competing writer did not reach publication boundary")
+                return False
+        return exists
+
+    monkeypatch.setattr(Path, "exists", release_competitor_after_last_check)
+
+    try:
+        with pytest.raises(FileExistsError):
+            source_batch_importer.import_source_batch(tmp_path, batch, output)
+    finally:
+        competitor.join(timeout=5)
+
+    assert not competitor.is_alive()
+    assert output_exists_calls >= 2
     assert output.read_bytes() == sentinel
     assert _temporary_artifacts(output) == ()
 
