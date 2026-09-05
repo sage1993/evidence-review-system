@@ -221,12 +221,29 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
     run.mkdir(parents=True)
     (run / "final-review-packet.json").write_bytes(b"{}")
     model = {
+        "run_id": RUN_ID,
+        "status": "READY_FOR_HUMAN_REVIEW",
+        "display_status": "READY_FOR_HUMAN_REVIEW",
+        "question": "protected tiled case page",
+        "claims": [],
+        "review_items": [],
+        "calculations": [],
+        "rules": [],
+        "exceptions": [],
+        "conflicts": [],
+        "abstention_reasons": [],
+        "summary": {},
+        "audit": {},
         "case_visual_review": {
+            "status": "VISUAL_ANALYSIS_VALIDATED",
             "pages": [
                 {
                     "asset_key": f"{CASE_ATTACHMENT_ID}-p1",
                     "attachment_id": CASE_ATTACHMENT_ID,
                     "page": 1,
+                    "width": 2048.0,
+                    "height": 2048.0,
+                    "document_name": "case.png",
                     "image_sha256": image_sha256,
                     "data_uri": "data:image/png;base64,AAAA",
                     "tiles": [
@@ -239,9 +256,13 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
                             "data_uri": "data:image/webp;base64,BBBB",
                         }
                     ],
+                    "candidates": [],
                 }
-            ]
-        }
+            ],
+            "reference_pages": [],
+            "findings": [],
+            "related_references": [],
+        },
     }
     (run / "review.html").write_text(
         '<div class="app-shell"></div>'
