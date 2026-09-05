@@ -13,7 +13,7 @@ classifiers = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "pypdf>=5,<6",
+  "pypdf>=6.17,<7",
   "pypdfium2>=5.12,<6",
   "Pillow>=12,<13",
 ]
@@ -30,7 +30,7 @@ evidence-review = "evidence_review.cli:main"
 ansim-review = "evidence_review.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "src"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
