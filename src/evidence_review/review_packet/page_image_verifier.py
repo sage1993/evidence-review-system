@@ -119,16 +119,21 @@ def read_verified_page_image(
         raise ValueError("invalid source_hash")
 
     stem = f"page-{page_number:04d}"
-    image_path = verified_regular_file_below(
-        page_root,
-        (revision_id, f"{stem}.png"),
-        field="page image",
-    )
-    metadata_path = verified_regular_file_below(
-        page_root,
-        (revision_id, f"{stem}.json"),
-        field="page image metadata",
-    )
+    try:
+        image_path = verified_regular_file_below(
+            page_root,
+            (revision_id, f"{stem}.png"),
+            field="page image",
+        )
+        metadata_path = verified_regular_file_below(
+            page_root,
+            (revision_id, f"{stem}.json"),
+            field="page image metadata",
+        )
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            f"verified page image missing: {revision_id} page {page_number}"
+        ) from error
 
     try:
         document = json.loads(metadata_path.read_text(encoding="utf-8"))
