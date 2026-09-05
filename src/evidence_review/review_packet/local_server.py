@@ -31,9 +31,12 @@ from evidence_review.review_packet.decision_record import (
 from evidence_review.review_packet.html_renderer import render_protected_review_html
 from evidence_review.review_packet.page_image_verifier import read_verified_page_image
 from evidence_review.review_packet.protected_projection import (
+    AssetKind,
     ProtectedReviewProjection,
+    ProtectedRouteIdentity,
     build_protected_review_projection,
     load_archive_review_model,
+    protected_route_identity,
 )
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
@@ -307,6 +310,7 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         run_tokens: Mapping[str, str],
         reviewer_ids: Mapping[str, str],
         protected_projections: Mapping[str, ProtectedReviewProjection],
+        run_asset_allowlists: Mapping[str, frozenset[ProtectedRouteIdentity]],
         max_body_bytes: int,
         idle_timeout_seconds: float | None,
     ) -> None:
@@ -314,6 +318,7 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         self.run_tokens = dict(run_tokens)
         self.reviewer_ids = dict(reviewer_ids)
         self.protected_projections = dict(protected_projections)
+        self.run_asset_allowlists = dict(run_asset_allowlists)
         self.max_body_bytes = max_body_bytes
         self.idle_timeout_seconds = idle_timeout_seconds
         self._activity_lock = Lock()
@@ -324,6 +329,12 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         host, port = cast(tuple[str, int], self.server_address)
         self.expected_host = f"{host}:{port}"
         self.origin = f"http://{self.expected_host}"
+
+    def asset_allowed(self, run_id: str, asset_kind: str, route_key: str) -> bool:
+        if asset_kind not in {"reference-page", "case-page", "case-tile"}:
+            return False
+        identity = protected_route_identity(cast(AssetKind, asset_kind), route_key)
+        return identity in self.run_asset_allowlists.get(run_id, frozenset())
 
     def mark_activity(self) -> bool:
         with self._activity_lock:
@@ -464,6 +475,12 @@ class _ReviewHandler(BaseHTTPRequestHandler):
 
     def _send_page_image(self, route: _Route) -> None:
         if route.revision_id is None or route.page_number is None or route.source_hash is None:
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        route_key = (
+            f"reference-page/{route.revision_id}/{route.page_number}/{route.source_hash}"
+        )
+        if not self.state.asset_allowed(route.run_id, "reference-page", route_key):
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
         try:
@@ -706,11 +723,19 @@ def create_review_server(
             )
         except (FileNotFoundError, OSError, UnicodeError, ValueError):
             continue
+    run_asset_allowlists = {
+        run_id: frozenset(
+            protected_route_identity(asset.asset_kind, asset.route_key)
+            for asset in projection.assets
+        )
+        for run_id, projection in protected_projections.items()
+    }
     server = _ReviewHTTPServer(
         root,
         tokens,
         reviewers,
         protected_projections,
+        run_asset_allowlists,
         max_body_bytes,
         None if idle_timeout_seconds is None else float(idle_timeout_seconds),
     )

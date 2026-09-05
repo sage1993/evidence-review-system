@@ -366,7 +366,7 @@ def test_protected_page_image_route_rejects_wrong_identity_and_tampering(tmp_pat
         thread.join(timeout=5)
 
 
-def test_protected_reference_page_uses_generic_verified_page_route(tmp_path: Path) -> None:
+def test_unreferenced_reference_page_is_not_a_run_capability(tmp_path: Path) -> None:
     image_bytes = b"\x89PNG\r\n\x1a\nreference"
     _run(tmp_path, b"subject")
     _reference_page(tmp_path, image_bytes)
@@ -375,15 +375,12 @@ def test_protected_reference_page_uses_generic_verified_page_route(tmp_path: Pat
     thread.start()
     try:
         base = f"/runs/{RUN_ID}/{TOKEN}"
-        status, headers, body = _get(
+        status, _, body = _get(
             server,
             base + f"/page-images/REV-REF/12/{REFERENCE_SOURCE_HASH}",
         )
-        assert status == 200
-        assert headers["content-type"] == "image/png"
-        assert headers["cache-control"] == "no-store"
-        assert headers["x-content-type-options"] == "nosniff"
-        assert body == image_bytes
+        assert status == 404
+        assert image_bytes not in body
 
         status, _, _ = _get(
             server,

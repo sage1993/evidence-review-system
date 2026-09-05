@@ -354,6 +354,20 @@ class CaseVisualReviewHandler(local_server._ReviewHandler):
         )
         if not self._authorized(authorization_route, require_origin=False):
             return
+        asset_kind = "case-page" if case_route.kind == "page" else "case-tile"
+        if case_route.kind == "page":
+            route_key = (
+                f"case-page/{case_route.attachment_id}/{case_route.page_number}/"
+                f"{case_route.image_sha256}"
+            )
+        else:
+            route_key = (
+                f"case-tile/{case_route.attachment_id}/{case_route.page_number}/"
+                f"{case_route.tile_x}/{case_route.tile_y}/{case_route.image_sha256}"
+            )
+        if not self.state.asset_allowed(case_route.run_id, asset_kind, route_key):
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
         self.state.mark_activity()
         body = (
             _page_asset(self.state.workspace_root, case_route)

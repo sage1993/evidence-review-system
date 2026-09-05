@@ -20,6 +20,19 @@ _MODEL_SCRIPT = re.compile(
 )
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 AssetKind = Literal["reference-page", "case-page", "case-tile"]
+ProtectedRouteIdentity = tuple[str, str, str, str]
+
+
+def protected_route_identity(
+    asset_kind: AssetKind,
+    route_key: str,
+) -> ProtectedRouteIdentity:
+    """Return a normalized route capability identity with no filesystem semantics."""
+    if not isinstance(route_key, str) or not route_key or route_key.startswith("/"):
+        raise ValueError("protected route_key is invalid")
+    if any(part in {"", ".", ".."} for part in route_key.split("/")):
+        raise ValueError("protected route_key is invalid")
+    return (asset_kind, "GET", "image/png", route_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,8 +237,11 @@ def build_protected_review_projection(
 
 
 __all__ = [
+    "AssetKind",
     "ProtectedAssetRef",
     "ProtectedReviewProjection",
+    "ProtectedRouteIdentity",
     "build_protected_review_projection",
     "load_archive_review_model",
+    "protected_route_identity",
 ]
