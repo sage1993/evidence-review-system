@@ -9,6 +9,7 @@ import pytest
 from evidence_review.contracts.source_batch import decode_source_batch
 from evidence_review.parsing.source_batch_importer import (
     PendingParserOutputError,
+    _publish_create_only,
     import_source_batch,
     prepare_source_batch,
 )
@@ -66,6 +67,22 @@ def _write_parser(path: Path, file_name: str) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def test_publish_create_only_refuses_to_overwrite_existing_destination(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.sqlite"
+    destination = tmp_path / "destination.sqlite"
+    source.write_bytes(b"new snapshot")
+    sentinel = b"existing snapshot"
+    destination.write_bytes(sentinel)
+
+    with pytest.raises(FileExistsError):
+        _publish_create_only(source, destination)
+
+    assert destination.read_bytes() == sentinel
+    assert source.read_bytes() == b"new snapshot"
 
 
 def test_same_bytes_with_different_names_deduplicate(tmp_path: Path) -> None:

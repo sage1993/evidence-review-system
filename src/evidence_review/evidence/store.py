@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from importlib.resources import files
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Iterator
+from typing import Any
 
 from evidence_review.evidence.schema_version import detect_schema_version, require_current_schema
 

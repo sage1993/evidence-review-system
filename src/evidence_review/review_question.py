@@ -41,6 +41,7 @@ from evidence_review.review_run import (
     submit_track_b,
     validate_track_b_submission,
 )
+from evidence_review.workflow.artifact_ownership import FINALIZATION_DERIVED
 from evidence_review.workflow.events import (
     append_workflow_event,
     load_workflow_events,
@@ -446,7 +447,7 @@ def _recover_incomplete_finalization(
         else:
             canonical.unlink()
 
-    for name in ("run-manifest.json", "final-review-packet.json", "review.html"):
+    for name in sorted(FINALIZATION_DERIVED):
         (run_directory / name).unlink(missing_ok=True)
 
 

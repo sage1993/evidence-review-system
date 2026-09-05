@@ -73,6 +73,11 @@ class SourceBatchImportReport:
     sources: tuple[PreparedSource, ...]
 
 
+def _publish_create_only(source: Path, destination: Path) -> None:
+    """Publish source atomically and fail if destination already exists."""
+    os.link(source, destination)
+
+
 def derive_document_id(source_sha256: str, explicit: str | None) -> str:
     """Derive a stable document identity from explicit metadata or source bytes."""
     if not _SHA256.fullmatch(source_sha256):
@@ -424,7 +429,7 @@ def import_source_batch(
             counts = snapshot_counts(store)
         if output.exists():
             raise FileExistsError(output)
-        os.replace(temporary_db, output)
+        _publish_create_only(temporary_db, output)
     ingested_ids = {source.revision_id for source in ingestible}
     completed = tuple(
         replace(

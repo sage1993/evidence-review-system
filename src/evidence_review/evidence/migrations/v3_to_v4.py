@@ -207,7 +207,10 @@ def migrate_v3_to_v4(source: Path, output: Path) -> MigrationReport:
         connection.commit()
         if detect_schema_version(connection) != 4:
             raise ValueError("MIGRATION_SCHEMA_VERSION_MISMATCH")
-        if int(connection.execute("SELECT COUNT(*) FROM clauses").fetchone()[0]) != source_clause_count:
+        migrated_clause_count = int(
+            connection.execute("SELECT COUNT(*) FROM clauses").fetchone()[0]
+        )
+        if migrated_clause_count != source_clause_count:
             raise ValueError("MIGRATION_CLAUSE_COUNT_MISMATCH")
         if connection.execute("SELECT COUNT(*) FROM clause_retrieval_records").fetchone() != (0,):
             raise ValueError("MIGRATION_DERIVED_INDEX_NOT_EMPTY")
