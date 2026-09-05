@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from evidence_review.contracts.question_plan import decode_question_plan
+from evidence_review.contracts.question_plan import QuestionPlan, decode_question_plan
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
@@ -61,7 +61,7 @@ def _workspace(path: Path) -> Path:
     return path
 
 
-def _partial_plan(question: str):
+def _partial_plan(question: str) -> QuestionPlan:
     return decode_question_plan(
         {
             "format": "evidence-review/question-plan",
@@ -104,7 +104,9 @@ def _partial_plan(question: str):
 
 
 def _track_a(run_directory: Path) -> Path:
-    bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
+    bundle = json.loads(
+        (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
+    )
     citation_id = bundle["evidence"][0]["citation"]["citation_id"]
     output = run_directory / "external-track-a.json"
     output.write_text(
