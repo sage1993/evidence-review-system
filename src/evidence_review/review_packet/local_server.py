@@ -551,32 +551,17 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             return
         if route.endpoint == "review":
             projection = self.state.protected_projections.get(route.run_id)
-            if projection is not None:
-                try:
-                    protected = render_protected_review_html(
-                        projection.model,
-                        self.state.workspace_root / "page-images",
-                    ).encode("utf-8")
-                except (OSError, ValueError):
-                    self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
-                    return
-                self._send_bytes(HTTPStatus.OK, protected, "text/html; charset=utf-8")
-                return
-            html = self._artifact(route.run_id, "review.html")
-            if html is None:
+            if projection is None:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
             try:
-                html_bytes = html.read_bytes()
-                protected = _protected_review_html(html_bytes)
-            except OSError:
+                protected = render_protected_review_html(
+                    projection.model,
+                    self.state.workspace_root / "page-images",
+                ).encode("utf-8")
+            except (OSError, ValueError):
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                 return
-            except ValueError as error:
-                if str(error) not in {"review model missing", "review HTML app shell missing"}:
-                    self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
-                    return
-                protected = html_bytes
             self._send_bytes(HTTPStatus.OK, protected, "text/html; charset=utf-8")
             return
         if route.endpoint == "packet":
