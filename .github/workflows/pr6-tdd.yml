@@ -1,4 +1,4 @@
-name: PR6 Manifest TDD
+name: PR6 Static Preflight
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  focused:
+  preflight:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -20,9 +20,22 @@ jobs:
           cache: pip
       - name: Install project
         run: python -m pip install -e '.[dev]'
-      - name: Manifest completeness and producer symmetry
+      - name: Focused PR-6 regressions
         run: |
           python -m pytest -q \
+            tests/unit/review_packet/test_decision_record.py \
+            tests/unit/review_packet/test_decision_state.py \
+            tests/integration/review_packet/test_persisted_decision_ui.py \
             tests/integration/packaging/test_runtime_manifest_completeness.py \
             tests/integration/packaging/test_runtime_manifest_inventory.py \
-            tests/integration/packaging/test_web_bundle.py
+            tests/integration/packaging/test_web_bundle.py \
+            tests/integration/packaging/test_python_support_policy.py \
+            tests/integration/documentation_integrity/test_repository_acceptance.py
+      - name: Ruff
+        run: python -m ruff check src tests web_runtime
+      - name: mypy Windows target
+        run: python -m mypy --platform win32 src/evidence_review
+      - name: compileall
+        run: python -m compileall -q src web_runtime scripts
+      - name: diff check
+        run: git diff --check
