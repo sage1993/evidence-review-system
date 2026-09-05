@@ -38,6 +38,14 @@ def _evidence_db(path: Path) -> None:
             """,
             (json.dumps([10, 20, 110, 40]), "a" * 64),
         )
+        connection.execute(
+            "INSERT INTO snapshot_meta(key, value) VALUES('snapshot_hash', ?)",
+            ("1" * 64,),
+        )
+        connection.execute(
+            "INSERT INTO retrieval_meta(key, value) VALUES('snapshot_hash', ?)",
+            ("1" * 64,),
+        )
         connection.commit()
 
 
@@ -112,6 +120,56 @@ def test_view_model_rejects_conflicting_v2_citation_identity(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="citation identity"):
         build_review_view_model(packet, evidence_db)
+
+
+def test_v2_packet_quote_remains_display_authority_when_db_text_differs(
+    tmp_path: Path,
+) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    _evidence_db(evidence_db)
+    _, packet = _packet("review-packet-v2-from-v1-ready.json")
+    packet["compatibility_source_version"] = None
+    packet["evidence"] = [
+        {
+            "evidence_id": "E1",
+            "citation": {
+                "citation_id": "CIT-E1",
+                "document_id": "DOC1",
+                "revision_id": "REV1",
+                "page_number": 3,
+                "evidence_id": "E1",
+                "bbox": [10, 20, 110, 40],
+                "source_hash": "a" * 64,
+            },
+            "quote": "PACKET IMMUTABLE QUOTE",
+            "numeric_tokens": [],
+        }
+    ]
+
+    model = build_review_view_model(packet, evidence_db)
+
+    assert model["claims"][0]["citations"][0]["quote"] == "PACKET IMMUTABLE QUOTE"
+
+
+def test_v2_packet_snapshot_mismatch_fails_before_projection(tmp_path: Path) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    _evidence_db(evidence_db)
+    _, packet = _packet("review-packet-v2-from-v1-ready.json")
+    packet["snapshot_sha256"] = "f" * 64
+
+    with pytest.raises(ValueError, match="snapshot does not match evidence database"):
+        build_review_view_model(packet, evidence_db)
+
+
+def test_v1_packet_does_not_require_snapshot_provenance_match(tmp_path: Path) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    _evidence_db(evidence_db)
+    _, packet = _packet("review-packet-v1-ready.json")
+    packet["snapshot_sha256"] = "f" * 64
+
+    model = build_review_view_model(packet, evidence_db)
+
+    assert model["claims"][0]["citations"][0]["quote"] == "Verified fixture quote"
 
 
 def test_view_model_rejects_unresolved_cited_evidence(tmp_path: Path) -> None:
