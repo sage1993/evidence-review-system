@@ -9,13 +9,13 @@ LEGACY_READERS = {
     SOURCE_ROOT / "parsing" / "page_image_cache.py",
     SOURCE_ROOT / "release" / "legacy_acceptance.py",
     SOURCE_ROOT / "review_run.py",
-    SOURCE_ROOT / "review_packet" / "html_renderer.py",
+    SOURCE_ROOT / "review_packet" / "page_image_verifier.py",
 }
 LEGACY_CONSTANTS_BY_READER = {
     SOURCE_ROOT / "parsing" / "legacy_visual_manifest.py": "LEGACY_VISUAL_STATUS",
     SOURCE_ROOT / "parsing" / "page_image_cache.py": "LEGACY_PAGE_IMAGE_FORMAT",
     SOURCE_ROOT / "release" / "legacy_acceptance.py": "LEGACY_HUMAN_ACCEPTANCE_FORMAT",
-    SOURCE_ROOT / "review_packet" / "html_renderer.py": "LEGACY_PAGE_IMAGE_FORMAT",
+    SOURCE_ROOT / "review_packet" / "page_image_verifier.py": "LEGACY_PAGE_IMAGE_FORMAT",
 }
 TOKENS = (
     '"ansim/',

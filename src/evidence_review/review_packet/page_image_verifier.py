@@ -3,16 +3,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import stat
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from evidence_review.contracts.legacy_formats import LEGACY_PAGE_IMAGE_FORMAT
-from evidence_review.review_packet.html_renderer import _mapping, _page_assets, _sequence
+from evidence_review.filesystem_trust import verified_regular_file_below
 
 _PAGE_IMAGE_FORMAT = "evidence-review/page-image"
-_REPARSE_POINT_ATTRIBUTE = 0x400
+_GEOMETRY_TOLERANCE = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,18 +31,22 @@ class VerifiedPageImage:
     box_kind: str
 
 
-def _regular_file(path: Path) -> Path:
-    try:
-        status = path.lstat()
-    except OSError as error:
-        raise FileNotFoundError(path) from error
-    if (
-        stat.S_ISLNK(status.st_mode)
-        or not stat.S_ISREG(status.st_mode)
-        or getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE
-    ):
-        raise ValueError("page image path must be a regular file")
-    return path.resolve(strict=True)
+def _mapping(value: object, field: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+        raise ValueError(f"{field} must be an object")
+    return cast(Mapping[str, object], value)
+
+
+def _sequence(value: object, field: str) -> Sequence[object]:
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise ValueError(f"{field} must be an array")
+    return cast(Sequence[object], value)
+
+
+def _page_number(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("citation page_number must be a positive integer")
+    return value
 
 
 def _number(value: object, field: str) -> float:
@@ -52,6 +56,48 @@ def _number(value: object, field: str) -> float:
     if number != number or number in (float("inf"), float("-inf")):
         raise ValueError(f"{field} must be finite")
     return number
+
+
+def _positive_number(value: object, field: str) -> float:
+    number = _number(value, field)
+    if number <= 0:
+        raise ValueError(f"{field} must be positive")
+    return number
+
+
+def _citation_identity(citation: Mapping[str, object]) -> tuple[str, int, str]:
+    return (
+        str(citation.get("revision_id", "")),
+        _page_number(citation.get("page_number")),
+        str(citation.get("source_hash", "")),
+    )
+
+
+def _verify_page_geometry(
+    citation: Mapping[str, object],
+    page_image: VerifiedPageImage,
+) -> None:
+    width = _positive_number(citation.get("page_width"), "citation.page_width")
+    height = _positive_number(citation.get("page_height"), "citation.page_height")
+    if (
+        abs(width - page_image.pdf_width) > _GEOMETRY_TOLERANCE
+        or abs(height - page_image.pdf_height) > _GEOMETRY_TOLERANCE
+    ):
+        raise ValueError(
+            "PAGE_RENDER_GEOMETRY_MISMATCH: "
+            f"citation={width}x{height} "
+            f"page_image={page_image.pdf_width}x{page_image.pdf_height}"
+        )
+    expected = (
+        ("page_origin_x", page_image.origin_x),
+        ("page_origin_y", page_image.origin_y),
+        ("page_rotation", page_image.rotation),
+        ("page_box_kind", page_image.box_kind),
+    )
+    for field, value in expected:
+        provided = citation.get(field)
+        if provided is not None and provided != value:
+            raise ValueError(f"PAGE_RENDER_GEOMETRY_MISMATCH: {field}")
 
 
 def read_verified_page_image(
@@ -72,18 +118,27 @@ def read_verified_page_image(
     ):
         raise ValueError("invalid source_hash")
 
-    root = page_root.resolve(strict=True)
-    directory = page_root / revision_id
     stem = f"page-{page_number:04d}"
-    image_path = _regular_file(directory / f"{stem}.png")
-    metadata_path = _regular_file(directory / f"{stem}.json")
     try:
-        image_path.relative_to(root)
-        metadata_path.relative_to(root)
-    except ValueError as error:
-        raise ValueError("page image escaped page root") from error
+        image_path = verified_regular_file_below(
+            page_root,
+            (revision_id, f"{stem}.png"),
+            field="page image",
+        )
+        metadata_path = verified_regular_file_below(
+            page_root,
+            (revision_id, f"{stem}.json"),
+            field="page image metadata",
+        )
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            f"verified page image missing: {revision_id} page {page_number}"
+        ) from error
 
-    document = json.loads(metadata_path.read_text(encoding="utf-8"))
+    try:
+        document = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("page image metadata is invalid") from error
     metadata = _mapping(document, "page image metadata")
     required = {
         "format",
@@ -153,11 +208,35 @@ def read_verified_page_image(
 def verify_review_page_images(
     view_model: Mapping[str, object],
     page_image_root: Path,
-) -> None:
-    """Verify every cited page image and citation geometry without rendering HTML."""
+) -> Sequence[VerifiedPageImage]:
+    """Verify each distinct cited page once and validate every citation geometry."""
     model = _mapping(view_model, "view_model")
     claims = _sequence(model.get("claims", []), "claims")
-    _page_assets(claims, page_image_root)
+    verified_by_identity: dict[tuple[str, int, str], VerifiedPageImage] = {}
+    ordered: list[VerifiedPageImage] = []
+
+    for claim_index, claim_value in enumerate(claims):
+        claim = _mapping(claim_value, f"claims[{claim_index}]")
+        citations = _sequence(claim.get("citations", []), f"claims[{claim_index}].citations")
+        for citation_index, citation_value in enumerate(citations):
+            citation = _mapping(
+                citation_value,
+                f"claims[{claim_index}].citations[{citation_index}]",
+            )
+            identity = _citation_identity(citation)
+            page_image = verified_by_identity.get(identity)
+            if page_image is None:
+                page_image = read_verified_page_image(
+                    page_image_root,
+                    identity[0],
+                    identity[1],
+                    identity[2],
+                )
+                verified_by_identity[identity] = page_image
+                ordered.append(page_image)
+            _verify_page_geometry(citation, page_image)
+
+    return tuple(ordered)
 
 
 __all__ = ["VerifiedPageImage", "read_verified_page_image", "verify_review_page_images"]

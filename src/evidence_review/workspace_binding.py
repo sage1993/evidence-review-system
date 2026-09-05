@@ -12,6 +12,10 @@ from typing import cast
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 
 ACTIVE_WORKSPACE_BINDING_FORMAT = "evidence-review/active-workspace-binding"
 ACTIVE_WORKSPACE_BINDING_VERSION = 1
@@ -44,20 +48,8 @@ class ActiveWorkspaceBinding:
 
 def active_workspace_binding_path(repository_root: Path) -> Path:
     """Return the repository-local control-state path used by ERS skills."""
-    root = _real_directory(repository_root, "repository root")
+    root = verified_regular_directory(repository_root, field="repository root")
     return root / _ACTIVE_WORKSPACE_RELATIVE_PATH
-
-
-def _real_directory(path: Path, label: str) -> Path:
-    if path.is_symlink():
-        raise ValueError(f"{label} must not be a symlink: {path}")
-    try:
-        resolved = path.resolve(strict=True)
-    except FileNotFoundError as error:
-        raise FileNotFoundError(f"{label} not found: {path}") from error
-    if not resolved.is_dir():
-        raise ValueError(f"{label} must be a directory: {resolved}")
-    return resolved
 
 
 def _hash_value(value: object, label: str) -> str:
@@ -77,11 +69,13 @@ def _integer_value(value: object, label: str) -> int:
 
 
 def _binding_for_workspace(workspace: Path) -> ActiveWorkspaceBinding:
-    resolved_workspace = _real_directory(workspace, "workspace")
-    database = resolved_workspace / "evidence" / "evidence.sqlite"
-    if database.is_symlink():
-        raise ValueError(f"evidence database must not be a symlink: {database}")
+    resolved_workspace = verified_regular_directory(workspace, field="workspace")
     try:
+        database = verified_regular_file_below(
+            resolved_workspace,
+            ("evidence", "evidence.sqlite"),
+            field="evidence database",
+        )
         with EvidenceStore(database) as store:
             provenance = evidence_snapshot_provenance(store.require_connection())
     except (FileNotFoundError, sqlite3.Error, RuntimeError, ValueError) as error:
@@ -115,11 +109,11 @@ def _binding_for_workspace(workspace: Path) -> ActiveWorkspaceBinding:
 def _write_binding(path: Path, binding: ActiveWorkspaceBinding) -> None:
     state_directory = path.parent
     state_directory.mkdir(parents=True, exist_ok=True)
-    if state_directory.is_symlink():
-        raise ValueError(
-            "active workspace state directory must not be a symlink: "
-            f"{state_directory}"
-        )
+    state_directory = verified_regular_directory(
+        state_directory,
+        field="active workspace state directory",
+    )
+    path = state_directory / path.name
 
     temporary_path: Path | None = None
     try:
@@ -205,9 +199,17 @@ def _decode_binding(payload: object) -> ActiveWorkspaceBinding:
 
 def resolve_active_workspace(repository_root: Path) -> ActiveWorkspaceBinding:
     """Resolve and revalidate the active workspace without filesystem guessing."""
-    binding_path = active_workspace_binding_path(repository_root)
-    if binding_path.is_symlink() or not binding_path.is_file():
-        raise FileNotFoundError(f"ACTIVE_WORKSPACE_NOT_BOUND: {binding_path}")
+    active_workspace_binding_path(repository_root)
+    try:
+        binding_path = verified_regular_file_below(
+            repository_root,
+            (".ers", "active-workspace.json"),
+            field="active workspace binding",
+        )
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            f"ACTIVE_WORKSPACE_NOT_BOUND: {Path(repository_root) / _ACTIVE_WORKSPACE_RELATIVE_PATH}"
+        ) from error
     try:
         payload = json.loads(binding_path.read_text(encoding="utf-8"))
         stored = _decode_binding(payload)

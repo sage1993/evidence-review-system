@@ -118,3 +118,17 @@ def test_missing_active_binding_does_not_guess_from_available_databases(tmp_path
 
     with pytest.raises(FileNotFoundError, match="ACTIVE_WORKSPACE_NOT_BOUND"):
         resolve_active_workspace(repository_root)
+
+def test_binding_rejects_workspace_symlink(tmp_path: Path) -> None:
+    _binding_format, bind_active_workspace, _resolve_active_workspace = _workspace_api()
+    repository_root = tmp_path / "repo"
+    repository_root.mkdir()
+    target = _ready_workspace(tmp_path / "workspace-target")
+    link = tmp_path / "workspace-link"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"workspace symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        bind_active_workspace(repository_root, link)

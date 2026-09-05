@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -13,8 +12,11 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import cast
 
-from evidence_review.contracts.legacy_formats import LEGACY_PAGE_IMAGE_FORMAT
 from evidence_review.review_packet.icons import icon_svg
+from evidence_review.review_packet.page_image_verifier import (
+    VerifiedPageImage,
+    verify_review_page_images,
+)
 from evidence_review.review_packet.presentation import evidence_type_label, localized_status
 from evidence_review.review_packet.render_audit import (
     render_audit_details,
@@ -28,9 +30,6 @@ from evidence_review.review_packet.render_summary import (
     render_summary,
 )
 from evidence_review.review_packet.render_workspace import render_workspace
-
-_GEOMETRY_TOLERANCE = 0.5
-_PAGE_IMAGE_FORMAT = "evidence-review/page-image"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,14 +89,6 @@ def _page_number(value: object) -> int:
     return value
 
 
-def _positive_number(value: object, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{field} must be a positive number")
-    result = float(value)
-    if result <= 0 or result != result or result in (float("inf"), float("-inf")):
-        raise ValueError(f"{field} must be a positive number")
-    return result
-
 
 def _bbox(value: object) -> list[float]:
     items = _sequence(value, "bbox")
@@ -117,116 +108,6 @@ def _bbox(value: object) -> list[float]:
     return result
 
 
-def _verified_page_image(
-    page_root: Path,
-    revision_id: str,
-    page_number: int,
-    source_hash: str,
-) -> _PageAsset:
-    directory = page_root / revision_id
-    stem = f"page-{page_number:04d}"
-    image_path = directory / f"{stem}.png"
-    metadata_path = directory / f"{stem}.json"
-    if not image_path.is_file() or not metadata_path.is_file():
-        raise FileNotFoundError(f"verified page image missing: {revision_id} page {page_number}")
-    metadata = _mapping(
-        json.loads(metadata_path.read_text(encoding="utf-8")),
-        "page image metadata",
-    )
-    required = {
-        "format",
-        "version",
-        "revision_id",
-        "page_number",
-        "source_hash",
-        "pdf_width",
-        "pdf_height",
-        "image_sha256",
-    }
-    optional = {"origin_x", "origin_y", "rotation", "box_kind"}
-    if not required.issubset(metadata) or set(metadata) - required - optional:
-        raise ValueError("page image metadata fields are invalid")
-    if (
-        metadata.get("format") not in {_PAGE_IMAGE_FORMAT, LEGACY_PAGE_IMAGE_FORMAT}
-        or metadata.get("version") != 1
-    ):
-        raise ValueError("unsupported page image metadata")
-    if metadata.get("revision_id") != revision_id:
-        raise ValueError("page image revision mismatch")
-    if metadata.get("page_number") != page_number:
-        raise ValueError("page image page number mismatch")
-    if metadata.get("source_hash") != source_hash:
-        raise ValueError("page image source hash mismatch")
-    image_hash = metadata.get("image_sha256")
-    if not isinstance(image_hash, str) or len(image_hash) != 64:
-        raise ValueError("page image hash is invalid")
-    image_bytes = image_path.read_bytes()
-    if hashlib.sha256(image_bytes).hexdigest() != image_hash:
-        raise ValueError("page image hash mismatch")
-    pdf_width = _positive_number(metadata.get("pdf_width"), "pdf_width")
-    pdf_height = _positive_number(metadata.get("pdf_height"), "pdf_height")
-    rotation = metadata.get("rotation", 0)
-    if (
-        isinstance(rotation, bool)
-        or not isinstance(rotation, int)
-        or rotation not in {0, 90, 180, 270}
-    ):
-        raise ValueError("page image rotation is invalid")
-    origin_x_value = metadata.get("origin_x", 0.0)
-    origin_y_value = metadata.get("origin_y", 0.0)
-    if (
-        isinstance(origin_x_value, bool)
-        or isinstance(origin_y_value, bool)
-        or not isinstance(origin_x_value, (int, float))
-        or not isinstance(origin_y_value, (int, float))
-    ):
-        raise ValueError("page image origin is invalid")
-    origin_x, origin_y = float(origin_x_value), float(origin_y_value)
-    if not all(
-        value == value and value not in (float("inf"), float("-inf"))
-        for value in (origin_x, origin_y)
-    ):
-        raise ValueError("page image origin is invalid")
-    box_kind = metadata.get("box_kind", "MEDIA_BOX")
-    if box_kind not in {"CROP_BOX", "MEDIA_BOX"}:
-        raise ValueError("page image box kind is invalid")
-    return _PageAsset(
-        data_uri="data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii"),
-        pdf_width=pdf_width,
-        pdf_height=pdf_height,
-        rotation=rotation,
-        origin_x=origin_x,
-        origin_y=origin_y,
-        box_kind=box_kind,
-    )
-
-
-def _verify_page_geometry(
-    citation: Mapping[str, object],
-    page_asset: _PageAsset,
-) -> None:
-    width = _positive_number(citation.get("page_width"), "citation.page_width")
-    height = _positive_number(citation.get("page_height"), "citation.page_height")
-    if (
-        abs(width - page_asset.pdf_width) > _GEOMETRY_TOLERANCE
-        or abs(height - page_asset.pdf_height) > _GEOMETRY_TOLERANCE
-    ):
-        raise ValueError(
-            "PAGE_RENDER_GEOMETRY_MISMATCH: "
-            f"citation={width}x{height} "
-            f"page_image={page_asset.pdf_width}x{page_asset.pdf_height}"
-        )
-    expected = (
-        ("page_origin_x", page_asset.origin_x),
-        ("page_origin_y", page_asset.origin_y),
-        ("page_rotation", page_asset.rotation),
-        ("page_box_kind", page_asset.box_kind),
-    )
-    for field, value in expected:
-        provided = citation.get(field)
-        if provided is not None and provided != value:
-            raise ValueError(f"PAGE_RENDER_GEOMETRY_MISMATCH: {field}")
-
 
 def _citation_identity(citation: Mapping[str, object]) -> tuple[str, int, str]:
     return (
@@ -237,28 +118,31 @@ def _citation_identity(citation: Mapping[str, object]) -> tuple[str, int, str]:
 
 
 def _page_assets(
-    claims: Sequence[object], page_root: Path
+    verified_pages: Sequence[VerifiedPageImage],
 ) -> dict[tuple[str, int, str], tuple[str, _PageAsset]]:
-    """Read each cited page once and verify every citation against its geometry."""
+    """Project already-verified pages into renderer-only data URIs."""
     assets: dict[tuple[str, int, str], tuple[str, _PageAsset]] = {}
-    for claim_value in claims:
-        claim = _mapping(claim_value, "claim")
-        for citation_value in _sequence(claim.get("citations", []), "citations"):
-            citation = _mapping(citation_value, "citation")
-            identity = _citation_identity(citation)
-            if identity not in assets:
-                revision_id, page_number, source_hash = identity
-                page_asset = _verified_page_image(
-                    page_root,
-                    revision_id,
-                    page_number,
-                    source_hash,
-                )
-                _verify_page_geometry(citation, page_asset)
-                assets[identity] = (f"page-{len(assets) + 1}", page_asset)
-            else:
-                _, page_asset = assets[identity]
-                _verify_page_geometry(citation, page_asset)
+    for index, verified in enumerate(verified_pages, start=1):
+        identity = (
+            verified.revision_id,
+            verified.page_number,
+            verified.source_hash,
+        )
+        if identity in assets:
+            raise ValueError("duplicate verified page image identity")
+        assets[identity] = (
+            f"page-{index}",
+            _PageAsset(
+                data_uri="data:image/png;base64,"
+                + base64.b64encode(verified.image_bytes).decode("ascii"),
+                pdf_width=verified.pdf_width,
+                pdf_height=verified.pdf_height,
+                rotation=verified.rotation,
+                origin_x=verified.origin_x,
+                origin_y=verified.origin_y,
+                box_kind=verified.box_kind,
+            ),
+        )
     return assets
 
 
@@ -825,7 +709,8 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
     css_bundle = css + "\n/* review_responsive.css */\n" + responsive_css
     script = (assets_path / "review.js").read_text(encoding="utf-8")
     claims = _sequence(model.get("claims", []), "claims")
-    assets = _page_assets(claims, page_image_root)
+    verified_pages = verify_review_page_images(model, page_image_root)
+    assets = _page_assets(verified_pages)
     documents = _viewer_documents(claims, assets)
     source_by_asset = {
         asset_key: f"source-{document_index + 1}"
