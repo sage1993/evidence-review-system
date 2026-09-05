@@ -41,6 +41,7 @@ class _PageAsset:
     origin_x: float = 0.0
     origin_y: float = 0.0
     box_kind: str = "MEDIA_BOX"
+    protected_src: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +120,8 @@ def _citation_identity(citation: Mapping[str, object]) -> tuple[str, int, str]:
 
 def _page_assets(
     verified_pages: Sequence[VerifiedPageImage],
+    *,
+    protected: bool = False,
 ) -> dict[tuple[str, int, str], tuple[str, _PageAsset]]:
     """Project already-verified pages into renderer-only data URIs."""
     assets: dict[tuple[str, int, str], tuple[str, _PageAsset]] = {}
@@ -133,14 +136,23 @@ def _page_assets(
         assets[identity] = (
             f"page-{index}",
             _PageAsset(
-                data_uri="data:image/png;base64,"
-                + base64.b64encode(verified.image_bytes).decode("ascii"),
+                data_uri=(
+                    ""
+                    if protected
+                    else "data:image/png;base64,"
+                    + base64.b64encode(verified.image_bytes).decode("ascii")
+                ),
                 pdf_width=verified.pdf_width,
                 pdf_height=verified.pdf_height,
                 rotation=verified.rotation,
                 origin_x=verified.origin_x,
                 origin_y=verified.origin_y,
                 box_kind=verified.box_kind,
+                protected_src=(
+                    f"./page-images/{verified.revision_id}/{verified.page_number}/{verified.source_hash}"
+                    if protected
+                    else None
+                ),
             ),
         )
     return assets
@@ -428,7 +440,11 @@ def _render_evidence_viewer(
                         '<div class="page-stage"><div class="page-canvas">',
                         f'<img data-page-image-source="{_text(asset_key)}" ',
                         f'alt="{_text(document.document_name)} 검증된 원본 페이지 {page_number}" ',
-                        f'src="{asset.data_uri}">',
+                        (
+                            f'data-page-src="{_text(asset.protected_src)}" src="">'
+                            if asset.protected_src is not None
+                            else f'src="{asset.data_uri}">'
+                        ),
                         '<div class="overlay-layer">',
                         "".join(overlays.get(asset_key, [])),
                         "</div></div></div>",
@@ -700,8 +716,13 @@ def _render_process_footer(model: Mapping[str, object]) -> str:
     )
 
 
-def render_review_html(view_model: Mapping[str, object], page_image_root: Path) -> str:
-    """Render the default non-developer Review Workspace."""
+def _render_review_html(
+    view_model: Mapping[str, object],
+    page_image_root: Path,
+    *,
+    protected: bool,
+) -> str:
+    """Render archive or protected Review Workspace from an explicit model."""
     model = _mapping(view_model, "view_model")
     assets_path = Path(__file__).with_name("assets")
     css = (assets_path / "review.css").read_text(encoding="utf-8")
@@ -710,7 +731,7 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
     script = (assets_path / "review.js").read_text(encoding="utf-8")
     claims = _sequence(model.get("claims", []), "claims")
     verified_pages = verify_review_page_images(model, page_image_root)
-    assets = _page_assets(verified_pages)
+    assets = _page_assets(verified_pages, protected=protected)
     documents = _viewer_documents(claims, assets)
     source_by_asset = {
         asset_key: f"source-{document_index + 1}"
@@ -744,7 +765,9 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
             '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
             f"<title>근거 검토 · {_text(model.get('question'))}</title><style>{css_bundle}</style>",
-            '</head><body><div class="app-shell" data-viewer-mode="compare">',
+            '</head><body><div class="app-shell" data-viewer-mode="compare"',
+            ' data-protected-presentation="true"' if protected else "",
+            '>',
             render_status_band(model),
             render_workspace(
                 model,
@@ -773,6 +796,22 @@ def render_review_html(view_model: Mapping[str, object], page_image_root: Path) 
             "</body></html>",
         )
     )
+
+
+def render_review_html(view_model: Mapping[str, object], page_image_root: Path) -> str:
+    """Render the immutable archival Review Workspace."""
+    return _render_review_html(view_model, page_image_root, protected=False)
+
+
+def render_protected_review_html(
+    view_model: Mapping[str, object],
+    page_image_root: Path,
+) -> str:
+    """Render the protected Review Workspace without embedded raster payloads."""
+    html = _render_review_html(view_model, page_image_root, protected=True)
+    if "data:image/" in html:
+        raise ValueError("protected presentation contains embedded raster payload")
+    return html
 
 
 def write_review_html(

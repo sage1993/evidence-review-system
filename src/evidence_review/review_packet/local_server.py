@@ -28,7 +28,13 @@ from evidence_review.review_packet.decision_record import (
     validate_human_decision_request,
     write_human_decision,
 )
+from evidence_review.review_packet.html_renderer import render_protected_review_html
 from evidence_review.review_packet.page_image_verifier import read_verified_page_image
+from evidence_review.review_packet.protected_projection import (
+    ProtectedReviewProjection,
+    build_protected_review_projection,
+    load_archive_review_model,
+)
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
@@ -300,12 +306,14 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         workspace_root: Path,
         run_tokens: Mapping[str, str],
         reviewer_ids: Mapping[str, str],
+        protected_projections: Mapping[str, ProtectedReviewProjection],
         max_body_bytes: int,
         idle_timeout_seconds: float | None,
     ) -> None:
         self.workspace_root = workspace_root
         self.run_tokens = dict(run_tokens)
         self.reviewer_ids = dict(reviewer_ids)
+        self.protected_projections = dict(protected_projections)
         self.max_body_bytes = max_body_bytes
         self.idle_timeout_seconds = idle_timeout_seconds
         self._activity_lock = Lock()
@@ -525,6 +533,18 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
         if route.endpoint == "review":
+            projection = self.state.protected_projections.get(route.run_id)
+            if projection is not None:
+                try:
+                    protected = render_protected_review_html(
+                        projection.model,
+                        self.state.workspace_root / "page-images",
+                    ).encode("utf-8")
+                except (OSError, ValueError):
+                    self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+                    return
+                self._send_bytes(HTTPStatus.OK, protected, "text/html; charset=utf-8")
+                return
             html = self._artifact(route.run_id, "review.html")
             if html is None:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
@@ -539,8 +559,6 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 if str(error) not in {"review model missing", "review HTML app shell missing"}:
                     self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
                     return
-                # Keep compatibility with pre-protected archival fixtures; canonical
-                # review HTML still takes the lazy protected path above.
                 protected = html_bytes
             self._send_bytes(HTTPStatus.OK, protected, "text/html; charset=utf-8")
             return
@@ -669,13 +687,39 @@ def create_review_server(
     root = _validated_workspace_root(workspace_root)
     tokens = _validated_tokens(run_tokens)
     reviewers = _validated_reviewer_ids(tokens, reviewer_ids)
-    return _ReviewHTTPServer(
+    protected_projections: dict[str, ProtectedReviewProjection] = {}
+    for run_id in tokens:
+        archive = _regular_child(
+            root,
+            "runs",
+            run_id,
+            "review.html",
+            final_is_file=True,
+        )
+        if archive is None:
+            continue
+        try:
+            model = load_archive_review_model(archive.read_bytes())
+            protected_projections[run_id] = build_protected_review_projection(
+                model,
+                root / "page-images",
+            )
+        except (FileNotFoundError, OSError, UnicodeError, ValueError):
+            continue
+    server = _ReviewHTTPServer(
         root,
         tokens,
         reviewers,
+        protected_projections,
         max_body_bytes,
         None if idle_timeout_seconds is None else float(idle_timeout_seconds),
     )
+    from evidence_review.review_packet.case_visual_asset_server import (
+        configure_case_visual_server,
+    )
+
+    configure_case_visual_server(server)
+    return server
 
 
 def serve_with_idle_timeout(server: ThreadingHTTPServer) -> None:

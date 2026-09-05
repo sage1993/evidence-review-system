@@ -285,15 +285,13 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
         assert status == 200
         assert b"data:image/png;base64," not in protected
         assert b"data:image/webp;base64," not in protected
-        assert (
-            b"./case-pages/"
-            + CASE_ATTACHMENT_ID.encode()
-            + b"/1/"
-            + image_sha256.encode()
-            in protected
-        )
         protected_model = _review_model_from_html(protected)
         assert _embedded_raster_values(protected_model) == []
+        protected_page = protected_model["case_visual_review"]["pages"][0]
+        assert protected_page["protected_asset"] == {
+            "kind": "case-page",
+            "route_key": f"case-page/{CASE_ATTACHMENT_ID}/1/{image_sha256}",
+        }
 
         status, headers, delivered = _get(
             server,

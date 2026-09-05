@@ -367,11 +367,7 @@ class CaseVisualReviewHandler(local_server._ReviewHandler):
 
 
 def configure_case_visual_server(server: ThreadingHTTPServer) -> None:
-    """Enable protected case-page routes on one loopback review server."""
-    global _PROTECTED_HTML_INSTALLED
-    if not _PROTECTED_HTML_INSTALLED:
-        local_server._protected_review_html = _protected_review_html
-        _PROTECTED_HTML_INSTALLED = True
+    """Enable protected case-page routes without mutating global HTML behavior."""
     server.RequestHandlerClass = CaseVisualReviewHandler
 
 
