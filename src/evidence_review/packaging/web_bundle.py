@@ -76,11 +76,17 @@ def _manifest(root: Path) -> dict[str, object]:
 def _write_runtime_manifest(stage: Path) -> None:
     selected_inventory = _runtime_inventory(stage)
     manifest = _manifest(stage)
-    manifest_inventory = {
-        entry["path"]
-        for entry in manifest["files"]
-        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
-    }
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        raise RuntimeError("runtime manifest files payload is invalid")
+    manifest_inventory: set[str] = set()
+    for entry in files:
+        if not isinstance(entry, dict):
+            raise RuntimeError("runtime manifest file entry is invalid")
+        path_value = entry.get("path")
+        if not isinstance(path_value, str):
+            raise RuntimeError("runtime manifest file path is invalid")
+        manifest_inventory.add(path_value)
     if manifest_inventory != selected_inventory:
         raise RuntimeError("runtime manifest inventory mismatch")
 
