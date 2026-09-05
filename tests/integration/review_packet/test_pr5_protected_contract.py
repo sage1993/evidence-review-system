@@ -25,18 +25,37 @@ from tests.integration.review_packet.test_protected_image_delivery import (
 def _case_only_review(run: Path, image_sha256: str) -> None:
     model = {
         "run_id": RUN_ID,
+        "status": "READY_FOR_HUMAN_REVIEW",
+        "display_status": "READY_FOR_HUMAN_REVIEW",
+        "question": "protected untiled case page",
         "claims": [],
+        "review_items": [],
+        "calculations": [],
+        "rules": [],
+        "exceptions": [],
+        "conflicts": [],
+        "abstention_reasons": [],
+        "summary": {},
+        "audit": {},
         "case_visual_review": {
+            "status": "VISUAL_ANALYSIS_VALIDATED",
             "pages": [
                 {
                     "asset_key": f"{CASE_ATTACHMENT_ID}-p1",
                     "attachment_id": CASE_ATTACHMENT_ID,
                     "page": 1,
+                    "width": 1.0,
+                    "height": 1.0,
+                    "document_name": "case.png",
                     "image_sha256": image_sha256,
                     "data_uri": "data:image/png;base64,AAAA",
                     "tiles": [],
+                    "candidates": [],
                 }
-            ]
+            ],
+            "reference_pages": [],
+            "findings": [],
+            "related_references": [],
         },
     }
     (run / "review.html").write_text(
