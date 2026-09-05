@@ -1,3 +1,5 @@
+import pytest
+
 from evidence_review.abstention.issue_policy import (
     has_partial_issue_resolution,
     reconcile_issue_results,
@@ -80,3 +82,26 @@ def test_mixed_track_b_audits_downgrade_only_nonaccepted_claim_issue() -> None:
 
     assert [item.status for item in reconciled] == ["UNRESOLVED", "RESOLVED"]
     assert has_partial_issue_resolution(reconciled) is True
+
+
+def test_duplicate_claim_audits_are_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicate claim audit"):
+        reconcile_issue_results(
+            (_issue(),),
+            claims=(_claim(),),
+            track_a_missing_inputs=(),
+            claim_audits=(
+                ClaimAudit(claim_id="CL-1", disposition="ACCEPT"),
+                ClaimAudit(claim_id="CL-1", disposition="INCOMPLETE"),
+            ),
+        )
+
+
+def test_unknown_claim_audit_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown claim audit"):
+        reconcile_issue_results(
+            (_issue(),),
+            claims=(_claim(),),
+            track_a_missing_inputs=(),
+            claim_audits=(ClaimAudit(claim_id="CL-404", disposition="INCOMPLETE"),),
+        )
