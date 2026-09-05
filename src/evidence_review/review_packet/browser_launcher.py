@@ -17,10 +17,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock, Thread
-from typing import TextIO, cast
+from typing import Literal, TextIO, cast
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
+from evidence_review.review_packet.protected_projection import load_archive_review_model
 from evidence_review.review_packet.server_runtime import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
     validate_idle_timeout,
@@ -34,6 +37,7 @@ _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _SERVER_IDENTITY_RETRY_SECONDS = 1.0
 _SERVER_IDENTITY_POLL_SECONDS = 0.05
 _STILL_ACTIVE = 259
+ReviewOpenStatus = Literal["DISPATCHED", "HTTP_READY", "VISUAL_READY", "FAILED"]
 
 
 def _process_is_alive(pid: int) -> bool:
@@ -126,12 +130,22 @@ class ReviewWorkspaceServer:
     _run_id: str
     _token: str
     _url: str
+    _readiness_status: ReviewOpenStatus = "DISPATCHED"
+    _browser_dispatched: bool = False
     _closed: bool = False
     _close_lock: Lock = field(default_factory=Lock)
 
     @property
     def url(self) -> str:
         return self._url
+
+    @property
+    def readiness_status(self) -> ReviewOpenStatus:
+        return self._readiness_status
+
+    @property
+    def browser_dispatched(self) -> bool:
+        return self._browser_dispatched
 
     def close(self) -> None:
         with self._close_lock:
@@ -143,6 +157,43 @@ class ReviewWorkspaceServer:
 
     def wait(self) -> None:
         self._process.wait()
+
+
+def _probe_protected_http_ready(url: str) -> ReviewOpenStatus:
+    try:
+        request = Request(
+            url,
+            headers={"Cache-Control": "no-cache", "Pragma": "no-cache"},
+        )
+        with urlopen(request, timeout=0.5) as response:
+            if response.status != 200:
+                return "FAILED"
+            body = response.read()
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return "FAILED"
+    if b'data-protected-presentation="true"' not in body or b"data:image/" in body:
+        return "FAILED"
+    try:
+        load_archive_review_model(body)
+    except ValueError:
+        return "FAILED"
+    return "HTTP_READY"
+
+
+def _wait_for_protected_http_ready(
+    url: str,
+    *,
+    timeout_seconds: float = _READY_TIMEOUT_SECONDS,
+) -> ReviewOpenStatus:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        status = _probe_protected_http_ready(url)
+        if status == "HTTP_READY":
+            return status
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return "FAILED"
+        time.sleep(min(0.05, remaining))
 
 
 def _start_review_server(
@@ -380,10 +431,31 @@ def open_protected_review_workspace(
         raise
     append_stage(run_directory, finish_stage("protected-server-start", server_timer))
 
+    readiness_timer = start_stage()
+    readiness_status = _wait_for_protected_http_ready(server.url)
+    server._readiness_status = readiness_status
+    if readiness_status != "HTTP_READY":
+        server.close()
+        append_stage(
+            run_directory,
+            finish_stage(
+                "protected-http-readiness",
+                readiness_timer,
+                status="FAILED",
+                reason_code="HTTP_NOT_READY",
+            ),
+        )
+        raise OSError("protected review did not become HTTP ready")
+    append_stage(
+        run_directory,
+        finish_stage("protected-http-readiness", readiness_timer),
+    )
+
     browser_timer = start_stage()
     try:
         if not browser(server.url):
             raise OSError("browser did not open protected review URL")
+        server._browser_dispatched = True
     except Exception as error:
         server.close()
         append_stage(
@@ -410,6 +482,7 @@ def open_protected_review_workspace(
 
 
 __all__ = [
+    "ReviewOpenStatus",
     "ReviewWorkspaceServer",
     "close_open_review_server",
     "close_open_review_servers",
