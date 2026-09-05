@@ -6,6 +6,10 @@ Evidence Review System processes local documents, parser artifacts, evidence dat
 
 The active development line targets `v0.2.x` on Python `>=3.13,<3.14`. The historical `v0.1.0` release is not the preferred target for new security fixes once `v0.2.0` is released.
 
+## PDF parser dependency policy
+
+As verified on 2026-09-06, the `v0.2.x` line requires `pypdf>=6.17,<7`. Upstream pypdf states that security fixes are applied to the latest version. The August 2026 advisories GHSA-fc8x-2rww-xw9m, GHSA-fwg2-594c-jp42, and GHSA-fp3f-mc75-235c affect versions `<6.15.0` and are patched in `>=6.15.0`; pypdf 6.17.0, released 2026-09-04, contains an additional upstream security hardening change limiting Roman-numeral values. The dependency floor must be re-verified against upstream security advisories and release notes before a future release rather than treated as permanently sufficient.
+
 ## Reporting a vulnerability
 
 Do **not** open a public GitHub issue for a vulnerability that could expose data, bypass integrity checks, escape path containment, enable unintended network access, or allow tampering with review/release authority.
