@@ -46,11 +46,16 @@ def _copy_file(source: Path, destination: Path) -> None:
 
 
 def _runtime_files(root: Path) -> list[Path]:
+    manifest_path = root / "runtime-manifest.json"
     return [
         path
         for path in sorted(root.rglob("*"))
-        if path.is_file() and path.name != "runtime-manifest.json"
+        if path.is_file() and path != manifest_path
     ]
+
+
+def _runtime_inventory(root: Path) -> set[str]:
+    return {path.relative_to(root).as_posix() for path in _runtime_files(root)}
 
 
 def _manifest(root: Path) -> dict[str, object]:
@@ -66,6 +71,29 @@ def _manifest(root: Path) -> dict[str, object]:
             for path in _runtime_files(root)
         ],
     }
+
+
+def _write_runtime_manifest(stage: Path) -> None:
+    selected_inventory = _runtime_inventory(stage)
+    manifest = _manifest(stage)
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        raise RuntimeError("runtime manifest files payload is invalid")
+    manifest_inventory: set[str] = set()
+    for entry in files:
+        if not isinstance(entry, dict):
+            raise RuntimeError("runtime manifest file entry is invalid")
+        path_value = entry.get("path")
+        if not isinstance(path_value, str):
+            raise RuntimeError("runtime manifest file path is invalid")
+        manifest_inventory.add(path_value)
+    if manifest_inventory != selected_inventory:
+        raise RuntimeError("runtime manifest inventory mismatch")
+
+    manifest_path = stage / "runtime-manifest.json"
+    manifest_path.write_bytes(dump_bytes(manifest))
+    if _runtime_inventory(stage) != manifest_inventory:
+        raise RuntimeError("runtime inventory changed while writing manifest")
 
 
 def _write_generated_runtime_inputs(stage: Path) -> None:
@@ -127,7 +155,7 @@ def build_public_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
         for name, source in runtime_package_roots(workspace_root / "src"):
             _copy_tree(source, stage / name)
         _write_generated_runtime_inputs(stage)
-        (stage / "runtime-manifest.json").write_bytes(dump_bytes(_manifest(stage)))
+        _write_runtime_manifest(stage)
         _write_zip(stage, output_zip)
     return hashlib.sha256(output_zip.read_bytes()).hexdigest()
 
@@ -171,6 +199,6 @@ def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
         )
         if golden.is_file():
             _copy_file(golden, stage / "examples" / "golden-cases.json")
-        (stage / "runtime-manifest.json").write_bytes(dump_bytes(_manifest(stage)))
+        _write_runtime_manifest(stage)
         _write_zip(stage, output_zip)
     return hashlib.sha256(output_zip.read_bytes()).hexdigest()

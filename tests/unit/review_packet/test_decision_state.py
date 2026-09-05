@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from evidence_review.review_packet.decision_record import (
+    import_human_decision_envelope,
     load_latest_valid_human_decision,
     write_human_decision,
 )
@@ -42,6 +44,76 @@ def test_latest_valid_decision_is_selected_by_reviewed_at(tmp_path: Path) -> Non
     assert record.decision == "SATISFIED"
     assert record.notes == "latest"
     assert record.path.name.endswith("-reviewer-01.json")
+
+
+def test_future_archival_decision_cannot_pin_latest_active_state(tmp_path: Path) -> None:
+    run = tmp_path / "RUN-0123456789ABCDEF0123"
+    run.mkdir()
+    packet_hash = "a" * 64
+    now = datetime.now(UTC)
+    future = now + timedelta(days=3650)
+    historical = now - timedelta(days=365)
+
+    import_human_decision_envelope(
+        run,
+        {
+            "reviewer_id": "archive-future",
+            "reviewed_at": future.isoformat(),
+            "packet_hash": packet_hash,
+            "decision": "NOT_SATISFIED",
+            "notes": "future archival import",
+        },
+        expected_packet_hash=packet_hash,
+    )
+    historical_path = import_human_decision_envelope(
+        run,
+        {
+            "reviewer_id": "archive-history",
+            "reviewed_at": historical.isoformat(),
+            "packet_hash": packet_hash,
+            "decision": "CONDITIONAL",
+            "notes": "historical archival import",
+        },
+        expected_packet_hash=packet_hash,
+    )
+    current_path = write_human_decision(
+        run,
+        reviewer_id="server-current",
+        reviewed_at=now.isoformat(),
+        packet_hash=packet_hash,
+        decision="SATISFIED",
+        notes="trusted current decision",
+    )
+
+    record = load_latest_valid_human_decision(run, packet_hash)
+
+    assert historical_path.is_file()
+    assert record is not None
+    assert record.path == current_path
+    assert record.reviewer_id == "server-current"
+    assert record.notes == "trusted current decision"
+
+
+def test_only_far_future_archival_decisions_are_ineligible_for_latest(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "RUN-0123456789ABCDEF0123"
+    run.mkdir()
+    packet_hash = "a" * 64
+    future = datetime.now(UTC) + timedelta(days=3650)
+    import_human_decision_envelope(
+        run,
+        {
+            "reviewer_id": "archive-future",
+            "reviewed_at": future.isoformat(),
+            "packet_hash": packet_hash,
+            "decision": "NOT_SATISFIED",
+            "notes": "future archival import",
+        },
+        expected_packet_hash=packet_hash,
+    )
+
+    assert load_latest_valid_human_decision(run, packet_hash) is None
 
 
 def test_loader_ignores_malformed_wrong_run_and_wrong_packet_records(tmp_path: Path) -> None:

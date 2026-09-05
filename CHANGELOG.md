@@ -4,6 +4,17 @@ All notable changes to Evidence Review System are documented here.
 
 The project follows semantic versioning for public releases where practical.
 
+## [Unreleased]
+
+### Fixed
+
+- Human-decision loading now excludes records whose review timestamp is beyond the permitted future-skew window, preventing a future-dated archival import from pinning the active review state.
+- Web-runtime self-test now requires every runtime-critical file to be represented in the integrity manifest instead of accepting existence without manifest coverage.
+
+### Security
+
+- Raised the pypdf support floor to `>=6.17,<7` after re-verifying upstream advisories and the 2026-09-04 pypdf 6.17.0 security release. PDF geometry and parser regression tests are required against the installed patched line.
+
 ## [0.2.0] - 2026-08-15
 
 ### Changed

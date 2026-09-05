@@ -178,6 +178,11 @@ def self_test(root: Path) -> None:
         required[relative] = path
 
     entries = load_manifest(required["runtime-manifest.json"])
+    entry_paths = {entry.path for entry in entries}
+    required_manifest_paths = set(required_paths) - {"runtime-manifest.json"}
+    if not required_manifest_paths.issubset(entry_paths):
+        _fail("RUNTIME_MANIFEST_INCOMPLETE")
+
     for entry in entries:
         path = safe_runtime_file(root, entry.path)
         info = _require_regular_file(path)

@@ -15,6 +15,13 @@ def test_python_support_policy_is_313_only() -> None:
     assert data["tool"]["mypy"]["python_version"] == "3.13"
 
 
+def test_pypdf_security_floor_is_617_or_newer_within_major_6() -> None:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = data["project"]["dependencies"]
+
+    assert "pypdf>=6.17,<7" in dependencies
+
+
 def test_current_user_docs_do_not_require_python_311_or_browser_zoom() -> None:
     current_docs = (
         ROOT / "README.md",
