@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from evidence_review.contracts.run_context import create_run_directory
 from evidence_review.filesystem_trust import (
     REPARSE_POINT_ATTRIBUTE,
     verified_regular_directory,
@@ -106,6 +107,24 @@ def test_verified_regular_directory_rejects_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="symlink|reparse"):
         verified_regular_directory(link, field="root")
+
+
+def test_create_run_directory_rejects_symlink_ancestor_before_creating_children(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    workspace_link = tmp_path / "workspace"
+    try:
+        workspace_link.symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlink creation unavailable: {error}")
+
+    runs_root = workspace_link / "runs"
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        create_run_directory(runs_root, "RUN-AAAAAAAAAAAAAAAAAAAA")
+
+    assert not (outside / "runs").exists()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows junction semantics")
