@@ -24,3 +24,5 @@ jobs:
         run: python -m pytest -q tests/unit/review_packet/test_decision_record.py tests/unit/review_packet/test_decision_state.py tests/integration/review_packet/test_persisted_decision_ui.py
       - name: Task 6.2 manifest completeness tests
         run: python -m pytest -q tests/integration/packaging/test_runtime_manifest_completeness.py tests/integration/packaging/test_web_bundle.py
+      - name: Task 6.3 pypdf policy and parser regressions
+        run: python -m pytest -q tests/unit/parsing/test_pdf_page_geometry.py tests/unit/parsing/test_coordinate_normalization.py tests/unit/parsing/test_odl_adapter.py tests/integration/parsing/test_generic_source_matrix.py tests/integration/packaging/test_python_support_policy.py
