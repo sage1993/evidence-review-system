@@ -261,3 +261,17 @@ def test_projection_uses_empty_reference_projection_for_legacy_view_model(
     assert finding["related_reference_anchors"] == []
     assert result["reference_documents"] == []
     assert result["reference_pages"] == []
+
+def test_projection_rejects_case_raster_symlink_escape(tmp_path: Path) -> None:
+    view_model, workspace = _fixture(tmp_path)
+    raster = workspace / "case-page-images" / "ATT-VISUAL-1" / "page-0001.png"
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(raster.read_bytes())
+    raster.unlink()
+    try:
+        raster.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"case raster symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        build_case_visual_projection(view_model, workspace_root=workspace)

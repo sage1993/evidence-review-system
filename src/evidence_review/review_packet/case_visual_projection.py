@@ -22,6 +22,7 @@ from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
     load_visual_page_tiles,
 )
+from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.review_packet.reference_pages import build_reference_projection
 from evidence_review.review_packet.related_reference_routing import (
     bind_related_retrieval_references,
@@ -235,24 +236,30 @@ def _resolve_visual_raster_path(
     page_number: int,
     expected_sha256: str,
 ) -> Path:
-    """Resolve the exact verified raster, preferring the 4x PDF cache."""
-    candidates = (
+    """Resolve an exact regular raster below one of the trusted CASE cache roots."""
+    filename = f"page-{page_number:04d}.png"
+    found_regular = False
+    for cache_name in (_CASE_PDF_CACHE_DIR, _CASE_IMAGE_CACHE_DIR):
+        cache_root = workspace_root / cache_name
+        try:
+            path = verified_regular_file_below(
+                cache_root,
+                (attachment_id, filename),
+                field="case visual raster",
+            )
+        except FileNotFoundError:
+            continue
+        found_regular = True
+        if hashlib.sha256(path.read_bytes()).hexdigest() == expected_sha256:
+            return path
+    if found_regular:
+        raise ValueError("case visual raster hash mismatch")
+    raise FileNotFoundError(
         workspace_root
         / _CASE_PDF_CACHE_DIR
         / attachment_id
-        / f"page-{page_number:04d}.png",
-        workspace_root
-        / _CASE_IMAGE_CACHE_DIR
-        / attachment_id
-        / f"page-{page_number:04d}.png",
+        / filename
     )
-    existing = [path for path in candidates if path.is_file()]
-    for path in existing:
-        if hashlib.sha256(path.read_bytes()).hexdigest() == expected_sha256:
-            return path
-    if existing:
-        raise ValueError("case visual raster hash mismatch")
-    raise FileNotFoundError(candidates[0])
 
 
 def _page_tile_documents(

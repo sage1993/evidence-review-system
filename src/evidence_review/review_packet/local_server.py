@@ -6,7 +6,6 @@ import json
 import math
 import re
 import secrets
-import stat
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -18,6 +17,10 @@ from typing import Any, Literal, cast
 from urllib.parse import unquote, urlsplit
 
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.review_packet.decision_record import (
     HumanDecisionRecord,
     build_human_decision_envelope,
@@ -27,7 +30,6 @@ from evidence_review.review_packet.decision_record import (
 )
 from evidence_review.review_packet.page_image_verifier import read_verified_page_image
 
-_REPARSE_POINT_ATTRIBUTE = 0x400
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -66,22 +68,12 @@ class _Route:
     source_hash: str | None = None
 
 
-def _is_reparse_point(status: object) -> bool:
-    return bool(getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE)
-
 
 def _validated_workspace_root(workspace_root: Path) -> Path:
     try:
-        status = workspace_root.lstat()
-    except OSError as error:
+        return verified_regular_directory(workspace_root, field="workspace_root")
+    except (FileNotFoundError, OSError, ValueError) as error:
         raise ValueError("workspace_root must be an existing regular directory") from error
-    if (
-        stat.S_ISLNK(status.st_mode)
-        or not stat.S_ISDIR(status.st_mode)
-        or _is_reparse_point(status)
-    ):
-        raise ValueError("workspace_root must be an existing regular directory")
-    return workspace_root.resolve(strict=True)
 
 
 def _validated_tokens(run_tokens: Mapping[str, str]) -> dict[str, str]:
@@ -164,27 +156,22 @@ def _route_path(path: str) -> _Route | None:
 
 
 def _regular_child(root: Path, *parts: str, final_is_file: bool) -> Path | None:
-    candidate = root
     try:
-        for index, part in enumerate(parts):
-            candidate = candidate / part
-            status = candidate.lstat()
-            final = index == len(parts) - 1
-            if stat.S_ISLNK(status.st_mode) or _is_reparse_point(status):
-                return None
-            if final:
-                if final_is_file != stat.S_ISREG(status.st_mode):
-                    return None
-            elif not stat.S_ISDIR(status.st_mode):
-                return None
-        resolved = candidate.resolve(strict=True)
-    except OSError:
+        verified_root = verified_regular_directory(root, field="workspace root")
+        if final_is_file:
+            return verified_regular_file_below(
+                verified_root,
+                parts,
+                field="protected artifact",
+            )
+        candidate = verified_regular_directory(
+            verified_root.joinpath(*parts),
+            field="protected directory",
+        )
+        candidate.relative_to(verified_root)
+        return candidate
+    except (FileNotFoundError, OSError, ValueError):
         return None
-    try:
-        resolved.relative_to(root)
-    except ValueError:
-        return None
-    return resolved
 
 
 def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
