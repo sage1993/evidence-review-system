@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from evidence_review.abstention import finalizer as finalizer_module
 from evidence_review.abstention.finalizer import finalize_run
+from evidence_review.abstention.verified_artifacts import verify_run_snapshot
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.codecs import decode_review_packet
@@ -300,3 +302,30 @@ def test_finalizer_refuses_overwrite_and_tampered_artifacts(tmp_path: Path) -> N
     with pytest.raises(ValueError, match="artifact hash mismatch"):
         finalize_run(tampered_dir)
     assert not (tampered_dir / "final-review-packet.json").exists()
+
+
+def test_verified_snapshot_remains_authority_after_artifact_path_mutation(
+    tmp_path: Path,
+) -> None:
+    run_dir = _write_run(tmp_path)
+    snapshot = verify_run_snapshot(
+        run_dir,
+        required_artifacts=finalizer_module._REQUIRED_ARTIFACTS,
+    )
+    helper = getattr(finalizer_module, "expected_final_review_packet_from_snapshot", None)
+    assert helper is not None, "snapshot-only finalizer derivation helper is missing"
+
+    track_a_path = run_dir / "track-a-output.json"
+    mutated = json.loads(track_a_path.read_text(encoding="utf-8"))
+    mutated["missing_inputs"] = ["MUTATED AFTER VERIFICATION"]
+    track_a_path.write_bytes(dump_bytes(mutated))
+
+    packet = helper(snapshot)
+
+    assert packet.missing_inputs == ()
+    assert packet.status == "READY_FOR_HUMAN_REVIEW"
+    with pytest.raises(ValueError, match="artifact hash mismatch: track-a-output.json"):
+        verify_run_snapshot(
+            run_dir,
+            required_artifacts=finalizer_module._REQUIRED_ARTIFACTS,
+        )
