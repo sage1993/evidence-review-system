@@ -15,8 +15,8 @@ from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.next_action import NextAction, next_action_document
 from evidence_review.contracts.review import (
-    FinalizerStatus,
     TERMINAL_FINALIZER_STATUSES,
+    FinalizerStatus,
 )
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.contracts.workflow import WorkflowState
