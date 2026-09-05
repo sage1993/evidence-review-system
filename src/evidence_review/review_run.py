@@ -49,6 +49,7 @@ from evidence_review.review_packet.external_launcher import open_external_url
 from evidence_review.review_packet.html_renderer import write_review_html
 from evidence_review.review_packet.page_image_verifier import verify_review_page_images
 from evidence_review.review_packet.server_runtime import DEFAULT_IDLE_TIMEOUT_SECONDS
+from evidence_review.workflow.artifact_ownership import TRACK_A_DERIVED
 
 _RUN_ID = re.compile(r"^RUN-[0-9A-F]{20}$")
 _REQUEST_FIELDS = {
@@ -593,21 +594,24 @@ def _track_b_action(run_id: str) -> NextAction:
 
 
 def _recover_malformed_track_a_submission(run_directory: Path) -> None:
-    """Discard only incomplete JSON left before the Track A handoff is journaled."""
-    generated = (
-        "track-a-output.json",
-        "track-b-bundle.json",
-        "next-action-track-b.json",
-        "track-a-validation.json",
-    )
-    for name in generated:
+    """Discard malformed runtime-derived Track A sidecars, never canonical input."""
+    canonical = run_directory / "track-a-output.json"
+    if canonical.exists():
+        try:
+            _json(canonical)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise ValueError(
+                "malformed run-local Track A cannot be recovered as validated input"
+            ) from error
+
+    for name in sorted(TRACK_A_DERIVED):
         path = run_directory / name
         if not path.exists():
             continue
         try:
             _json(path)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            for generated_name in generated:
+            for generated_name in TRACK_A_DERIVED:
                 (run_directory / generated_name).unlink(missing_ok=True)
             return
 
