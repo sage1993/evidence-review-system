@@ -6,7 +6,7 @@ import re
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -25,6 +25,7 @@ _REPARSE_POINT_ATTRIBUTE = 0x400
 _REQUEST_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
 _ENVELOPE_FIELDS = _REQUEST_FIELDS | {"reviewed_at"}
 _DECISION_RECORD_FIELDS = _ENVELOPE_FIELDS | {"run_id"}
+MAX_FUTURE_DECISION_SKEW = timedelta(minutes=5)
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,11 +203,16 @@ def _read_decision_record(
     )
 
 
+def _eligible_for_latest(record: HumanDecisionRecord, *, now: datetime) -> bool:
+    reviewed_at = datetime.fromisoformat(record.reviewed_at)
+    return reviewed_at <= now + MAX_FUTURE_DECISION_SKEW
+
+
 def load_latest_valid_human_decision(
     run_directory: Path,
     packet_hash: str,
 ) -> HumanDecisionRecord | None:
-    """Return the latest valid append-only decision bound to *packet_hash*."""
+    """Return the latest active decision bound to *packet_hash*."""
     try:
         run_directory = _regular_directory(run_directory, "run_directory")
     except ValueError:
@@ -220,6 +226,7 @@ def load_latest_valid_human_decision(
     except (OSError, ValueError):
         return None
 
+    now = datetime.now(UTC)
     records = [
         record
         for candidate in candidates
@@ -231,6 +238,7 @@ def load_latest_valid_human_decision(
             )
         )
         is not None
+        and _eligible_for_latest(record, now=now)
     ]
     if not records:
         return None
@@ -241,7 +249,7 @@ def load_latest_valid_human_decision(
 
 
 def has_valid_human_decision(run_directory: Path, packet_hash: str) -> bool:
-    """Return whether a valid append-only decision matches the packet hash."""
+    """Return whether a valid active decision matches the packet hash."""
     return load_latest_valid_human_decision(run_directory, packet_hash) is not None
 
 
