@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import os
-import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from evidence_review.contracts.attachments import (
     AttachmentRole,
     ImmutableAttachment,
+)
+from evidence_review.filesystem_trust import (
+    verified_regular_file,
+    verified_regular_file_below,
 )
 from evidence_review.parsing.drawing_case import (
     CaseManifestEntry,
@@ -19,8 +22,6 @@ from evidence_review.parsing.drawing_case import (
 from evidence_review.parsing.source_manifest import sha256_file
 
 _CHUNK_SIZE = 1024 * 1024
-_REPARSE_POINT_ATTRIBUTE = 0x400
-
 _MIME_EXTENSIONS: dict[str, tuple[str, tuple[str, ...]]] = {
     "application/pdf": (".pdf", (".pdf",)),
     "image/png": (".png", (".png",)),
@@ -66,15 +67,7 @@ def sniff_drawing_mime(header: bytes) -> tuple[str, str]:
 
 def validate_source_path(path: Path) -> None:
     """Reject directories, links, and Windows reparse points before opening."""
-    try:
-        stat_result = path.lstat()
-    except FileNotFoundError:
-        raise FileNotFoundError(path) from None
-    if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISREG(stat_result.st_mode):
-        raise ValueError("source must be a regular non-link file")
-    attributes = getattr(stat_result, "st_file_attributes", 0)
-    if attributes & _REPARSE_POINT_ATTRIBUTE:
-        raise ValueError("source cannot be a Windows reparse point")
+    verified_regular_file(path, field="source")
 
 
 def _extension_matches(source_path: Path, mime: str) -> None:
@@ -99,11 +92,6 @@ def _physical_relative_path(attachment: ImmutableAttachment) -> str:
     if not canonical_extension or filename != expected_filename:
         raise ValueError("attachment stored_path does not match attachment metadata")
     return f"sources/drawings/{filename}"
-
-
-def _physical_stored_path(case_dir: Path, attachment: ImmutableAttachment) -> Path:
-    relative_path = PurePosixPath(_physical_relative_path(attachment))
-    return case_dir.joinpath(*relative_path.parts)
 
 
 def drawing_source_manifest_entry(
@@ -220,8 +208,13 @@ def verify_immutable_attachment(
     attachment: ImmutableAttachment,
 ) -> tuple[str, ...]:
     """Return deterministic integrity errors for one case-local source."""
-    path = _physical_stored_path(case_dir, attachment)
-    if not path.is_file():
+    try:
+        path = verified_regular_file_below(
+            case_dir,
+            tuple(_physical_relative_path(attachment).split("/")),
+            field="immutable drawing source",
+        )
+    except (FileNotFoundError, OSError, ValueError):
         return ("SOURCE_MISSING",)
     errors: list[str] = []
     if path.stat().st_size != attachment.byte_size:

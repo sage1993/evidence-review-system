@@ -24,6 +24,10 @@ from evidence_review.contracts.validation import (
     reject_unknown,
     require_fields,
 )
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.parsing.parser_registry import ParserRegistry
 from evidence_review.parsing.source_batch_importer import import_source_batch
 from evidence_review.workflow.request import (
@@ -31,7 +35,7 @@ from evidence_review.workflow.request import (
     confirmed_attachments,
     review_request_sha256,
 )
-from evidence_review.workflow.run_layout import ReviewRunLayout, reject_link_ancestors
+from evidence_review.workflow.run_layout import ReviewRunLayout
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,17 +392,28 @@ def reference_ingestion_receipt_sha256(
 def _persist_create_only_bytes(path: Path, payload: bytes) -> Path:
     """Persist one immutable sidecar, permitting only byte-identical retries."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    reject_link_ancestors(path.parent)
+    parent = verified_regular_directory(
+        path.parent,
+        field="reference receipt directory",
+    )
+    target = parent / path.name
     try:
         descriptor = os.open(
-            path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            target,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0),
             0o600,
         )
     except FileExistsError:
-        reject_link_ancestors(path)
-        if path.read_bytes() == payload:
-            return path
+        existing = verified_regular_file_below(
+            parent,
+            (path.name,),
+            field=f"reference receipt artifact {path.name}",
+        )
+        if existing.read_bytes() == payload:
+            return existing
         raise FileExistsError(
             "reference receipt sidecar already contains different bytes"
         ) from None
@@ -438,29 +453,25 @@ def _strict_json(raw: bytes) -> object:
         ) from exc
 
 
-def _output_path(
-    layout: ReviewRunLayout,
-    receipt: ReferenceIngestionReceipt,
-) -> Path:
-    path = layout.run_dir.joinpath(
-        *receipt.output_db_relative_path.split("/")
-    )
-    if not path.resolve(strict=False).is_relative_to(layout.run_dir.resolve()):
-        raise ValueError("reference output database escapes the run directory")
-    return path
-
-
 def load_reference_ingestion_receipt(
     layout: ReviewRunLayout,
 ) -> ReferenceIngestionReceipt:
     """Load and byte-revalidate the receipt and its evidence database."""
-    reject_link_ancestors(layout.reference_receipt_path)
-    raw = layout.reference_receipt_path.read_bytes()
+    receipt_path = verified_regular_file_below(
+        layout.run_dir,
+        ("machine", "reference-ingestion.json"),
+        field="reference ingestion receipt",
+    )
+    raw = receipt_path.read_bytes()
     receipt = decode_reference_ingestion_receipt(_strict_json(raw))
     if raw != reference_ingestion_receipt_bytes(receipt):
         raise ValueError("reference receipt bytes are not canonical")
-    reject_link_ancestors(layout.reference_receipt_sha256_path)
-    digest_raw = layout.reference_receipt_sha256_path.read_bytes()
+    digest_path = verified_regular_file_below(
+        layout.run_dir,
+        ("machine", "reference-ingestion.sha256"),
+        field="reference ingestion receipt hash",
+    )
+    digest_raw = digest_path.read_bytes()
     expected_digest = f"{reference_ingestion_receipt_sha256(receipt)}\n".encode(
         "ascii"
     )
@@ -488,10 +499,11 @@ def load_reference_ingestion_receipt(
         raise ValueError("reference receipt changed names do not match request")
     if receipt.review_required != bool(receipt.changed_original_names):
         raise ValueError("reference receipt review flag is inconsistent")
-    output_path = _output_path(layout, receipt)
-    if not output_path.is_file():
-        raise ValueError("reference receipt output database is missing")
-    reject_link_ancestors(output_path)
+    output_path = verified_regular_file_below(
+        layout.run_dir,
+        tuple(receipt.output_db_relative_path.split("/")),
+        field="reference output database",
+    )
     payload = output_path.read_bytes()
     if len(payload) != receipt.output_db_byte_size:
         raise ValueError("reference output database byte size mismatch")
@@ -508,16 +520,27 @@ def persist_reference_ingestion_receipt(
     encoded = reference_ingestion_receipt_bytes(receipt)
     target = layout.reference_receipt_path
     target.parent.mkdir(parents=True, exist_ok=True)
-    reject_link_ancestors(target.parent)
+    parent = verified_regular_directory(
+        target.parent,
+        field="reference receipt directory",
+    )
+    target = parent / target.name
     try:
         descriptor = os.open(
             target,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0),
             0o600,
         )
     except FileExistsError:
-        reject_link_ancestors(target)
-        if target.read_bytes() != encoded:
+        existing = verified_regular_file_below(
+            parent,
+            (target.name,),
+            field="reference ingestion receipt",
+        )
+        if existing.read_bytes() != encoded:
             raise FileExistsError(
                 "reference receipt already contains different bytes"
             ) from None
@@ -563,10 +586,11 @@ class SourceBatchReferenceBackend:
                 "source batch reference paths do not match request attachments"
             )
         output = run_dir.joinpath(*output_relative.split("/"))
-        if not output.resolve(strict=False).is_relative_to(run_dir.resolve()):
-            raise ValueError("source batch output escapes run directory")
         output.parent.mkdir(parents=True, exist_ok=True)
-        reject_link_ancestors(output.parent)
+        verified_regular_directory(
+            output.parent,
+            field="source batch output directory",
+        )
         report = import_source_batch(
             run_dir,
             self.batch,
@@ -609,6 +633,11 @@ class SourceBatchReferenceBackend:
                     revision_id=prepared.revision_id,
                 )
             )
+        output = verified_regular_file_below(
+            run_dir,
+            tuple(output_relative.split("/")),
+            field="source batch output database",
+        )
         output_payload = output.read_bytes()
         return ReferenceIngestionBatchResult(
             snapshot_sha256=report.snapshot_hash,

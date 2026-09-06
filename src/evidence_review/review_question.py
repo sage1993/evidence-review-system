@@ -22,6 +22,10 @@ from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.contracts.workflow import WorkflowState
 from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.observability.run_metrics import (
     append_stage,
     finish_stage,
@@ -46,6 +50,7 @@ from evidence_review.workflow.events import (
     append_workflow_event,
     load_workflow_events,
     make_workflow_event,
+    workflow_events_directory,
 )
 
 
@@ -87,7 +92,12 @@ def _write_or_identical(path: Path, document: object) -> None:
         with path.open("xb") as stream:
             stream.write(encoded)
     except FileExistsError:
-        if path.read_bytes() != encoded:
+        existing = verified_regular_file_below(
+            path.parent,
+            (path.name,),
+            field=f"run artifact {path.name}",
+        )
+        if existing.read_bytes() != encoded:
             raise FileExistsError(f"existing artifact differs: {path.name}") from None
 
 
@@ -213,16 +223,19 @@ def build_review_run_request(
 
 
 def _evidence_database(workspace: Path) -> Path:
-    path = workspace / "evidence" / "evidence.sqlite"
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    return path
+    return verified_regular_file_below(
+        workspace,
+        ("evidence", "evidence.sqlite"),
+        field="evidence database",
+    )
 
 
 def _run_expected_snapshot_hash(run_directory: Path) -> str:
-    request_path = run_directory / "review-request.json"
-    if not request_path.is_file():
-        raise FileNotFoundError(request_path)
+    request_path = verified_regular_file_below(
+        run_directory,
+        ("review-request.json",),
+        field="review request",
+    )
     request = _mapping(_json(request_path), "review_request")
     inputs = _mapping(request.get("inputs"), "review_request.inputs")
     expected = inputs.get("snapshot_hash")
@@ -298,6 +311,14 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _run_file(run_directory: Path, name: str) -> Path:
+    return verified_regular_file_below(
+        run_directory,
+        (name,),
+        field=f"run artifact {name}",
+    )
+
+
 def _json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -319,13 +340,14 @@ def _append_event(
     *,
     finalizer_status: FinalizerStatus | None = None,
 ) -> None:
-    events = load_workflow_events(run_directory / "events")
+    events_directory = workflow_events_directory(run_directory)
+    events = load_workflow_events(events_directory)
     if events and events[-1].next_state == next_state:
         return
     sequence = len(events) + 1
     previous = events[-1].next_state if events else None
     append_workflow_event(
-        run_directory / "events",
+        events_directory,
         make_workflow_event(
             run_id=run_directory.name,
             sequence=sequence,
@@ -361,10 +383,11 @@ def _initialize_events(run_directory: Path) -> None:
 
 def _resume_state(run_directory: Path) -> tuple[str, Path | None]:
     _assert_run_evidence_snapshot(run_directory)
-    events = load_workflow_events(run_directory / "events")
+    events_directory = workflow_events_directory(run_directory)
+    events = load_workflow_events(events_directory)
     if not events:
         _initialize_events(run_directory)
-        events = load_workflow_events(run_directory / "events")
+        events = load_workflow_events(workflow_events_directory(run_directory))
     state = events[-1].next_state
     if state == "WAITING_TRACK_A":
         path = run_directory / "next-action-track-a.json"
@@ -390,17 +413,24 @@ def _resume_state(run_directory: Path) -> tuple[str, Path | None]:
         raise ValueError("READY_FOR_REVIEW requires complete final review artifacts")
     else:
         raise ValueError(f"review question run cannot resume from {state}")
-    if not path.is_file():
-        raise FileNotFoundError(path)
+    path = _run_file(run_directory, path.name)
     return state, path
 
 
 def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
-    packet_path = run_directory / "final-review-packet.json"
-    html_path = run_directory / "review.html"
-    if not packet_path.exists() and not html_path.exists():
+    packet_path: Path | None
+    html_path: Path | None
+    try:
+        packet_path = _run_file(run_directory, "final-review-packet.json")
+    except FileNotFoundError:
+        packet_path = None
+    try:
+        html_path = _run_file(run_directory, "review.html")
+    except FileNotFoundError:
+        html_path = None
+    if packet_path is None and html_path is None:
         return None
-    if not packet_path.is_file() or not html_path.is_file():
+    if packet_path is None or html_path is None:
         return None
     packet = verify_finalized_run(run_directory)
     workspace = run_directory.parent.parent
@@ -426,8 +456,11 @@ def _recover_incomplete_finalization(
     track_b_output: Path,
 ) -> None:
     """Recover restartable outputs while preserving validated Track B input."""
-    canonical = run_directory / "track-b-output.json"
-    if canonical.exists():
+    try:
+        canonical = _run_file(run_directory, "track-b-output.json")
+    except FileNotFoundError:
+        canonical = None
+    if canonical is not None:
         try:
             canonical_document = _json(canonical)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
@@ -440,7 +473,7 @@ def _recover_incomplete_finalization(
                     "TRACK_B_INPUT_MISMATCH",
                     "validated run-local Track B differs from retry input",
                 )
-        elif track_b_output.resolve() == canonical.resolve():
+        elif track_b_output.resolve() == canonical:
             raise ValueError(
                 "malformed run-local Track B cannot be recovered as validated input"
             )
@@ -452,7 +485,7 @@ def _recover_incomplete_finalization(
 
 
 def _required_finalizing_track_b_hash(run_directory: Path) -> str:
-    events = load_workflow_events(run_directory / "events")
+    events = load_workflow_events(workflow_events_directory(run_directory))
     finalizing = [event for event in events if event.next_state == "FINALIZING"]
     if not finalizing:
         raise ValueError("FINALIZING state requires a Track B identity event")
@@ -460,8 +493,9 @@ def _required_finalizing_track_b_hash(run_directory: Path) -> str:
 
 
 def _has_valid_finalizing_canonical_track_b(run_directory: Path) -> bool:
-    canonical = run_directory / "track-b-output.json"
-    if not canonical.is_file():
+    try:
+        canonical = _run_file(run_directory, "track-b-output.json")
+    except FileNotFoundError:
         return False
     try:
         return _matches_track_b_identity(
@@ -525,16 +559,25 @@ def prepare_review_question(
     request_metric = finish_stage("review-request-build", request_timer)
 
     run_id = compute_run_id_from_request(review_request)
-    run_directory = workspace / "runs" / run_id
-    resumed = run_directory.exists()
+    try:
+        run_directory = verified_regular_directory(
+            workspace / "runs" / run_id,
+            field="run directory",
+        )
+    except FileNotFoundError:
+        run_directory = workspace / "runs" / run_id
+        resumed = False
+    else:
+        resumed = True
     prepare_timer = start_stage()
     if resumed:
-        existing = run_directory / "review-request.json"
-        if not existing.is_file() or existing.read_bytes() != dump_bytes(review_request):
+        existing = _run_file(run_directory, "review-request.json")
+        if existing.read_bytes() != dump_bytes(review_request):
             raise ValueError("existing immutable review run differs from question request")
         prepare_metric = finish_stage("prepare", prepare_timer, status="SKIPPED")
     else:
-        _prepare_from_document(workspace, review_request)
+        prepared = _prepare_from_document(workspace, review_request)
+        run_directory = prepared.run_directory
         prepare_metric = finish_stage("prepare", prepare_timer)
     _write_or_identical(run_directory / "evidence-query.json", bundle)
 
@@ -633,8 +676,8 @@ def submit_question_track_b(
 
     track_b_input = track_b_output
     if state == "FINALIZING":
-        canonical = run_directory / "track-b-output.json"
         if _has_valid_finalizing_canonical_track_b(run_directory):
+            canonical = _run_file(run_directory, "track-b-output.json")
             if track_b_output.resolve() != canonical.resolve():
                 raise TrackBContractError(
                     "TRACK_B_REGENERATION_FORBIDDEN",

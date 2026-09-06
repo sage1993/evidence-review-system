@@ -22,6 +22,10 @@ from evidence_review.contracts.formats import (
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.validation import expect_sha256
 from evidence_review.contracts.workflow import WorkflowState
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.parsing.drawing_binding import bind_confirmed_inputs
 from evidence_review.parsing.drawing_case import CaseManifestEntry
 from evidence_review.parsing.drawing_inputs import (
@@ -143,8 +147,20 @@ def persist_drawing_confirmation_plan(
     """Persist a confirmation handoff exactly once."""
     path = machine_dir / "drawing-confirmation.json"
     path.parent.mkdir(parents=True, exist_ok=True)
+    parent = verified_regular_directory(
+        path.parent,
+        field="drawing confirmation directory",
+    )
+    path = parent / path.name
     payload = dump_bytes(confirmation_plan_document(plan))
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(
+        path,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -185,9 +201,16 @@ def start_drawing_confirmation(
     )
     if plan.workflow_state != "INPUT_CONFIRMATION_REQUIRED":
         raise ValueError("drawing confirmation plan must require reviewer input")
-    plan_path = layout.machine_dir / "drawing-confirmation.json"
-    if plan_path.exists():
-        if plan_path.read_bytes() != dump_bytes(confirmation_plan_document(plan)):
+    try:
+        existing_plan_path = verified_regular_file_below(
+            layout.run_dir,
+            ("machine", "drawing-confirmation.json"),
+            field="drawing confirmation plan",
+        )
+    except FileNotFoundError:
+        existing_plan_path = None
+    if existing_plan_path is not None:
+        if existing_plan_path.read_bytes() != dump_bytes(confirmation_plan_document(plan)):
             raise ValueError("existing drawing confirmation plan differs")
         return plan
     persist_drawing_confirmation_plan(layout.machine_dir, plan)
@@ -268,12 +291,16 @@ def resume_after_confirmation(
     )
     if len(drawing_sources) != 1 or drawing_sources[0].sha256 != source_sha256:
         raise ValueError("SOURCE_HASH_MISMATCH: drawing source differs")
-    resolved_path = confirmed_inputs_path.resolve(strict=False)
-    if not resolved_path.is_relative_to(layout.run_dir.resolve()):
-        raise ValueError("confirmed inputs path escapes run directory")
-    if not confirmed_inputs_path.is_file():
-        raise FileNotFoundError(confirmed_inputs_path)
-    confirmed_inputs = _load_confirmed_inputs(confirmed_inputs_path)
+    try:
+        relative_parts = confirmed_inputs_path.relative_to(layout.run_dir).parts
+    except ValueError:
+        raise ValueError("confirmed inputs path escapes run directory") from None
+    trusted_confirmed_path = verified_regular_file_below(
+        layout.run_dir,
+        relative_parts,
+        field="confirmed inputs",
+    )
+    confirmed_inputs = _load_confirmed_inputs(trusted_confirmed_path)
     if any(item.source_sha256 != source_sha256 for item in confirmed_inputs):
         raise ValueError("SOURCE_HASH_MISMATCH: confirmed input source differs")
     binding_values = (case_dir, source_attachments, candidate_entries)
@@ -290,7 +317,7 @@ def resume_after_confirmation(
             source_attachments,
             candidate_entries=candidate_entries,
         )
-    confirmed_hash = hashlib.sha256(confirmed_inputs_path.read_bytes()).hexdigest()
+    confirmed_hash = hashlib.sha256(trusted_confirmed_path.read_bytes()).hexdigest()
     plan = build_drawing_confirmation_plan(
         run_id=layout.run_id,
         candidate_ids=(),

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from evidence_review.contracts.attachments import ImmutableAttachment
 from evidence_review.contracts.workflow import WorkflowState, WorkflowStateRecord
+from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.workflow.events import (
     append_workflow_event,
     load_workflow_events,
@@ -30,7 +31,6 @@ from evidence_review.workflow.run_layout import (
     ReviewRunLayout,
     initialize_review_run,
     open_review_run,
-    reject_link_ancestors,
 )
 from evidence_review.workflow.state_machine import EventKind
 
@@ -141,7 +141,15 @@ def ingest_pending_references(
         "READY_TO_EVALUATE",
     }:
         raise ValueError("run is not awaiting reference ingestion")
-    if layout.reference_receipt_path.exists():
+    try:
+        verified_regular_file_below(
+            layout.run_dir,
+            ("machine", "reference-ingestion.json"),
+            field="reference ingestion receipt",
+        )
+    except FileNotFoundError:
+        pass
+    else:
         return load_reference_ingestion_receipt(layout)
 
     attachments = _reference_attachments(request)
@@ -155,18 +163,11 @@ def ingest_pending_references(
         run_dir=layout.run_dir,
     )
     receipt = make_reference_ingestion_receipt(request, attachments, result)
-    output_path = layout.run_dir.joinpath(
-        *receipt.output_db_relative_path.split("/")
+    output_path = verified_regular_file_below(
+        layout.run_dir,
+        tuple(receipt.output_db_relative_path.split("/")),
+        field="reference ingestion output database",
     )
-    if not output_path.resolve(strict=False).is_relative_to(
-        layout.run_dir.resolve()
-    ):
-        raise ValueError("reference ingestion output escapes run directory")
-    if not output_path.is_file():
-        raise ValueError(
-            "reference ingestion backend did not publish its output database"
-        )
-    reject_link_ancestors(output_path)
     output_payload = output_path.read_bytes()
     if len(output_payload) != receipt.output_db_byte_size:
         raise ValueError("reference ingestion backend reported a wrong DB size")

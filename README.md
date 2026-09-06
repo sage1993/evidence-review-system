@@ -401,6 +401,7 @@ Minimum exact-HEAD validation for the current Python 3.13 support policy:
 py -3.13 -m pytest -v
 py -3.13 -m ruff check src tests web_runtime
 py -3.13 -m mypy src
+py -3.13 -m mypy --platform win32 src
 py -3.13 -m compileall -q src scripts web_runtime tests
 py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output <fresh-output>
 ```

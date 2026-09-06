@@ -27,3 +27,23 @@ This policy does not permit bypassing branch protection or an explicit
 maintainer requirement for a particular external check. Such a check remains a
 separate release or merge gate and must be reported separately from local
 manual verification.
+
+## Platform-specific mypy boundary
+
+Linux `mypy src` remains a required acceptance check. The standard-library
+Linux type stubs do not expose the Windows-only `ctypes` symbols used by the
+three platform-bound launcher/lock implementations. Only the exact
+symbol-level `attr-defined,unused-ignore` annotations at those calls are
+permitted; file-wide ignores, `ignore_errors`, and global weakening are not.
+
+The Windows implementation must also be checked explicitly with the same
+Python 3.13 toolchain:
+
+```powershell
+py -3.13 -m mypy src
+py -3.13 -m mypy --platform win32 src
+```
+
+The first command proves the Linux source tree remains type-checked, and the
+second proves the guarded Windows API path remains type-checked against the
+Windows platform stubs.

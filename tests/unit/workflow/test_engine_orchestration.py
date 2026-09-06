@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,6 +36,27 @@ def _ready_layout(tmp_path: Path):
     )
 
 
+def _directory_link(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout).strip()
+            pytest.skip(
+                "directory junction creation unavailable: "
+                f"exit={completed.returncode}; detail={detail or '<empty>'}"
+            )
+        return
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlink creation unavailable: {error}")
+
+
 def test_deterministic_stages_are_executed_and_persisted_in_order(tmp_path: Path) -> None:
     layout = _ready_layout(tmp_path)
 
@@ -60,6 +83,25 @@ def test_deterministic_stages_are_executed_and_persisted_in_order(tmp_path: Path
     assert (layout.machine_dir / "math.json").is_file()
     assert (layout.machine_dir / "rules.json").is_file()
     assert (layout.machine_dir / "next-action.json").is_file()
+
+
+def test_deterministic_stages_reject_linked_machine_directory(
+    tmp_path: Path,
+) -> None:
+    layout = _ready_layout(tmp_path)
+    external_machine = tmp_path / "external-machine"
+    external_machine.mkdir()
+    _directory_link(layout.machine_dir, external_machine)
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        run_deterministic_stages(
+            layout,
+            retrieval={"evidence_ids": ["EVIDENCE-001"]},
+            math={"calculation_result_ids": ["CALC-001"]},
+            rules={"rule_result_ids": ["RULE-001"]},
+        )
+
+    assert not (external_machine / "retrieval.json").exists()
 
 
 def test_track_b_rejection_blocks_finalization(tmp_path: Path) -> None:

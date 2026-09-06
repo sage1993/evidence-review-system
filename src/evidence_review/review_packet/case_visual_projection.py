@@ -462,9 +462,13 @@ def build_case_visual_projection(
     """Project immutable visual evidence into a self-contained reviewer model."""
     run_id = validate_identifier(view_model.get("run_id"), "view_model.run_id")
     run_directory = workspace_root / "runs" / run_id
-    bundle_path = run_directory / "track-a-bundle.json"
-    track_a_path = run_directory / "track-a-output.json"
-    if not bundle_path.is_file():
+    try:
+        bundle_path = verified_regular_file_below(
+            run_directory,
+            ("track-a-bundle.json",),
+            field="case visual Track A bundle",
+        )
+    except FileNotFoundError:
         return None
     bundle = _json(bundle_path)
     inputs = _mapping(bundle.get("inputs"), "track_a_bundle.inputs")
@@ -474,9 +478,16 @@ def build_case_visual_projection(
     context = _mapping(raw_context, "inputs.case_visual_context")
     if context.get("visual_status") != "VISUAL_ANALYSIS_VALIDATED":
         raise ValueError("case visual context is not validated")
-    if not track_a_path.is_file():
-        raise ValueError("validated case visual review requires track-a-output.json")
-
+    try:
+        track_a_path = verified_regular_file_below(
+            run_directory,
+            ("track-a-output.json",),
+            field="case visual Track A output",
+        )
+    except FileNotFoundError as error:
+        raise ValueError(
+            "validated case visual review requires track-a-output.json"
+        ) from error
     attachments = [
         decode_immutable_attachment(item)
         for item in _sequence(

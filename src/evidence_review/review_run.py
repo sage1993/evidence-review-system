@@ -26,6 +26,10 @@ from evidence_review.contracts.run_context import (
     compute_run_id_from_request,
     create_run_directory,
 )
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.llm_layer.track_a import (
     EvidenceExcerpt,
     TrackABundle,
@@ -158,7 +162,12 @@ def _write_json_or_identical(path: Path, document: object) -> None:
         with path.open("xb") as stream:
             stream.write(encoded)
     except FileExistsError:
-        if path.read_bytes() != encoded:
+        existing = verified_regular_file_below(
+            path.parent,
+            (path.name,),
+            field=f"run artifact {path.name}",
+        )
+        if existing.read_bytes() != encoded:
             raise FileExistsError(f"existing artifact differs: {path.name}") from None
 
 
@@ -169,8 +178,11 @@ def _publish_validated_track_a(
 ) -> None:
     """Publish validated Track A without rewriting a same-path source."""
     if source.resolve() == destination.resolve():
-        if not destination.is_file():
-            raise FileNotFoundError(destination)
+        verified_regular_file_below(
+            destination.parent,
+            (destination.name,),
+            field="run-local Track A",
+        )
         return
     _write_json_or_identical(destination, document)
 
@@ -182,8 +194,11 @@ def _publish_validated_track_b(
 ) -> None:
     """Bind a validated Track B without rewriting or replacing user input."""
     if source.resolve() == destination.resolve():
-        if not destination.is_file():
-            raise FileNotFoundError(destination)
+        verified_regular_file_below(
+            destination.parent,
+            (destination.name,),
+            field="run-local Track B",
+        )
         return
 
     encoded = dump_bytes(document)
@@ -193,8 +208,13 @@ def _publish_validated_track_b(
             stream.write(encoded)
     except FileExistsError:
         try:
-            existing = dump_bytes(_json(destination))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
+            trusted_destination = verified_regular_file_below(
+                destination.parent,
+                (destination.name,),
+                field="run-local Track B",
+            )
+            existing = dump_bytes(_json(trusted_destination))
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
             raise TrackBContractError(
                 "TRACK_B_INPUT_MISMATCH",
                 "existing run-local Track B is not a valid canonical JSON document",
@@ -469,14 +489,33 @@ def _sha256(path: Path) -> str:
 def _require_prepared_run(workspace_root: Path, run_id: str) -> Path:
     if not _RUN_ID.fullmatch(run_id):
         raise ValueError("invalid run_id")
-    run_directory = workspace_root / "runs" / run_id
-    if not run_directory.is_dir():
-        raise FileNotFoundError(run_directory)
+    trusted_workspace = verified_regular_directory(
+        workspace_root,
+        field="workspace root",
+    )
+    runs_root = verified_regular_directory(
+        trusted_workspace / "runs",
+        field="runs root",
+    )
+    run_directory = verified_regular_directory(
+        runs_root / run_id,
+        field="run directory",
+    )
     for name in ("track-a-bundle.json", "confidence-input.json"):
-        path = run_directory / name
-        if not path.is_file():
-            raise FileNotFoundError(path)
+        verified_regular_file_below(
+            run_directory,
+            (name,),
+            field=f"run artifact {name}",
+        )
     return run_directory
+
+
+def _run_file(run_directory: Path, name: str) -> Path:
+    return verified_regular_file_below(
+        run_directory,
+        (name,),
+        field=f"run artifact {name}",
+    )
 
 
 def _track_a_bundle_for_run(run_directory: Path) -> TrackABundle:
@@ -489,7 +528,7 @@ def _track_a_bundle_for_run(run_directory: Path) -> TrackABundle:
         approved,
         _confidence,
         _request,
-    ) = _decode_request(run_directory / "review-request.json")
+    ) = _decode_request(_run_file(run_directory, "review-request.json"))
     return build_track_a_bundle(
         run_id=run_directory.name,
         question=question,
@@ -535,7 +574,7 @@ def _track_b_bundle_document(
                 _string(item, f"track_a.claims[{index}].citation_ids[{citation_index}]")
             )
 
-    request = _mapping(_json(run_directory / "review-request.json"), "review_request")
+    request = _mapping(_json(_run_file(run_directory, "review-request.json")), "review_request")
     support_by_id: dict[str, dict[str, object]] = {}
     for index, item in enumerate(_sequence(request.get("evidence", []), "review_request.evidence")):
         evidence = _mapping(item, f"review_request.evidence[{index}]")
@@ -595,8 +634,11 @@ def _track_b_action(run_id: str) -> NextAction:
 
 def _recover_malformed_track_a_submission(run_directory: Path) -> None:
     """Discard malformed runtime-derived Track A sidecars, never canonical input."""
-    canonical = run_directory / "track-a-output.json"
-    if canonical.exists():
+    try:
+        canonical = _run_file(run_directory, "track-a-output.json")
+    except FileNotFoundError:
+        canonical = None
+    if canonical is not None:
         try:
             _json(canonical)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
@@ -605,8 +647,9 @@ def _recover_malformed_track_a_submission(run_directory: Path) -> None:
             ) from error
 
     for name in sorted(TRACK_A_DERIVED):
-        path = run_directory / name
-        if not path.exists():
+        try:
+            path = _run_file(run_directory, name)
+        except FileNotFoundError:
             continue
         try:
             _json(path)
@@ -643,7 +686,7 @@ def submit_track_a(
             "version": 1,
             "run_id": run_id,
             "status": "VALIDATED",
-            "track_a_sha256": _sha256(run_directory / "track-a-output.json"),
+            "track_a_sha256": _sha256(_run_file(run_directory, "track-a-output.json")),
         },
     )
     return SubmittedTrackA(
@@ -668,7 +711,7 @@ def submit_track_b(
     output = _json(track_b_output)
     bound_track_b = run_directory / "track-b-output.json"
     _publish_validated_track_b(track_b_output, bound_track_b, output)
-    track_a_path = run_directory / "track-a-output.json"
+    track_a_path = _run_file(run_directory, "track-a-output.json")
     return finalize_review_run(
         workspace_root,
         run_id,
@@ -686,9 +729,10 @@ def validate_track_b_submission(
 ) -> None:
     """Validate Track B against the immutable, validated Track A handoff."""
     run_directory = _require_prepared_run(workspace_root, run_id)
-    track_a_path = run_directory / "track-a-output.json"
-    if not track_a_path.is_file():
-        raise ValueError("Track A must validate before Track B submission")
+    try:
+        track_a_path = _run_file(run_directory, "track-a-output.json")
+    except FileNotFoundError:
+        raise ValueError("Track A must validate before Track B submission") from None
     bundle = _track_a_bundle_for_run(run_directory)
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
@@ -702,13 +746,22 @@ def _validate_track_output_run_id(value: object, run_id: str, field: str) -> Non
 
 
 def _evidence_database(workspace_root: Path) -> Path:
-    generic = workspace_root / "evidence" / "evidence.sqlite"
-    if generic.is_file():
-        return generic
-    legacy = workspace_root / "evidence" / "ansim-evidence.sqlite"
-    if legacy.is_file():
-        return legacy
-    raise FileNotFoundError(generic)
+    generic = ("evidence", "evidence.sqlite")
+    try:
+        return verified_regular_file_below(
+            workspace_root,
+            generic,
+            field="evidence database",
+        )
+    except FileNotFoundError as generic_error:
+        try:
+            return verified_regular_file_below(
+                workspace_root,
+                ("evidence", "ansim-evidence.sqlite"),
+                field="legacy evidence database",
+            )
+        except FileNotFoundError:
+            raise generic_error from None
 
 
 def _record_stage_failure(run_directory: Path, name: str, timer: object, error: Exception) -> None:
@@ -743,11 +796,19 @@ def finalize_review_run(
     _validate_track_output_run_id(track_a_document, run_id, "track_a")
     _validate_track_output_run_id(track_b_document, run_id, "track_b")
 
-    imported_a = run_directory / "track-a-output.json"
-    imported_b = run_directory / "track-b-output.json"
-    prevalidated_track_a = imported_a.exists()
-    if prevalidated_track_a and track_a_output.resolve() != imported_a.resolve():
+    try:
+        imported_a = _run_file(run_directory, "track-a-output.json")
+    except FileNotFoundError:
+        imported_a = run_directory / "track-a-output.json"
+        prevalidated_track_a = False
+    else:
+        prevalidated_track_a = True
+    if prevalidated_track_a and track_a_output.resolve() != imported_a:
         raise FileExistsError(imported_a)
+    try:
+        imported_b = _run_file(run_directory, "track-b-output.json")
+    except FileNotFoundError:
+        imported_b = run_directory / "track-b-output.json"
 
     generated = (
         (
@@ -763,19 +824,36 @@ def finalize_review_run(
             run_directory / "review.html",
         )
     )
-    if bound_track_b and (
-        track_b_output.resolve() != imported_b.resolve() or not imported_b.is_file()
-    ):
-        raise TrackBContractError(
-            "TRACK_B_INPUT_MISMATCH",
-            "bound Track B must be the validated run-local artifact",
-        )
-    existing = next((path for path in generated if path.exists()), None)
+    if bound_track_b:
+        try:
+            imported_b = _run_file(run_directory, "track-b-output.json")
+        except FileNotFoundError as error:
+            raise TrackBContractError(
+                "TRACK_B_INPUT_MISMATCH",
+                "bound Track B must be the validated run-local artifact",
+            ) from error
+        if track_b_output.resolve() != imported_b:
+            raise TrackBContractError(
+                "TRACK_B_INPUT_MISMATCH",
+                "bound Track B must be the validated run-local artifact",
+            )
+    existing = None
+    for path in generated:
+        try:
+            existing = _run_file(run_directory, path.name)
+        except FileNotFoundError:
+            continue
+        break
     if existing is not None:
         raise FileExistsError(existing)
     published = workspace_root / "runs" / "final-review-packet.json"
-    if publish and published.exists():
-        raise FileExistsError(published)
+    if publish:
+        try:
+            published = _run_file(run_directory.parent, published.name)
+        except FileNotFoundError:
+            published = run_directory.parent / published.name
+        else:
+            raise FileExistsError(published)
 
     manifest_path = run_directory / "run-manifest.json"
     packet_path = run_directory / "final-review-packet.json"
@@ -789,7 +867,7 @@ def finalize_review_run(
         if not bound_track_b:
             _write_json(imported_b, track_b_document)
         artifacts = {
-            name: _sha256(run_directory / name)
+            name: _sha256(_run_file(run_directory, name))
             for name in _FINALIZER_ARTIFACTS
         }
         _write_json(

@@ -18,7 +18,10 @@ from evidence_review.contracts.drawing import (
     decode_drawing_confirmation,
     geometry_document,
 )
-from evidence_review.parsing.drawing_case import CaseManifestEntry, case_artifact_path
+from evidence_review.parsing.drawing_case import (
+    CaseManifestEntry,
+    verified_case_artifact_path,
+)
 from evidence_review.parsing.drawing_source import verify_immutable_attachment
 
 
@@ -38,7 +41,7 @@ def _verify_candidate(
 ) -> DrawingCandidate:
     if entry.artifact_id != confirmed.evidence_id:
         raise ValueError("candidate entry identity does not match confirmed evidence")
-    path = case_artifact_path(case_dir, entry.relative_path)
+    path = verified_case_artifact_path(case_dir, entry.relative_path)
     payload_bytes = path.read_bytes()
     actual_hash = hashlib.sha256(payload_bytes).hexdigest()
     if actual_hash != entry.sha256:
@@ -68,7 +71,7 @@ def _verify_candidate(
 
 
 def _verify_confirmation(case_dir: Path, confirmed: ConfirmedInput) -> None:
-    path = case_artifact_path(case_dir, confirmed.confirmation_record)
+    path = verified_case_artifact_path(case_dir, confirmed.confirmation_record)
     payload_bytes = path.read_bytes()
     actual_hash = hashlib.sha256(payload_bytes).hexdigest()
     if actual_hash != confirmed.confirmation_sha256:

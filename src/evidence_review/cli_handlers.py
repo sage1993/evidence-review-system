@@ -15,6 +15,7 @@ from evidence_review.contracts.source_batch import SourceBatch, decode_source_ba
 from evidence_review.evidence.lineage_migration import apply_legacy_lineage_migration
 from evidence_review.evidence.migrations.v1_to_v2 import migrate_v1_to_v2
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.filesystem_trust import verified_regular_file
 from evidence_review.math_engine.manifest import calculation_result_document
 from evidence_review.math_engine.requests import decode_calculation_request
 from evidence_review.math_engine.runner import run_calculation_request
@@ -49,7 +50,7 @@ from evidence_review.review_run import (
 )
 from evidence_review.rule_engine.activation import (
     activation_report_bytes,
-    build_active_manifest,
+    build_active_manifest_from_directory,
 )
 from evidence_review.rule_engine.golden import run_rule_golden
 from evidence_review.rule_engine.manifest import load_governed_active_rules
@@ -348,22 +349,6 @@ def _rules_run_golden(
     return 0 if report.status == "PASS" else 2
 
 
-def _approval_files(approvals: Path) -> tuple[Path, ...]:
-    if approvals.is_symlink() or not approvals.is_dir():
-        raise ValueError("approvals must be a real directory")
-    paths = tuple(
-        sorted(
-            (
-                path
-                for path in approvals.iterdir()
-                if path.suffix == ".json" and path.is_file() and not path.is_symlink()
-            ),
-            key=lambda path: path.name,
-        )
-    )
-    return paths
-
-
 def _rules_build_active_manifest(
     repository_root: Path,
     approvals: Path,
@@ -371,9 +356,9 @@ def _rules_build_active_manifest(
     report_path: Path,
 ) -> int:
     try:
-        result = build_active_manifest(
+        result = build_active_manifest_from_directory(
             repository_root,
-            _approval_files(approvals),
+            approvals,
             output,
             report_path,
         )
@@ -435,7 +420,11 @@ def _query_run(
         return 1
     try:
         payload = json.loads(request_path.read_text(encoding="utf-8"))
-        with EvidenceStore(db_path) as store:
+        trusted_db_path = verified_regular_file(
+            db_path,
+            field="evidence database",
+        )
+        with EvidenceStore(trusted_db_path) as store:
             bundle = build_evidence_bundle(store.require_connection(), payload)
     except (
         FileNotFoundError,

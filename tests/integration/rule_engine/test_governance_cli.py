@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
+import pytest
 from helpers.rule_governance import build_valid_governance_tree
 
 from evidence_review.canonical_json import dump_bytes
@@ -81,6 +84,56 @@ def test_build_active_manifest_cli_outputs_activation_report(
     assert status["format"] == "evidence-review/rule-activation-report"
     assert status["status"] == "ACTIVATED"
     assert status["activated_rule_count"] == 1
+
+
+def test_build_active_manifest_rejects_linked_approvals_directory(
+    tmp_path: Path,
+    capfd,
+) -> None:
+    tree = build_valid_governance_tree(tmp_path)
+    external = tmp_path / "external-approvals"
+    external.mkdir()
+    for approval in (tmp_path / "rules" / "activation" / "approvals").glob("*.json"):
+        approval.rename(external / approval.name)
+    approvals = tmp_path / "rules" / "activation" / "approvals"
+    approvals.rmdir()
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(approvals), str(external)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout).strip()
+            pytest.skip(
+                "directory junction creation unavailable: "
+                f"exit={completed.returncode}; detail={detail or '<empty>'}"
+            )
+    else:
+        try:
+            approvals.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            pytest.skip(f"directory symlink creation unavailable: {error}")
+    report_path = tmp_path / "build" / "rules" / "activation" / "report.json"
+
+    exit_code = main(
+        [
+            "rules",
+            "build-active-manifest",
+            "--repository-root",
+            str(tmp_path),
+            "--approvals",
+            str(approvals),
+            "--output",
+            str(tree.manifest_path),
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 2
+    assert capfd.readouterr().out == ""
 
 
 def test_select_cli_returns_zero_for_selected_and_abstain(

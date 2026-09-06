@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import http.client
 import json
 from pathlib import Path
@@ -9,9 +10,13 @@ from urllib.request import Request, urlopen
 import pytest
 
 from evidence_review.contracts.drawing import DrawingCandidate, Geometry
-from evidence_review.drawing_review.local_server import serve_annotation_workspace
+from evidence_review.drawing_review.local_server import (
+    _verified_bytes,
+    serve_annotation_workspace,
+)
 from evidence_review.drawing_review.view_model import DrawingPage
 from evidence_review.parsing.drawing_candidates import persist_candidate
+from evidence_review.parsing.drawing_case import CaseManifestEntry
 
 SOURCE_HASH = "a" * 64
 TOKEN = "T" * 32
@@ -256,3 +261,25 @@ def test_rejects_symlink_case_root(tmp_path: Path) -> None:
             candidate_entries={},
             token=TOKEN,
         )
+
+
+def test_rejects_linked_case_artifact_before_hash_consumption(tmp_path: Path) -> None:
+    case_dir = tmp_path / "CASE-001"
+    artifact_path = case_dir / "candidates" / "candidate.json"
+    artifact_path.parent.mkdir(parents=True)
+    external = case_dir / "trusted-candidate.json"
+    payload = b"external candidate"
+    external.write_bytes(payload)
+    try:
+        artifact_path.symlink_to(external)
+    except OSError as error:
+        pytest.skip(f"file symlink creation unavailable: {error}")
+
+    entry = CaseManifestEntry(
+        artifact_id="CAND-EXTERNAL",
+        relative_path="candidates/candidate.json",
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        _verified_bytes(case_dir, entry)

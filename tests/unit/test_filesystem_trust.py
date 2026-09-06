@@ -10,6 +10,7 @@ import pytest
 from evidence_review.contracts.run_context import create_run_directory
 from evidence_review.filesystem_trust import (
     REPARSE_POINT_ATTRIBUTE,
+    verified_create_target_below,
     verified_regular_directory,
     verified_regular_file_below,
 )
@@ -36,6 +37,34 @@ def test_verified_regular_directory_accepts_normal_directory(tmp_path: Path) -> 
     root.mkdir()
 
     assert verified_regular_directory(root, field="root") == root.resolve(strict=True)
+
+
+def test_verified_create_target_below_accepts_missing_target(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+
+    target = verified_create_target_below(
+        root,
+        ("nested", "artifact.json"),
+        field="artifact",
+    )
+
+    assert target == root / "nested" / "artifact.json"
+
+
+def test_verified_create_target_below_rejects_final_symlink(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(b"outside")
+    link = root / "artifact.json"
+    try:
+        link.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        verified_create_target_below(root, ("artifact.json",), field="artifact")
 
 
 def test_verified_regular_file_below_rejects_final_symlink(tmp_path: Path) -> None:

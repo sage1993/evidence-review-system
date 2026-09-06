@@ -12,6 +12,10 @@ from pathlib import Path, PurePosixPath
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.formats import RULE_ACTIVATION_REPORT_FORMAT
+from evidence_review.filesystem_trust import (
+    verified_create_target_below,
+    verified_regular_directory,
+)
 from evidence_review.rule_engine.governance_contract import (
     ActivationFinding,
     ActivationReport,
@@ -67,10 +71,7 @@ def _safe_path(value: str, field: str) -> str:
 
 
 def _resolved_root(repository_root: Path) -> Path:
-    resolved = repository_root.resolve(strict=True)
-    if repository_root.is_symlink() or not resolved.is_dir():
-        raise ValueError("repository_root must be a real directory")
-    return resolved
+    return verified_regular_directory(repository_root, field="repository_root")
 
 
 def _argument_relative(root: Path, path: Path, field: str) -> str:
@@ -83,17 +84,11 @@ def _argument_relative(root: Path, path: Path, field: str) -> str:
 
 
 def _output_target(root: Path, relative: str) -> Path:
-    destination = root / PurePosixPath(relative)
-    current = root
-    for part in PurePosixPath(relative).parts[:-1]:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError(f"output path traverses a symlink: {relative}")
-        if current.exists() and not current.is_dir():
-            raise ValueError(f"output parent is not a directory: {relative}")
-    if destination.exists() or destination.is_symlink():
-        raise FileExistsError(destination)
-    return destination
+    return verified_create_target_below(
+        root,
+        PurePosixPath(relative).parts,
+        field="output artifact",
+    )
 
 
 def _prepare_publication(destination: Path, payload: bytes) -> _PreparedPublication:
@@ -368,3 +363,28 @@ def build_active_manifest(
         )
     )
     return report
+
+
+def build_active_manifest_from_directory(
+    repository_root: Path,
+    approvals_directory: Path,
+    output_manifest: Path,
+    output_report: Path,
+) -> ActivationReport:
+    """Enumerate a trusted approvals directory before authoritative verification."""
+    trusted_directory = verified_regular_directory(
+        approvals_directory,
+        field="approvals directory",
+    )
+    approval_paths = tuple(
+        sorted(
+            (path for path in trusted_directory.iterdir() if path.suffix == ".json"),
+            key=lambda path: path.name,
+        )
+    )
+    return build_active_manifest(
+        repository_root,
+        approval_paths,
+        output_manifest,
+        output_report,
+    )

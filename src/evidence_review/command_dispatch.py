@@ -13,6 +13,10 @@ from evidence_review import cli_handlers as runtime_handlers
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.documentation_integrity.cli import run_documentation_validation
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.network_guard import install_network_guard
 from evidence_review.review_packet.browser_launcher import (
     open_protected_review_workspace,
@@ -22,7 +26,7 @@ from evidence_review.review_packet.decision_record import import_human_decision_
 from evidence_review.review_packet.external_launcher import open_external_url
 from evidence_review.rule_engine.activation import (
     activation_report_bytes,
-    build_active_manifest,
+    build_active_manifest_from_directory,
 )
 from evidence_review.rule_engine.manifest import load_governed_active_rules
 from evidence_review.rule_engine.selection import (
@@ -34,17 +38,6 @@ from evidence_review.workspace_binding import (
     bind_active_workspace,
     resolve_active_workspace,
 )
-
-
-def _approval_entries(directory: Path) -> tuple[Path, ...]:
-    if directory.is_symlink() or not directory.is_dir():
-        raise ValueError("approvals must be a real directory")
-    return tuple(
-        sorted(
-            (path for path in directory.iterdir() if path.suffix == ".json"),
-            key=lambda path: path.name,
-        )
-    )
 
 
 def _workspace_status_document(
@@ -91,9 +84,9 @@ def _build_active(args: argparse.Namespace) -> int:
     output = cast(Path, args.output)
     report_path = cast(Path, args.report)
     try:
-        result = build_active_manifest(
+        result = build_active_manifest_from_directory(
             repository_root,
-            _approval_entries(approvals),
+            approvals,
             output,
             report_path,
         )
@@ -199,9 +192,24 @@ def _review_import_decision(args: argparse.Namespace) -> int:
     workspace = cast(Path, args.workspace)
     run_id = validate_identifier(cast(str, args.run_id), "run_id")
     envelope_path = cast(Path, args.envelope)
-    run_directory = workspace / "runs" / run_id
-    packet_path = run_directory / "final-review-packet.json"
     try:
+        trusted_workspace = verified_regular_directory(
+            workspace,
+            field="workspace root",
+        )
+        runs_root = verified_regular_directory(
+            trusted_workspace / "runs",
+            field="runs root",
+        )
+        run_directory = verified_regular_directory(
+            runs_root / run_id,
+            field="run directory",
+        )
+        packet_path = verified_regular_file_below(
+            run_directory,
+            ("final-review-packet.json",),
+            field="final review packet",
+        )
         packet_bytes = packet_path.read_bytes()
         envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
         packet_hash = hashlib.sha256(packet_bytes).hexdigest()

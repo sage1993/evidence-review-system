@@ -45,7 +45,7 @@ class _Overlapped(ctypes.Structure):
 
 
 if os.name == "nt":
-    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
     _lock_file_ex = _kernel32.LockFileEx
     _lock_file_ex.argtypes = [
         wintypes.HANDLE,
@@ -72,7 +72,7 @@ def acquire_exclusive_file_lock(stream: BinaryIO) -> None:
     api = cast(_MsvcrtApi, msvcrt)
     handle = wintypes.HANDLE(api.get_osfhandle(stream.fileno()))
     overlapped = _Overlapped()
-    ctypes.set_last_error(0)
+    ctypes.set_last_error(0)  # type: ignore[attr-defined,unused-ignore]
     result = _lock_file_ex(
         handle,
         LOCKFILE_EXCLUSIVE_LOCK,
@@ -82,7 +82,7 @@ def acquire_exclusive_file_lock(stream: BinaryIO) -> None:
         ctypes.byref(overlapped),
     )
     if not result:
-        raise ctypes.WinError(ctypes.get_last_error())
+        raise ctypes.WinError(ctypes.get_last_error())  # type: ignore[attr-defined,unused-ignore]
 
 
 def release_file_lock(stream: BinaryIO) -> None:
@@ -90,7 +90,7 @@ def release_file_lock(stream: BinaryIO) -> None:
     api = cast(_MsvcrtApi, msvcrt)
     handle = wintypes.HANDLE(api.get_osfhandle(stream.fileno()))
     overlapped = _Overlapped()
-    ctypes.set_last_error(0)
+    ctypes.set_last_error(0)  # type: ignore[attr-defined,unused-ignore]
     result = _unlock_file_ex(
         handle,
         0,
@@ -99,4 +99,4 @@ def release_file_lock(stream: BinaryIO) -> None:
         ctypes.byref(overlapped),
     )
     if not result:
-        raise ctypes.WinError(ctypes.get_last_error())
+        raise ctypes.WinError(ctypes.get_last_error())  # type: ignore[attr-defined,unused-ignore]

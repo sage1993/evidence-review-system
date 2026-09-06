@@ -22,6 +22,10 @@ from evidence_review.contracts.engines import (
 )
 from evidence_review.contracts.evidence import EvidenceRecord
 from evidence_review.contracts.identifiers import validate_identifier, validate_version
+from evidence_review.filesystem_trust import (
+    verified_create_target_below,
+    verified_regular_directory,
+)
 from evidence_review.rule_engine.evaluator import evaluate_rule
 from evidence_review.rule_engine.governance_contract import (
     GoldenCaseRecord,
@@ -436,10 +440,7 @@ def _load_rule_file(path: Path, label: str) -> RuleSpec:
 
 
 def _resolved_root(repository_root: Path) -> Path:
-    resolved = repository_root.resolve(strict=True)
-    if repository_root.is_symlink() or not resolved.is_dir():
-        raise ValueError("repository_root must be a real directory")
-    return resolved
+    return verified_regular_directory(repository_root, field="repository_root")
 
 
 def _argument_relative(root: Path, path: Path, field: str) -> str:
@@ -452,17 +453,11 @@ def _argument_relative(root: Path, path: Path, field: str) -> str:
 
 
 def _output_target(root: Path, relative: str) -> Path:
-    destination = root / PurePosixPath(relative)
-    current = root
-    for part in PurePosixPath(relative).parts[:-1]:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError(f"output path traverses a symlink: {relative}")
-        if current.exists() and not current.is_dir():
-            raise ValueError(f"output parent is not a directory: {relative}")
-    if destination.exists() or destination.is_symlink():
-        raise FileExistsError(destination)
-    return destination
+    return verified_create_target_below(
+        root,
+        PurePosixPath(relative).parts,
+        field="output artifact",
+    )
 
 
 def _is_below(path: str, root: str) -> bool:
