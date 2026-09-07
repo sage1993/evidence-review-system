@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BufferedReader
 from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, Literal, cast
@@ -43,6 +44,8 @@ _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
+_OVERSIZED_BODY_DRAIN_TIMEOUT_SECONDS = 0.5
+_MAX_OVERSIZED_BODY_DRAIN_BYTES = 1024 * 1024
 _CSP = (
     "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
@@ -388,6 +391,27 @@ class _ReviewHandler(BaseHTTPRequestHandler):
     def _reject(self, status: HTTPStatus, code: str) -> None:
         self._send_json(status, {"error": code})
 
+    def _reject_oversized_body(self, length: int) -> None:
+        """Send 413 first, then bound the unread-body discard before closing."""
+        self.close_connection = True
+        self._reject(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "BODY_TOO_LARGE")
+        try:
+            self.wfile.flush()
+            deadline = time.monotonic() + _OVERSIZED_BODY_DRAIN_TIMEOUT_SECONDS
+            body_reader = cast(BufferedReader, self.rfile)
+            remaining = min(length, _MAX_OVERSIZED_BODY_DRAIN_BYTES)
+            while remaining:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0:
+                    break
+                self.connection.settimeout(timeout)
+                chunk = body_reader.read1(min(8192, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError:
+            return
+
     def _route(self) -> _Route | None:
         route = _route_path(self.path)
         if route is None:
@@ -586,7 +610,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             self._reject(HTTPStatus.BAD_REQUEST, "EMPTY_BODY")
             return None
         if length > self.state.max_body_bytes:
-            self._reject(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "BODY_TOO_LARGE")
+            self._reject_oversized_body(length)
             return None
         return length
 
