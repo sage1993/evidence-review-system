@@ -7,7 +7,11 @@
     "docs",
     "skills"
   ],
-  "historical_roots": [],
+  "historical_roots": [
+    "docs/plans",
+    "docs/superpowers/plans",
+    "docs/superpowers/specs"
+  ],
   "current_overrides": [],
   "historical_overrides": [],
   "generated_documents": [
