@@ -1,14 +1,14 @@
-# Contributing to Evidence Review System
+# Evidence Review System 기여 가이드
 
-Evidence Review System is an evidence-first, offline review runtime. Contributions are welcome when they preserve deterministic provenance, fail-closed validation, and the separation between machine review output and final human decisions.
+Evidence Review System은 **근거 우선(evidence-first)** 방식으로 동작하는 오프라인 검토 런타임입니다. 기여는 환영하지만, 모든 변경은 **결정론적 provenance**, **fail-closed 검증**, 그리고 **Machine Review 출력과 최종 Human Decision의 분리**를 유지해야 합니다.
 
-## Supported development environment
+## 지원 개발 환경
 
 - Python `>=3.13,<3.14`
-- Windows is the primary acceptance platform for browser/review-workspace behavior.
-- Runtime behavior must not add a remote API, CDN, telemetry service, or model dependency.
+- Browser 및 Review Workspace 동작에 대한 주요 Acceptance Platform은 Windows입니다.
+- Runtime 동작에 Remote API, CDN, Telemetry Service 또는 Model Dependency를 추가해서는 안 됩니다.
 
-Create an isolated environment and install the development dependencies:
+독립된 개발 환경을 생성하고 개발용 Dependency를 설치합니다.
 
 ```powershell
 py -3.13 -m venv .venv
@@ -16,30 +16,38 @@ py -3.13 -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
-## Before changing code
+## 코드 변경 전 확인사항
 
-1. Search existing issues and pull requests.
-2. For behavior changes, add or update tests first.
-3. Keep source PDFs, parser outputs, evidence databases, page-image caches, customer data, and human-decision records outside the repository.
-4. Do not weaken source-hash, rule, page-image, manifest, release, or packet validation to make a test pass.
-5. Keep the canonical public namespace and CLI under `evidence_review` / `evidence-review`.
+1. 기존 Issue 및 Pull Request를 먼저 검색합니다.
+2. 동작을 변경하는 경우 테스트를 먼저 추가하거나 수정합니다.
+3. Source PDF, Parser Output, Evidence Database, Page Image Cache, Customer Data 및 Human Decision Record는 저장소 외부에 보관합니다.
+4. 테스트를 통과시키기 위해 Source Hash, Rule, Page Image, Manifest, Release 또는 Packet Validation을 약화해서는 안 됩니다.
+5. 공개 Canonical Namespace와 CLI는 `evidence_review` / `evidence-review` 아래에 유지합니다.
 
-## Development workflow
+## 개발 워크플로
 
-Use a focused branch and keep commits reviewable. A pull request should explain:
+하나의 목적에 집중된 Branch를 사용하고 Commit이 검토 가능한 단위로 유지되도록 합니다.
 
-- the problem being solved;
-- the relevant issue(s);
-- the security/provenance implications;
-- tests added or changed;
-- exact validation commands actually executed;
-- manual browser validation when UI behavior changes.
+Pull Request에는 다음 내용을 설명해야 합니다.
 
-Do not report unexecuted validation as PASS. Use `NOT_RUN` with a reason.
+- 해결하려는 문제
+- 관련 Issue
+- Security 및 Provenance에 미치는 영향
+- 추가하거나 변경한 테스트
+- 실제로 실행한 정확한 Validation Command
+- UI 동작이 변경된 경우 Manual Browser Validation 결과
 
-## Validation
+실행하지 않은 Validation을 PASS로 보고해서는 안 됩니다.
 
-From a clean checkout at the exact candidate HEAD:
+실행하지 않은 검증은 사유와 함께 다음과 같이 기록합니다.
+
+```text
+NOT_RUN
+```
+
+## 검증
+
+정확한 Candidate HEAD의 Clean Checkout에서 다음 명령을 실행합니다.
 
 ```powershell
 py -3.13 -m pytest -v
@@ -49,42 +57,63 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 py -3.13 -m evidence_review documentation validate --repository-root .
 ```
 
-Changes to packaging/release behavior must also build and smoke-test the wheel and web runtime bundle. Changes to the Review Workspace require real-browser verification in addition to static tests.
+Packaging 또는 Release 동작을 변경한 경우 Wheel과 Web Runtime Bundle을 Build하고 Smoke Test까지 수행해야 합니다.
 
-GitHub Actions is useful when available, but it is not the sole release truth. Reproducible manual validation is acceptable when Actions is unavailable, provided the exact HEAD, Python version, OS, commands, and results are recorded.
+Review Workspace를 변경한 경우 Static Test뿐 아니라 **실제 Browser Verification**도 수행해야 합니다.
 
-## Test data
+GitHub Actions는 사용할 수 있는 경우 유용한 검증 수단이지만, 유일한 Release Authority는 아닙니다.
 
-Tests must use deterministic, redistributable fixtures. Never commit:
+GitHub Actions를 사용할 수 없는 경우에도 다음 정보를 정확히 기록하고 재현 가능한 Manual Validation을 수행했다면 검증 근거로 사용할 수 있습니다.
 
-- proprietary or customer PDFs;
-- parser output derived from restricted source material;
-- user evidence databases;
-- extracted page images from restricted documents;
-- credentials, tokens, private URLs, or private keys;
-- real human-decision records.
+- 정확한 HEAD
+- Python Version
+- OS
+- 실행 명령
+- 실행 결과
 
-If a fixture is necessary, minimize it and document why redistribution is permitted.
+## 테스트 데이터
 
-## Review architecture constraints
+테스트에는 **결정론적이며 재배포 가능한 Fixture**만 사용해야 합니다.
 
-Contributions must preserve these boundaries:
+다음 자료는 절대 Commit하지 않습니다.
 
-1. preserved source bytes/hash are authoritative;
-2. parser/evidence records are deterministic;
-3. retrieval, Math Engine, and Rule Engine outputs are deterministic inputs to review;
-4. Track A and Track B are validated handoffs, not authority to invent evidence;
-5. `final-review-packet.json` is immutable machine output;
-6. human decisions are separate append-only records.
+- 독점 또는 고객 소유 PDF
+- 제한된 Source Material에서 파생된 Parser Output
+- 사용자 Evidence Database
+- 제한된 문서에서 추출한 Page Image
+- Credential, Token, Private URL 또는 Private Key
+- 실제 Human Decision Record
 
-`READY_FOR_HUMAN_REVIEW` never means approved or compliant.
+Fixture가 반드시 필요한 경우에는 최소한의 범위로 축소하고, 해당 데이터를 재배포할 수 있는 이유를 문서화해야 합니다.
 
-## Pull requests
+## Review Architecture 제약
 
-Keep one logical change per PR where practical. The public-readiness `v0.2.0` effort is intentionally integrated because repository cleanup, namespace migration, packaging, and release contracts overlap; that is not a precedent for unrelated mega-PRs.
+모든 기여는 다음 Architecture Boundary를 유지해야 합니다.
 
-Reviewers may request focused commits, additional regression tests, security hardening, or exact-HEAD revalidation before merge.
+1. 보존된 Source Byte 및 Hash가 Authoritative Source입니다.
+2. Parser 및 Evidence Record는 결정론적이어야 합니다.
+3. Retrieval, Math Engine 및 Rule Engine의 출력은 Review에 사용되는 결정론적 입력이어야 합니다.
+4. Track A와 Track B는 검증된 Handoff이며, 새로운 Evidence를 임의로 만들어내는 Authority가 아닙니다.
+5. `final-review-packet.json`은 변경 불가능한 Machine Output입니다.
+6. Human Decision은 별도의 Append-only Record로 저장됩니다.
 
-## License
+`READY_FOR_HUMAN_REVIEW`는 승인 완료 또는 규정 준수 확정을 의미하지 않습니다.
 
-Evidence Review System is licensed under the Apache License 2.0. Contributions are accepted under the terms described in `LICENSE` unless a separate written agreement says otherwise.
+## Pull Request
+
+가능한 경우 하나의 PR에는 하나의 논리적 변경만 포함합니다.
+
+Public Readiness를 위한 `v0.2.0` 작업은 Repository Cleanup, Namespace Migration, Packaging 및 Release Contract가 서로 연관되어 있어 의도적으로 통합되었습니다. 이는 서로 관련 없는 변경을 하나의 대규모 PR로 묶어도 된다는 선례가 아닙니다.
+
+Reviewer는 Merge 전에 다음 사항을 요구할 수 있습니다.
+
+- 보다 집중된 Commit 분리
+- 추가 Regression Test
+- Security Hardening
+- 정확한 HEAD에서의 재검증
+
+## 라이선스
+
+Evidence Review System은 Apache License 2.0에 따라 배포됩니다.
+
+별도의 서면 계약이 없는 한 모든 Contribution은 `LICENSE`에 명시된 조건에 따라 제출되고 수락됩니다.
