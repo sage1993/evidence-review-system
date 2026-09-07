@@ -94,7 +94,7 @@ def _raw_request(base: str, request: bytes) -> bytes:
 
 
 def _read_http_response(
-    connection: socket.socket, *, deadline_seconds: float = 2.0
+    connection: socket.socket, *, deadline_seconds: float = 5.0
 ) -> tuple[bytes, bytes]:
     deadline = time.monotonic() + deadline_seconds
     response = bytearray()
@@ -386,14 +386,17 @@ def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_
     assert not (run_dir / "human-decisions").exists()
 
 
-def test_oversized_full_body_returns_413_without_client_reset(tmp_path: Path) -> None:
+@pytest.mark.parametrize("body_size", [2 * 1024 * 1024, 4 * 1024 * 1024])
+def test_oversized_full_body_returns_413_and_reaches_eof_without_reset(
+    tmp_path: Path, body_size: int
+) -> None:
     run_dir, _ = _review_artifacts(tmp_path)
-    payload = b"x" * (1024 * 1024)
+    payload = b"x" * body_size
     with _server(tmp_path, max_body_bytes=8) as (_, base):
         parsed = urlsplit(base)
         assert parsed.hostname is not None
         assert parsed.port is not None
-        with socket.create_connection((parsed.hostname, parsed.port), timeout=2) as connection:
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=5) as connection:
             prefix_length = 64 * 1024
             connection.sendall(
                 _oversized_decision_headers(base, len(payload)) + payload[:prefix_length]
@@ -402,7 +405,7 @@ def test_oversized_full_body_returns_413_without_client_reset(tmp_path: Path) ->
             send_errors: list[BaseException] = []
 
             def send_body_remainder() -> None:
-                if not send_remaining.wait(timeout=2):
+                if not send_remaining.wait(timeout=5):
                     send_errors.append(AssertionError("body sender was not released"))
                     return
                 try:
@@ -415,9 +418,16 @@ def test_oversized_full_body_returns_413_without_client_reset(tmp_path: Path) ->
             sender.start()
             response_headers, response_body = _read_http_response(connection)
             send_remaining.set()
-            sender.join(timeout=2)
+            sender.join(timeout=5)
             assert not sender.is_alive()
             assert send_errors == []
+            connection.shutdown(socket.SHUT_WR)
+            connection.settimeout(5)
+            try:
+                while connection.recv(8192):
+                    pass
+            except (ConnectionAbortedError, ConnectionResetError) as error:
+                raise AssertionError("connection did not reach EOF cleanly") from error
     assert response_headers.startswith(b"HTTP/1.0 413 ")
     assert response_body == b'{"error":"BODY_TOO_LARGE"}'
     assert not (run_dir / "human-decisions").exists()
@@ -429,11 +439,11 @@ def test_oversized_header_only_request_returns_prompt_413(tmp_path: Path) -> Non
         parsed = urlsplit(base)
         assert parsed.hostname is not None
         assert parsed.port is not None
-        with socket.create_connection((parsed.hostname, parsed.port), timeout=1) as connection:
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=5) as connection:
             started = time.monotonic()
-            connection.sendall(_oversized_decision_headers(base, 1024 * 1024))
+            connection.sendall(_oversized_decision_headers(base, 4 * 1024 * 1024))
             response_headers, response_body = _read_http_response(
-                connection, deadline_seconds=1
+                connection, deadline_seconds=2
             )
             elapsed = time.monotonic() - started
     assert elapsed < 0.5
@@ -448,7 +458,7 @@ def test_oversized_body_discard_has_total_deadline(tmp_path: Path) -> None:
         parsed = urlsplit(base)
         assert parsed.hostname is not None
         assert parsed.port is not None
-        with socket.create_connection((parsed.hostname, parsed.port), timeout=2) as connection:
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=5) as connection:
             connection.sendall(_oversized_decision_headers(base, 1024) + b"x")
             response_headers, response_body = _read_http_response(connection)
             assert response_headers.startswith(b"HTTP/1.0 413 ")
