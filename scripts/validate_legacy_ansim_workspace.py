@@ -144,5 +144,5 @@ result={
     'errors':errors,
     'error_details':error_details,
 }
-print(json.dumps(result,ensure_ascii=False,indent=2))
+print(json.dumps(result,ensure_ascii=True,indent=2))
 raise SystemExit(0 if not errors else 1)
