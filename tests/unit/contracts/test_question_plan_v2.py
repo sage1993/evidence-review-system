@@ -157,5 +157,5 @@ def test_v2_rejects_unknown_evidence_role() -> None:
     assert isinstance(requests, list)
     requests[0]["role"] = "background"
 
-    with pytest.raises(ValueError, match="unsupported search_requests\[0\]\.role"):
+    with pytest.raises(ValueError, match=r"unsupported search_requests\[0\]\.role"):
         decode_question_plan(payload, QUESTION)
