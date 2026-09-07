@@ -49,9 +49,17 @@ def test_current_user_docs_do_not_require_python_311_or_browser_zoom() -> None:
             assert token not in text, f"{path.relative_to(ROOT)} still contains {token!r}"
 
 
-def test_apache_license_is_declared_and_present() -> None:
+def test_pep639_apache_license_metadata_is_declared_and_present() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert data["project"]["license"] == {"file": "LICENSE"}
+
+    assert data["build-system"]["requires"] == ["setuptools>=77.0.3"]
+    assert data["project"]["license"] == "Apache-2.0"
+    assert data["project"]["license-files"] == ["LICENSE"]
+    assert not any(
+        classifier.startswith("License ::")
+        for classifier in data["project"]["classifiers"]
+    )
+
     license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     assert "Apache License" in license_text
     assert "Version 2.0" in license_text
