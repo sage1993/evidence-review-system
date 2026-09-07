@@ -7,6 +7,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.rule_engine.governance_contract import (
     RuleSelectionContext,
     RuleSelectionResult,
@@ -71,10 +75,8 @@ def _safe_relative_path(path: Path) -> Path:
     return Path(*pure.parts)
 
 
-def _resolve_manifest(project_root: Path, manifest_path: Path) -> tuple[Path, Path]:
-    root = project_root.resolve(strict=True)
-    if project_root.is_symlink() or not root.is_dir():
-        raise ValueError("project_root must be a real directory")
+def _resolve_manifest(project_root: Path, manifest_path: Path) -> tuple[Path, Path | None]:
+    root = verified_regular_directory(project_root, field="project_root")
     if manifest_path.is_absolute():
         try:
             relative = _safe_relative_path(manifest_path.relative_to(root))
@@ -82,12 +84,14 @@ def _resolve_manifest(project_root: Path, manifest_path: Path) -> tuple[Path, Pa
             raise ValueError("active manifest must be below project_root") from error
     else:
         relative = _safe_relative_path(manifest_path)
-    current = root
-    for part in relative.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError("active manifest path traverses a symlink")
-    return root, current
+    try:
+        return root, verified_regular_file_below(
+            root,
+            relative.parts,
+            field="active manifest",
+        )
+    except FileNotFoundError:
+        return root, None
 
 
 def _duplicate_free_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -132,7 +136,7 @@ def load_governed_active_rules(
         root, manifest_file = _resolve_manifest(project_root, manifest_path)
     except (OSError, ValueError):
         return _blocked(context, ("INVALID_ACTIVE_RULE_MANIFEST_PATH",))
-    if not manifest_file.is_file():
+    if manifest_file is None:
         return _blocked(context, ("ACTIVE_RULE_MANIFEST_MISSING",))
 
     manifest_bytes = manifest_file.read_bytes()

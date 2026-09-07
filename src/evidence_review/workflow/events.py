@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -44,6 +43,10 @@ from evidence_review.contracts.workflow import (
     WorkflowState,
     WorkflowStateRecord,
     decode_workflow_state_record,
+)
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
 )
 from evidence_review.workflow.state_machine import (
     EventKind,
@@ -285,34 +288,74 @@ def workflow_event_filename(event: WorkflowEvent) -> str:
     return f"{event.sequence:04d}-{event.event_id}.json"
 
 
-def _is_reparse_point(path: Path) -> bool:
-    attributes = getattr(os.lstat(path), "st_file_attributes", 0)
-    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    return bool(attributes & reparse_flag)
+def workflow_events_directory(run_directory: Path) -> Path:
+    """Return the trusted journal directory, allowing first-use creation."""
+    try:
+        trusted_run = verified_regular_directory(run_directory, field="run directory")
+    except FileNotFoundError:
+        return run_directory / "events"
+    candidate = trusted_run / "events"
+    try:
+        return verified_regular_directory(candidate, field="workflow events")
+    except FileNotFoundError:
+        return candidate
 
 
-def _reject_link_ancestors(path: Path) -> None:
-    absolute = path.absolute()
-    for candidate in (absolute, *absolute.parents):
-        if not candidate.exists():
-            continue
-        if candidate.is_symlink() or _is_reparse_point(candidate):
-            raise ValueError(
-                "workflow journal path must not contain links or reparse points"
+def _ensure_events_directory(events_dir: Path) -> Path:
+    try:
+        return verified_regular_directory(events_dir, field="workflow events")
+    except FileNotFoundError:
+        try:
+            parent = verified_regular_directory(
+                events_dir.parent,
+                field="workflow events parent",
             )
+        except FileNotFoundError:
+            events_dir.parent.mkdir(parents=True, exist_ok=True)
+            parent = verified_regular_directory(
+                events_dir.parent,
+                field="workflow events parent",
+            )
+        candidate = parent / events_dir.name
+        candidate.mkdir(exist_ok=True)
+        return verified_regular_directory(candidate, field="workflow events")
 
 
 @contextmanager
 def _journal_lock(events_dir: Path) -> Iterator[None]:
     """Serialize journal readers and writers across threads and processes."""
-    lock_path = events_dir.parent / f".{events_dir.name}.lock"
-    _reject_link_ancestors(lock_path.parent)
-    _reject_link_ancestors(lock_path)
+    try:
+        trusted_events = verified_regular_directory(events_dir, field="workflow events")
+    except FileNotFoundError:
+        trusted_events = events_dir
+    trusted_parent = verified_regular_directory(
+        trusted_events.parent,
+        field="workflow events parent",
+    )
+    lock_path = trusted_parent / f".{trusted_events.name}.lock"
+    try:
+        verified_regular_file_below(
+            trusted_parent,
+            (lock_path.name,),
+            field="workflow journal lock",
+        )
+    except FileNotFoundError:
+        pass
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(
         lock_path,
-        os.O_RDWR | os.O_CREAT,
+        flags,
         0o600,
     )
+    try:
+        verified_regular_file_below(
+            trusted_parent,
+            (lock_path.name,),
+            field="workflow journal lock",
+        )
+    except (OSError, ValueError):
+        os.close(descriptor)
+        raise
     with os.fdopen(descriptor, "r+b") as stream:
         acquired = False
         try:
@@ -359,22 +402,28 @@ def _load_json_document(raw: bytes) -> object:
 
 def _load_workflow_events_unlocked(events_dir: Path) -> tuple[WorkflowEvent, ...]:
     """Load and revalidate the complete canonical event journal."""
-    if not events_dir.exists():
+    try:
+        trusted_events = verified_regular_directory(
+            events_dir,
+            field="workflow events",
+        )
+    except FileNotFoundError:
         return ()
-    _reject_link_ancestors(events_dir)
-    if not events_dir.is_dir():
-        raise ValueError("workflow events path must be a directory")
 
     loaded: list[WorkflowEvent] = []
-    for path in sorted(events_dir.iterdir(), key=lambda item: item.name):
-        if path.is_dir() or path.suffix != ".json":
+    for path in sorted(trusted_events.iterdir(), key=lambda item: item.name):
+        if path.suffix != ".json":
             raise ValueError(
                 "workflow event directory contains an unexpected entry"
             )
-        _reject_link_ancestors(path)
-        raw = path.read_bytes()
+        trusted_path = verified_regular_file_below(
+            trusted_events,
+            (path.name,),
+            field="workflow event",
+        )
+        raw = trusted_path.read_bytes()
         event = decode_workflow_event(_load_json_document(raw))
-        if path.name != workflow_event_filename(event):
+        if trusted_path.name != workflow_event_filename(event):
             raise ValueError(
                 "workflow event filename does not match event identity"
             )
@@ -403,28 +452,34 @@ def _load_workflow_events_unlocked(events_dir: Path) -> tuple[WorkflowEvent, ...
 
 def load_workflow_events(events_dir: Path) -> tuple[WorkflowEvent, ...]:
     """Load and revalidate the complete canonical event journal."""
-    if not events_dir.exists():
+    try:
+        trusted_events = verified_regular_directory(
+            events_dir,
+            field="workflow events",
+        )
+    except FileNotFoundError:
         return ()
-    _reject_link_ancestors(events_dir)
-    with _journal_lock(events_dir):
-        return _load_workflow_events_unlocked(events_dir)
+    with _journal_lock(trusted_events):
+        return _load_workflow_events_unlocked(trusted_events)
 
 
 def append_workflow_event(events_dir: Path, event: WorkflowEvent) -> Path:
     """Atomically append an event, allowing only byte-identical retries."""
-    _reject_link_ancestors(events_dir)
-    events_dir.mkdir(parents=True, exist_ok=True)
-    _reject_link_ancestors(events_dir)
-    with _journal_lock(events_dir):
-        existing = _load_workflow_events_unlocked(events_dir)
-        target = events_dir / workflow_event_filename(event)
+    trusted_events = _ensure_events_directory(events_dir)
+    with _journal_lock(trusted_events):
+        existing = _load_workflow_events_unlocked(trusted_events)
+        target = trusted_events / workflow_event_filename(event)
         encoded = workflow_event_bytes(event)
 
         if event.sequence <= len(existing):
             recorded = existing[event.sequence - 1]
-            recorded_path = events_dir / workflow_event_filename(recorded)
+            recorded_path = verified_regular_file_below(
+                trusted_events,
+                (workflow_event_filename(recorded),),
+                field="workflow event",
+            )
             if recorded_path == target and workflow_event_bytes(recorded) == encoded:
-                return target
+                return recorded_path
             raise FileExistsError(
                 "workflow sequence already contains different bytes"
             )
@@ -440,13 +495,25 @@ def append_workflow_event(events_dir: Path, event: WorkflowEvent) -> Path:
         try:
             descriptor = os.open(
                 target,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0),
                 0o600,
             )
         except FileExistsError:
-            _reject_link_ancestors(target)
-            if target.read_bytes() == encoded:
-                return target
+            try:
+                trusted_target = verified_regular_file_below(
+                    trusted_events,
+                    (target.name,),
+                    field="workflow event",
+                )
+            except (OSError, ValueError) as error:
+                raise ValueError(
+                    "workflow event path contains a link or reparse point"
+                ) from error
+            if trusted_target.read_bytes() == encoded:
+                return trusted_target
             raise FileExistsError(
                 "workflow event path contains different bytes"
             ) from None

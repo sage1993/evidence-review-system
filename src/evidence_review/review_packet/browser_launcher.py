@@ -9,11 +9,11 @@ import queue
 import re
 import secrets
 import signal
-import stat
 import subprocess
 import sys
 import time
 from collections.abc import Callable
+from ctypes import wintypes
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock, Thread
@@ -22,6 +22,10 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from evidence_review.review_packet.protected_projection import load_archive_review_model
 from evidence_review.review_packet.server_runtime import (
@@ -29,11 +33,12 @@ from evidence_review.review_packet.server_runtime import (
     validate_idle_timeout,
 )
 
-_REPARSE_POINT_ATTRIBUTE = 0x400
 _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
 _ACTIVE_SERVERS_LOCK = Lock()
 _READY_TIMEOUT_SECONDS = 2.0
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_PROCESS_COMMAND_LINE_INFORMATION = 60
+_STATUS_INFO_LENGTH_MISMATCH = -1073741820
 _SERVER_IDENTITY_ATTEMPTS = 3
 _WINDOWS_IDENTITY_QUERY_TIMEOUT_SECONDS = 3.0
 _SERVER_IDENTITY_POLL_SECONDS = 0.05
@@ -49,7 +54,7 @@ def _process_is_alive(pid: int) -> bool:
             return False
         return True
     try:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
         open_process = kernel32.OpenProcess
         open_process.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
         open_process.restype = ctypes.c_void_p
@@ -82,6 +87,66 @@ def _verified_process_is_alive(
     return False
 
 
+class _UnicodeString(ctypes.Structure):
+    _fields_ = [
+        ("length", wintypes.USHORT),
+        ("maximum_length", wintypes.USHORT),
+        ("buffer", ctypes.c_void_p),
+    ]
+
+
+def _query_windows_command_line_native(pid: int) -> str | None:
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
+        ntdll = ctypes.WinDLL("ntdll")  # type: ignore[attr-defined,unused-ignore]
+        open_process = kernel32.OpenProcess
+        open_process.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        open_process.restype = wintypes.HANDLE
+        handle = open_process(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return None
+        try:
+            query = ntdll.NtQueryInformationProcess
+            query.argtypes = [
+                wintypes.HANDLE,
+                wintypes.ULONG,
+                wintypes.LPVOID,
+                wintypes.ULONG,
+                ctypes.POINTER(wintypes.ULONG),
+            ]
+            query.restype = wintypes.LONG
+            length = wintypes.ULONG()
+            status = query(
+                handle,
+                _PROCESS_COMMAND_LINE_INFORMATION,
+                None,
+                0,
+                ctypes.byref(length),
+            )
+            if status not in (0, _STATUS_INFO_LENGTH_MISMATCH) or length.value < ctypes.sizeof(
+                _UnicodeString
+            ):
+                return None
+            buffer = ctypes.create_string_buffer(length.value)
+            status = query(
+                handle,
+                _PROCESS_COMMAND_LINE_INFORMATION,
+                buffer,
+                length.value,
+                ctypes.byref(length),
+            )
+            if status != 0:
+                return None
+            value = _UnicodeString.from_buffer(buffer)
+            if not value.buffer or value.length == 0:
+                return None
+            return ctypes.wstring_at(value.buffer, value.length // ctypes.sizeof(ctypes.c_wchar))
+        finally:
+            kernel32.CloseHandle(handle)
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
 
 def _readline_with_timeout(stream: TextIO) -> str:
     result: queue.Queue[str] = queue.Queue(maxsize=1)
@@ -99,28 +164,45 @@ def _readline_with_timeout(stream: TextIO) -> str:
         return ""
 
 
-def _is_regular_file(path: Path) -> bool:
-    try:
-        status = path.lstat()
-    except OSError:
-        return False
-    return (
-        stat.S_ISREG(status.st_mode)
-        and not stat.S_ISLNK(status.st_mode)
-        and not bool(getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE)
+def _required_artifacts(workspace_root: Path, run_id: str) -> Path:
+    workspace = verified_regular_directory(workspace_root, field="workspace root")
+    runs_root = verified_regular_directory(workspace / "runs", field="runs root")
+    run_directory = verified_regular_directory(
+        runs_root / run_id,
+        field="run directory",
     )
-
-
-def _required_artifacts(workspace_root: Path, run_id: str) -> None:
     for name in ("final-review-packet.json", "review.html"):
-        artifact = workspace_root / "runs" / run_id / name
-        if not _is_regular_file(artifact):
-            raise FileNotFoundError(artifact)
+        artifact = verified_regular_file_below(
+            run_directory,
+            (name,),
+            field=f"review artifact {name}",
+        )
         artifact.read_bytes()
+    return workspace
+
+
+def _server_state_path(workspace_root: Path, run_id: str) -> Path | None:
+    try:
+        workspace = verified_regular_directory(workspace_root, field="workspace root")
+        runs_root = verified_regular_directory(workspace / "runs", field="runs root")
+        run_directory = verified_regular_directory(
+            runs_root / run_id,
+            field="run directory",
+        )
+        return verified_regular_file_below(
+            run_directory,
+            ("review-server.json",),
+            field="review server state",
+        )
+    except FileNotFoundError:
+        return None
 
 
 def _server_key(workspace_root: Path, run_id: str) -> tuple[Path, str]:
-    return (workspace_root.resolve(strict=True), validate_identifier(run_id, "run_id"))
+    return (
+        verified_regular_directory(workspace_root, field="workspace root"),
+        validate_identifier(run_id, "run_id"),
+    )
 
 
 @dataclass(slots=True)
@@ -209,14 +291,14 @@ def _start_review_server(
         if reviewer_id is None
         else validate_identifier(reviewer_id, "reviewer_id")
     )
-    _required_artifacts(workspace_root, validated_run_id)
+    trusted_workspace = _required_artifacts(workspace_root, validated_run_id)
     token = secrets.token_urlsafe(32)
     command: tuple[str, ...] = (
         sys.executable,
         "-m",
         "evidence_review.review_packet.server_process",
         "--workspace",
-        str(workspace_root.resolve(strict=True)),
+        str(trusted_workspace),
         "--run-id",
         validated_run_id,
         "--token",
@@ -281,7 +363,12 @@ def close_open_review_server(workspace_root: Path, run_id: str) -> None:
 
 def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]:
     validated_run_id = validate_identifier(run_id, "run_id")
-    path = workspace_root / "runs" / validated_run_id / "review-server.json"
+    try:
+        path = _server_state_path(workspace_root, validated_run_id)
+    except (OSError, ValueError):
+        return {"running": False, "run_id": validated_run_id}
+    if path is None:
+        return {"running": False, "run_id": validated_run_id}
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -321,10 +408,14 @@ def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
                 capture_output=True,
                 check=False,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=_WINDOWS_IDENTITY_QUERY_TIMEOUT_SECONDS,
             ).stdout.strip()
         except (OSError, subprocess.SubprocessError):
-            return False
+            command_line = ""
+        if not command_line:
+            command_line = _query_windows_command_line_native(pid) or ""
         if not command_line or "evidence_review.review_packet.server_process" not in command_line:
             return False
         run_match = re.search(r"(?:^|\s)--run-id\s+([^\s\"]+)", command_line)
@@ -353,7 +444,12 @@ def _matches_server_process(pid: int, run_id: str, token_hash: object) -> bool:
 
 def stop_review_server(workspace_root: Path, run_id: str) -> None:
     validated_run_id = validate_identifier(run_id, "run_id")
-    state_path = workspace_root / "runs" / validated_run_id / "review-server.json"
+    try:
+        state_path = _server_state_path(workspace_root, validated_run_id)
+    except (OSError, ValueError):
+        return
+    if state_path is None:
+        return
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, json.JSONDecodeError):
@@ -405,7 +501,12 @@ def open_protected_review_workspace(
     reviewer_id: str | None = None,
 ) -> str:
     validated_run_id = validate_identifier(run_id, "run_id")
-    run_directory = workspace_root / "runs" / validated_run_id
+    workspace = verified_regular_directory(workspace_root, field="workspace root")
+    runs_root = verified_regular_directory(workspace / "runs", field="runs root")
+    run_directory = verified_regular_directory(
+        runs_root / validated_run_id,
+        field="run directory",
+    )
     stale = review_server_status(workspace_root, validated_run_id)
     if stale["running"]:
         raise RuntimeError("protected review server is already running")

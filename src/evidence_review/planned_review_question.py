@@ -17,6 +17,7 @@ from evidence_review.drawing_review.visual_pages import VisualPageAsset
 from evidence_review.evidence.clause_rebuild import ensure_clause_index
 from evidence_review.evidence.snapshot import evidence_snapshot_provenance
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.filesystem_trust import verified_regular_directory
 from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from evidence_review.question_planning import (
@@ -44,6 +45,7 @@ from evidence_review.review_question import (
     _mapping,
     _prepare_from_document,
     _resume_state,
+    _run_file,
     _track_a_action,
     _write_or_identical,
     build_review_run_request,
@@ -167,12 +169,20 @@ def prepare_planned_review_question(
     request_metric = finish_stage("review-request-build", request_timer)
 
     run_id = compute_run_id_from_request(review_request)
-    run_directory = workspace / "runs" / run_id
-    resumed = run_directory.exists()
+    try:
+        run_directory = verified_regular_directory(
+            workspace / "runs" / run_id,
+            field="run directory",
+        )
+    except FileNotFoundError:
+        run_directory = workspace / "runs" / run_id
+        resumed = False
+    else:
+        resumed = True
     prepare_timer = start_stage()
     if resumed:
-        existing = run_directory / "review-request.json"
-        if not existing.is_file() or existing.read_bytes() != dump_bytes(review_request):
+        existing = _run_file(run_directory, "review-request.json")
+        if existing.read_bytes() != dump_bytes(review_request):
             raise ValueError("existing immutable review run differs from question plan request")
         prepare_metric = finish_stage("prepare", prepare_timer, status="SKIPPED")
     else:

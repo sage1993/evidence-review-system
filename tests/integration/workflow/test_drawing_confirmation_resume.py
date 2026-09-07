@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from evidence_review.canonical_json import dump_bytes
 from evidence_review.workflow.drawing_confirmation import (
+    confirmation_plan_document,
     resume_after_confirmation,
     start_drawing_confirmation,
 )
@@ -162,6 +164,64 @@ def test_confirmation_resume_rejects_noncanonical_input_artifact(tmp_path: Path)
         resume_after_confirmation(
             layout,
             confirmed_inputs_path=confirmed_path,
+            source_sha256=source_hash,
+            recorded_at="2026-08-04T00:02:00+09:00",
+        )
+
+
+def test_drawing_confirmation_does_not_read_linked_plan(tmp_path: Path) -> None:
+    source = b"drawing-source"
+    source_hash = hashlib.sha256(source).hexdigest()
+    run_dir = tmp_path / "runs" / "RUN-001"
+    source_path = run_dir / "inputs" / "original" / "drawing.pdf"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(source)
+    request = decode_review_request(
+        {
+            "format": "evidence-review/review-request",
+            "version": 1,
+            "case_id": "CASE-001",
+            "question": "linked drawing plan",
+            "attachments": [
+                {
+                    "attachment_id": "ATT-DRAW-001",
+                    "original_name": "drawing.pdf",
+                    "stored_path": "inputs/original/drawing.pdf",
+                    "sha256": source_hash,
+                    "byte_size": len(source),
+                    "mime": "application/pdf",
+                    "role": "CASE_DRAWING",
+                    "role_confirmation": "USER_CONFIRMED",
+                    "proposed_role": None,
+                }
+            ],
+        }
+    )
+    layout = prepare_review_run(
+        tmp_path / "runs",
+        "RUN-001",
+        request,
+        recorded_at="2026-08-04T00:00:00+09:00",
+    )
+    plan = start_drawing_confirmation(
+        layout,
+        candidate_ids=("CAND-001",),
+        source_sha256=source_hash,
+        recorded_at="2026-08-04T00:01:00+09:00",
+    )
+    plan_path = layout.machine_dir / "drawing-confirmation.json"
+    external = tmp_path / "external-drawing-confirmation.json"
+    external.write_bytes(dump_bytes(confirmation_plan_document(plan)))
+    plan_path.unlink()
+    try:
+        plan_path.symlink_to(external)
+    except OSError as error:
+        pytest.skip(f"file symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        start_drawing_confirmation(
+            layout,
+            candidate_ids=("CAND-001",),
             source_sha256=source_hash,
             recorded_at="2026-08-04T00:02:00+09:00",
         )

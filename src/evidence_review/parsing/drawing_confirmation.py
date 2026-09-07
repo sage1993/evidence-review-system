@@ -18,6 +18,7 @@ from evidence_review.parsing.drawing_case import (
     CaseManifestEntry,
     case_artifact_path,
     validate_artifact_id,
+    verified_case_artifact_path,
     write_canonical_create_only,
 )
 
@@ -149,7 +150,7 @@ def load_and_verify_confirmation(
     entry: CaseManifestEntry,
 ) -> DrawingConfirmation:
     """Load one confirmation after verifying its canonical file hash."""
-    path = case_artifact_path(case_dir, entry.relative_path)
+    path = verified_case_artifact_path(case_dir, entry.relative_path)
     payload_bytes = path.read_bytes()
     actual_hash = hashlib.sha256(payload_bytes).hexdigest()
     if actual_hash != entry.sha256:

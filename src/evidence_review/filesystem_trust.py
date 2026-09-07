@@ -68,6 +68,30 @@ def verified_regular_directory(path: Path, *, field: str) -> Path:
     return resolved
 
 
+def verified_regular_file(path: Path, *, field: str) -> Path:
+    """Return a strict resolved regular file after rejecting links and reparse points."""
+    if not isinstance(path, Path):
+        path = Path(path)
+    components = _absolute_components(path)
+    if not components:
+        raise FileNotFoundError(f"{field} not found: {path}")
+    for index, component in enumerate(components):
+        status = _status(component, field=field)
+        _reject_link_or_reparse(component, status, field=field)
+        if index < len(components) - 1:
+            if not stat.S_ISDIR(status.st_mode):
+                raise ValueError(f"{field} path component must be a directory: {component}")
+        elif not stat.S_ISREG(status.st_mode):
+            raise ValueError(f"{field} must be a regular file: {component}")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as error:
+        raise FileNotFoundError(f"{field} not found: {path}") from error
+    if not resolved.is_file():
+        raise ValueError(f"{field} must be a regular file: {resolved}")
+    return resolved
+
+
 def _relative_component(value: str, *, field: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field} relative path component must be a string")
@@ -119,8 +143,45 @@ def verified_regular_file_below(
     return resolved
 
 
+def verified_create_target_below(
+    root: Path,
+    relative_parts: Sequence[str],
+    *,
+    field: str,
+) -> Path:
+    """Validate a create-only target and reject existing link/reparse components.
+
+    The final component must not exist. Missing parent components are allowed so
+    the caller can create a new artifact tree below the already verified root.
+    The caller remains responsible for using create-only publication semantics.
+    """
+    verified_root = verified_regular_directory(root, field=f"{field} root")
+    parts = tuple(_relative_component(part, field=field) for part in relative_parts)
+    if not parts:
+        raise ValueError(f"{field} relative path must identify a target")
+
+    current = verified_root
+    for index, part in enumerate(parts):
+        current = current / part
+        try:
+            status = current.lstat()
+        except FileNotFoundError:
+            return current.joinpath(*parts[index + 1 :])
+        except OSError as error:
+            raise FileNotFoundError(f"{field} not found: {current}") from error
+        _reject_link_or_reparse(current, status, field=field)
+        if index < len(parts) - 1:
+            if not stat.S_ISDIR(status.st_mode):
+                raise ValueError(f"{field} path component must be a directory: {current}")
+        else:
+            raise FileExistsError(f"{field} already exists: {current}")
+    return current
+
+
 __all__ = [
     "REPARSE_POINT_ATTRIBUTE",
+    "verified_create_target_below",
     "verified_regular_directory",
+    "verified_regular_file",
     "verified_regular_file_below",
 ]

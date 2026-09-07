@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import re
-import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -12,6 +11,10 @@ from typing import cast
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 
 _ALLOWED = {
     "SATISFIED",
@@ -21,7 +24,6 @@ _ALLOWED = {
 }
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
-_REPARSE_POINT_ATTRIBUTE = 0x400
 _REQUEST_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
 _ENVELOPE_FIELDS = _REQUEST_FIELDS | {"reviewed_at"}
 _DECISION_RECORD_FIELDS = _ENVELOPE_FIELDS | {"run_id"}
@@ -50,20 +52,6 @@ def _timestamp(value: str) -> tuple[str, str]:
         raise ValueError("reviewed_at must include a timezone")
     canonical = parsed.isoformat()
     return canonical, parsed.strftime("%Y%m%dT%H%M%S%f%z")
-
-
-def _regular_directory(path: Path, field: str) -> Path:
-    try:
-        status = path.lstat()
-    except OSError as error:
-        raise ValueError(f"{field} must be an existing regular directory") from error
-    if (
-        stat.S_ISLNK(status.st_mode)
-        or not stat.S_ISDIR(status.st_mode)
-        or getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE
-    ):
-        raise ValueError(f"{field} must be an existing regular directory")
-    return path.resolve(strict=True)
 
 
 def validate_human_decision_request(value: object) -> dict[str, str]:
@@ -129,7 +117,7 @@ def write_human_decision(
     notes: str,
 ) -> Path:
     """Exclusively create one immutable human decision JSON record."""
-    run_directory = _regular_directory(run_directory, "run_directory")
+    run_directory = verified_regular_directory(run_directory, field="run_directory")
     envelope = validate_human_decision_envelope(
         {
             "reviewer_id": reviewer_id,
@@ -145,7 +133,7 @@ def write_human_decision(
         raise ValueError("reviewer_id has no safe filename characters")
     directory = run_directory / "human-decisions"
     directory.mkdir(parents=True, exist_ok=True)
-    directory = _regular_directory(directory, "human-decisions")
+    directory = verified_regular_directory(directory, field="human-decisions")
     output = directory / f"{file_time}-{safe_reviewer}.json"
     payload = {"run_id": run_directory.name, **envelope}
     with output.open("xb") as stream:
@@ -173,15 +161,14 @@ def _read_decision_record(
     packet_hash: str,
 ) -> HumanDecisionRecord | None:
     try:
-        status = candidate.lstat()
-        if (
-            stat.S_ISLNK(status.st_mode)
-            or not stat.S_ISREG(status.st_mode)
-            or getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE
-            or candidate.suffix != ".json"
-        ):
+        if candidate.suffix != ".json":
             return None
-        document = json.loads(candidate.read_text(encoding="utf-8"))
+        trusted_candidate = verified_regular_file_below(
+            candidate.parent,
+            (candidate.name,),
+            field="human decision record",
+        )
+        document = json.loads(trusted_candidate.read_text(encoding="utf-8"))
         if not isinstance(document, dict) or set(document) != _DECISION_RECORD_FIELDS:
             return None
         if document["run_id"] != run_id:
@@ -199,7 +186,7 @@ def _read_decision_record(
         packet_hash=validated["packet_hash"],
         decision=validated["decision"],
         notes=validated["notes"],
-        path=candidate,
+        path=trusted_candidate,
     )
 
 
@@ -214,14 +201,14 @@ def load_latest_valid_human_decision(
 ) -> HumanDecisionRecord | None:
     """Return the latest active decision bound to *packet_hash*."""
     try:
-        run_directory = _regular_directory(run_directory, "run_directory")
-    except ValueError:
+        run_directory = verified_regular_directory(run_directory, field="run_directory")
+    except (OSError, ValueError):
         return None
     if not _SHA256.fullmatch(packet_hash):
         return None
     directory = run_directory / "human-decisions"
     try:
-        directory = _regular_directory(directory, "human-decisions")
+        directory = verified_regular_directory(directory, field="human-decisions")
         candidates = tuple(directory.iterdir())
     except (OSError, ValueError):
         return None

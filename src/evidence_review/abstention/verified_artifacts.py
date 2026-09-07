@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from evidence_review.filesystem_trust import verified_regular_file_below
+
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -75,10 +77,14 @@ def verify_run_snapshot(
         if not name or Path(name).name != name:
             raise ValueError(f"invalid artifact path: {name}")
 
-    manifest_path = run_directory / "run-manifest.json"
     try:
+        manifest_path = verified_regular_file_below(
+            run_directory,
+            ("run-manifest.json",),
+            field="run manifest",
+        )
         manifest_bytes = manifest_path.read_bytes()
-    except OSError as error:
+    except (OSError, ValueError) as error:
         raise ValueError("invalid JSON artifact: run-manifest.json") from error
     manifest = _mapping(_decode_json(manifest_bytes, "run-manifest.json"), "run_manifest")
     unknown = sorted(set(manifest) - {"run_id", "artifacts"})
@@ -101,8 +107,13 @@ def verify_run_snapshot(
         if not _SHA256.fullmatch(expected):
             raise ValueError(f"invalid artifact hash: {name}")
         try:
-            raw_bytes = (run_directory / name).read_bytes()
-        except OSError as error:
+            artifact_path = verified_regular_file_below(
+                run_directory,
+                (name,),
+                field=f"run artifact {name}",
+            )
+            raw_bytes = artifact_path.read_bytes()
+        except (OSError, ValueError) as error:
             raise ValueError(f"missing artifact: {name}") from error
         actual = hashlib.sha256(raw_bytes).hexdigest()
         if actual != expected:

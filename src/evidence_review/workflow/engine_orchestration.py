@@ -14,6 +14,10 @@ from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.review import FinalizerStatus
 from evidence_review.contracts.workflow import ReasonCode, WorkflowState
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.workflow.events import (
     append_workflow_event,
     load_workflow_events,
@@ -42,14 +46,26 @@ class DeterministicStageResult:
 
 def _write_create_only(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    parent = verified_regular_directory(
+        path.parent,
+        field="deterministic artifact directory",
+    )
+    target = parent / path.name
+    descriptor = os.open(
+        target,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
     except BaseException:
-        path.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
         raise
 
 
@@ -113,13 +129,23 @@ def _write_stage(
     payload: object,
 ) -> DeterministicStageResult:
     encoded = _stage_document(layout, stage, input_sha256, payload)
-    path = layout.machine_dir / filename
-    if path.exists():
-        existing = path.read_bytes()
+    layout.machine_dir.mkdir(parents=True, exist_ok=True)
+    machine_dir = verified_regular_directory(
+        layout.machine_dir,
+        field="deterministic artifact directory",
+    )
+    path = machine_dir / filename
+    try:
+        existing = verified_regular_file_below(
+            machine_dir,
+            (filename,),
+            field=f"deterministic artifact {filename}",
+        ).read_bytes()
+    except FileNotFoundError:
+        _write_create_only(path, encoded)
+    else:
         if existing != encoded:
             raise ValueError(f"existing deterministic artifact differs: {filename}")
-    else:
-        _write_create_only(path, encoded)
     return DeterministicStageResult(
         stage=stage,
         artifact_path=path,
@@ -131,7 +157,12 @@ def _write_stage(
 def _write_track_a_action(layout: ReviewRunLayout) -> Path:
     from evidence_review.contracts.next_action import NextAction
 
-    path = layout.machine_dir / "next-action.json"
+    layout.machine_dir.mkdir(parents=True, exist_ok=True)
+    machine_dir = verified_regular_directory(
+        layout.machine_dir,
+        field="deterministic artifact directory",
+    )
+    path = machine_dir / "next-action.json"
     action = NextAction(
         format="evidence-review/next-action",
         version=1,
@@ -153,11 +184,17 @@ def _write_track_a_action(layout: ReviewRunLayout) -> Path:
         track_a_validated=False,
     )
     encoded = dump_bytes(next_action_document(action))
-    if path.exists():
-        if path.read_bytes() != encoded:
-            raise ValueError("existing Track A action differs")
-    else:
+    try:
+        existing = verified_regular_file_below(
+            machine_dir,
+            (path.name,),
+            field="Track A action",
+        ).read_bytes()
+    except FileNotFoundError:
         _write_create_only(path, encoded)
+    else:
+        if existing != encoded:
+            raise ValueError("existing Track A action differs")
     return path
 
 
@@ -188,8 +225,16 @@ def run_deterministic_stages(
     ):
         encoded = _stage_document(layout, stage, input_sha256, payload)
         if index < completed_count:
-            path = layout.machine_dir / filename
-            if not path.is_file() or path.read_bytes() != encoded:
+            machine_dir = verified_regular_directory(
+                layout.machine_dir,
+                field="deterministic artifact directory",
+            )
+            path = verified_regular_file_below(
+                machine_dir,
+                (filename,),
+                field=f"deterministic artifact {filename}",
+            )
+            if path.read_bytes() != encoded:
                 raise ValueError(f"completed deterministic artifact cannot be resumed: {filename}")
             result = DeterministicStageResult(
                 stage=stage,
@@ -240,12 +285,23 @@ def advance_to_track_b(
             "validated": True,
         }
     )
-    validation_path = layout.machine_dir / "track-a-validation.json"
-    if validation_path.exists():
-        if validation_path.read_bytes() != validation:
-            raise ValueError("existing Track A validation differs")
-    else:
+    layout.machine_dir.mkdir(parents=True, exist_ok=True)
+    machine_dir = verified_regular_directory(
+        layout.machine_dir,
+        field="deterministic artifact directory",
+    )
+    validation_path = machine_dir / "track-a-validation.json"
+    try:
+        existing_validation = verified_regular_file_below(
+            machine_dir,
+            (validation_path.name,),
+            field="Track A validation",
+        ).read_bytes()
+    except FileNotFoundError:
         _write_create_only(validation_path, validation)
+    else:
+        if existing_validation != validation:
+            raise ValueError("existing Track A validation differs")
     validation_hash = hashlib.sha256(validation).hexdigest()
     _append_transition(
         layout,
@@ -276,12 +332,18 @@ def advance_to_track_b(
         track_a_validated=True,
     )
     action_bytes = dump_bytes(next_action_document(action))
-    action_path = layout.machine_dir / "next-action-track-b.json"
-    if action_path.exists():
-        if action_path.read_bytes() != action_bytes:
-            raise ValueError("existing Track B action differs")
-    else:
+    action_path = machine_dir / "next-action-track-b.json"
+    try:
+        existing_action = verified_regular_file_below(
+            machine_dir,
+            (action_path.name,),
+            field="Track B action",
+        ).read_bytes()
+    except FileNotFoundError:
         _write_create_only(action_path, action_bytes)
+    else:
+        if existing_action != action_bytes:
+            raise ValueError("existing Track B action differs")
     return action_path
 
 
@@ -325,10 +387,12 @@ def finalize_orchestration_run(
         raise ValueError("run is not ready for finalization")
     from evidence_review.abstention.finalizer import finalize_run
 
-    packet_path = layout.run_dir / "final-review-packet.json"
     packet = finalize_run(layout.run_dir)
-    if not packet_path.is_file():
-        raise ValueError("finalizer did not publish final-review-packet.json")
+    packet_path = verified_regular_file_below(
+        layout.run_dir,
+        ("final-review-packet.json",),
+        field="final review packet",
+    )
     finalizer_status = getattr(packet, "status", None)
     if finalizer_status not in {"READY_FOR_HUMAN_REVIEW", "ABSTAIN"}:
         try:

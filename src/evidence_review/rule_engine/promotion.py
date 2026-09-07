@@ -9,6 +9,10 @@ from datetime import date
 from pathlib import Path
 
 from evidence_review.contracts.identifiers import safe_direct_child
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file,
+)
 from evidence_review.rule_engine.loader import load_rule
 
 
@@ -32,9 +36,11 @@ def approve_candidate(
 ) -> Path:
     """Create one byte-identical approved copy without editing active authority."""
     _validate_review(reviewer_id, review_date)
-    if candidate_path.is_symlink() or not candidate_path.is_file():
-        raise ValueError("candidate rule does not exist or is not a regular file")
-    candidate_bytes = candidate_path.read_bytes()
+    trusted_candidate = verified_regular_file(
+        candidate_path,
+        field="candidate rule",
+    )
+    candidate_bytes = trusted_candidate.read_bytes()
     try:
         payload = json.loads(candidate_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -42,8 +48,20 @@ def approve_candidate(
     if not isinstance(payload, dict):
         raise ValueError("candidate rule must be an object")
     rule = load_rule(payload)
+    verified_regular_directory(approved_dir.parent, field="approved rule parent")
+    if approved_dir.exists():
+        trusted_approved_dir = verified_regular_directory(
+            approved_dir,
+            field="approved rule directory",
+        )
+    else:
+        approved_dir.mkdir(parents=False, exist_ok=False)
+        trusted_approved_dir = verified_regular_directory(
+            approved_dir,
+            field="approved rule directory",
+        )
     approved_path = safe_direct_child(
-        approved_dir,
+        trusted_approved_dir,
         f"{rule.rule_id}@{rule.version}.json",
         "approved_rule_path",
     )

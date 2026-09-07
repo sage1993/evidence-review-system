@@ -275,3 +275,18 @@ def test_projection_rejects_case_raster_symlink_escape(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="symlink|reparse"):
         build_case_visual_projection(view_model, workspace_root=workspace)
+
+
+def test_projection_rejects_case_bundle_symlink_escape(tmp_path: Path) -> None:
+    view_model, workspace = _fixture(tmp_path)
+    bundle = workspace / "runs" / "RUN-1234567890ABCDEF1234" / "track-a-bundle.json"
+    outside = tmp_path / "outside-bundle.json"
+    outside.write_bytes(bundle.read_bytes())
+    bundle.unlink()
+    try:
+        bundle.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"case bundle symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        build_case_visual_projection(view_model, workspace_root=workspace)

@@ -29,8 +29,8 @@ from evidence_review.parsing.drawing_candidates import (
 )
 from evidence_review.parsing.drawing_case import (
     CaseManifestEntry,
-    case_artifact_path,
     validate_artifact_id,
+    verified_case_artifact_path,
 )
 from evidence_review.parsing.drawing_confirmation import persist_confirmation
 
@@ -56,7 +56,7 @@ def _verified_existing_candidate(
     expected_path = f"candidates/{candidate_id}.json"
     if entry.relative_path != expected_path:
         raise ValueError("candidate manifest path mismatch")
-    path = case_artifact_path(case_dir, entry.relative_path)
+    path = verified_case_artifact_path(case_dir, entry.relative_path)
     try:
         payload = path.read_bytes()
     except FileNotFoundError:

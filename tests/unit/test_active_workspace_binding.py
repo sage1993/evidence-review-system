@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -132,3 +134,79 @@ def test_binding_rejects_workspace_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="symlink|reparse"):
         bind_active_workspace(repository_root, link)
+
+
+def _directory_link(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout).strip()
+            pytest.skip(
+                "directory junction creation unavailable: "
+                f"exit={completed.returncode}; detail={detail or '<empty>'}"
+            )
+        return
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlink creation unavailable: {error}")
+
+
+def _file_link(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except OSError as error:
+        pytest.skip(f"file symlink creation unavailable: {error}")
+
+
+def test_active_binding_rejects_linked_ers_directory(tmp_path: Path) -> None:
+    _binding_format, bind_active_workspace, resolve_active_workspace = _workspace_api()
+    repository_root = tmp_path / "repo"
+    repository_root.mkdir()
+    workspace = _ready_workspace(tmp_path / "workspace")
+    bind_active_workspace(repository_root, workspace)
+
+    state = repository_root / ".ers"
+    external_state = tmp_path / "external-ers"
+    state.rename(external_state)
+    _directory_link(state, external_state)
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        resolve_active_workspace(repository_root)
+
+
+def test_active_binding_rejects_linked_binding_file(tmp_path: Path) -> None:
+    _binding_format, bind_active_workspace, resolve_active_workspace = _workspace_api()
+    repository_root = tmp_path / "repo"
+    repository_root.mkdir()
+    workspace = _ready_workspace(tmp_path / "workspace")
+    bind_active_workspace(repository_root, workspace)
+
+    binding = repository_root / ".ers" / "active-workspace.json"
+    external_binding = tmp_path / "active-workspace.json"
+    binding.rename(external_binding)
+    _file_link(binding, external_binding)
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        resolve_active_workspace(repository_root)
+
+
+def test_active_binding_rejects_linked_evidence_database(tmp_path: Path) -> None:
+    _binding_format, bind_active_workspace, resolve_active_workspace = _workspace_api()
+    repository_root = tmp_path / "repo"
+    repository_root.mkdir()
+    workspace = _ready_workspace(tmp_path / "workspace")
+    bind_active_workspace(repository_root, workspace)
+
+    database = workspace / "evidence" / "evidence.sqlite"
+    external_database = tmp_path / "external-evidence.sqlite"
+    database.rename(external_database)
+    _file_link(database, external_database)
+
+    with pytest.raises(ValueError, match="ACTIVE_WORKSPACE_STALE|symlink|reparse"):
+        resolve_active_workspace(repository_root)

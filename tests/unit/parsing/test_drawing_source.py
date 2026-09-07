@@ -1,7 +1,9 @@
+import hashlib
 from pathlib import Path
 
 import pytest
 
+from evidence_review.contracts.attachments import ImmutableAttachment
 from evidence_review.parsing.drawing_source import (
     DrawingIntakePolicy,
     ingest_drawing_source,
@@ -113,7 +115,7 @@ def test_symlink_source_is_rejected(tmp_path: Path) -> None:
         link.symlink_to(source)
     except OSError:
         pytest.skip("symlinks are unavailable on this platform")
-    with pytest.raises(ValueError, match="regular non-link file"):
+    with pytest.raises(ValueError, match="regular non-link file|symlink"):
         ingest_drawing_source(
             link,
             tmp_path / "case",
@@ -121,3 +123,29 @@ def test_symlink_source_is_rejected(tmp_path: Path) -> None:
             "CASE_DRAWING",
             DrawingIntakePolicy(),
         )
+
+
+def test_immutable_attachment_verification_rejects_linked_case_file(
+    tmp_path: Path,
+) -> None:
+    case_dir = tmp_path / "case"
+    stored = case_dir / "sources" / "drawings" / "ATT-001.png"
+    stored.parent.mkdir(parents=True)
+    target = case_dir / "real.png"
+    payload = b"\x89PNG\r\n\x1a\nfixture"
+    target.write_bytes(payload)
+    try:
+        stored.symlink_to(target)
+    except OSError as error:
+        pytest.skip(f"file symlink creation unavailable: {error}")
+    attachment = ImmutableAttachment(
+        attachment_id="ATT-001",
+        original_name="drawing.png",
+        stored_path="inputs/original/ATT-001.png",
+        sha256=hashlib.sha256(payload).hexdigest(),
+        byte_size=len(payload),
+        mime="image/png",
+        role="CASE_DRAWING",
+    )
+
+    assert verify_immutable_attachment(case_dir, attachment) == ("SOURCE_MISSING",)

@@ -22,6 +22,10 @@ from evidence_review.contracts.validation import (
     reject_unknown,
     require_fields,
 )
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,18 +90,37 @@ def case_artifact_path(case_dir: Path, relative_path: str) -> Path:
     return target
 
 
+def verified_case_artifact_path(case_dir: Path, relative_path: str) -> Path:
+    """Return one existing case artifact through the canonical trust boundary."""
+    safe = _safe_relative_path(relative_path, "artifact path")
+    return verified_regular_file_below(
+        case_dir,
+        tuple(PurePosixPath(safe).parts),
+        field="case artifact",
+    )
+
+
 def write_canonical_create_only(path: Path, document: object) -> str:
     """Write canonical JSON once and return its byte-level SHA-256 digest."""
     payload = dump_bytes(document)
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    parent = verified_regular_directory(path.parent, field="case artifact directory")
+    target = parent / path.name
+    descriptor = os.open(
+        target,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
     except BaseException:
-        path.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
         raise
     return hashlib.sha256(payload).hexdigest()
 

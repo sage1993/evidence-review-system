@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -71,3 +74,40 @@ def test_same_machine_artifacts_are_byte_identical(tmp_path: Path) -> None:
         )
 
     assert machine_artifacts_byte_equal(left.machine_dir, right.machine_dir)
+
+
+def test_machine_artifact_comparison_rejects_linked_root(tmp_path: Path) -> None:
+    left = _layout(tmp_path / "left")
+    right = _layout(tmp_path / "right")
+    for layout in (left, right):
+        run_deterministic_stages(
+            layout,
+            retrieval={"evidence_ids": ["EVIDENCE-001"]},
+            math={"calculation_result_ids": ["CALC-001"]},
+            rules={"rule_result_ids": ["RULE-001"]},
+        )
+
+    external = tmp_path / "external-machine"
+    shutil.copytree(left.machine_dir, external)
+    shutil.rmtree(left.machine_dir)
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(left.machine_dir), str(external)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout).strip()
+            pytest.skip(
+                "directory junction creation unavailable: "
+                f"exit={completed.returncode}; detail={detail or '<empty>'}"
+            )
+    else:
+        try:
+            left.machine_dir.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            pytest.skip(f"directory symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        machine_artifacts_byte_equal(left.machine_dir, right.machine_dir)

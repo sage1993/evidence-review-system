@@ -145,3 +145,22 @@ def test_approved_copy_is_create_only(tmp_path: Path) -> None:
         )
 
     assert approved.read_bytes() == existing
+
+
+def test_approval_rejects_linked_candidate(tmp_path: Path) -> None:
+    candidate = _write_candidate(tmp_path)
+    external = tmp_path / "external-candidate.json"
+    external.write_bytes(candidate.read_bytes())
+    candidate.unlink()
+    try:
+        candidate.symlink_to(external)
+    except OSError as error:
+        pytest.skip(f"symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symlink|reparse"):
+        approve_candidate(
+            candidate,
+            tmp_path / "rules" / "approved",
+            reviewer_id="test-reviewer",
+            review_date="2026-08-01",
+        )

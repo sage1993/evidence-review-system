@@ -10,6 +10,10 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 
 from evidence_review.contracts.identifiers import validate_identifier, validate_version
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.rule_engine.governance_contract import (
     ActiveRuleEntry,
     RuleActivationApproval,
@@ -166,16 +170,13 @@ def _safe_declared_path(value: object, field: str) -> str:
 
 def _repository_root(root: Path) -> Path:
     try:
-        resolved = root.resolve(strict=True)
-    except OSError as error:
+        return verified_regular_directory(root, field="repository root")
+    except (OSError, ValueError) as error:
         raise GovernanceVerificationError(
             "REPOSITORY_ROOT_INVALID",
             str(root),
             str(error),
         ) from error
-    if not resolved.is_dir() or root.is_symlink():
-        raise GovernanceVerificationError("REPOSITORY_ROOT_INVALID", str(root))
-    return resolved
 
 
 def _resolve_relative(
@@ -186,20 +187,20 @@ def _resolve_relative(
 ) -> Path:
     declared = _safe_declared_path(relative, "artifact path")
     resolved_root = _repository_root(root)
-    current = resolved_root
-    for part in PurePosixPath(declared).parts:
-        current = current / part
-        if current.is_symlink():
-            raise GovernanceVerificationError("UNSAFE_ARTIFACT_PATH", declared)
-    if not current.exists() or not current.is_file():
-        raise GovernanceVerificationError(missing_code, declared)
     try:
-        resolved = current.resolve(strict=True)
-    except OSError as error:
+        return verified_regular_file_below(
+            resolved_root,
+            tuple(PurePosixPath(declared).parts),
+            field="governed artifact",
+        )
+    except FileNotFoundError as error:
         raise GovernanceVerificationError(missing_code, declared, str(error)) from error
-    if resolved_root not in resolved.parents:
-        raise GovernanceVerificationError("UNSAFE_ARTIFACT_PATH", declared)
-    return resolved
+    except (OSError, ValueError) as error:
+        raise GovernanceVerificationError(
+            "UNSAFE_ARTIFACT_PATH",
+            declared,
+            str(error),
+        ) from error
 
 
 def resolve_governance_path(root: Path, relative: str) -> Path:

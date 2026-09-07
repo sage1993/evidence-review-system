@@ -38,6 +38,10 @@ from evidence_review.contracts.review import (
     IssueResult,
     ReviewPacket,
 )
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.llm_layer.track_a import (
     EvidenceExcerpt,
     TrackABundle,
@@ -417,9 +421,14 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
 
 def verify_finalized_run(run_directory: Path) -> ReviewPacket:
     """Fail closed unless the stored final packet equals the derived packet."""
-    output_path = run_directory / "final-review-packet.json"
-    if not output_path.is_file():
-        raise ValueError("final review packet is missing")
+    try:
+        output_path = verified_regular_file_below(
+            run_directory,
+            ("final-review-packet.json",),
+            field="final review packet",
+        )
+    except (OSError, ValueError) as error:
+        raise ValueError("final review packet is missing") from error
     packet = decode_review_packet(_json_file(output_path))
     expected = expected_final_review_packet(run_directory)
     if packet != expected:
@@ -429,9 +438,18 @@ def verify_finalized_run(run_directory: Path) -> ReviewPacket:
 
 def finalize_run(run_directory: Path) -> ReviewPacket:
     """Validate manifest-bound artifacts and exclusively write a final packet."""
-    output_path = run_directory / "final-review-packet.json"
-    if output_path.exists():
-        raise FileExistsError(f"output already exists: {output_path}")
+    trusted_run = verified_regular_directory(run_directory, field="run directory")
+    try:
+        existing = verified_regular_file_below(
+            trusted_run,
+            ("final-review-packet.json",),
+            field="final review packet",
+        )
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        raise FileExistsError(f"output already exists: {existing}")
+    output_path = trusted_run / "final-review-packet.json"
     packet = expected_final_review_packet(run_directory)
     data = dump_bytes(review_packet_document(packet))
     try:

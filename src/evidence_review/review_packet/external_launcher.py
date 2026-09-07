@@ -36,7 +36,7 @@ def _background_browser_command(
 
 def _shell_execute_url(url: str) -> bool:
     """Ask Windows to open a URL through its registered shell association."""
-    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
     shell_execute = shell32.ShellExecuteW
     shell_execute.argtypes = [
         ctypes.wintypes.HWND,

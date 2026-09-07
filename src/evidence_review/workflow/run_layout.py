@@ -5,13 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.workflow import WorkflowStateRecord
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.workflow.events import project_workflow_state
 from evidence_review.workflow.request import (
     ReviewRequest,
@@ -19,24 +22,6 @@ from evidence_review.workflow.request import (
     review_request_bytes,
     review_request_sha256,
 )
-
-
-def _is_reparse_point(path: Path) -> bool:
-    attributes = getattr(os.lstat(path), "st_file_attributes", 0)
-    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    return bool(attributes & reparse_flag)
-
-
-def reject_link_ancestors(path: Path) -> None:
-    """Reject symlink or Windows reparse-point authority in a run path."""
-    absolute = path.absolute()
-    for candidate in (absolute, *absolute.parents):
-        if not candidate.exists():
-            continue
-        if candidate.is_symlink() or _is_reparse_point(candidate):
-            raise ValueError(
-                "review run path must not contain links or reparse points"
-            )
 
 
 def _strict_json(raw: bytes, field: str) -> object:
@@ -68,16 +53,27 @@ def _strict_json(raw: bytes, field: str) -> object:
 
 def _write_create_only_or_identical(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    reject_link_ancestors(path.parent)
+    parent = verified_regular_directory(
+        path.parent,
+        field="review run artifact directory",
+    )
+    target = parent / path.name
     try:
         descriptor = os.open(
-            path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            target,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0),
             0o600,
         )
     except FileExistsError:
-        reject_link_ancestors(path)
-        if path.read_bytes() == payload:
+        existing = verified_regular_file_below(
+            parent,
+            (path.name,),
+            field=f"review run artifact {path.name}",
+        )
+        if existing.read_bytes() == payload:
             return
         raise FileExistsError(
             f"existing run artifact differs: {path.name}"
@@ -104,8 +100,12 @@ class ReviewRunLayout:
 
     def load_request(self) -> ReviewRequest:
         """Load and byte-revalidate the immutable request."""
-        reject_link_ancestors(self.request_path)
-        raw = self.request_path.read_bytes()
+        request_path = verified_regular_file_below(
+            self.run_dir,
+            ("request.json",),
+            field="review request",
+        )
+        raw = request_path.read_bytes()
         request = decode_review_request(_strict_json(raw, "request"))
         if raw != review_request_bytes(request):
             raise ValueError("request bytes are not canonical")
@@ -116,8 +116,12 @@ class ReviewRunLayout:
 
     def load_request_sha256(self) -> str:
         """Load the exact lowercase request digest sidecar."""
-        reject_link_ancestors(self.request_hash_path)
-        raw = self.request_hash_path.read_bytes()
+        request_hash_path = verified_regular_file_below(
+            self.run_dir,
+            ("request.sha256",),
+            field="review request hash",
+        )
+        raw = request_hash_path.read_bytes()
         try:
             text = raw.decode("ascii")
         except UnicodeDecodeError as exc:
@@ -137,19 +141,16 @@ class ReviewRunLayout:
 
     def attachment_path(self, stored_path: str) -> Path:
         """Resolve one validated immutable stored path inside this run."""
-        target = self.run_dir.joinpath(*stored_path.split("/"))
-        resolved_run = self.run_dir.resolve()
-        if not target.resolve(strict=False).is_relative_to(resolved_run):
-            raise ValueError("attachment stored_path escapes the run directory")
-        reject_link_ancestors(target)
-        return target
+        return verified_regular_file_below(
+            self.run_dir,
+            tuple(stored_path.split("/")),
+            field="review attachment",
+        )
 
     def verify_request_attachments(self, request: ReviewRequest) -> None:
         """Rehash immutable attachment bytes before downstream action."""
         for attachment in request.attachments:
             path = self.attachment_path(attachment.stored_path)
-            if not path.is_file():
-                raise FileNotFoundError(path)
             payload = path.read_bytes()
             if len(payload) != attachment.byte_size:
                 raise ValueError(
@@ -166,9 +167,18 @@ class ReviewRunLayout:
 
 def review_run_layout(runs_root: Path, run_id: str) -> ReviewRunLayout:
     """Return canonical direct-child paths for one validated run ID."""
-    reject_link_ancestors(runs_root)
     validated_run_id = validate_identifier(run_id, "run_id")
-    root = runs_root.resolve()
+    try:
+        root = verified_regular_directory(runs_root, field="runs root")
+    except FileNotFoundError:
+        runs_root.parent.mkdir(parents=True, exist_ok=True)
+        parent = verified_regular_directory(
+            runs_root.parent,
+            field="runs root parent",
+        )
+        candidate = parent / runs_root.name
+        candidate.mkdir(exist_ok=False)
+        root = verified_regular_directory(candidate, field="runs root")
     run_dir = root / validated_run_id
     return ReviewRunLayout(
         runs_root=root,
@@ -194,9 +204,8 @@ def initialize_review_run(
 ) -> ReviewRunLayout:
     """Persist one immutable request while preserving pre-copied inputs."""
     layout = review_run_layout(runs_root, run_id)
-    reject_link_ancestors(layout.runs_root)
     layout.run_dir.mkdir(parents=True, exist_ok=True)
-    reject_link_ancestors(layout.run_dir)
+    verified_regular_directory(layout.run_dir, field="run directory")
     layout.verify_request_attachments(request)
     encoded = review_request_bytes(request)
     digest = review_request_sha256(request)
@@ -212,8 +221,6 @@ def initialize_review_run(
 def open_review_run(runs_root: Path, run_id: str) -> ReviewRunLayout:
     """Open an existing run without trusting mutable projections."""
     layout = review_run_layout(runs_root, run_id)
-    reject_link_ancestors(layout.run_dir)
-    if not layout.run_dir.is_dir():
-        raise FileNotFoundError(layout.run_dir)
+    verified_regular_directory(layout.run_dir, field="run directory")
     layout.load_request()
     return layout

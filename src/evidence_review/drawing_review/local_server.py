@@ -6,7 +6,6 @@ import hashlib
 import json
 import re
 import secrets
-import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -32,6 +31,10 @@ from evidence_review.drawing_review.service import (
     record_annotation_action,
 )
 from evidence_review.drawing_review.view_model import DrawingPage
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.math_engine.formulas import (
     DRAWING_REGISTRY,
     DRAWING_SCALE_ID,
@@ -45,7 +48,7 @@ from evidence_review.parsing.drawing_calibration import (
     persist_calibration,
 )
 from evidence_review.parsing.drawing_candidates import load_candidate
-from evidence_review.parsing.drawing_case import CaseManifestEntry, case_artifact_path
+from evidence_review.parsing.drawing_case import CaseManifestEntry
 from evidence_review.parsing.drawing_confirmation import (
     load_and_verify_confirmation,
     parse_confirmation_time,
@@ -53,7 +56,6 @@ from evidence_review.parsing.drawing_confirmation import (
 )
 from evidence_review.review_packet.drawing_evidence import render_drawing_evidence
 
-_REPARSE_POINT_ATTRIBUTE = 0x400
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _DEFAULT_MAX_BODY_BYTES = 64 * 1024
 _MAX_REJECT_DRAIN_BYTES = 4 * 1024 * 1024
@@ -212,7 +214,12 @@ def _annotation_handoff_html(html: str, calibration_url: str) -> str:
 
 
 def _verified_bytes(case_dir: Path, entry: CaseManifestEntry) -> bytes:
-    payload = case_artifact_path(case_dir, entry.relative_path).read_bytes()
+    payload_path = verified_regular_file_below(
+        case_dir,
+        tuple(entry.relative_path.split("/")),
+        field="case artifact",
+    )
+    payload = payload_path.read_bytes()
     if hashlib.sha256(payload).hexdigest() != entry.sha256:
         raise ValueError("ARTIFACT_HASH_MISMATCH")
     return payload
@@ -260,15 +267,7 @@ def _result_document(result: AnnotationActionResult) -> dict[str, object]:
 
 
 def _validate_case_dir(case_dir: Path) -> Path:
-    try:
-        status = case_dir.lstat()
-    except FileNotFoundError:
-        raise ValueError("case_dir must be an existing directory") from None
-    if stat.S_ISLNK(status.st_mode) or not stat.S_ISDIR(status.st_mode):
-        raise ValueError("case_dir must be a regular non-link directory")
-    if getattr(status, "st_file_attributes", 0) & _REPARSE_POINT_ATTRIBUTE:
-        raise ValueError("case_dir cannot be a Windows reparse point")
-    return case_dir.resolve()
+    return verified_regular_directory(case_dir, field="case_dir")
 
 
 def _validated_token(token: str | None) -> str:
@@ -785,7 +784,11 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
             candidate_entry = self.state.candidate_entries.get(candidate_id)
             if candidate_entry is None:
                 raise FileNotFoundError("candidate is not indexed")
-            candidate_path = case_artifact_path(self.state.case_dir, candidate_entry.relative_path)
+            candidate_path = verified_regular_file_below(
+                self.state.case_dir,
+                tuple(candidate_entry.relative_path.split("/")),
+                field="case candidate artifact",
+            )
             candidate_bytes = candidate_path.read_bytes()
             if hashlib.sha256(candidate_bytes).hexdigest() != candidate_entry.sha256:
                 raise ValueError("ARTIFACT_HASH_MISMATCH")

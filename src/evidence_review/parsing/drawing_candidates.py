@@ -18,6 +18,7 @@ from evidence_review.parsing.drawing_case import (
     CaseManifestEntry,
     case_artifact_path,
     validate_artifact_id,
+    verified_case_artifact_path,
     write_canonical_create_only,
 )
 from evidence_review.parsing.odl_adapter import RawElement
@@ -167,7 +168,7 @@ def load_candidate(case_dir: Path, candidate_id: str) -> DrawingCandidate:
     """Load one candidate and verify its filename identity."""
     validate_artifact_id(candidate_id, "candidate_id")
     relative_path = f"candidates/{candidate_id}.json"
-    path = case_artifact_path(case_dir, relative_path)
+    path = verified_case_artifact_path(case_dir, relative_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
     candidate = decode_drawing_candidate(payload)
     if candidate.candidate_id != candidate_id:
