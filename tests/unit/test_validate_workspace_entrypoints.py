@@ -44,3 +44,16 @@ def test_explicit_legacy_validator_keeps_ansim_grist_contract() -> None:
         "01_database/안심주택DB.grist" in error
         for error in payload["errors"]
     )
+
+
+def test_current_docs_name_release_authority_and_legacy_scope() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    policy = (ROOT / "docs" / "MANUAL_ACCEPTANCE_POLICY.md").read_text(
+        encoding="utf-8"
+    )
+
+    for document in (readme, policy):
+        assert "scripts/validate_release.py" in document
+        assert "scripts/build_release.py" in document
+        assert "scripts/validate_legacy_ansim_workspace.py" in document
+        assert "not a current release gate" in document.lower()
