@@ -4,6 +4,7 @@ import hashlib
 import json
 import socket
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -90,6 +91,50 @@ def _raw_request(base: str, request: bytes) -> bytes:
         while chunk := connection.recv(8192):
             response.extend(chunk)
     return bytes(response)
+
+
+def _read_http_response(
+    connection: socket.socket, *, deadline_seconds: float = 5.0
+) -> tuple[bytes, bytes]:
+    deadline = time.monotonic() + deadline_seconds
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("timed out waiting for HTTP response headers")
+        connection.settimeout(remaining)
+        chunk = connection.recv(8192)
+        if not chunk:
+            raise AssertionError("connection closed before HTTP response headers")
+        response.extend(chunk)
+    header_bytes, body = bytes(response).split(b"\r\n\r\n", 1)
+    headers: dict[bytes, bytes] = {}
+    for line in header_bytes.split(b"\r\n")[1:]:
+        name, value = line.split(b":", 1)
+        headers[name.lower()] = value.strip()
+    content_length = int(headers[b"content-length"])
+    while len(body) < content_length:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("timed out waiting for HTTP response body")
+        connection.settimeout(remaining)
+        chunk = connection.recv(8192)
+        if not chunk:
+            raise AssertionError("connection closed before HTTP response body")
+        body += chunk
+    return header_bytes, body[:content_length]
+
+
+def _oversized_decision_headers(base: str, content_length: int) -> bytes:
+    host = urlsplit(base).netloc
+    return (
+        f"POST /runs/RUN-001/{TOKEN}/decision HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        f"Origin: {base}\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {content_length}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode("ascii")
 
 
 def _decision(packet: bytes, **changes: object) -> bytes:
@@ -338,6 +383,109 @@ def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_
                 headers={"Content-Type": "application/json", "Origin": "http://attacker.invalid"},
             )
         assert error.value.code == 403
+    assert not (run_dir / "human-decisions").exists()
+
+
+@pytest.mark.parametrize("body_size", [2 * 1024 * 1024, 4 * 1024 * 1024])
+def test_oversized_full_body_returns_413_and_reaches_eof_without_reset(
+    tmp_path: Path, body_size: int
+) -> None:
+    run_dir, _ = _review_artifacts(tmp_path)
+    payload = b"x" * body_size
+    with _server(tmp_path, max_body_bytes=8) as (_, base):
+        parsed = urlsplit(base)
+        assert parsed.hostname is not None
+        assert parsed.port is not None
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=5) as connection:
+            prefix_length = 64 * 1024
+            connection.sendall(
+                _oversized_decision_headers(base, len(payload)) + payload[:prefix_length]
+            )
+            send_remaining = threading.Event()
+            send_errors: list[BaseException] = []
+
+            def send_body_remainder() -> None:
+                if not send_remaining.wait(timeout=5):
+                    send_errors.append(AssertionError("body sender was not released"))
+                    return
+                try:
+                    for offset in range(prefix_length, len(payload), 8192):
+                        connection.sendall(payload[offset : offset + 8192])
+                except BaseException as error:
+                    send_errors.append(error)
+
+            sender = threading.Thread(target=send_body_remainder, daemon=True)
+            sender.start()
+            response_headers, response_body = _read_http_response(connection)
+            send_remaining.set()
+            sender.join(timeout=5)
+            assert not sender.is_alive()
+            assert send_errors == []
+            connection.shutdown(socket.SHUT_WR)
+            connection.settimeout(5)
+            try:
+                while connection.recv(8192):
+                    pass
+            except (ConnectionAbortedError, ConnectionResetError) as error:
+                raise AssertionError("connection did not reach EOF cleanly") from error
+    assert response_headers.startswith(b"HTTP/1.0 413 ")
+    assert response_body == b'{"error":"BODY_TOO_LARGE"}'
+    assert not (run_dir / "human-decisions").exists()
+
+
+def test_oversized_header_only_request_returns_prompt_413(tmp_path: Path) -> None:
+    run_dir, _ = _review_artifacts(tmp_path)
+    with _server(tmp_path, max_body_bytes=8) as (_, base):
+        parsed = urlsplit(base)
+        assert parsed.hostname is not None
+        assert parsed.port is not None
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=5) as connection:
+            started = time.monotonic()
+            connection.sendall(_oversized_decision_headers(base, 4 * 1024 * 1024))
+            response_headers, response_body = _read_http_response(
+                connection, deadline_seconds=2
+            )
+            elapsed = time.monotonic() - started
+    assert elapsed < 0.5
+    assert response_headers.startswith(b"HTTP/1.0 413 ")
+    assert response_body == b'{"error":"BODY_TOO_LARGE"}'
+    assert not (run_dir / "human-decisions").exists()
+
+
+def test_oversized_body_discard_has_total_deadline(tmp_path: Path) -> None:
+    run_dir, _ = _review_artifacts(tmp_path)
+    with _server(tmp_path, max_body_bytes=8) as (_, base):
+        parsed = urlsplit(base)
+        assert parsed.hostname is not None
+        assert parsed.port is not None
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=5) as connection:
+            connection.sendall(_oversized_decision_headers(base, 1024) + b"x")
+            response_headers, response_body = _read_http_response(connection)
+            assert response_headers.startswith(b"HTTP/1.0 413 ")
+            assert response_body == b'{"error":"BODY_TOO_LARGE"}'
+
+            stop_sender = threading.Event()
+            send_errors: list[BaseException] = []
+
+            def send_trickle() -> None:
+                try:
+                    for _ in range(20):
+                        if stop_sender.wait(timeout=0.1):
+                            return
+                        connection.sendall(b"x")
+                except BaseException as error:
+                    send_errors.append(error)
+
+            sender = threading.Thread(target=send_trickle, daemon=True)
+            started = time.monotonic()
+            sender.start()
+            sender.join(timeout=1)
+            elapsed = time.monotonic() - started
+            stop_sender.set()
+            sender.join(timeout=2)
+            assert not sender.is_alive()
+            assert send_errors, "server kept the discard open beyond its total deadline"
+            assert elapsed < 1
     assert not (run_dir / "human-decisions").exists()
 
 
