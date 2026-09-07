@@ -6,6 +6,10 @@ The project follows semantic versioning for public releases where practical.
 
 ## [Unreleased]
 
+### Changed
+
+- Packaging metadata now uses the PEP 639 SPDX expression `Apache-2.0` with `license-files = ["LICENSE"]`; the build backend floor is `setuptools>=77.0.3`, the first setuptools release line with standardized PEP 639 project metadata support.
+
 ### Fixed
 
 - Human-decision loading now excludes records whose review timestamp is beyond the permitted future-skew window, preventing a future-dated archival import from pinning the active review state.
