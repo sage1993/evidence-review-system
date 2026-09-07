@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-VALIDATOR = REPOSITORY_ROOT / "scripts" / "validate_workspace.py"
+LEGACY_VALIDATOR = REPOSITORY_ROOT / "scripts" / "validate_legacy_ansim_workspace.py"
 
 
 def _create_valid_legacy_workspace(
@@ -18,8 +18,8 @@ def _create_valid_legacy_workspace(
     root = tmp_path / "workspace"
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
-    (scripts / "validate_workspace.py").write_text(
-        VALIDATOR.read_text(encoding="utf-8"),
+    (scripts / "validate_legacy_ansim_workspace.py").write_text(
+        LEGACY_VALIDATOR.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
 
@@ -73,9 +73,11 @@ def _create_valid_legacy_workspace(
     return root
 
 
-def _run_validator(root: Path) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
+def _run_legacy_validator(
+    root: Path,
+) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
     result = subprocess.run(
-        [sys.executable, str(root / "scripts" / "validate_workspace.py")],
+        [sys.executable, str(root / "scripts" / "validate_legacy_ansim_workspace.py")],
         cwd=root,
         check=False,
         capture_output=True,
@@ -94,7 +96,7 @@ def _missing_paths(payload: dict[str, object]) -> set[str]:
     }
 
 
-def test_validator_accepts_canonical_agents_without_legacy_agent_md(
+def test_legacy_validator_accepts_canonical_agents_without_legacy_agent_md(
     tmp_path: Path,
 ) -> None:
     root = _create_valid_legacy_workspace(
@@ -102,7 +104,7 @@ def test_validator_accepts_canonical_agents_without_legacy_agent_md(
         instruction_names=("AGENTS.md",),
     )
 
-    result, payload = _run_validator(root)
+    result, payload = _run_legacy_validator(root)
 
     assert "missing: agent.md" not in payload["errors"]
     assert _missing_paths(payload) == set()
@@ -110,7 +112,7 @@ def test_validator_accepts_canonical_agents_without_legacy_agent_md(
     assert payload["status"] == "PASS"
 
 
-def test_validator_rejects_legacy_agent_md_as_instruction_authority(
+def test_legacy_validator_rejects_legacy_agent_md_as_instruction_authority(
     tmp_path: Path,
 ) -> None:
     root = _create_valid_legacy_workspace(
@@ -118,20 +120,20 @@ def test_validator_rejects_legacy_agent_md_as_instruction_authority(
         instruction_names=("agent.md",),
     )
 
-    result, payload = _run_validator(root)
+    result, payload = _run_legacy_validator(root)
 
     assert result.returncode == 1
     assert "missing: AGENTS.md" in payload["errors"]
     assert _missing_paths(payload) == {"AGENTS.md"}
 
 
-def test_validator_requires_exact_agents_md_case(tmp_path: Path) -> None:
+def test_legacy_validator_requires_exact_agents_md_case(tmp_path: Path) -> None:
     root = _create_valid_legacy_workspace(
         tmp_path,
         instruction_names=("agents.md",),
     )
 
-    result, payload = _run_validator(root)
+    result, payload = _run_legacy_validator(root)
 
     assert result.returncode == 1
     assert "missing: AGENTS.md" in payload["errors"]

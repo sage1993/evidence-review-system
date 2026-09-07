@@ -28,6 +28,24 @@ maintainer requirement for a particular external check. Such a check remains a
 separate release or merge gate and must be reported separately from local
 manual verification.
 
+## Workspace and release validation authority
+
+The current Evidence Review System release gates are:
+
+```powershell
+py -3.13 scripts/validate_release.py <workspace>
+py -3.13 scripts/build_release.py <workspace> <output-dir>
+```
+
+`scripts/validate_workspace.py` is a retired ambiguous entrypoint and must not
+be used as a current release gate. It exits fail-closed and points operators to
+the current release commands above.
+
+The historical ANSIM/Grist validator is preserved only for explicit legacy
+acceptance or migration work as `scripts/validate_legacy_ansim_workspace.py`.
+It is not a current release gate and must not be substituted for
+`validate_release.py` or `build_release.py`.
+
 ## Platform-specific mypy boundary
 
 Linux `mypy src` remains a required acceptance check. The standard-library
