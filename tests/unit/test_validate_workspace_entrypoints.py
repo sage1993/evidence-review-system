@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -47,6 +48,7 @@ def test_explicit_legacy_validator_keeps_ansim_grist_contract(tmp_path: Path) ->
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, "PYTHONIOENCODING": "ascii"},
     )
 
     assert completed.returncode == 1
