@@ -52,8 +52,8 @@ def test_current_docs_name_release_authority_and_legacy_scope() -> None:
         encoding="utf-8"
     )
 
-    for document in (readme, policy):
-        assert "scripts/validate_release.py" in document
-        assert "scripts/build_release.py" in document
-        assert "scripts/validate_legacy_ansim_workspace.py" in document
-        assert "not a current release gate" in document.lower()
+    assert "scripts/validate_workspace.py" not in readme
+    assert "scripts/validate_release.py" in policy
+    assert "scripts/build_release.py" in policy
+    assert "scripts/validate_legacy_ansim_workspace.py" in policy
+    assert "not a current release gate" in policy.lower()
