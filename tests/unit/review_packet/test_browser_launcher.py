@@ -81,7 +81,6 @@ def test_server_status_retries_transient_windows_identity_query(
         encoding="utf-8",
     )
     identity_results = iter((False, False, True))
-    monkeypatch.setattr(browser_launcher.os, "name", "nt")
     monkeypatch.setattr(browser_launcher, "_process_is_alive", lambda _pid: True)
     monkeypatch.setattr(
         browser_launcher,
