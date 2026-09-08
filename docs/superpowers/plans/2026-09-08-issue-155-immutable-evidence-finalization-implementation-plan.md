@@ -193,7 +193,8 @@ git commit -m "test: lock frozen evidence lifecycle regression"
 
 - Create: `src/evidence_review/evidence/finalization.py`
 - Create: `tests/unit/evidence/test_finalization.py`
-- Modify as needed only for narrow reusable primitives: `src/evidence_review/evidence/clause_rebuild.py`
+- Modify: `src/evidence_review/evidence/clause_rebuild.py`
+- Modify: `tests/unit/evidence/test_clause_rebuild.py`
 
 ### Step 1: Write unit RED for finalization ordering
 
@@ -217,7 +218,23 @@ Run and confirm RED:
 py -3.13 -m pytest -v tests/unit/evidence/test_finalization.py
 ```
 
-### Step 2: Implement the finalization API
+### Step 2: Extract a clause/structural materialization primitive
+
+Do not make `finalization.py` depend on private `_insert_derived_clauses()` internals. Refactor `clause_rebuild.py` so the BUILDING phase has a narrow deterministic primitive equivalent to:
+
+```python
+def materialize_clause_structure(connection: sqlite3.Connection) -> bool:
+    """Derive missing clauses plus source/structural links only; do not build indexes or reference links."""
+    ...
+```
+
+It owns the current uncovered-revision detection and `_insert_derived_clauses()` behavior. It must not call `build_fts_index()` or `materialize_legal_reference_links()`.
+
+Keep `ensure_clause_index()` only if existing non-review build/test callers still need the compatibility operation. If retained, implement it in terms of the new primitive and clearly treat it as BUILDING-only. It must never be called by a finalized review path. Add a unit assertion that any retained compatibility helper does not provide a way to mutate a DB after `lifecycle_state=FINALIZED`; either reject that state or remove the helper once all callers are migrated.
+
+This split is required because legal-reference materialization depends on clause retrieval projections, but legal-reference links themselves are canonical `links` that must exist before the final snapshot hash.
+
+### Step 3: Implement the finalization API
 
 Use an API equivalent to:
 
@@ -252,15 +269,17 @@ EVIDENCE_LOGICAL_SNAPSHOT_MISMATCH
 EVIDENCE_INDEX_STALE
 ```
 
-### Step 3: Implement the BUILDING-only ordering exactly
+### Step 4: Implement the BUILDING-only ordering exactly
 
-The finalizer must perform this sequence:
+Use this deterministic sequence, including the empty-elements case:
 
 ```text
 A. parser rows already ingested
-B. derive clauses + source/structural links
-C. provisional build_fts_index if reference resolution requires clause projections
-D. materialize_legal_reference_links
+B. materialize_clause_structure(connection)
+C. provisional build_fts_index(connection) ALWAYS
+   - this creates retrieval_records/clause projections needed by reference resolution
+   - it also makes an empty-elements DB index-fresh instead of relying on the old ensure helper
+D. materialize_legal_reference_links(connection)
 E. all canonical SNAPSHOT_TABLES mutations are now complete
 F. final_snapshot_hash = compute_snapshot_hash(store)
 G. INSERT OR REPLACE snapshot_meta.snapshot_hash = final_snapshot_hash
@@ -273,11 +292,15 @@ M. PRAGMA integrity_check == ok
 N. PRAGMA foreign_key_check == []
 ```
 
-Important: `materialize_legal_reference_links()` writes canonical `links`; therefore it must occur **before** step F. A final retrieval rebuild after step I may mutate retrieval/FTS projection tables but must not change any `SNAPSHOT_TABLES` row.
+Important:
 
-`ensure_clause_index()` may be reused internally while the DB is BUILDING, but it must not be treated as a post-finalization repair API.
+- `materialize_legal_reference_links()` writes canonical `links`; therefore it must occur **before** step F.
+- The provisional index in C has no authority outside BUILDING; its snapshot hash can reflect the pre-reference logical state.
+- The final index in J is the only retrieval projection accepted after finalization.
+- Steps J–N must not change any row in `SNAPSHOT_TABLES`.
+- Do not mark/publish a DB as finalized if any later check fails. Since source-batch finalization occurs on a temporary unpublished DB, failure leaves no canonical output.
 
-### Step 4: Implement read-only validation
+### Step 5: Implement read-only validation
 
 `validate_finalized_evidence()` must not rebuild or repair anything. It verifies:
 
@@ -290,16 +313,16 @@ Important: `materialize_legal_reference_links()` writes canonical `links`; there
 
 It must work against a query-only/read-only connection introduced in Task 4.
 
-### Step 5: Run focused GREEN
+### Step 6: Run focused GREEN
 
 ```powershell
 py -3.13 -m pytest -v tests/unit/evidence/test_finalization.py tests/unit/evidence/test_clause_rebuild.py tests/unit/evidence/test_snapshot.py
 ```
 
-### Step 6: Commit
+### Step 7: Commit
 
 ```powershell
-git add src/evidence_review/evidence/finalization.py src/evidence_review/evidence/clause_rebuild.py tests/unit/evidence/test_finalization.py
+git add src/evidence_review/evidence/finalization.py src/evidence_review/evidence/clause_rebuild.py tests/unit/evidence/test_finalization.py tests/unit/evidence/test_clause_rebuild.py
 git diff --check
 git commit -m "feat: add evidence database finalization boundary"
 ```
@@ -490,15 +513,17 @@ Prefer a path-level finalized provenance API so consumers cannot accidentally as
 def finalized_evidence_provenance(database_path: Path) -> dict[str, object]:
     with EvidenceStore(database_path, read_only=True) as store:
         state = validate_finalized_evidence(store)
-        ...
+        counts = ...
+    # The SQLite connection is closed before the exact physical file hash is read.
+    physical_sha = evidence_database_file_sha256(database_path)
     return {
         "evidence_snapshot_hash": state.snapshot_hash,
-        "evidence_db_sha256": evidence_database_file_sha256(database_path),
+        "evidence_db_sha256": physical_sha,
         ...
     }
 ```
 
-If `evidence_snapshot_provenance(connection, ...)` is retained for compatibility, require an explicit verified database path for physical hash calculation and remove `connection.serialize()` from authority decisions.
+If `evidence_snapshot_provenance(connection, ...)` is retained for compatibility, it must not claim to return an authoritative physical artifact hash without an explicit verified path. Remove `connection.serialize()` from all authority decisions.
 
 ### Step 3: Preserve the external provenance document shape
 
@@ -625,11 +650,12 @@ database = _evidence_database(workspace)
 with EvidenceStore(database, read_only=True) as store:
     state = validate_finalized_evidence(store)
     snapshot_hash = require_fresh_index(store.require_connection())
-    provenance = finalized_evidence_provenance(database)
-    ...
+    ... retrieve using only this read-only connection ...
+
+provenance = finalized_evidence_provenance(database)
 ```
 
-Avoid opening the same file multiple times where a single validated read object/path can be passed cleanly, but do not optimize by weakening the exact file identity check.
+Keep the physical hash check path-level and fail closed on any mismatch; do not rebind or mutate to recover.
 
 ### Step 3: Make run snapshot revalidation read-only
 
