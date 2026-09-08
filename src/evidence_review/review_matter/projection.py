@@ -6,9 +6,11 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.validation import (
     expect_int,
     expect_mapping,
+    expect_sequence,
     expect_sha256,
     expect_string,
     reject_unknown,
@@ -101,14 +103,24 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         return MatterProjection(updated)
     if event.kind == "SOURCE_DEPENDENCY_REGISTERED":
         payload = expect_mapping(event.payload, "SOURCE_DEPENDENCY_REGISTERED.payload")
+        required = {"issue_id", "source_key", "source_hash"}
+        require_fields(payload, required, "SOURCE_DEPENDENCY_REGISTERED.payload")
         reject_unknown(
             payload,
-            {"issue_id", "source_key", "source_hash"},
+            required,
             "SOURCE_DEPENDENCY_REGISTERED.payload",
         )
-        issue_id = expect_string(payload.get("issue_id"), "issue_id")
+        issue_id = validate_identifier(
+            payload.get("issue_id"), "SOURCE_DEPENDENCY_REGISTERED.payload.issue_id"
+        )
         if issue_id not in {issue.issue_id for issue in matter.issues}:
             raise ValueError("SOURCE_DEPENDENCY_REGISTERED references unknown issue")
+        validate_identifier(
+            payload.get("source_key"), "SOURCE_DEPENDENCY_REGISTERED.payload.source_key"
+        )
+        expect_sha256(
+            payload.get("source_hash"), "SOURCE_DEPENDENCY_REGISTERED.payload.source_hash"
+        )
         updated = ReviewMatter(
             matter_id=matter.matter_id,
             title=matter.title,
@@ -171,15 +183,35 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         return MatterProjection(updated)
     if event.kind == "ISSUES_INVALIDATED":
         payload = expect_mapping(event.payload, "ISSUES_INVALIDATED.payload")
+        required = {"issue_ids", "source_key", "new_source_hash"}
+        require_fields(payload, required, "ISSUES_INVALIDATED.payload")
         reject_unknown(
             payload,
-            {"issue_ids", "source_key", "new_source_hash"},
+            required,
             "ISSUES_INVALIDATED.payload",
         )
-        issue_ids = {
-            expect_string(item, "issue_ids[]")
-            for item in payload["issue_ids"]  # type: ignore[index]
-        }
+        raw_issue_ids = expect_sequence(
+            payload.get("issue_ids"), "ISSUES_INVALIDATED.payload.issue_ids"
+        )
+        if not raw_issue_ids:
+            raise ValueError("ISSUES_INVALIDATED.payload.issue_ids must not be empty")
+        issue_ids = tuple(
+            validate_identifier(
+                item, f"ISSUES_INVALIDATED.payload.issue_ids[{index}]"
+            )
+            for index, item in enumerate(raw_issue_ids)
+        )
+        if len(issue_ids) != len(set(issue_ids)):
+            raise ValueError("ISSUES_INVALIDATED.payload.issue_ids contains duplicates")
+        unknown_issue_ids = set(issue_ids) - {issue.issue_id for issue in matter.issues}
+        if unknown_issue_ids:
+            raise ValueError("ISSUES_INVALIDATED references unknown issue")
+        source_key = payload.get("source_key")
+        if source_key is not None:
+            validate_identifier(source_key, "ISSUES_INVALIDATED.payload.source_key")
+        expect_sha256(
+            payload.get("new_source_hash"), "ISSUES_INVALIDATED.payload.new_source_hash"
+        )
         issues = tuple(
             MatterIssue(
                 issue_id=issue.issue_id,
@@ -192,8 +224,6 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
             )
             for issue in matter.issues
         )
-        if issue_ids - {issue.issue_id for issue in matter.issues}:
-            raise ValueError("ISSUES_INVALIDATED references unknown issue")
         updated = ReviewMatter(
             matter_id=matter.matter_id,
             title=matter.title,

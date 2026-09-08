@@ -52,3 +52,17 @@ Addressed all four reviewer findings:
 - Round-1 focused GREEN: **14 passed**.
 - Complete ReviewMatter and migration documentation coverage: **37 passed**.
 - Ruff across the self-contained ReviewMatter package and tests: **passed** after migration-only import/lint cleanup.
+
+## Round-2 scoped re-review fix report
+
+Addressed the remaining Important finding:
+
+- `SOURCE_DEPENDENCY_REGISTERED` projection validation now requires all fields, validates issue identifier shape and existence, validates a nonempty source-key identity, and validates the source hash as an exact lowercase SHA-256 before append/replay side effects.
+- `ISSUES_INVALIDATED` projection validation now requires a nonempty unique issue-id sequence of existing issue identifiers, validates nullable-or-identifier source metadata, and validates `new_source_hash` as an exact lowercase SHA-256 before append/replay side effects.
+- Added append coverage proving malformed direct source-dependency events leave the event journal, projection, and dependency metadata unchanged.
+- Added rebuild coverage proving malformed direct invalidation events fail closed before replay side effects.
+
+### Round-2 verification
+
+- Focused ReviewMatter unit/integration suite: **38 passed**.
+- Ruff across the ReviewMatter implementation and tests: **passed**.
