@@ -86,6 +86,14 @@ def test_changed_source_stales_issues_with_unmodelled_impact(tmp_path) -> None:
         "SOURCE-001",
         "a" * 64,
     )
+    registered = register_issue_source_dependency(
+        store,
+        "MATTER-001",
+        registered.revision,
+        "ISSUE-002",
+        "SOURCE-002",
+        "c" * 64,
+    )
 
     invalidated = invalidate_source_dependents(
         store,

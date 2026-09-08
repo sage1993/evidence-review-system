@@ -36,3 +36,19 @@ The broader review_matter Ruff run still reports pre-existing issues in MIG-02/0
 ## Scope review
 
 Only the two MIG-05 implementation modules, their focused unit/integration tests, and this report are intended for the MIG-05 commit. User-supplied `AGENTS.md`, migration plan/report documents, and unrelated changes remain untouched and unstaged.
+
+## Round-1 reviewer fix report
+
+Addressed all four reviewer findings:
+
+1. **Self-contained branch:** the implementation-owned MIG-01..04 contracts, store/schema, event/projection modules, architecture docs, and their unit/integration/documentation tests are included in the follow-up commit alongside MIG-05. `AGENTS.md`, the migration plan, the DOCX report, and the Korean report remain excluded.
+2. **Conservative invalidation:** a changed named source now stales every MatterIssue unless the source hash is unchanged. Added regression coverage for an issue modeled only against another source key; it is also staled because no approved negative-impact/completeness contract exists.
+3. **Deterministic metadata recovery:** `rebuild_projection` now clears and replays evidence-binding and source-dependency side effects inside the same transaction as projection rebuild. Added recovery coverage for restored binding identity and updated dependency hash.
+4. **Evidence event validation:** `EVIDENCE_BOUND` and `EVIDENCE_REBOUND` now require all provenance fields, validate both SHA-256 values, require a positive schema version, and require `bound_revision` to equal the next Matter revision. Added parameterized validation coverage for both event kinds.
+
+### Round-1 verification
+
+- RED reproduction before implementation: 12 expected failures, 2 existing tests passed.
+- Round-1 focused GREEN: **14 passed**.
+- Complete ReviewMatter and migration documentation coverage: **37 passed**.
+- Ruff across the self-contained ReviewMatter package and tests: **passed** after migration-only import/lint cleanup.

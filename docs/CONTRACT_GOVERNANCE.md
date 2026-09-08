@@ -35,6 +35,13 @@ Downstream work must import the shared contracts under `evidence_review.contract
 - Machine packets always contain `human_decision: null`.
 - Drawing extraction creates candidates. Only reviewer-confirmed values may bind to Math or Rule Engine inputs.
 - Project code never invokes Track A or Track B through an API. It emits a deterministic `next-action.json` handoff.
+- `ReviewMatter` is mutable work authority only. Its `matter_id` is distinct from drawing `CaseManifest` and `case_id` identities.
+- Matter work is stored separately from finalized `evidence.sqlite`; it cannot mutate source bytes or evidence records.
+- Formalization is the only promotion boundary from Matter work to an immutable FormalizationSnapshot and the existing Formal Review core.
+- Human Decision remains a separate append-only record bound to the exact final packet hash.
+
+The complete migration authority contract is documented in
+[`docs/REVIEW_MATTER_ARCHITECTURE.md`](REVIEW_MATTER_ARCHITECTURE.md).
 
 ## Determinism boundary
 

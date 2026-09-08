@@ -53,27 +53,9 @@ def invalidate_source_dependents(
     else:
         source_key = validate_identifier(source_key, "source_key")
         matching = [item for item in dependencies if item["source_key"] == source_key]
-        if not matching:
-            issue_ids = tuple(issue.issue_id for issue in matter.issues)
-        elif all(item["source_hash"] == new_source_hash for item in matching):
+        if matching and all(item["source_hash"] == new_source_hash for item in matching):
             return matter
-        else:
-            issue_ids = tuple(
-                issue.issue_id
-                for issue in matter.issues
-                if not any(
-                    dependency["issue_id"] == issue.issue_id
-                    for dependency in dependencies
-                )
-                or any(
-                    dependency["issue_id"] == issue.issue_id
-                    and dependency["source_key"] == source_key
-                    and dependency["source_hash"] != new_source_hash
-                    for dependency in matching
-                )
-            )
-            if not issue_ids:
-                return matter
+        issue_ids = tuple(issue.issue_id for issue in matter.issues)
     if not issue_ids:
         return matter
     event = MatterEvent(
