@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from typing import Final, Literal, cast
 
 from evidence_review.contracts.common import BBox
+from evidence_review.contracts.formats import (
+    MATTER_SOURCE_BINDING_FORMAT,
+    REVIEW_MATTER_FORMAT,
+)
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.validation import (
     expect_int,
@@ -30,11 +34,7 @@ MatterIssueState = Literal[
     "BLOCKED",
 ]
 
-REVIEW_MATTER_FORMAT: Final[MatterFormat] = "evidence-review/review-matter"
 MATTER_FORMAT: Final[MatterFormat] = REVIEW_MATTER_FORMAT
-MATTER_SOURCE_BINDING_FORMAT: Final[MatterSourceBindingFormat] = (
-    "evidence-review/matter-source-binding"
-)
 MATTER_VERSION: Final[Literal[1]] = 1
 MATTER_SOURCE_BINDING_VERSION: Final[Literal[1]] = 1
 

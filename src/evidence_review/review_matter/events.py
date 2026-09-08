@@ -9,10 +9,12 @@ from dataclasses import dataclass
 from typing import Final
 
 from evidence_review.canonical_json import dumps
+from evidence_review.contracts.formats import MATTER_EVENT_FORMAT
 from evidence_review.contracts.validation import (
     expect_int,
     expect_literal,
     expect_mapping,
+    expect_string,
     reject_unknown,
     require_fields,
 )
@@ -22,7 +24,6 @@ from evidence_review.review_matter.store import (
     MatterStore,
 )
 
-MATTER_EVENT_FORMAT: Final[str] = "evidence-review/matter-event"
 MATTER_EVENT_VERSION: Final[int] = 1
 _EVENT_KIND = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 
@@ -55,7 +56,7 @@ def decode_matter_event(value: object) -> MatterEvent:
     if version != MATTER_EVENT_VERSION:
         raise ValueError("unsupported matter_event version")
     event_payload = expect_mapping(payload.get("payload"), "payload")
-    return MatterEvent(kind=str(payload.get("kind")), payload=event_payload)
+    return MatterEvent(kind=expect_string(payload.get("kind"), "kind"), payload=event_payload)
 
 
 def matter_event_document(event: MatterEvent) -> dict[str, object]:

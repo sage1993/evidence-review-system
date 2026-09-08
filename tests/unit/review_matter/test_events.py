@@ -4,6 +4,7 @@ from evidence_review.review_matter.contracts import MatterIssue
 from evidence_review.review_matter.events import (
     MATTER_EVENT_FORMAT,
     MatterEvent,
+    decode_matter_event,
     matter_event_document,
 )
 from evidence_review.review_matter.projection import project_event
@@ -23,6 +24,19 @@ def test_title_changed_event_has_strict_canonical_document() -> None:
 def test_event_rejects_non_object_payload() -> None:
     with pytest.raises(ValueError, match="payload"):
         MatterEvent(kind="TITLE_CHANGED", payload=[])  # type: ignore[arg-type]
+
+
+def test_decode_rejects_non_string_event_kind_without_coercion() -> None:
+    class StringLikeKind:
+        def __str__(self) -> str:
+            return "TITLE_CHANGED"
+
+    event = MatterEvent(kind="TITLE_CHANGED", payload={"title": "Changed"})
+    document = matter_event_document(event)
+    document["kind"] = StringLikeKind()
+
+    with pytest.raises(ValueError, match="kind"):
+        decode_matter_event(document)
 
 
 def _evidence_binding_payload() -> dict[str, object]:

@@ -315,17 +315,11 @@ class MatterStore:
         """Rename a Matter using compare-and-swap revision semantics."""
         if isinstance(expected_revision, bool) or not isinstance(expected_revision, int):
             raise ValueError("expected_revision is required")
-        with self.transaction():
-            current = self.load(matter_id)
-            if current.revision != expected_revision:
-                raise MatterRevisionConflict("MATTER_REVISION_CONFLICT")
-            updated = ReviewMatter(
-                matter_id=current.matter_id,
-                title=title,
-                revision=current.revision + 1,
-                issues=current.issues,
-                source_bindings=current.source_bindings,
-            )
-            decode_review_matter(review_matter_document(updated))
-            self.apply_projection(updated)
-        return updated
+        from evidence_review.review_matter.events import MatterEvent, append_matter_event
+
+        return append_matter_event(
+            self,
+            matter_id,
+            expected_revision,
+            MatterEvent(kind="TITLE_CHANGED", payload={"title": title}),
+        ).matter

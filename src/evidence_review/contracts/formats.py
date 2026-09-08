@@ -92,6 +92,9 @@ DOCUMENTATION_INTEGRITY_REPORT_FORMAT: Final[
 REVIEW_MATTER_FORMAT: Final[Literal["evidence-review/review-matter"]] = (
     "evidence-review/review-matter"
 )
+MATTER_EVENT_FORMAT: Final[Literal["evidence-review/matter-event"]] = (
+    "evidence-review/matter-event"
+)
 MATTER_SOURCE_BINDING_FORMAT: Final[
     Literal["evidence-review/matter-source-binding"]
 ] = "evidence-review/matter-source-binding"
