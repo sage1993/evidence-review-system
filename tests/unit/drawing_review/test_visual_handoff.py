@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -42,6 +43,98 @@ def _plan() -> QuestionPlan:
             ),
         ),
     )
+
+
+def _raster_source(tmp_path: Path, image_format: str, suffix: str) -> Path:
+    source = tmp_path / f"drawing{suffix}"
+    Image.new("RGB", (41, 29), "white").save(source, format=image_format)
+    return source
+
+
+@pytest.mark.parametrize(
+    ("image_format", "suffix", "mime"),
+    [
+        ("PNG", ".png", "image/png"),
+        ("JPEG", ".jpg", "image/jpeg"),
+        ("TIFF", ".tiff", "image/tiff"),
+    ],
+)
+def test_visual_handoff_canonicalizes_valid_raster_sources(
+    tmp_path: Path,
+    image_format: str,
+    suffix: str,
+    mime: str,
+) -> None:
+    source = _raster_source(tmp_path, image_format, suffix)
+    workspace = tmp_path / "workspace"
+
+    attachments = prepare_case_visual_sources(workspace, case_drawings=[source])
+    handoff = prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    assert len(attachments) == 1
+    attachment = attachments[0]
+    assert attachment.mime == mime
+    assert attachment.sha256 == hashlib.sha256(source.read_bytes()).hexdigest()
+    stored_source = next(
+        workspace.glob(f"cases/*/sources/drawings/{Path(attachment.stored_path).name}")
+    )
+    assert hashlib.sha256(stored_source.read_bytes()).hexdigest() == attachment.sha256
+
+    assert len(handoff.pages) == 1
+    page = handoff.pages[0]
+    assert (page.width, page.height) == (41.0, 29.0)
+    assert page.source_sha256 == attachment.sha256
+    assert page.image_path.suffix == ".png"
+    assert Image.open(page.image_path).format == "PNG"
+    assert page.image_sha256 == hashlib.sha256(page.image_path.read_bytes()).hexdigest()
+
+    bundle = json.loads(handoff.bundle_path.read_text(encoding="utf-8"))
+    assert bundle["attachments"] == [
+        {
+            "attachment_id": attachment.attachment_id,
+            "original_name": source.name,
+            "stored_path": attachment.stored_path,
+            "sha256": attachment.sha256,
+            "byte_size": source.stat().st_size,
+            "mime": mime,
+            "role": "CASE_DRAWING",
+        }
+    ]
+    assert bundle["pages"] == [
+        {
+            "attachment_id": attachment.attachment_id,
+            "source_sha256": attachment.sha256,
+            "page": 1,
+            "width": 41.0,
+            "height": 29.0,
+            "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
+            "image_sha256": page.image_sha256,
+            "asset_path": page.image_path.relative_to(workspace).as_posix(),
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("image_format", "suffix"),
+    [("PNG", ".png"), ("JPEG", ".jpg"), ("TIFF", ".tiff")],
+)
+def test_visual_handoff_rejects_malformed_raster_without_authoritative_output(
+    tmp_path: Path,
+    image_format: str,
+    suffix: str,
+) -> None:
+    source = _raster_source(tmp_path, image_format, suffix)
+    source.write_bytes(source.read_bytes()[: (4 if image_format == "TIFF" else 16)])
+    workspace = tmp_path / "workspace"
+    attachments = prepare_case_visual_sources(workspace, case_drawings=[source])
+    attachment = attachments[0]
+
+    with pytest.raises(OSError):
+        prepare_visual_analysis_handoff(workspace, _plan(), attachments)
+
+    assert not (workspace / "case-page-images" / attachment.attachment_id).exists()
+    assert not (workspace / "case-page-tiles-v1" / attachment.attachment_id).exists()
+    assert not (workspace / "visual-analysis").exists()
 
 
 def test_visual_handoff_exposes_actual_raster_page_without_reference_parser(
