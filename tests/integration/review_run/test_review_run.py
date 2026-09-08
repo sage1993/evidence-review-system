@@ -10,6 +10,8 @@ import pytest
 from evidence_review import cli
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.evidence.finalization import finalize_evidence_database
+from evidence_review.evidence.snapshot import compute_snapshot_hash
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.review_run import (
     TrackBContractError,
@@ -144,6 +146,20 @@ def _workspace(path: Path) -> Path:
         )
         connection.execute(
             """
+            INSERT INTO elements(
+                id, page_id, element_type, raw_json, raw_text,
+                normalized_text, raw_payload_hash, bbox_json, parser_order
+            ) VALUES('E1', 'REV1-P1', 'paragraph', ?,
+                     '접면 비율은 9.375%이다.', '접면 비율은 9.375%이다.', ?, ?, 0)
+            """,
+            (
+                json.dumps({"text": "접면 비율은 9.375%이다."}),
+                "a" * 64,
+                "[0,0,10,10]",
+            ),
+        )
+        connection.execute(
+            """
             INSERT INTO retrieval_records(
                 evidence_id, evidence_type, document_id, revision_id, page_id,
                 page_number, bbox_json, source_hash, title, raw_text,
@@ -165,6 +181,13 @@ def _workspace(path: Path) -> Path:
             ),
         )
         connection.commit()
+        initial_snapshot_hash = compute_snapshot_hash(store)
+        connection.execute(
+            "INSERT INTO snapshot_meta(key, value) VALUES('snapshot_hash', ?)",
+            (initial_snapshot_hash,),
+        )
+        connection.commit()
+        finalize_evidence_database(store)
     _write_page_assets(path)
     return path
 
