@@ -86,6 +86,21 @@ def test_view_model_projects_real_v1_and_v2_packets_with_verified_evidence(
         assert model["rule_evaluations"] == []
 
 
+def test_view_model_reader_preserves_evidence_database_bytes(tmp_path: Path) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    _evidence_db(evidence_db)
+    packet_bytes, packet = _packet("review-packet-v1-ready.json")
+
+    before = hashlib.sha256(evidence_db.read_bytes()).hexdigest()
+    build_review_view_model(packet, evidence_db)
+    after = hashlib.sha256(evidence_db.read_bytes()).hexdigest()
+
+    assert after == before
+    assert not evidence_db.with_name("evidence.sqlite-wal").exists()
+    assert not evidence_db.with_name("evidence.sqlite-shm").exists()
+    assert not evidence_db.with_name("evidence.sqlite-journal").exists()
+
+
 def test_view_model_rejects_non_null_machine_decision(tmp_path: Path) -> None:
     evidence_db = tmp_path / "evidence.sqlite"
     _evidence_db(evidence_db)

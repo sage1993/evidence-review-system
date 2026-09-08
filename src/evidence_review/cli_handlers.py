@@ -424,7 +424,7 @@ def _query_run(
             db_path,
             field="evidence database",
         )
-        with EvidenceStore(trusted_db_path) as store:
+        with EvidenceStore(trusted_db_path, read_only=True) as store:
             bundle = build_evidence_bundle(store.require_connection(), payload)
     except (
         FileNotFoundError,

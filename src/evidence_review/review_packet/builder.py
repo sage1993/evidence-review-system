@@ -380,7 +380,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
     require_packet_quote = _requires_packet_quote(document)
     claims: list[dict[str, object]] = []
     resolved_citations: dict[str, dict[str, object]] = {}
-    with EvidenceStore(evidence_db) as store:
+    with EvidenceStore(evidence_db, read_only=True) as store:
         connection = store.require_connection()
         _verify_v2_snapshot_provenance(document, connection)
         for index, item in enumerate(_sequence(document.get("claims", []), "claims")):
