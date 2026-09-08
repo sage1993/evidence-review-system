@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from evidence_review.canonical_json import dump_bytes
-from evidence_review.evidence.snapshot import evidence_snapshot_provenance
-from evidence_review.evidence.store import EvidenceStore
+from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
@@ -76,8 +75,7 @@ def _binding_for_workspace(workspace: Path) -> ActiveWorkspaceBinding:
             ("evidence", "evidence.sqlite"),
             field="evidence database",
         )
-        with EvidenceStore(database) as store:
-            provenance = evidence_snapshot_provenance(store.require_connection())
+        provenance = finalized_evidence_provenance(database)
     except (FileNotFoundError, sqlite3.Error, RuntimeError, ValueError) as error:
         raise ValueError(f"ACTIVE_WORKSPACE_INVALID: {error}") from error
 
