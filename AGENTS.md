@@ -191,19 +191,66 @@ Shared visual styles do not authorize shared mutation semantics.
 
 Current executable commands must always match the checked-out HEAD and documentation.
 
-Target Matter commands, once merged, are expected to follow this shape:
+### 12.1 Current executable workflow
 
-```text
-evidence-review review-matter create
-evidence-review review-matter status
-evidence-review review-matter add-issue
-evidence-review review-matter bind-evidence
-evidence-review review-matter search
-evidence-review review-matter select-evidence
-evidence-review review-matter formalize
+At this exact HEAD, the current executable workflow is:
+
+```powershell
+evidence-review source-batch prepare `
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json
+
+evidence-review source-batch ingest `
+  --root <workspace> `
+  --manifest <workspace>\manifests\source-batch.json `
+  --output <workspace>\evidence\evidence.sqlite
+
+evidence-review workspace bind `
+  --repository-root . `
+  --workspace <workspace>
+
+evidence-review workspace active `
+  --repository-root .
+
+evidence-review review-question prepare-plan `
+  --workspace <workspace> `
+  --question "<question>"
+
+evidence-review review-question prepare `
+  --workspace <workspace> `
+  --question "<question>" `
+  --question-plan-output <question-plan-output.json>
+
+evidence-review review-question submit-track-a `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --track-a-output <track-a-output.json>
+
+evidence-review review-question submit-track-b `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --track-b-output <track-b-output.json>
+
+evidence-review review-run serve `
+  --workspace <workspace> `
+  --run-id <RUN-ID>
 ```
 
-Do not claim these commands exist before their migration issue is merged and verified.
+Question Planner handoff remains mandatory before formal retrieval on this HEAD. `QuestionPlan` is evidence-free and conclusion-free. A missing or invalid plan is `PLANNER_FAILED`; a validated plan with no evidence is `RETRIEVAL_NO_EVIDENCE`. Do not bypass the planner by hand-authoring internal artifacts.
+
+### 12.2 Migration target vocabulary
+
+The target Matter interface is planned and is **not yet executable** at this HEAD. Its vocabulary is intentionally written as interface notation rather than copy-paste shell commands:
+
+- `review-matter / create`
+- `review-matter / status`
+- `review-matter / add-issue`
+- `review-matter / bind-evidence`
+- `review-matter / search`
+- `review-matter / select-evidence`
+- `review-matter / formalize`
+
+Do not claim these target interfaces exist before their migration issue is merged and verified.
 
 Existing `review-question` / `review-run` commands remain compatibility and direct-formal interfaces unless a later accepted migration explicitly deprecates them.
 
