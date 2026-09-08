@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from evidence_review.contracts.source_batch import decode_source_batch
+from evidence_review.evidence.snapshot import compute_snapshot_hash
+from evidence_review.evidence.store import EvidenceStore
 from evidence_review.parsing.source_batch_importer import (
     PendingParserOutputError,
     _publish_create_only,
@@ -240,7 +242,20 @@ def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
     _write_parser(parser, source.name)
     parser_payload = json.loads(parser.read_text(encoding="utf-8"))
     parser_payload["title"] = "사용자 제공 기준"
-    parser_payload["kids"][0]["content"] = "임의 문서의 검토 기준 내용"
+    parser_payload["kids"] = [
+        {
+            "type": "paragraph",
+            "page number": 1,
+            "bounding box": [10, 20, 500, 40],
+            "content": "제1조(설치기준)",
+        },
+        {
+            "type": "paragraph",
+            "page number": 1,
+            "bounding box": [10, 50, 500, 70],
+            "content": "① 임의 문서의 검토 기준을 적용하여야 한다.",
+        },
+    ]
     parser.write_text(
         json.dumps(parser_payload, ensure_ascii=False),
         encoding="utf-8",
@@ -259,7 +274,8 @@ def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
     )
 
     assert report.counts["documents"] == 1
-    assert report.counts["elements"] == 1
+    assert report.counts["elements"] == 2
+    assert report.counts["clauses"] > 0
     assert output.is_file()
     image = tmp_path / "page-images" / report.sources[0].revision_id / "page-0001.png"
     metadata = image.with_suffix(".json")
@@ -271,11 +287,33 @@ def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
     with sqlite3.connect(output) as connection:
         title = connection.execute("SELECT title FROM documents").fetchone()
         indexed = connection.execute("SELECT COUNT(*) FROM retrieval_records").fetchone()
+        clauses = connection.execute("SELECT COUNT(*) FROM clauses").fetchone()
+        links = connection.execute("SELECT COUNT(*) FROM links").fetchone()
+        lifecycle = connection.execute(
+            "SELECT value FROM snapshot_meta WHERE key = 'lifecycle_state'"
+        ).fetchone()
+        finalization_version = connection.execute(
+            "SELECT value FROM snapshot_meta WHERE key = 'finalization_version'"
+        ).fetchone()
+        stored_snapshot_hash = connection.execute(
+            "SELECT value FROM snapshot_meta WHERE key = 'snapshot_hash'"
+        ).fetchone()
+        retrieval_snapshot_hash = connection.execute(
+            "SELECT value FROM retrieval_meta WHERE key = 'snapshot_hash'"
+        ).fetchone()
         page_geometry = connection.execute(
             "SELECT width, height FROM pages WHERE page_number = 1"
         ).fetchone()
     assert title == ("사용자 제공 기준",)
-    assert indexed == (1,)
+    assert indexed == (2,)
+    assert clauses[0] == report.counts["clauses"]
+    assert links[0] == report.counts["links"]
+    assert lifecycle == ("FINALIZED",)
+    assert finalization_version == ("1",)
+    assert stored_snapshot_hash == (report.snapshot_hash,)
+    assert retrieval_snapshot_hash == (report.snapshot_hash,)
+    with EvidenceStore(output) as store:
+        assert compute_snapshot_hash(store) == report.snapshot_hash
     assert page_geometry == (1000.0, 700.0)
 
 

@@ -9,6 +9,7 @@ import pytest
 
 import evidence_review.parsing.source_batch_importer as source_batch_importer
 from evidence_review.contracts.source_batch import decode_source_batch
+from evidence_review.evidence.store import EvidenceStore
 from tests.helpers.pdf_fixtures import write_pdf_fixture
 
 
@@ -60,19 +61,23 @@ def _temporary_artifacts(output: Path) -> tuple[Path, ...]:
     return tuple(output.parent.glob(f".{output.name}.tmp-*"))
 
 
-def test_fts_failure_does_not_publish_output_database(
+def test_finalization_failure_does_not_publish_output_database(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     batch = _ready_batch(tmp_path)
     output = tmp_path / "evidence.sqlite"
 
-    def fail_fts_index(*_args: object, **_kwargs: object) -> str:
-        raise RuntimeError("forced FTS failure")
+    def fail_finalization(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("forced finalization failure")
 
-    monkeypatch.setattr(source_batch_importer, "build_fts_index", fail_fts_index)
+    monkeypatch.setattr(
+        source_batch_importer,
+        "finalize_evidence_database",
+        fail_finalization,
+    )
 
-    with pytest.raises(RuntimeError, match="forced FTS failure"):
+    with pytest.raises(RuntimeError, match="forced finalization failure"):
         source_batch_importer.import_source_batch(tmp_path, batch, output)
 
     assert not output.exists()
@@ -81,18 +86,20 @@ def test_fts_failure_does_not_publish_output_database(
     assert tuple((tmp_path / "page-images").rglob("*.json"))
 
 
-def test_snapshot_hash_failure_cleans_temporary_database(
+def test_finalization_hash_failure_cleans_temporary_database(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     batch = _ready_batch(tmp_path)
     output = tmp_path / "evidence.sqlite"
 
+    import evidence_review.evidence.finalization as finalization
+
     def fail_snapshot_hash(*_args: object, **_kwargs: object) -> str:
         raise RuntimeError("forced snapshot hash failure")
 
     monkeypatch.setattr(
-        source_batch_importer,
+        finalization,
         "compute_snapshot_hash",
         fail_snapshot_hash,
     )
@@ -124,16 +131,16 @@ def test_output_created_during_import_is_preserved(
     batch = _ready_batch(tmp_path)
     output = tmp_path / "evidence.sqlite"
     sentinel = b"competing output must survive"
-    original_require_fresh_index = source_batch_importer.require_fresh_index
+    original_finalize = source_batch_importer.finalize_evidence_database
 
-    def create_competing_output(connection: sqlite3.Connection) -> str:
-        snapshot_hash = original_require_fresh_index(connection)
+    def create_competing_output(store: EvidenceStore) -> object:
+        finalized = original_finalize(store)
         output.write_bytes(sentinel)
-        return snapshot_hash
+        return finalized
 
     monkeypatch.setattr(
         source_batch_importer,
-        "require_fresh_index",
+        "finalize_evidence_database",
         create_competing_output,
     )
 
@@ -221,13 +228,17 @@ def test_failed_import_can_be_retried_immediately(
 ) -> None:
     batch = _ready_batch(tmp_path)
     output = tmp_path / "evidence.sqlite"
-    original_build_fts_index = source_batch_importer.build_fts_index
+    original_finalize = source_batch_importer.finalize_evidence_database
 
-    def fail_fts_index(*_args: object, **_kwargs: object) -> str:
-        raise RuntimeError("forced FTS failure")
+    def fail_finalization(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("forced finalization failure")
 
-    monkeypatch.setattr(source_batch_importer, "build_fts_index", fail_fts_index)
-    with pytest.raises(RuntimeError, match="forced FTS failure"):
+    monkeypatch.setattr(
+        source_batch_importer,
+        "finalize_evidence_database",
+        fail_finalization,
+    )
+    with pytest.raises(RuntimeError, match="forced finalization failure"):
         source_batch_importer.import_source_batch(tmp_path, batch, output)
 
     assert not output.exists()
@@ -235,8 +246,8 @@ def test_failed_import_can_be_retried_immediately(
 
     monkeypatch.setattr(
         source_batch_importer,
-        "build_fts_index",
-        original_build_fts_index,
+        "finalize_evidence_database",
+        original_finalize,
     )
     report = source_batch_importer.import_source_batch(tmp_path, batch, output)
 

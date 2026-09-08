@@ -12,8 +12,9 @@ from typing import Any
 from evidence_review.contracts.attachments import AttachmentRole
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.source_batch import ParserKind, SourceBatch, SourceItem
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
-from evidence_review.evidence.snapshot import compute_snapshot_hash, snapshot_counts
+from evidence_review.evidence.snapshot import snapshot_counts
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.parsing.page_image_cache import (
     PageImageSource,
@@ -30,7 +31,6 @@ from evidence_review.parsing.source_states import (
     SourceState,
     evaluate_source_readiness,
 )
-from evidence_review.retrieval.index import build_fts_index, require_fresh_index
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _PARSER_SOURCE_SHA256_OPTION = "source_sha256"
@@ -417,15 +417,7 @@ def import_source_batch(
         temporary_db = Path(temporary_directory) / output.name
         with EvidenceStore(temporary_db, create=True) as store:
             ingest_snapshot(store, snapshot)
-            snapshot_hash = compute_snapshot_hash(store)
-            connection = store.require_connection()
-            connection.execute(
-                "INSERT INTO snapshot_meta(key, value) VALUES('database_snapshot_hash', ?)",
-                (snapshot_hash,),
-            )
-            connection.commit()
-            build_fts_index(connection)
-            require_fresh_index(connection)
+            finalized = finalize_evidence_database(store)
             counts = snapshot_counts(store)
         if output.exists():
             raise FileExistsError(output)
@@ -445,7 +437,7 @@ def import_source_batch(
     )
     return SourceBatchImportReport(
         output_db=output,
-        snapshot_hash=snapshot_hash,
+        snapshot_hash=finalized.snapshot_hash,
         counts=counts,
         sources=completed,
     )
