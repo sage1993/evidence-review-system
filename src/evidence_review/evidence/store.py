@@ -61,11 +61,15 @@ class EvidenceStore:
         path: Path,
         *,
         create: bool = False,
+        read_only: bool = False,
         schema_resource: str = "schema.sql",
         require_current: bool = True,
     ) -> None:
+        if create and read_only:
+            raise ValueError("create and read_only cannot both be true")
         self.path = path
         self.create = create
+        self.read_only = read_only
         self.schema_resource = schema_resource
         self.require_current = require_current
         self.connection: sqlite3.Connection | None = None
@@ -107,9 +111,12 @@ class EvidenceStore:
     def _open_existing_database(self) -> sqlite3.Connection:
         if not self.path.is_file():
             raise FileNotFoundError(self.path)
-        uri = f"{self.path.resolve().as_uri()}?mode=rw"
+        mode = "ro" if self.read_only else "rw"
+        uri = f"{self.path.resolve().as_uri()}?mode={mode}"
         connection = self._configured_connection(uri, uri=True)
         try:
+            if self.read_only:
+                connection.execute("PRAGMA query_only = ON")
             if self.require_current:
                 require_current_schema(connection)
             else:
