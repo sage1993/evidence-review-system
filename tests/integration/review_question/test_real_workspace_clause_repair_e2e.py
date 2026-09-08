@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from evidence_review.abstention.finalizer import finalize_run
 from evidence_review.canonical_json import dump_bytes
@@ -277,7 +280,45 @@ def _write_manifest_outputs(
     )
 
 
-def test_element_only_real_workspace_reaches_finalizer_with_all_issue_lineage(
+def _finalize_evidence_database(store: EvidenceStore) -> None:
+    try:
+        finalization = importlib.import_module("evidence_review.evidence.finalization")
+    except ModuleNotFoundError as error:
+        pytest.fail(f"evidence finalization API is missing: {error}")
+    finalize = getattr(finalization, "finalize_evidence_database", None)
+    if finalize is None:
+        pytest.fail("evidence finalization API is missing: finalize_evidence_database")
+    finalize(store)
+
+
+def test_element_only_legacy_workspace_fails_closed_without_mutation(
+    tmp_path: Path,
+) -> None:
+    plan_payload = _load_plan_payload()
+    question = plan_payload["original_question"]
+    assert isinstance(question, str)
+    plan = decode_question_plan(plan_payload, question)
+
+    workspace = tmp_path / "workspace"
+    evidence_directory = workspace / "evidence"
+    evidence_directory.mkdir(parents=True)
+    database = evidence_directory / "evidence.sqlite"
+    with EvidenceStore(database, create=True) as store:
+        ingest_snapshot(store, _snapshot())
+        connection = store.require_connection()
+        build_fts_index(connection)
+        assert connection.execute("SELECT COUNT(*) FROM clauses").fetchone() == (0,)
+
+    before = hashlib.sha256(database.read_bytes()).hexdigest()
+
+    with pytest.raises(RuntimeError, match="EVIDENCE_DATABASE_NOT_FINALIZED"):
+        prepare_planned_review_question(workspace, plan)
+
+    after = hashlib.sha256(database.read_bytes()).hexdigest()
+    assert after == before
+
+
+def test_finalized_real_workspace_reaches_finalizer_with_all_issue_lineage(
     tmp_path: Path,
 ) -> None:
     plan_payload = _load_plan_payload()
@@ -290,18 +331,25 @@ def test_element_only_real_workspace_reaches_finalizer_with_all_issue_lineage(
     evidence_directory.mkdir(parents=True)
     with EvidenceStore(evidence_directory / "evidence.sqlite", create=True) as store:
         ingest_snapshot(store, _snapshot())
-        connection = store.require_connection()
-        build_fts_index(connection)
-        assert connection.execute("SELECT COUNT(*) FROM clauses").fetchone() == (0,)
-
-    prepared = prepare_planned_review_question(workspace, plan)
-    assert prepared.status == "WAITING_TRACK_A"
-    run_directory = workspace / "runs" / prepared.run_id
+        _finalize_evidence_database(store)
 
     with EvidenceStore(evidence_directory / "evidence.sqlite") as store:
         connection = store.require_connection()
         assert connection.execute("SELECT COUNT(*) FROM clauses").fetchone()[0] >= 8
         assert connection.execute("SELECT COUNT(*) FROM clause_fts").fetchone()[0] >= 8
+
+    before = hashlib.sha256(
+        (evidence_directory / "evidence.sqlite").read_bytes()
+    ).hexdigest()
+
+    prepared = prepare_planned_review_question(workspace, plan)
+    assert prepared.status == "WAITING_TRACK_A"
+    run_directory = workspace / "runs" / prepared.run_id
+
+    after = hashlib.sha256(
+        (evidence_directory / "evidence.sqlite").read_bytes()
+    ).hexdigest()
+    assert after == before
 
     retrieval_trace = json.loads(
         (run_directory / "retrieval-trace.json").read_text(encoding="utf-8")
