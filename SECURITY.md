@@ -33,7 +33,7 @@ The project intentionally distinguishes several boundaries:
 
 - **Application offline guard:** project/runtime code blocks non-loopback networking but this is not a complete OS sandbox.
 - **OS isolation:** firewall, network namespace, VM, or equivalent deployment controls are separate assurances.
-- **Source/evidence integrity:** source hashes and immutable parser/evidence artifacts are authoritative.
+- **Source/evidence integrity:** source hashes and immutable parser/evidence artifacts are authoritative. Evidence databases are finalized before publication; active binding records both the logical snapshot identity and the exact SHA-256 of the closed database bytes, and post-bind review access is read-only and fail-closed.
 - **Protected review server:** loopback-only, tokenized, origin/host checked, and bounded request handling.
 - **Human decision:** append-only record bound to the current immutable packet hash; it does not mutate machine output.
 - **Release validation:** archive membership, safe paths, size, hashes, and database integrity must fail closed.

@@ -19,6 +19,13 @@ applicable manual gates:
 - relevant artifact SHA-256 values, platform, Python version, command, and exit
   code.
 
+For changes that publish or read evidence databases, the acceptance record must
+also show the finalized lifecycle (`FINALIZED`, finalization version, logical
+snapshot/retrieval hash match, and SQLite integrity), the SHA-256 of the closed
+published `evidence.sqlite`, and that this exact file hash is unchanged through
+the bound review lifecycle. A logical snapshot hash may match across separate
+rebuilds without requiring byte-identical SQLite files.
+
 The acceptance record must state `ACTIONS_NOT_RUN` when Actions was deliberately
 excluded, or `ACTIONS_BILLING_BLOCKED` when the service was unavailable because
 of account billing or spending limits. Neither status is a GitHub Actions PASS.
