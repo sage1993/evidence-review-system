@@ -4,10 +4,10 @@ import hashlib
 import json
 from pathlib import Path
 
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.observability.run_metrics import load_run_metrics
-from evidence_review.retrieval.index import build_fts_index
 from evidence_review.review_question import (
     prepare_review_question,
     submit_question_track_a,
@@ -57,7 +57,7 @@ def _workspace(path: Path) -> Path:
                 ),
             ),
         )
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
     return path
 
 

@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 
 from evidence_review.canonical_json import dump_bytes
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
-from evidence_review.retrieval.index import build_fts_index
 
 
 def _snapshot_provenance_api() -> Any:
@@ -75,7 +75,7 @@ def _workspace(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 ),
             ),
         )
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
         provenance = evidence_snapshot_provenance(store.require_connection())
     return workspace, provenance
 

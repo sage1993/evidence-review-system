@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from evidence_review.contracts.question_plan import decode_question_plan, question_plan_document
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
-from evidence_review.retrieval.index import build_fts_index
 
 _FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "question_planner"
 _CORPUS_PATH = _FIXTURE_ROOT / "issue_112_corpus.json"
@@ -119,7 +119,7 @@ def _workspace(path: Path) -> Path:
     evidence_directory.mkdir(parents=True)
     with EvidenceStore(evidence_directory / "evidence.sqlite", create=True) as store:
         ingest_snapshot(store, _synthetic_snapshot())
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
     return path
 
 

@@ -5,10 +5,10 @@ import json
 from pathlib import Path
 
 from evidence_review.contracts.question_plan import QuestionPlan, decode_question_plan
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
-from evidence_review.retrieval.index import build_fts_index
 from evidence_review.review_question import (
     submit_question_track_a,
     submit_question_track_b,
@@ -57,7 +57,7 @@ def _workspace(path: Path) -> Path:
                 ),
             ),
         )
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
     return path
 
 
