@@ -62,6 +62,24 @@ evidence-review source-batch ingest `
   --output <workspace>\evidence\evidence.sqlite
 ```
 
+Ingest owns corpus finalization. Before the writer closes and the database is
+published, the runtime materializes clauses, structural links, legal-reference
+links, and the final retrieval projection, then verifies the final logical
+snapshot hash and SQLite integrity:
+
+```text
+source-batch ingest
+→ deterministic finalization
+→ final logical hash/index verification
+→ writer close
+→ create-only publish
+→ exact closed-file SHA-256
+```
+
+Do not run or document a review-time clause/index repair step. A legacy or
+unfinalized workspace must be re-prepared through `$ERS_PDF`; `$ERS_REVIEW`
+must fail closed without changing its database.
+
 9. final Review Workspace의 normative citation viewer가 같은 PDF page를 다시 렌더하지 않도록 각 revision의 verified page-image cache를 한 번 준비한다.
 
 ```text
@@ -76,6 +94,9 @@ page metadata는 source hash, page number, PDF geometry, image SHA-256을 검증
 
 - parser-ready reference evidence ingest 성공
 - `<workspace>/evidence/evidence.sqlite` 존재
+- evidence database가 `lifecycle_state=FINALIZED`, `finalization_version=1`이며
+  logical snapshot hash와 retrieval index hash가 일치
+- finalization 후 writer가 닫힌 뒤 계산한 `evidence.sqlite` 파일 SHA-256 기록
 - 필요한 revision page-image cache 검증 가능
 - source state가 `READY_TO_EVALUATE`
 
@@ -89,7 +110,7 @@ evidence-review workspace bind `
   --workspace <workspace>
 ```
 
-binding은 저장소 로컬 제어 상태 `.ers/active-workspace.json`에 exact absolute workspace path와 현재 evidence snapshot identity를 기록한다. 원본 PDF, parser artifact, evidence DB 자체를 변경하지 않는다. 새로 준비 완료된 workspace를 bind하면 이 로컬 pointer만 교체되고 기존 workspace 산출물은 보존된다.
+binding은 저장소 로컬 제어 상태 `.ers/active-workspace.json`에 exact absolute workspace path, logical evidence snapshot identity, 그리고 닫힌 finalized `evidence.sqlite`의 exact file SHA-256을 기록한다. logical snapshot hash는 canonical evidence rows의 identity이고 file SHA-256은 bind된 물리 artifact의 identity다. 같은 logical hash를 가진 별도 rebuild가 같은 SQLite bytes를 보장하지는 않지만, 한 번 bind된 artifact의 file SHA-256은 review lifecycle 전체에서 변하지 않아야 한다. 원본 PDF, parser artifact, evidence DB 자체를 변경하지 않는다. 새로 준비 완료된 workspace를 bind하면 이 로컬 pointer만 교체되고 기존 workspace 산출물은 보존된다.
 
 `workspace bind`가 실패하면 `$ERS_REVIEW` handoff 준비가 완료되었다고 보고하지 않는다. 준비가 완료되지 않은 workspace를 active workspace로 bind하지 않는다.
 

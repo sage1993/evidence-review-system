@@ -4,13 +4,19 @@ from pathlib import Path
 
 import pytest
 
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.evidence.finalization import (
+    EvidenceDatabaseNotFinalized,
+    finalize_evidence_database,
+)
+from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.review_packet.builder import build_review_view_model
 
 FIXTURES = Path(__file__).parents[2] / "golden" / "contracts"
 
 
-def _evidence_db(path: Path) -> None:
+def _evidence_db(path: Path, *, finalize: bool = True) -> None:
     with EvidenceStore(path, create=True) as store:
         connection = store.require_connection()
         connection.execute("INSERT INTO documents(id, title) VALUES('DOC1', 'Document')")
@@ -26,6 +32,20 @@ def _evidence_db(path: Path) -> None:
             INSERT INTO pages(id, revision_id, page_number, width, height)
             VALUES('REV1-P3', 'REV1', 3, 120, 200)
             """
+        )
+        connection.execute(
+            """
+            INSERT INTO elements(
+                id, page_id, element_type, raw_json, raw_text,
+                normalized_text, raw_payload_hash, bbox_json, parser_order
+            ) VALUES('E1', 'REV1-P3', 'paragraph', ?,
+                     'Verified fixture quote', 'Verified fixture quote', ?, ?, 0)
+            """,
+            (
+                json.dumps({"text": "Verified fixture quote"}),
+                "a" * 64,
+                json.dumps([10, 20, 110, 40]),
+            ),
         )
         connection.execute(
             """
@@ -47,6 +67,8 @@ def _evidence_db(path: Path) -> None:
             ("1" * 64,),
         )
         connection.commit()
+        if finalize:
+            finalize_evidence_database(store)
 
 
 def _packet(name: str) -> tuple[bytes, dict[str, object]]:
@@ -69,6 +91,11 @@ def test_view_model_projects_real_v1_and_v2_packets_with_verified_evidence(
     evidence_db = tmp_path / "evidence.sqlite"
     _evidence_db(evidence_db)
     packet_bytes, packet = _packet(fixture_name)
+    if fixture_name.startswith("review-packet-v2"):
+        packet["snapshot_sha256"] = finalized_evidence_provenance(evidence_db)[
+            "evidence_snapshot_hash"
+        ]
+        packet_bytes = dump_bytes(packet)
 
     model = build_review_view_model(packet, evidence_db)
 
@@ -86,6 +113,32 @@ def test_view_model_projects_real_v1_and_v2_packets_with_verified_evidence(
         assert model["rule_evaluations"] == []
 
 
+def test_view_model_rejects_unfinalized_evidence_before_projection(
+    tmp_path: Path,
+) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    _evidence_db(evidence_db, finalize=False)
+    _, packet = _packet("review-packet-v1-ready.json")
+
+    with pytest.raises(EvidenceDatabaseNotFinalized, match="FINALIZED"):
+        build_review_view_model(packet, evidence_db)
+
+
+def test_view_model_reader_preserves_evidence_database_bytes(tmp_path: Path) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    _evidence_db(evidence_db)
+    packet_bytes, packet = _packet("review-packet-v1-ready.json")
+
+    before = hashlib.sha256(evidence_db.read_bytes()).hexdigest()
+    build_review_view_model(packet, evidence_db)
+    after = hashlib.sha256(evidence_db.read_bytes()).hexdigest()
+
+    assert after == before
+    assert not evidence_db.with_name("evidence.sqlite-wal").exists()
+    assert not evidence_db.with_name("evidence.sqlite-shm").exists()
+    assert not evidence_db.with_name("evidence.sqlite-journal").exists()
+
+
 def test_view_model_rejects_non_null_machine_decision(tmp_path: Path) -> None:
     evidence_db = tmp_path / "evidence.sqlite"
     _evidence_db(evidence_db)
@@ -100,6 +153,9 @@ def test_view_model_rejects_conflicting_v2_citation_identity(tmp_path: Path) -> 
     evidence_db = tmp_path / "evidence.sqlite"
     _evidence_db(evidence_db)
     _, packet = _packet("review-packet-v2-from-v1-ready.json")
+    packet["snapshot_sha256"] = finalized_evidence_provenance(evidence_db)[
+        "evidence_snapshot_hash"
+    ]
     packet["compatibility_source_version"] = None
     packet["evidence"] = [
         {
@@ -128,6 +184,9 @@ def test_v2_packet_quote_remains_display_authority_when_db_text_differs(
     evidence_db = tmp_path / "evidence.sqlite"
     _evidence_db(evidence_db)
     _, packet = _packet("review-packet-v2-from-v1-ready.json")
+    packet["snapshot_sha256"] = finalized_evidence_provenance(evidence_db)[
+        "evidence_snapshot_hash"
+    ]
     packet["compatibility_source_version"] = None
     packet["evidence"] = [
         {

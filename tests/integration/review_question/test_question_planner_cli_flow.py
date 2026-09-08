@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 
 from evidence_review import cli
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
-from evidence_review.retrieval.index import build_fts_index
 
 
 def _workspace(path: Path) -> Path:
@@ -54,7 +54,7 @@ def _workspace(path: Path) -> Path:
                 ),
             ),
         )
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
     return path
 
 

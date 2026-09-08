@@ -14,8 +14,8 @@ from evidence_review.contracts.next_action import next_action_document
 from evidence_review.contracts.question_plan import QuestionPlan, question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.drawing_review.visual_pages import VisualPageAsset
-from evidence_review.evidence.clause_rebuild import ensure_clause_index
-from evidence_review.evidence.snapshot import evidence_snapshot_provenance
+from evidence_review.evidence.finalization import validate_finalized_evidence
+from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.filesystem_trust import verified_regular_directory
 from evidence_review.issue_coverage_binding import bind_issue_coverage_to_review_request
@@ -91,11 +91,11 @@ def prepare_planned_review_question(
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 
     retrieval_timer = start_stage()
-    with EvidenceStore(_evidence_database(workspace)) as store:
+    database = _evidence_database(workspace)
+    with EvidenceStore(database, read_only=True) as store:
         connection = store.require_connection()
-        ensure_clause_index(connection)
+        validate_finalized_evidence(store)
         snapshot_hash = require_fresh_index(connection)
-        provenance = evidence_snapshot_provenance(connection)
         issue_bundle = retrieve_issue_bundle(connection, effective_plan)
         facet_report = evaluate_facet_coverage(effective_plan, issue_bundle)
         fact_rule_comparisons = evaluate_fact_rule_comparisons(
@@ -117,18 +117,19 @@ def prepare_planned_review_question(
             issue_bundle,
             snapshot_hash=snapshot_hash,
         )
-        bundle["snapshot_provenance"] = provenance
         bundle = apply_reference_lineage_to_bundle_document(bundle, issue_bundle)
         bundle = apply_search_request_origins(bundle, effective_plan)
         facet_documents = facet_coverage_document(facet_report)
-        trace_document = retrieval_trace_document(
-            effective_plan,
-            issue_bundle,
-            coverage_report,
-            snapshot_provenance=provenance,
-            facet_coverage=facet_documents,
-            comparisons=comparison_documents(fact_rule_comparisons),
-        )
+    provenance = finalized_evidence_provenance(database)
+    bundle["snapshot_provenance"] = provenance
+    trace_document = retrieval_trace_document(
+        effective_plan,
+        issue_bundle,
+        coverage_report,
+        snapshot_provenance=provenance,
+        facet_coverage=facet_documents,
+        comparisons=comparison_documents(fact_rule_comparisons),
+    )
     retrieval_metric = finish_stage("retrieval", retrieval_timer)
 
     request_timer = start_stage()

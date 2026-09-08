@@ -79,3 +79,38 @@ def test_newer_schema_version_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(UnsupportedSchemaVersion, match="99"):
         with EvidenceStore(path):
             pass
+
+
+def test_read_only_existing_database_allows_select_and_rejects_writes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "read-only.sqlite"
+    with EvidenceStore(path, create=True) as store:
+        store.require_connection().execute(
+            "INSERT INTO documents(id, title) VALUES('DOC-1', 'Document')"
+        )
+        store.require_connection().commit()
+
+    before = path.read_bytes()
+    with EvidenceStore(path, read_only=True) as store:
+        assert store.scalar("PRAGMA query_only") == 1
+        assert store.scalar("SELECT COUNT(*) FROM documents") == 1
+        with pytest.raises(sqlite3.OperationalError):
+            store.require_connection().execute(
+                "INSERT INTO documents(id, title) VALUES('DOC-2', 'Blocked')"
+            )
+    assert path.read_bytes() == before
+
+
+def test_read_only_missing_database_is_not_created(tmp_path: Path) -> None:
+    path = tmp_path / "missing-read-only.sqlite"
+    with pytest.raises(FileNotFoundError):
+        with EvidenceStore(path, read_only=True):
+            pass
+    assert not path.exists()
+
+
+def test_create_and_read_only_are_mutually_exclusive(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="read_only"):
+        with EvidenceStore(tmp_path / "invalid.sqlite", create=True, read_only=True):
+            pass

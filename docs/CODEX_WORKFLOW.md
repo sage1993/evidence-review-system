@@ -39,6 +39,28 @@ Only parser-ready reference/table sources enter the searchable evidence DB. Pars
 
 The PDF preparation flow also establishes reusable verified page image cache artifacts under `page-images/<REVISION-ID>/`. Review rendering verifies those cache artifacts instead of rasterizing the same PDF page again for every question.
 
+Source preparation owns the immutable evidence boundary. The effective order is:
+
+```text
+source-batch ingest
+→ deterministic clause/structural-link/reference-link materialization
+→ final logical snapshot hash and retrieval-index verification
+→ writer close
+→ create-only publish
+→ exact closed-file SHA-256
+→ workspace bind
+→ frozen/read-only review
+```
+
+The logical snapshot hash identifies canonical evidence rows; the exact file
+SHA-256 identifies the closed published `evidence.sqlite` artifact. Separate
+rebuilds may have the same logical hash without byte-identical SQLite files,
+but the file SHA must remain unchanged after one workspace is bound. Review
+readers fail closed on an unfinalized or stale database, reject SQLite WAL,
+SHM, and journal sidecars, and never repair it.
+Re-prepare an old workspace through `$ERS_PDF` instead of adding a review-time
+repair step.
+
 ## 2. One formal review for every question
 
 The current user-facing workflow is `review-question`. Do not use a separate quick retrieval mode and do not ask the user to hand-author intermediate JSON.

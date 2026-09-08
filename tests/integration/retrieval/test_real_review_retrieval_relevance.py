@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from evidence_review.contracts.question_plan import decode_question_plan
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
-from evidence_review.retrieval.index import build_fts_index
 
 _FIXTURE_DIR = (
     Path(__file__).parents[2] / "fixtures" / "real_review_retrieval_relevance"
@@ -128,7 +128,7 @@ def test_real_review_planned_retrieval_covers_all_required_issues(
     evidence_directory.mkdir(parents=True)
     with EvidenceStore(evidence_directory / "evidence.sqlite", create=True) as store:
         ingest_snapshot(store, _snapshot(evidence_fixture))
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
 
     prepared = prepare_planned_review_question(workspace, plan)
     assert prepared.status == "WAITING_TRACK_A"

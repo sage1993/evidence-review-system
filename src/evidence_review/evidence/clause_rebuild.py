@@ -129,21 +129,34 @@ def _insert_derived_clauses(
     return connection.total_changes - before
 
 
+def materialize_clause_structure(connection: sqlite3.Connection) -> bool:
+    """Materialize missing clauses and structural links during database build.
+
+    This primitive intentionally does not build retrieval projections or legal
+    reference links. Those operations belong to the explicit BUILDING-only
+    finalization sequence after clause structure is available.
+    """
+    if _count(connection, "elements") == 0:
+        return False
+    uncovered_revisions = _uncovered_revisions(connection)
+    return _insert_derived_clauses(connection, uncovered_revisions) > 0
+
+
 def ensure_clause_index(connection: sqlite3.Connection) -> bool:
-    """Backfill missing clause/index/reference artifacts without touching parser truth.
+    """Compatibility backfill for mutable build/migration databases only.
 
     Clause derivation is revision-scoped: revisions that already contain explicit
     clauses are left alone, while element-only revisions are materialized. The
     semantic clause index and explicit cross-reference links are then rebuilt only
     when their derived state is missing or incomplete.
     """
-    if _count(connection, "elements") == 0:
-        require_fresh_index(connection)
-        return False
+    lifecycle = connection.execute(
+        "SELECT value FROM snapshot_meta WHERE key = 'lifecycle_state'"
+    ).fetchone()
+    if lifecycle is not None and lifecycle[0] == "FINALIZED":
+        raise RuntimeError("EVIDENCE_DATABASE_FINALIZED")
 
-    uncovered_revisions = _uncovered_revisions(connection)
-    inserted = _insert_derived_clauses(connection, uncovered_revisions)
-    changed = inserted > 0
+    changed = materialize_clause_structure(connection)
 
     indexable_count = _indexable_clause_count(connection)
     indexed_count = _count(connection, "clause_retrieval_records")

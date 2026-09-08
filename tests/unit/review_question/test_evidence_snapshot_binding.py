@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 
 from evidence_review.canonical_json import dump_bytes
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
-from evidence_review.retrieval.index import build_fts_index
 
 
 def _snapshot_provenance_api() -> Any:
@@ -75,12 +75,16 @@ def _workspace(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 ),
             ),
         )
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
         provenance = evidence_snapshot_provenance(store.require_connection())
     return workspace, provenance
 
 
-def _write_run_request(run_directory: Path, snapshot_hash: str) -> None:
+def _write_run_request(
+    run_directory: Path,
+    snapshot_hash: str,
+    provenance: dict[str, object] | None = None,
+) -> None:
     run_directory.mkdir(parents=True)
     (run_directory / "review-request.json").write_bytes(
         dump_bytes(
@@ -88,7 +92,10 @@ def _write_run_request(run_directory: Path, snapshot_hash: str) -> None:
                 "format": "evidence-review/review-run-request",
                 "version": 1,
                 "question": "snapshot binding",
-                "inputs": {"snapshot_hash": snapshot_hash},
+                "inputs": {
+                    "snapshot_hash": snapshot_hash,
+                    **({"evidence_snapshot_provenance": provenance} if provenance else {}),
+                },
                 "evidence": [],
                 "calculations": [],
                 "rules": [],
@@ -114,7 +121,11 @@ def test_run_snapshot_binding_accepts_matching_workspace_snapshot(tmp_path: Path
     _error_type, assert_run_evidence_snapshot = _run_snapshot_api()
     workspace, provenance = _workspace(tmp_path)
     run_directory = workspace / "runs" / "RUN-00000000000000000000"
-    _write_run_request(run_directory, str(provenance["evidence_snapshot_hash"]))
+    _write_run_request(
+        run_directory,
+        str(provenance["evidence_snapshot_hash"]),
+        provenance,
+    )
 
     active = assert_run_evidence_snapshot(run_directory)
 
@@ -127,9 +138,38 @@ def test_run_snapshot_binding_fails_closed_on_stale_run(tmp_path: Path) -> None:
     run_directory = workspace / "runs" / "RUN-00000000000000000000"
     stale_hash = "f" * 64
     assert stale_hash != provenance["evidence_snapshot_hash"]
-    _write_run_request(run_directory, stale_hash)
+    _write_run_request(
+        run_directory,
+        stale_hash,
+        {**provenance, "evidence_snapshot_hash": stale_hash},
+    )
 
     with pytest.raises(error_type) as raised:
         assert_run_evidence_snapshot(run_directory)
 
     assert raised.value.reason_code == "EVIDENCE_SNAPSHOT_MISMATCH"
+
+
+def test_run_snapshot_binding_rejects_same_logical_snapshot_with_new_file_bytes(
+    tmp_path: Path,
+) -> None:
+    error_type, assert_run_evidence_snapshot = _run_snapshot_api()
+    workspace, provenance = _workspace(tmp_path)
+    run_directory = workspace / "runs" / "RUN-00000000000000000000"
+    _write_run_request(
+        run_directory,
+        str(provenance["evidence_snapshot_hash"]),
+        provenance,
+    )
+
+    database = workspace / "evidence" / "evidence.sqlite"
+    with EvidenceStore(database) as store:
+        store.require_connection().execute(
+            "INSERT INTO snapshot_meta(key, value) VALUES('physical_padding', 'changed')"
+        )
+        store.require_connection().commit()
+
+    with pytest.raises(error_type) as raised:
+        assert_run_evidence_snapshot(run_directory)
+
+    assert raised.value.reason_code == "EVIDENCE_DATABASE_MISMATCH"

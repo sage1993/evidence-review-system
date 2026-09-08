@@ -8,10 +8,10 @@ from typing import Any
 from evidence_review.abstention.finalizer import finalize_run
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.question_plan import decode_question_plan
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
-from evidence_review.retrieval.index import build_fts_index
 from evidence_review.rule_engine.operators import apply_operator, decode_input
 
 _FIXTURE_DIR = (
@@ -134,7 +134,7 @@ def _prepare_workspace(
             store,
             _snapshot(evidence_fixture, omit_issue_ids=omit_issue_ids),
         )
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
 
     prepared = prepare_planned_review_question(workspace, plan)
     assert prepared.status == "WAITING_TRACK_A"

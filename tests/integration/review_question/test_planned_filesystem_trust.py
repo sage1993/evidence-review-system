@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 
 from evidence_review.contracts.question_plan import QuestionIssue, QuestionPlan, SearchRequest
+from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
-from evidence_review.retrieval.index import build_fts_index
 
 
 def _plan() -> QuestionPlan:
@@ -47,7 +47,7 @@ def _workspace(path: Path) -> Path:
     evidence_directory.mkdir(parents=True)
     with EvidenceStore(evidence_directory / "evidence.sqlite", create=True) as store:
         ingest_snapshot(store, EvidenceSnapshot())
-        build_fts_index(store.require_connection())
+        finalize_evidence_database(store)
     return path
 
 

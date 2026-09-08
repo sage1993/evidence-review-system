@@ -49,6 +49,24 @@ evidence-review source-batch ingest `
 
 Only parser-ready reference/table sources enter the searchable evidence DB. Drawing inputs that require confirmation remain outside evaluation until confirmed and hash-verified.
 
+`source-batch ingest` owns the complete corpus finalization boundary. Its temporary
+database must be finalized before the writer closes and the output is published:
+
+```text
+ingest
+→ deterministic clause/structural-link/reference-link materialization
+→ final logical snapshot hash and retrieval-index verification
+→ writer close
+→ create-only publish
+→ exact closed-file SHA-256
+```
+
+Do not add a separate review-time repair step. A published database must have
+`lifecycle_state=FINALIZED`, `finalization_version=1`, matching logical snapshot
+and retrieval hashes, and passing SQLite integrity checks. An older or
+unfinalized workspace must be prepared again through `$ERS_PDF`; `$ERS_REVIEW`
+fails closed and does not repair it.
+
 Verified page images are revision-scoped reusable cache artifacts under:
 
 ```text
@@ -58,7 +76,7 @@ Verified page images are revision-scoped reusable cache artifacts under:
 
 Review rendering verifies the cached image hash and PDF geometry. It must not re-render the same source page for every question.
 
-Only after parser-ready evidence ingest, required page-image verification, and `READY_TO_EVALUATE` are all satisfied, bind that exact workspace for the next formal review:
+Only after parser-ready evidence ingest, corpus finalization, required page-image verification, and `READY_TO_EVALUATE` are all satisfied, bind that exact workspace for the next formal review:
 
 ```powershell
 evidence-review workspace bind `
@@ -66,7 +84,7 @@ evidence-review workspace bind `
   --workspace <workspace>
 ```
 
-The binding at `.ers/active-workspace.json` is local control state. It records the exact absolute workspace path and evidence snapshot identity; it does not modify source evidence. Do not bind a `PENDING_*`, `BLOCKED`, or `FAILED` workspace.
+The binding at `.ers/active-workspace.json` is local control state. It records the exact absolute workspace path, logical evidence snapshot identity, and SHA-256 of the closed finalized `evidence.sqlite` bytes; it does not modify source evidence. The logical snapshot hash identifies canonical evidence rows, while the file SHA identifies this exact published artifact. Separate rebuilds may share a logical hash without sharing SQLite bytes, but the bound artifact SHA must remain unchanged for the complete review lifecycle. Review readers reject `-wal`, `-shm`, and `-journal` sidecars so the published database is self-contained in the exact closed file. Do not bind a `PENDING_*`, `BLOCKED`, or `FAILED` workspace.
 
 ## 4. Mandatory formal question flow
 

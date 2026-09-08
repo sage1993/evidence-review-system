@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 import evidence_review.command_dispatch as command_dispatch
+from evidence_review.evidence.finalization import finalize_evidence_database
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 
 dispatch = command_dispatch.main
@@ -17,17 +19,15 @@ def _ready_workspace(root: Path, marker: str = "a") -> Path:
     workspace = root.resolve()
     database = workspace / "evidence" / "evidence.sqlite"
     with EvidenceStore(database, create=True) as store:
-        connection = store.require_connection()
-        snapshot_hash = marker * 64
-        connection.execute(
-            "INSERT OR REPLACE INTO snapshot_meta(key, value) VALUES('snapshot_hash', ?)",
-            (snapshot_hash,),
+        ingest_snapshot(
+            store,
+            EvidenceSnapshot(
+                documents=(
+                    {"id": f"DOC-{marker}", "title": f"Workspace {marker}"},
+                ),
+            ),
         )
-        connection.execute(
-            "INSERT OR REPLACE INTO retrieval_meta(key, value) VALUES('snapshot_hash', ?)",
-            (snapshot_hash,),
-        )
-        connection.commit()
+        finalize_evidence_database(store)
     return workspace
 
 
