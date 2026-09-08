@@ -187,7 +187,7 @@ However, once one exact database artifact is bound as active, its `evidence_db_s
 
 Introduce one explicit evidence finalization boundary owned by corpus preparation.
 
-A centralized finalization operation should own the following sequence.
+A centralized finalization operation should own the following sequence. Existing `ensure_clause_index()` logic may be reused or decomposed inside this BUILDING-only boundary, but it is no longer permitted as a review-time repair operation.
 
 ### Phase 1 — parser/source ingest
 
@@ -195,22 +195,26 @@ Create the temporary database and ingest parser-produced source truth.
 
 At this point the database is still mutable and must not be bound as active.
 
-### Phase 2 — deterministic derived evidence materialization
+### Phase 2 — deterministic clause and structural-link materialization
 
-Materialize the existing deterministic derived state required by planned review, including:
+Materialize deterministic evidence-layer state that does not require the clause retrieval projection, including:
 
 - legal clauses/subclauses derived from elements;
-- source-element/structural links;
-- explicit legal reference links;
-- other existing deterministic clause/link artifacts currently produced by `ensure_clause_index()` and its helpers.
+- source-element links;
+- structural parent/sibling relationships;
+- other deterministic clause/link artifacts that can be derived directly from parser evidence.
 
 Parser elements remain source truth. Derived clauses and links remain deterministic projections with provenance.
 
-### Phase 3 — provisional retrieval materialization where required
+### Phase 3 — provisional retrieval build and reference-link materialization
 
-Some reference materialization currently depends on clause/retrieval projection tables. A provisional retrieval build is allowed while the database is still in BUILDING state.
+Some legal-reference resolution currently depends on `clause_retrieval_records` and `clause_evidence_links`. Therefore, while the database is still in BUILDING state:
 
-This provisional state has no authority outside finalization.
+1. build the provisional retrieval/clause projection needed for reference resolution;
+2. materialize explicit legal-reference links such as `rule_source`, `source_not_ingested`, and `reference_target_missing`;
+3. complete any remaining deterministic `links` mutations.
+
+This provisional retrieval state has no authority outside finalization. The resulting reference links are canonical snapshot rows and therefore must exist before the final logical snapshot hash is committed.
 
 ### Phase 4 — final logical snapshot commit
 
@@ -218,7 +222,7 @@ After all snapshot-table mutations are complete:
 
 1. compute `compute_snapshot_hash()` from the resulting logical rows;
 2. replace `snapshot_meta['snapshot_hash']` with this final logical hash;
-3. mark the database finalized with lifecycle metadata, for example:
+3. mark the database finalized with lifecycle metadata:
 
 ```text
 snapshot_meta['lifecycle_state'] = 'FINALIZED'
@@ -410,7 +414,7 @@ For a finalized workspace:
 
 - planned review prepare succeeds without calling any evidence writer;
 - a direct write attempted through a review-owned connection fails;
-- no review stage creates a WAL/journal side effect that changes the authoritative file bytes;
+- no review stage creates persistent `-wal`, `-shm`, or `-journal` side effects or changes the authoritative database file bytes;
 - absence/staleness of derived state causes fail-closed validation, not automatic repair.
 
 ### 11.3 Active binding tests
