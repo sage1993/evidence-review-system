@@ -88,7 +88,7 @@ OpenDataLoader PDF
 ```text
 pypdf>=6.17,<7
 pypdfium2>=5.12,<6
-Pillow>=12,<13
+Pillow>=12.3,<13
 ```
 
 ## 빠른 시작
