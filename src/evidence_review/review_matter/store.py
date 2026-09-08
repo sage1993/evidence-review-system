@@ -8,6 +8,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from importlib.resources import files
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from evidence_review.canonical_json import dumps
 from evidence_review.review_matter.contracts import (
@@ -17,6 +18,10 @@ from evidence_review.review_matter.contracts import (
     decode_review_matter,
     review_matter_document,
 )
+
+if TYPE_CHECKING:
+    from evidence_review.review_matter.events import MatterEvent
+    from evidence_review.review_matter.projection import MatterProjection
 
 
 class MatterStoreError(RuntimeError):
@@ -299,13 +304,13 @@ class MatterStore:
             for row in rows
         )
 
-    def list_events(self, matter_id: str):
+    def list_events(self, matter_id: str) -> tuple[MatterEvent, ...]:
         """Return the validated append-only event sequence."""
         from evidence_review.review_matter.events import list_matter_events
 
         return list_matter_events(self, matter_id)
 
-    def rebuild_projection(self, matter_id: str):
+    def rebuild_projection(self, matter_id: str) -> MatterProjection:
         """Rebuild a Matter projection from its baseline and event journal."""
         from evidence_review.review_matter.projection import rebuild_projection
 

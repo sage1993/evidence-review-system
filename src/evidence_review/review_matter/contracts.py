@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal, cast
+from typing import Final, Literal
 
 from evidence_review.contracts.common import BBox
 from evidence_review.contracts.formats import (
-    MATTER_SOURCE_BINDING_FORMAT,
-    REVIEW_MATTER_FORMAT,
+    MATTER_SOURCE_BINDING_FORMAT as _MATTER_SOURCE_BINDING_FORMAT,
 )
+from evidence_review.contracts.formats import REVIEW_MATTER_FORMAT
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.validation import (
     expect_int,
@@ -35,6 +35,9 @@ MatterIssueState = Literal[
 ]
 
 MATTER_FORMAT: Final[MatterFormat] = REVIEW_MATTER_FORMAT
+MATTER_SOURCE_BINDING_FORMAT: Final[MatterSourceBindingFormat] = (
+    _MATTER_SOURCE_BINDING_FORMAT
+)
 MATTER_VERSION: Final[Literal[1]] = 1
 MATTER_SOURCE_BINDING_VERSION: Final[Literal[1]] = 1
 
@@ -79,17 +82,21 @@ def _bbox_document(bbox: tuple[float, float, float, float]) -> list[float]:
     return list(bbox)
 
 
+def _bbox_number(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("bbox must contain four numbers")
+    return float(value)
+
+
 def _bbox_tuple(value: object) -> tuple[float, float, float, float]:
     items = expect_sequence(value, "bbox")
     if len(items) != 4:
         raise ValueError("bbox must contain four numbers")
-    if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in items):
-        raise ValueError("bbox must contain four numbers")
     bbox = BBox(
-        left=float(items[0]),
-        bottom=float(items[1]),
-        right=float(items[2]),
-        top=float(items[3]),
+        left=_bbox_number(items[0]),
+        bottom=_bbox_number(items[1]),
+        right=_bbox_number(items[2]),
+        top=_bbox_number(items[3]),
     )
     return (bbox.left, bbox.bottom, bbox.right, bbox.top)
 
@@ -146,6 +153,11 @@ class ReviewMatter:
         return MATTER_VERSION
 
 
+def decode_matter_issue_state(value: object, field: str) -> MatterIssueState:
+    """Decode one allowed mutable Matter issue state."""
+    return expect_literal(value, field, _MATTER_STATES)
+
+
 def _decode_issue(value: object, index: int) -> MatterIssue:
     field = f"issues[{index}]"
     payload = expect_mapping(value, field)
@@ -158,10 +170,7 @@ def _decode_issue(value: object, index: int) -> MatterIssue:
     return MatterIssue(
         issue_id=_identifier(payload.get("issue_id"), f"{field}.issue_id"),
         question=expect_string(payload.get("question"), f"{field}.question"),
-        work_state=cast(
-            MatterIssueState,
-            expect_literal(payload.get("work_state"), f"{field}.work_state", _MATTER_STATES),
-        ),
+        work_state=decode_matter_issue_state(payload.get("work_state"), f"{field}.work_state"),
         depends_on=_unique_identifiers(payload.get("depends_on"), f"{field}.depends_on"),
     )
 

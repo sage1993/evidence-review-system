@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.validation import (
@@ -18,8 +18,9 @@ from evidence_review.contracts.validation import (
 )
 from evidence_review.review_matter.contracts import (
     MatterIssue,
-    MatterIssueState,
+    MatterSourceBinding,
     ReviewMatter,
+    decode_matter_issue_state,
     decode_review_matter,
     review_matter_document,
 )
@@ -52,7 +53,7 @@ class MatterProjection:
         return self.matter.issues
 
     @property
-    def source_bindings(self):
+    def source_bindings(self) -> tuple[MatterSourceBinding, ...]:
         return self.matter.source_bindings
 
 
@@ -74,29 +75,29 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         payload = expect_mapping(event.payload, "ISSUE_STATE_CHANGED.payload")
         reject_unknown(payload, {"issue_id", "work_state"}, "ISSUE_STATE_CHANGED.payload")
         issue_id = expect_string(payload.get("issue_id"), "issue_id")
-        work_state = expect_string(payload.get("work_state"), "work_state")
+        work_state = decode_matter_issue_state(payload.get("work_state"), "work_state")
         changed = False
-        issues: list[MatterIssue] = []
+        updated_issues: list[MatterIssue] = []
         for issue in matter.issues:
             if issue.issue_id == issue_id:
                 changed = True
-                issues.append(
+                updated_issues.append(
                     MatterIssue(
                         issue_id=issue.issue_id,
                         question=issue.question,
-                        work_state=work_state,  # type: ignore[arg-type]
+                        work_state=work_state,
                         depends_on=issue.depends_on,
                     )
                 )
             else:
-                issues.append(issue)
+                updated_issues.append(issue)
         if not changed:
             raise ValueError("ISSUE_STATE_CHANGED references unknown issue")
         updated = ReviewMatter(
             matter_id=matter.matter_id,
             title=matter.title,
             revision=matter.revision + 1,
-            issues=tuple(issues),
+            issues=tuple(updated_issues),
             source_bindings=matter.source_bindings,
         )
         decode_review_matter(review_matter_document(updated))
@@ -161,22 +162,22 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         )
         if bound_revision != matter.revision + 1:
             raise ValueError(f"{event.kind}.payload.bound_revision mismatch")
-        issues = matter.issues
+        bound_issues: tuple[MatterIssue, ...] = matter.issues
         if event.kind == "EVIDENCE_REBOUND":
-            issues = tuple(
+            bound_issues = tuple(
                 MatterIssue(
                     issue_id=issue.issue_id,
                     question=issue.question,
-                    work_state=cast("MatterIssueState", "STALE"),
+                    work_state="STALE",
                     depends_on=issue.depends_on,
                 )
-                for issue in issues
+                for issue in bound_issues
             )
         updated = ReviewMatter(
             matter_id=matter.matter_id,
             title=matter.title,
             revision=matter.revision + 1,
-            issues=issues,
+            issues=bound_issues,
             source_bindings=matter.source_bindings,
         )
         decode_review_matter(review_matter_document(updated))
@@ -212,14 +213,11 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         expect_sha256(
             payload.get("new_source_hash"), "ISSUES_INVALIDATED.payload.new_source_hash"
         )
-        issues = tuple(
+        invalidated_issues = tuple(
             MatterIssue(
                 issue_id=issue.issue_id,
                 question=issue.question,
-                work_state=cast(
-                    "MatterIssueState",
-                    "STALE" if issue.issue_id in issue_ids else issue.work_state,
-                ),
+                work_state="STALE" if issue.issue_id in issue_ids else issue.work_state,
                 depends_on=issue.depends_on,
             )
             for issue in matter.issues
@@ -228,7 +226,7 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
             matter_id=matter.matter_id,
             title=matter.title,
             revision=matter.revision + 1,
-            issues=issues,
+            issues=invalidated_issues,
             source_bindings=matter.source_bindings,
         )
         decode_review_matter(review_matter_document(updated))
