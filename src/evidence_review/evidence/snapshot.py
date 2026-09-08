@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from evidence_review.canonical_json import sha256_json
@@ -343,16 +344,49 @@ def _metadata_hash(connection: sqlite3.Connection, table: str) -> str:
     return row[0]
 
 
+def evidence_database_file_sha256(path: Path) -> str:
+    """Hash the exact bytes of one published SQLite database file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def finalized_evidence_provenance(database_path: Path) -> dict[str, object]:
+    """Validate finalized evidence, close the reader, then hash its file bytes."""
+    from evidence_review.evidence.finalization import validate_finalized_evidence
+
+    path = database_path.resolve()
+    with EvidenceStore(path, read_only=True) as store:
+        state = validate_finalized_evidence(store)
+    return {
+        "evidence_snapshot_hash": state.snapshot_hash,
+        "evidence_db_sha256": evidence_database_file_sha256(path),
+        "schema_version": state.schema_version,
+        "retrieval_record_count": state.retrieval_record_count,
+        "clause_record_count": state.clause_record_count,
+    }
+
+
+def _connection_database_path(connection: sqlite3.Connection) -> Path:
+    row = connection.execute("PRAGMA database_list").fetchone()
+    if row is None or not isinstance(row[2], str) or not row[2]:
+        raise RuntimeError("evidence database path is required for physical hashing")
+    return Path(row[2])
+
+
 def evidence_snapshot_provenance(connection: sqlite3.Connection) -> dict[str, object]:
-    """Return immutable identity metadata for the exact evidence DB used by retrieval."""
+    """Return compatibility provenance using the connection's file identity."""
     evidence_hash = _metadata_hash(connection, "snapshot_meta")
     retrieval_hash = _metadata_hash(connection, "retrieval_meta")
     if retrieval_hash != evidence_hash:
         raise RuntimeError("retrieval index snapshot hash mismatch")
-    serialized = connection.serialize()
     return {
         "evidence_snapshot_hash": evidence_hash,
-        "evidence_db_sha256": hashlib.sha256(serialized).hexdigest(),
+        "evidence_db_sha256": evidence_database_file_sha256(
+            _connection_database_path(connection)
+        ),
         "schema_version": detect_schema_version(connection),
         "retrieval_record_count": int(
             connection.execute("SELECT COUNT(*) FROM retrieval_records").fetchone()[0]
