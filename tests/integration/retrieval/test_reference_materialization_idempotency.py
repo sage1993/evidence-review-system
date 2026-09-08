@@ -8,7 +8,10 @@ from evidence_review.evidence.ingest import ingest_snapshot
 from evidence_review.evidence.reference_materialization import (
     materialize_legal_reference_links,
 )
-from evidence_review.evidence.snapshot import evidence_database_file_sha256, evidence_snapshot_provenance
+from evidence_review.evidence.snapshot import (
+    evidence_database_file_sha256,
+    evidence_snapshot_provenance,
+)
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.workspace_binding import (
     bind_active_workspace,
