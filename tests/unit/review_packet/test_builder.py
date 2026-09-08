@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from evidence_review.evidence.finalization import finalize_evidence_database
+from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.review_packet.builder import build_review_view_model
 
@@ -28,6 +30,27 @@ def _db(path: Path) -> None:
             VALUES('REV1-P3', 'REV1', 3, 120, 200)
             """
         )
+        for element_id, text, bbox, parser_order in (
+            ("E1", "정확한 인용문", [10, 20, 110, 40], 0),
+            ("E2", "unused related citation", [20, 50, 100, 70], 1),
+        ):
+            connection.execute(
+                """
+                INSERT INTO elements(
+                    id, page_id, element_type, raw_json, raw_text,
+                    normalized_text, raw_payload_hash, bbox_json, parser_order
+                ) VALUES(?, 'REV1-P3', 'paragraph', ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    element_id,
+                    json.dumps({"text": text}),
+                    text,
+                    text,
+                    "a" * 64,
+                    json.dumps(bbox),
+                    parser_order,
+                ),
+            )
         connection.execute(
             """
             INSERT INTO retrieval_records(
@@ -81,6 +104,7 @@ def _db(path: Path) -> None:
             ("a" * 64,),
         )
         connection.commit()
+        finalize_evidence_database(store)
 
 
 def _packet() -> dict[str, object]:
@@ -145,7 +169,7 @@ def _packet() -> dict[str, object]:
     }
 
 
-def _v2_packet() -> dict[str, object]:
+def _v2_packet(database: Path | None = None) -> dict[str, object]:
     packet = _packet()
     packet.update(
         {
@@ -179,6 +203,10 @@ def _v2_packet() -> dict[str, object]:
             "conflicts": [],
         }
     )
+    if database is not None:
+        packet["snapshot_sha256"] = finalized_evidence_provenance(database)[
+            "evidence_snapshot_hash"
+        ]
     return packet
 
 
@@ -230,7 +258,7 @@ def test_v2_citation_identity_ignores_projection_metadata_but_rejects_authority_
 ) -> None:
     database = tmp_path / "evidence.sqlite"
     _db(database)
-    packet = _v2_packet()
+    packet = _v2_packet(database)
 
     model = build_review_view_model(packet, database)
 
@@ -253,7 +281,7 @@ def test_v2_citation_identity_ignores_projection_metadata_but_rejects_authority_
 def test_v2_packet_quote_is_display_authority(tmp_path: Path) -> None:
     database = tmp_path / "evidence.sqlite"
     _db(database)
-    packet = _v2_packet()
+    packet = _v2_packet(database)
     packet["evidence"][0]["quote"] = "PACKET QUOTE"
 
     model = build_review_view_model(packet, database)
@@ -265,7 +293,7 @@ def test_v2_packet_quote_is_display_authority(tmp_path: Path) -> None:
 def test_v2_packet_snapshot_must_match_evidence_database(tmp_path: Path) -> None:
     database = tmp_path / "evidence.sqlite"
     _db(database)
-    packet = _v2_packet()
+    packet = _v2_packet(database)
     packet["snapshot_sha256"] = "f" * 64
 
     with pytest.raises(ValueError, match="snapshot does not match evidence database"):
@@ -313,7 +341,7 @@ def test_v2_exposes_resolved_reference_citations_in_deterministic_order(
 ) -> None:
     database = tmp_path / "evidence.sqlite"
     _db(database)
-    packet = _v2_packet()
+    packet = _v2_packet(database)
     evidence = packet["evidence"]
     assert isinstance(evidence, list)
     evidence.append(

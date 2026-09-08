@@ -10,7 +10,7 @@ from typing import cast
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.review import ReviewPacket
-from evidence_review.evidence.snapshot import evidence_snapshot_provenance
+from evidence_review.evidence.finalization import validate_finalized_evidence
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
 from evidence_review.review_packet.reference_projection import project_reference_record
@@ -225,14 +225,12 @@ def _v2_evidence_records(
 
 def _verify_v2_snapshot_provenance(
     document: Mapping[str, object],
-    connection: sqlite3.Connection,
+    snapshot_hash: str,
 ) -> None:
     if document.get("version") != 2:
         return
     expected = _string(document.get("snapshot_sha256"), "snapshot_sha256")
-    provenance = evidence_snapshot_provenance(connection)
-    actual = provenance.get("evidence_snapshot_hash")
-    if actual != expected:
+    if snapshot_hash != expected:
         raise ValueError("review packet snapshot does not match evidence database")
 
 
@@ -381,8 +379,9 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
     claims: list[dict[str, object]] = []
     resolved_citations: dict[str, dict[str, object]] = {}
     with EvidenceStore(evidence_db, read_only=True) as store:
+        finalized = validate_finalized_evidence(store)
         connection = store.require_connection()
-        _verify_v2_snapshot_provenance(document, connection)
+        _verify_v2_snapshot_provenance(document, finalized.snapshot_hash)
         for index, item in enumerate(_sequence(document.get("claims", []), "claims")):
             claim = _mapping(item, f"claims[{index}]")
             citation_ids = tuple(

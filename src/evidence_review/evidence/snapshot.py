@@ -9,7 +9,7 @@ from typing import Any
 
 from evidence_review.canonical_json import sha256_json
 from evidence_review.evidence.schema_version import detect_schema_version
-from evidence_review.evidence.store import EvidenceStore
+from evidence_review.evidence.store import EvidenceStore, reject_sqlite_sidecars
 
 SNAPSHOT_TABLES = (
     "documents",
@@ -358,8 +358,10 @@ def finalized_evidence_provenance(database_path: Path) -> dict[str, object]:
     from evidence_review.evidence.finalization import validate_finalized_evidence
 
     path = database_path.resolve()
+    reject_sqlite_sidecars(path)
     with EvidenceStore(path, read_only=True) as store:
         state = validate_finalized_evidence(store)
+    reject_sqlite_sidecars(path)
     return {
         "evidence_snapshot_hash": state.snapshot_hash,
         "evidence_db_sha256": evidence_database_file_sha256(path),

@@ -188,3 +188,51 @@ def test_finalized_provenance_uses_exact_closed_database_file_bytes(
     expected = hashlib.sha256(database.read_bytes()).hexdigest()
     actual = provenance(database)
     assert actual["evidence_db_sha256"] == expected
+
+
+def test_finalized_provenance_rejects_sqlite_sidecars(tmp_path: Path) -> None:
+    database = tmp_path / "finalized.sqlite"
+    with EvidenceStore(database, create=True) as store:
+        ingest_snapshot(
+            store,
+            EvidenceSnapshot(
+                documents=({"id": "DOC-1", "title": "Document"},),
+                revisions=({
+                    "id": "REV-1",
+                    "document_id": "DOC-1",
+                    "source_hash": "a" * 64,
+                    "byte_size": 10,
+                    "page_count": 1,
+                },),
+                pages=({
+                    "id": "P-1",
+                    "revision_id": "REV-1",
+                    "page_number": 1,
+                    "width": 600.0,
+                    "height": 800.0,
+                },),
+                elements=({
+                    "id": "E-1",
+                    "page_id": "P-1",
+                    "element_type": "paragraph",
+                    "raw_json": {"text": "content"},
+                    "raw_text": "content",
+                    "normalized_text": "content",
+                    "raw_payload_hash": "b" * 64,
+                    "bbox": [10.0, 10.0, 500.0, 30.0],
+                    "parser_order": 0,
+                },),
+            ),
+        )
+        importlib.import_module(
+            "evidence_review.evidence.finalization"
+        ).finalize_evidence_database(store)
+
+    sidecar = database.with_name(database.name + "-wal")
+    sidecar.write_bytes(b"uncheckpointed evidence")
+    try:
+        snapshot = importlib.import_module("evidence_review.evidence.snapshot")
+        with pytest.raises(RuntimeError, match="EVIDENCE_DATABASE_SIDECAR_PRESENT"):
+            snapshot.finalized_evidence_provenance(database)
+    finally:
+        sidecar.unlink()

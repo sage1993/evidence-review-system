@@ -56,7 +56,8 @@ The logical snapshot hash identifies canonical evidence rows; the exact file
 SHA-256 identifies the closed published `evidence.sqlite` artifact. Separate
 rebuilds may have the same logical hash without byte-identical SQLite files,
 but the file SHA must remain unchanged after one workspace is bound. Review
-readers fail closed on an unfinalized or stale database and never repair it.
+readers fail closed on an unfinalized or stale database, reject SQLite WAL,
+SHM, and journal sidecars, and never repair it.
 Re-prepare an old workspace through `$ERS_PDF` instead of adding a review-time
 repair step.
 

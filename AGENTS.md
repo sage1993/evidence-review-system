@@ -84,7 +84,7 @@ evidence-review workspace bind `
   --workspace <workspace>
 ```
 
-The binding at `.ers/active-workspace.json` is local control state. It records the exact absolute workspace path, logical evidence snapshot identity, and SHA-256 of the closed finalized `evidence.sqlite` bytes; it does not modify source evidence. The logical snapshot hash identifies canonical evidence rows, while the file SHA identifies this exact published artifact. Separate rebuilds may share a logical hash without sharing SQLite bytes, but the bound artifact SHA must remain unchanged for the complete review lifecycle. Do not bind a `PENDING_*`, `BLOCKED`, or `FAILED` workspace.
+The binding at `.ers/active-workspace.json` is local control state. It records the exact absolute workspace path, logical evidence snapshot identity, and SHA-256 of the closed finalized `evidence.sqlite` bytes; it does not modify source evidence. The logical snapshot hash identifies canonical evidence rows, while the file SHA identifies this exact published artifact. Separate rebuilds may share a logical hash without sharing SQLite bytes, but the bound artifact SHA must remain unchanged for the complete review lifecycle. Review readers reject `-wal`, `-shm`, and `-journal` sidecars so the published database is self-contained in the exact closed file. Do not bind a `PENDING_*`, `BLOCKED`, or `FAILED` workspace.
 
 ## 4. Mandatory formal question flow
 

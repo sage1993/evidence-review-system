@@ -22,9 +22,10 @@ applicable manual gates:
 For changes that publish or read evidence databases, the acceptance record must
 also show the finalized lifecycle (`FINALIZED`, finalization version, logical
 snapshot/retrieval hash match, and SQLite integrity), the SHA-256 of the closed
-published `evidence.sqlite`, and that this exact file hash is unchanged through
-the bound review lifecycle. A logical snapshot hash may match across separate
-rebuilds without requiring byte-identical SQLite files.
+published `evidence.sqlite`, that no SQLite WAL/SHM/journal sidecar is present,
+and that this exact file hash is unchanged through the bound review lifecycle.
+A logical snapshot hash may match across separate rebuilds without requiring
+byte-identical SQLite files.
 
 The acceptance record must state `ACTIONS_NOT_RUN` when Actions was deliberately
 excluded, or `ACTIONS_BILLING_BLOCKED` when the service was unavailable because

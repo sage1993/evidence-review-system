@@ -231,7 +231,9 @@ def _evidence_database(workspace: Path) -> Path:
     )
 
 
-def _run_expected_snapshot_hash(run_directory: Path) -> str:
+def _run_expected_snapshot_provenance(
+    run_directory: Path,
+) -> tuple[str, dict[str, object]]:
     request_path = verified_regular_file_below(
         run_directory,
         ("review-request.json",),
@@ -246,19 +248,35 @@ def _run_expected_snapshot_hash(run_directory: Path) -> str:
             "prepared review run does not contain a valid evidence snapshot identity",
         )
     provenance = inputs.get("evidence_snapshot_provenance")
-    if provenance is not None:
-        bound = _mapping(provenance, "review_request.inputs.evidence_snapshot_provenance")
-        if bound.get("evidence_snapshot_hash") != expected:
-            raise ReviewEvidenceSnapshotError(
-                "STALE_REVIEW_RUN",
-                "prepared review run snapshot provenance is internally inconsistent",
-            )
+    if provenance is None:
+        raise ReviewEvidenceSnapshotError(
+            "STALE_REVIEW_RUN",
+            "prepared review run is missing exact evidence database provenance",
+        )
+    try:
+        bound = _validated_snapshot_provenance(provenance, expected)
+    except (TypeError, ValueError) as error:
+        raise ReviewEvidenceSnapshotError(
+            "STALE_REVIEW_RUN",
+            "prepared review run snapshot provenance is invalid",
+        ) from error
+    if bound is None:
+        raise ReviewEvidenceSnapshotError(
+            "STALE_REVIEW_RUN",
+            "prepared review run is missing exact evidence database provenance",
+        )
+    return expected, bound
+
+
+def _run_expected_snapshot_hash(run_directory: Path) -> str:
+    """Return the logical snapshot identity retained for compatibility callers."""
+    expected, _provenance = _run_expected_snapshot_provenance(run_directory)
     return expected
 
 
 def _assert_run_evidence_snapshot(run_directory: Path) -> dict[str, object]:
     """Fail closed when a prepared run is resumed against a different evidence snapshot."""
-    expected = _run_expected_snapshot_hash(run_directory)
+    expected, expected_provenance = _run_expected_snapshot_provenance(run_directory)
     workspace = run_directory.parent.parent
     try:
         active = finalized_evidence_provenance(_evidence_database(workspace))
@@ -274,6 +292,13 @@ def _assert_run_evidence_snapshot(run_directory: Path) -> dict[str, object]:
         raise ReviewEvidenceSnapshotError(
             "EVIDENCE_SNAPSHOT_MISMATCH",
             f"prepared run snapshot {expected} does not match active workspace snapshot {actual}",
+        )
+    actual_file_hash = active.get("evidence_db_sha256")
+    expected_file_hash = expected_provenance["evidence_db_sha256"]
+    if actual_file_hash != expected_file_hash:
+        raise ReviewEvidenceSnapshotError(
+            "EVIDENCE_DATABASE_MISMATCH",
+            "prepared review run evidence database bytes do not match the bound artifact",
         )
     return active
 

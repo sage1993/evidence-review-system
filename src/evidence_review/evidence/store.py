@@ -10,6 +10,21 @@ from typing import Any
 
 from evidence_review.evidence.schema_version import detect_schema_version, require_current_schema
 
+_SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
+
+
+def sqlite_sidecar_paths(path: Path) -> tuple[Path, ...]:
+    """Return SQLite sidecar paths that can extend one database artifact."""
+    return tuple(
+        path.with_name(path.name + suffix) for suffix in _SQLITE_SIDECAR_SUFFIXES
+    )
+
+
+def reject_sqlite_sidecars(path: Path) -> None:
+    """Reject a database whose bytes are not self-contained in the main file."""
+    if any(sidecar.exists() for sidecar in sqlite_sidecar_paths(path)):
+        raise RuntimeError("EVIDENCE_DATABASE_SIDECAR_PRESENT")
+
 
 class EvidenceRow:
     """SQLite row compatibility object with tuple and named-field access."""
@@ -111,6 +126,8 @@ class EvidenceStore:
     def _open_existing_database(self) -> sqlite3.Connection:
         if not self.path.is_file():
             raise FileNotFoundError(self.path)
+        if self.read_only:
+            reject_sqlite_sidecars(self.path)
         mode = "ro" if self.read_only else "rw"
         uri = f"{self.path.resolve().as_uri()}?mode={mode}"
         connection = self._configured_connection(uri, uri=True)
