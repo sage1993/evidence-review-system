@@ -98,3 +98,6 @@ MATTER_EVENT_FORMAT: Final[Literal["evidence-review/matter-event"]] = (
 MATTER_SOURCE_BINDING_FORMAT: Final[
     Literal["evidence-review/matter-source-binding"]
 ] = "evidence-review/matter-source-binding"
+REVIEW_SCOPE_FORMAT: Final[Literal["evidence-review/review-scope"]] = (
+    "evidence-review/review-scope"
+)
