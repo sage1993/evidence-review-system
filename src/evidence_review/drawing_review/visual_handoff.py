@@ -17,6 +17,11 @@ from evidence_review.drawing_review.visual_pages import (
     ensure_visual_page_tiles,
     prepare_visual_page_assets,
 )
+from evidence_review.review_matter.scope import ReviewScope
+from evidence_review.review_matter.scope_adapters import (
+    normalize_review_scope,
+    question_plan_from_review_scope,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,12 +76,14 @@ def _page_document(workspace: Path, page: VisualPageAsset) -> dict[str, object]:
 
 def prepare_visual_analysis_handoff(
     workspace: Path,
-    question_plan: QuestionPlan,
+    question_plan: QuestionPlan | ReviewScope,
     attachments: tuple[ImmutableAttachment, ...],
 ) -> VisualAnalysisHandoff:
     """Prepare raster pages and a model-safe visual-analysis bundle."""
     if not attachments:
         raise ValueError("visual analysis requires at least one attachment")
+    scope = normalize_review_scope(question_plan)
+    canonical_plan = question_plan_from_review_scope(scope)
     pages = prepare_visual_page_assets(workspace, attachments)
     if not pages:
         raise ValueError("VISUAL_SOURCE_RENDER_FAILED")
@@ -85,7 +92,7 @@ def prepare_visual_analysis_handoff(
     template = _instruction_template_bytes()
     instruction_contract_sha256 = hashlib.sha256(template).hexdigest()
     identity = {
-        "question_plan": question_plan_document(question_plan),
+        "question_plan": question_plan_document(canonical_plan),
         "attachments": [
             immutable_attachment_document(item)
             for item in sorted(attachments, key=lambda item: item.attachment_id)
@@ -103,10 +110,10 @@ def prepare_visual_analysis_handoff(
         "version": 1,
         "visual_analysis_id": visual_analysis_id,
         "instruction_contract_sha256": instruction_contract_sha256,
-        "question": question_plan.original_question,
+        "question": canonical_plan.original_question,
         "issues": [
             {"id": item.id, "question": item.question}
-            for item in question_plan.issues
+            for item in canonical_plan.issues
         ],
         "attachments": [
             immutable_attachment_document(item)

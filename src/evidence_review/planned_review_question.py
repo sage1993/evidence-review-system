@@ -38,6 +38,11 @@ from evidence_review.retrieval.reference_projection import (
     apply_reference_lineage_to_bundle_document,
 )
 from evidence_review.retrieval.trace import retrieval_trace_document
+from evidence_review.review_matter.scope import ReviewScope
+from evidence_review.review_matter.scope_adapters import (
+    normalize_review_scope,
+    question_plan_from_review_scope,
+)
 from evidence_review.review_question import (
     PreparedReviewQuestion,
     _evidence_database,
@@ -64,7 +69,7 @@ from evidence_review.user_expansions import (
 
 def prepare_planned_review_question(
     workspace: Path,
-    question_plan: QuestionPlan,
+    question_plan: QuestionPlan | ReviewScope,
     user_expansions: Sequence[str] = (),
     *,
     calculations: Sequence[object] = (),
@@ -85,8 +90,9 @@ def prepare_planned_review_question(
     retrieval merely because a source is a PDF.
     """
     normalization_timer = start_stage()
+    scope = normalize_review_scope(question_plan)
     effective_plan = augment_plan_with_facet_search_requests(
-        plan_with_user_expansions(question_plan, user_expansions)
+        plan_with_user_expansions(question_plan_from_review_scope(scope), user_expansions)
     )
     normalization_metric = finish_stage("request-normalization", normalization_timer)
 

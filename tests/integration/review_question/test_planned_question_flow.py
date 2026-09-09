@@ -240,3 +240,18 @@ def test_complex_cases_preserve_decision_changing_numbers_and_negation() -> None
     assert all(token in c3_facts for token in ("4,800㎡", "300m"))
     assert "분양주택 없이" in c3_facts
     assert "negative" in c3_facts
+
+
+def test_planned_question_flow_accepts_canonical_review_scope(tmp_path: Path) -> None:
+    adapters = __import__("evidence_review.review_matter.scope_adapters", fromlist=["*"])
+    raw_case = _cases()[0]
+    case = _mapping(raw_case, "case")
+    question = case["question"]
+    raw_plan = case["plan"]
+    assert isinstance(question, str)
+    plan = decode_question_plan(raw_plan, question)
+    scope = adapters.review_scope_from_question_plan(plan)
+
+    prepared = prepare_planned_review_question(_workspace(tmp_path / "scope"), scope)
+
+    assert prepared.status == "WAITING_TRACK_A"
