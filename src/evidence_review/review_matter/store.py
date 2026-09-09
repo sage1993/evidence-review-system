@@ -161,7 +161,7 @@ class MatterStore:
         for index in self.connection.execute(
             'PRAGMA index_list("formalization_snapshots")'
         ).fetchall():
-            if int(index[2]) != 1:
+            if int(index[2]) != 1 or int(index[4]) != 0:
                 continue
             index_name = str(index[1]).replace('"', '""')
             index_columns = tuple(

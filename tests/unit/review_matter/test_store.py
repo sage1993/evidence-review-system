@@ -142,3 +142,69 @@ def test_malformed_snapshot_table_rejects_without_partial_schema_change(
             ).fetchone()[0]
             == malformed_sql
         )
+
+
+def test_partial_snapshot_identity_index_rejects_without_schema_change(tmp_path) -> None:
+    database = tmp_path / "partial-snapshot-identity.sqlite"
+    store = MatterStore(database)
+    store.close()
+
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formalization_snapshots")
+        connection.execute(
+            """
+            CREATE TABLE formalization_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                matter_id TEXT NOT NULL,
+                matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                canonical_document BLOB NOT NULL,
+                FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX partial_snapshot_identity
+            ON formalization_snapshots(matter_id, matter_revision)
+            WHERE matter_revision >= 1
+            """
+        )
+        index_row = connection.execute(
+            'PRAGMA index_list("formalization_snapshots")'
+        ).fetchone()
+        assert index_row[2] == 1
+        assert index_row[4] == 1
+        table_sql = connection.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'formalization_snapshots'"
+        ).fetchone()[0]
+        index_sql = connection.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'index' AND name = 'partial_snapshot_identity'"
+        ).fetchone()[0]
+
+    with pytest.raises(MatterSchemaError, match="MATTER_SNAPSHOT_SCHEMA_INVALID"):
+        MatterStore(database)
+
+    with sqlite3.connect(database) as connection:
+        assert (
+            connection.execute(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'formalization_snapshots'"
+            ).fetchone()[0]
+            == table_sql
+        )
+        assert (
+            connection.execute(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type = 'index' AND name = 'partial_snapshot_identity'"
+            ).fetchone()[0]
+            == index_sql
+        )
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert (
+            connection.execute(
+                "SELECT value FROM matter_meta WHERE key = 'schema_version'"
+            ).fetchone()[0]
+            == "2"
+        )
