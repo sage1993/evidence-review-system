@@ -9,6 +9,7 @@ from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.contracts.next_action import decode_next_action, next_action_document
 from evidence_review.contracts.question_plan import question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
@@ -34,9 +35,15 @@ from evidence_review.review_matter.snapshot import (
 from evidence_review.review_matter.store import MatterStore
 from evidence_review.review_question import (
     PreparedReviewQuestion,
+    _track_a_action,
     prepare_review_question_from_request,
 )
-from evidence_review.review_run import _decode_confidence_input, _decode_request
+from evidence_review.review_run import (
+    _decode_confidence_input,
+    _decode_request,
+    _prepare_status_document,
+    _prepared_instruction_text,
+)
 
 
 def _matter_store(workspace: Path) -> MatterStore:
@@ -195,6 +202,10 @@ def _validate_prepared_artifacts(
     request_path: Path,
     bundle_path: Path,
     confidence_path: Path,
+    next_action_path: Path,
+    track_a_instructions_path: Path,
+    track_b_instructions_path: Path,
+    prepare_status_path: Path,
     expected_document: Mapping[str, object],
     expected_scope: Mapping[str, object],
 ) -> None:
@@ -258,6 +269,52 @@ def _validate_prepared_artifacts(
     if bundle_bytes != rebuilt_bundle_bytes:
         raise ValueError("FORMALIZATION_PREPARED_TRACK_A_MISMATCH")
 
+    expected_run_id = compute_run_id_from_request(normalized_request)
+    try:
+        next_action_payload = json.loads(next_action_path.read_text(encoding="utf-8"))
+        normalized_next_action = next_action_document(
+            decode_next_action(next_action_payload)
+        )
+        next_action_bytes = next_action_path.read_bytes()
+        normalized_next_action_bytes = dump_bytes(normalized_next_action)
+        expected_next_action_bytes = dump_bytes(
+            next_action_document(_track_a_action(expected_run_id))
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError("FORMALIZATION_PREPARED_NEXT_ACTION_INVALID") from error
+    if (
+        next_action_bytes != normalized_next_action_bytes
+        or normalized_next_action_bytes != expected_next_action_bytes
+    ):
+        raise ValueError("FORMALIZATION_PREPARED_NEXT_ACTION_MISMATCH")
+
+    for instruction_path, name in (
+        (track_a_instructions_path, "TRACK_A_INSTRUCTIONS.md"),
+        (track_b_instructions_path, "TRACK_B_INSTRUCTIONS.md"),
+    ):
+        try:
+            instruction_bytes = instruction_path.read_bytes()
+            expected_instruction_bytes = _prepared_instruction_text(name).encode("utf-8")
+        except (OSError, ValueError) as error:
+            raise ValueError("FORMALIZATION_PREPARED_INSTRUCTIONS_INVALID") from error
+        if instruction_bytes != expected_instruction_bytes:
+            raise ValueError("FORMALIZATION_PREPARED_INSTRUCTIONS_MISMATCH")
+
+    try:
+        prepare_status_payload = json.loads(prepare_status_path.read_text(encoding="utf-8"))
+        prepare_status_bytes = prepare_status_path.read_bytes()
+        normalized_prepare_status_bytes = dump_bytes(prepare_status_payload)
+        expected_prepare_status_bytes = dump_bytes(
+            _prepare_status_document(expected_run_id)
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError("FORMALIZATION_PREPARED_STATUS_INVALID") from error
+    if (
+        prepare_status_bytes != normalized_prepare_status_bytes
+        or normalized_prepare_status_bytes != expected_prepare_status_bytes
+    ):
+        raise ValueError("FORMALIZATION_PREPARED_STATUS_MISMATCH")
+
 
 def _discard_new_run(workspace: Path, prepared: PreparedReviewQuestion) -> None:
     if prepared.resumed:
@@ -309,24 +366,29 @@ def _prepare_or_resume(
             _discard_new_run(workspace, prepared)
             raise
         return prepared
-    bundle_path: Path | None = None
-    confidence_path: Path | None = None
-    for name in ("track-a-bundle.json", "confidence-input.json"):
+    artifacts: dict[str, Path] = {}
+    for name in (
+        "track-a-bundle.json",
+        "confidence-input.json",
+        "next-action-track-a.json",
+        "TRACK_A_INSTRUCTIONS.md",
+        "TRACK_B_INSTRUCTIONS.md",
+        "prepare-status.json",
+    ):
         artifact = verified_regular_file_below(
             workspace,
             ("runs", run_id, name),
             field=f"prepared review artifact {name}",
         )
-        if name == "track-a-bundle.json":
-            bundle_path = artifact
-        else:
-            confidence_path = artifact
-    if bundle_path is None or confidence_path is None:
-        raise ValueError("FORMALIZATION_PREPARED_ARTIFACT_INVALID")
+        artifacts[name] = artifact
     _validate_prepared_artifacts(
         run_directory,
-        bundle_path,
-        confidence_path,
+        artifacts["track-a-bundle.json"],
+        artifacts["confidence-input.json"],
+        artifacts["next-action-track-a.json"],
+        artifacts["TRACK_A_INSTRUCTIONS.md"],
+        artifacts["TRACK_B_INSTRUCTIONS.md"],
+        artifacts["prepare-status.json"],
         document,
         scope_document,
     )

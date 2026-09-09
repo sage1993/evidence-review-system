@@ -241,6 +241,30 @@ def test_tampered_prepared_track_a_content_fails_before_resume(tmp_path: Path) -
         formalize_snapshot(workspace, snapshot)
 
 
+@pytest.mark.parametrize(
+    ("artifact_name", "replacement"),
+    [
+        ("next-action-track-a.json", b'{"tampered":true}'),
+        ("TRACK_A_INSTRUCTIONS.md", b"tampered"),
+        ("TRACK_B_INSTRUCTIONS.md", b"tampered"),
+        ("prepare-status.json", b'{"tampered":true}'),
+    ],
+)
+def test_tampered_prepared_contract_artifact_fails_before_resume(
+    tmp_path: Path, artifact_name: str, replacement: bytes
+) -> None:
+    """Catch a resume check that validates only Track A input artifacts."""
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter.formalization import formalize_snapshot
+
+    prepared = formalize_snapshot(workspace, snapshot)
+    artifact_path = workspace / "runs" / prepared.run_id / artifact_name
+    artifact_path.write_bytes(replacement)
+
+    with pytest.raises(ValueError, match="FORMALIZATION_PREPARED_"):
+        formalize_snapshot(workspace, snapshot)
+
+
 def test_matter_revision_change_before_preparation_cannot_create_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
