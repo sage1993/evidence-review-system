@@ -118,10 +118,10 @@ def _citation(value: object, hit: Mapping[str, object]) -> Citation:
 
 def _navigation_hit(value: object) -> NavigationHit | None:
     hit = _mapping(value, "hit")
+    if hit.get("citation_quality") == "PAGE_ONLY":
+        return None
     citation_value = hit.get("citation")
     if citation_value is None:
-        if hit.get("citation_quality") == "PAGE_ONLY":
-            return None
         raise ValueError("citation is required")
     citation = _citation(citation_value, hit)
     return NavigationHit(

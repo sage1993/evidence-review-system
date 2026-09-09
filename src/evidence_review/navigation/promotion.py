@@ -87,6 +87,8 @@ def _validate_result(result: NavigationResult, evidence_id: str) -> NavigationHi
     if len(matches) != 1:
         raise _stale()
     hit = matches[0]
+    if hit.citation.citation_id != f"CIT-{hit.evidence_id}":
+        raise _stale()
     if (
         hit.citation.evidence_id,
         hit.citation.document_id,

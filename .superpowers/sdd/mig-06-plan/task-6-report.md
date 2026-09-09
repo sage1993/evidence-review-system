@@ -56,3 +56,41 @@ Result: all passed.
 - The full repository acceptance suite was not run; this task required focused navigation tests and the Issue-153 regression only.
 - The supplied navigation RED tests remain untracked and unstaged because the task brief lists them as an existing behavioral contract and restricts implementation changes to the listed production files. They were not modified.
 - Git emits an existing CRLF conversion warning for `review_matter/projection.py`; scoped whitespace validation passes.
+
+## Fix round 1 — independent review findings
+
+### Changes
+
+- Promotion now requires `citation_id == f"CIT-{hit.evidence_id}"` before any Matter mutation. A forged frozen `NavigationResult` is rejected with `NAVIGATION_RESULT_STALE` and leaves the Matter projection and event journal unchanged.
+- Navigation now skips a raw hit explicitly marked `citation_quality: PAGE_ONLY` before attempting any citation parsing. It continues to omit page-only content rather than fabricating a bounding box.
+- Added regression coverage in the supplied navigation tests for both paths.
+
+### RED
+
+```powershell
+py -3.13 -m pytest -q tests/unit/navigation/test_service.py tests/integration/navigation/test_promotion_boundary.py --basetemp C:\Temp\mig-06-fix-red
+```
+
+Result: `2 failed, 14 passed in 5.05s`.
+
+- Page-only input attempted to parse the malformed citation and raised `ValueError: citation must be an object`.
+- A forged citation ID did not raise and would have allowed selection.
+
+### GREEN and verification
+
+```powershell
+py -3.13 -m pytest -q tests/unit/navigation/test_service.py tests/integration/navigation/test_promotion_boundary.py --basetemp C:\Temp\mig-06-fix-green
+```
+
+Result: `16 passed in 5.14s`.
+
+```powershell
+py -3.13 -m pytest -q tests/unit/navigation/test_service.py tests/integration/navigation/test_promotion_boundary.py tests/integration/review_question/test_issue_153_planner_false_no_evidence.py --basetemp C:\Temp\mig-06-fix-final
+```
+
+Result: `20 passed in 7.23s`.
+
+### Concerns
+
+- A Ruff run including all supplied navigation tests reports two pre-existing B017 broad-exception assertions in `tests/unit/navigation/test_service.py` (the unfinalized and stale-snapshot tests). This fix did not add or modify those assertions.
+- The full repository acceptance suite was not run.
