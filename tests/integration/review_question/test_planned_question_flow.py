@@ -255,3 +255,51 @@ def test_planned_question_flow_accepts_canonical_review_scope(tmp_path: Path) ->
     prepared = prepare_planned_review_question(_workspace(tmp_path / "scope"), scope)
 
     assert prepared.status == "WAITING_TRACK_A"
+
+
+def test_explicit_review_scope_uses_same_planned_preparation_boundary(
+    tmp_path: Path,
+) -> None:
+    adapters = __import__("evidence_review.review_matter.scope_adapters", fromlist=["*"])
+    raw_case = _cases()[0]
+    case = _mapping(raw_case, "case")
+    question = case["question"]
+    raw_plan = case["plan"]
+    assert isinstance(question, str)
+    plan = decode_question_plan(raw_plan, question)
+    planner_scope = adapters.review_scope_from_question_plan(plan)
+    explicit_scope = adapters.review_scope_from_explicit_input(
+        question=planner_scope.question,
+        facts=planner_scope.facts,
+        assumptions=planner_scope.assumptions,
+        issues=planner_scope.issues,
+        legal_anchors=planner_scope.legal_anchors,
+        search_requests=planner_scope.search_requests,
+    )
+
+    planner_workspace = _workspace(tmp_path / "planner")
+    explicit_workspace = _workspace(tmp_path / "explicit")
+    planner_prepared = prepare_planned_review_question(planner_workspace, planner_scope)
+    explicit_prepared = prepare_planned_review_question(explicit_workspace, explicit_scope)
+
+    assert explicit_scope.origin == "EXPLICIT_USER"
+    assert explicit_scope.question_plan_sha256 is None
+    assert explicit_prepared.status == planner_prepared.status == "WAITING_TRACK_A"
+    assert explicit_prepared.run_id == planner_prepared.run_id
+    assert explicit_prepared.retrieval_guidance_path is None
+    assert planner_prepared.retrieval_guidance_path is None
+
+    for artifact_name in (
+        "review-request.json",
+        "question-plan.json",
+        "evidence-query.json",
+        "retrieval-trace.json",
+        "track-a-bundle.json",
+    ):
+        planner_artifact = (
+            planner_workspace / "runs" / planner_prepared.run_id / artifact_name
+        ).read_bytes()
+        explicit_artifact = (
+            explicit_workspace / "runs" / explicit_prepared.run_id / artifact_name
+        ).read_bytes()
+        assert explicit_artifact == planner_artifact
