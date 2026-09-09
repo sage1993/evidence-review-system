@@ -168,6 +168,20 @@ def test_tampered_prepared_track_a_scope_fails_before_resume(tmp_path: Path) -> 
         formalize_snapshot(workspace, snapshot)
 
 
+def test_tampered_prepared_track_a_content_fails_before_resume(tmp_path: Path) -> None:
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter.formalization import formalize_snapshot
+
+    prepared = formalize_snapshot(workspace, snapshot)
+    bundle_path = workspace / "runs" / prepared.run_id / "track-a-bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["question"] = "tampered question"
+    bundle_path.write_bytes(dump_bytes(bundle))
+
+    with pytest.raises(ValueError, match="FORMALIZATION_PREPARED_TRACK_A"):
+        formalize_snapshot(workspace, snapshot)
+
+
 def test_matter_revision_change_before_preparation_cannot_create_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

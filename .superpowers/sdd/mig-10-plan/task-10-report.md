@@ -74,6 +74,19 @@
   equality, while malformed or mismatched scope serialization is rejected
   before any new run is created or resumed.
 
+## Round 4 fix
+
+- Existing-run resume now re-runs the strict `_decode_request` decoder against
+  the stored `review-request.json` and requires its normalized request bytes to
+  match both the stored canonical request and the expected request document.
+- It rebuilds `track-a-bundle.json` with the existing deterministic
+  `build_track_a_bundle`/`track_a_bundle_document` path and compares canonical
+  bytes, while retaining the prior canonical ReviewScope check.
+- It decodes and normalizes `confidence-input.json` with the existing strict
+  confidence decoder and compares its canonical bytes with the stored and
+  expected confidence documents. Any mismatch fails before `WAITING_TRACK_A`
+  is returned.
+
 ## Verification
 
 - RED: `py -3.13 -c "import evidence_review.review_matter.formalization"` —
@@ -98,11 +111,18 @@
 - Round-3 GREEN: focused and adjacent suites — `124 passed in 18.41s`.
 - Round-3 static checks: Ruff, mypy, and compileall passed for the adapter and
   regression tests.
+- Round-4 RED: the non-scope Track A bundle tamper regression reproduced
+  successful resume (`DID NOT RAISE`) before deterministic artifact validation
+  was added.
+- Round-4 GREEN: adapter regression file — `11 passed`; focused and adjacent
+  suites — `125 passed in 18.70s`.
+- Round-4 static checks: Ruff, mypy, and compileall passed for the adapter and
+  regression tests.
 
 ## Concerns
 
 - Full repository pytest, documentation validation, Windows platform stress,
-  and browser QA are not rerun for the round-3 candidate; they remain
+  and browser QA are not rerun for the round-4 candidate; they remain
   `NOT_RUN`/`HOLD` as applicable.
 - Windows platform stress and browser QA remain `NOT_RUN` for this focused MIG
   task. Existing untracked MIG-09 pytest temp directories were preserved, so a

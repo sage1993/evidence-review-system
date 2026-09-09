@@ -12,6 +12,10 @@ from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.filesystem_trust import verified_regular_file_below
+from evidence_review.llm_layer.track_a import (
+    build_track_a_bundle,
+    track_a_bundle_document,
+)
 from evidence_review.review_matter.scope import (
     decode_review_scope,
     review_scope_document,
@@ -24,7 +28,11 @@ from evidence_review.review_matter.snapshot import (
 )
 from evidence_review.review_matter.store import MatterStore
 from evidence_review.review_question import _prepare_from_document
-from evidence_review.review_run import PreparedReviewRun
+from evidence_review.review_run import (
+    PreparedReviewRun,
+    _decode_confidence_input,
+    _decode_request,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +221,74 @@ def _validate_prepared_bundle_scope(
         raise ValueError("FORMALIZATION_REVIEW_SCOPE_MISMATCH")
 
 
+def _validate_prepared_artifacts(
+    request_path: Path,
+    bundle_path: Path,
+    confidence_path: Path,
+    expected_document: Mapping[str, object],
+    expected_scope: Mapping[str, object],
+) -> None:
+    try:
+        (
+            question,
+            inputs,
+            evidence,
+            calculations,
+            rules,
+            approved,
+            _request_confidence,
+            normalized_request,
+        ) = _decode_request(request_path)
+    except (OSError, TypeError, ValueError) as error:
+        raise ValueError("FORMALIZATION_PREPARED_REQUEST_INVALID") from error
+
+    try:
+        request_bytes = request_path.read_bytes()
+        normalized_request_bytes = dump_bytes(normalized_request)
+        expected_request_bytes = dump_bytes(expected_document)
+    except (OSError, TypeError, ValueError) as error:
+        raise ValueError("FORMALIZATION_PREPARED_REQUEST_INVALID") from error
+    if (
+        request_bytes != normalized_request_bytes
+        or normalized_request_bytes != expected_request_bytes
+    ):
+        raise ValueError("FORMALIZATION_PREPARED_REQUEST_MISMATCH")
+
+    try:
+        confidence_payload = json.loads(confidence_path.read_text(encoding="utf-8"))
+        normalized_confidence = _decode_confidence_input(confidence_payload)
+        confidence_bytes = confidence_path.read_bytes()
+        expected_confidence = expected_document["confidence_input"]
+        normalized_confidence_bytes = dump_bytes(normalized_confidence)
+        expected_confidence_bytes = dump_bytes(expected_confidence)
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError("FORMALIZATION_PREPARED_CONFIDENCE_INVALID") from error
+    if (
+        confidence_bytes != normalized_confidence_bytes
+        or normalized_confidence_bytes != expected_confidence_bytes
+    ):
+        raise ValueError("FORMALIZATION_PREPARED_CONFIDENCE_MISMATCH")
+
+    _validate_prepared_bundle_scope(bundle_path, expected_scope)
+
+    try:
+        rebuilt_bundle = build_track_a_bundle(
+            run_id=compute_run_id_from_request(normalized_request),
+            question=question,
+            inputs=inputs,
+            evidence=evidence,
+            rules=rules,
+            calculations=calculations,
+            approved_rule_result_ids=approved,
+        )
+        bundle_bytes = bundle_path.read_bytes()
+        rebuilt_bundle_bytes = dump_bytes(track_a_bundle_document(rebuilt_bundle))
+    except (OSError, TypeError, ValueError) as error:
+        raise ValueError("FORMALIZATION_PREPARED_TRACK_A_INVALID") from error
+    if bundle_bytes != rebuilt_bundle_bytes:
+        raise ValueError("FORMALIZATION_PREPARED_TRACK_A_MISMATCH")
+
+
 def _prepare_or_resume(
     workspace: Path,
     document: dict[str, object],
@@ -249,9 +325,8 @@ def _prepare_or_resume(
             status="WAITING_TRACK_A",
             prepared=prepared,
         )
-    if run_directory.read_bytes() != dump_bytes(document):
-        raise ValueError("existing immutable review run differs from formalization request")
     bundle_path: Path | None = None
+    confidence_path: Path | None = None
     for name in ("track-a-bundle.json", "confidence-input.json"):
         artifact = verified_regular_file_below(
             workspace,
@@ -260,9 +335,17 @@ def _prepare_or_resume(
         )
         if name == "track-a-bundle.json":
             bundle_path = artifact
-    if bundle_path is None:
-        raise ValueError("FORMALIZATION_REVIEW_SCOPE_INVALID")
-    _validate_prepared_bundle_scope(bundle_path, scope_document)
+        else:
+            confidence_path = artifact
+    if bundle_path is None or confidence_path is None:
+        raise ValueError("FORMALIZATION_PREPARED_ARTIFACT_INVALID")
+    _validate_prepared_artifacts(
+        run_directory,
+        bundle_path,
+        confidence_path,
+        document,
+        scope_document,
+    )
     current = store.load(snapshot.matter_id)
     if current.revision != snapshot.matter_revision:
         raise ValueError("MATTER_CHANGED_DURING_FORMALIZATION")
