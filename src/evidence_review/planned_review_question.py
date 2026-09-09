@@ -62,7 +62,7 @@ from evidence_review.user_expansions import (
 )
 
 
-def prepare_planned_review_question(
+def _prepare_review_scope(
     workspace: Path,
     question_plan: QuestionPlan,
     user_expansions: Sequence[str] = (),
@@ -75,6 +75,8 @@ def prepare_planned_review_question(
     candidate_issue_ids: Mapping[str, Sequence[str]] | None = None,
     visual_page_assets: Sequence[VisualPageAsset] = (),
     visual_analysis_completed: bool = False,
+    scope_origin: str = "PLANNER",
+    scope_document: Mapping[str, object] | None = None,
 ) -> PreparedReviewQuestion:
     """Retrieve and prepare a run bound to an effective issue-aware QuestionPlan.
 
@@ -140,7 +142,17 @@ def prepare_planned_review_question(
         approved_rule_result_ids=approved_rule_result_ids,
     )
     review_request["question"] = effective_plan.original_question
-    review_request = bind_question_plan_to_review_request(review_request, effective_plan)
+    if scope_origin == "PLANNER":
+        review_request = bind_question_plan_to_review_request(review_request, effective_plan)
+    elif scope_origin == "EXPLICIT_USER":
+        inputs_value = review_request.get("inputs")
+        if not isinstance(inputs_value, dict):
+            raise ValueError("review request inputs must be an object")
+        inputs = dict(inputs_value)
+        inputs["review_scope"] = dict(scope_document or {})
+        review_request["inputs"] = inputs
+    else:
+        raise ValueError("unsupported ReviewScope origin")
     review_request = bind_retrieval_lineage_to_review_request(review_request, bundle)
     review_request = bind_issue_coverage_to_review_request(
         review_request,
@@ -190,10 +202,13 @@ def prepare_planned_review_question(
         _prepare_from_document(workspace, review_request)
         prepare_metric = finish_stage("prepare", prepare_timer)
 
-    _write_or_identical(
-        run_directory / "question-plan.json",
-        question_plan_document(effective_plan),
-    )
+    if scope_origin == "PLANNER":
+        _write_or_identical(
+            run_directory / "question-plan.json",
+            question_plan_document(effective_plan),
+        )
+    else:
+        _write_or_identical(run_directory / "review-scope.json", dict(scope_document or {}))
     _write_or_identical(run_directory / "evidence-query.json", bundle)
     _write_or_identical(run_directory / "retrieval-trace.json", trace_document)
 
@@ -234,4 +249,38 @@ def prepare_planned_review_question(
         next_action_path=next_action_path,
         resumed=resumed,
         retrieval_guidance_path=guidance_path,
+        run_directory=run_directory,
+    )
+
+
+def prepare_planned_review_question(
+    workspace: Path,
+    question_plan: QuestionPlan,
+    user_expansions: Sequence[str] = (),
+    *,
+    calculations: Sequence[object] = (),
+    rules: Sequence[object] = (),
+    approved_rule_result_ids: Sequence[str] = (),
+    case_visual_attachments: Sequence[ImmutableAttachment] = (),
+    drawing_candidates: Sequence[DrawingCandidate] = (),
+    candidate_issue_ids: Mapping[str, Sequence[str]] | None = None,
+    visual_page_assets: Sequence[VisualPageAsset] = (),
+    visual_analysis_completed: bool = False,
+) -> PreparedReviewQuestion:
+    """Compatibility adapter from a validated QuestionPlan to ReviewScope."""
+    from evidence_review.review_matter.scope import review_scope_from_question_plan
+    from evidence_review.scoped_review import prepare_scoped_review_question
+
+    return prepare_scoped_review_question(
+        workspace,
+        review_scope_from_question_plan(question_plan),
+        user_expansions,
+        calculations=calculations,
+        rules=rules,
+        approved_rule_result_ids=approved_rule_result_ids,
+        case_visual_attachments=case_visual_attachments,
+        drawing_candidates=drawing_candidates,
+        candidate_issue_ids=candidate_issue_ids,
+        visual_page_assets=visual_page_assets,
+        visual_analysis_completed=visual_analysis_completed,
     )

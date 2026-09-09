@@ -21,6 +21,7 @@ from evidence_review.review_matter.contracts import (
     MatterSourceBinding,
     ReviewMatter,
     decode_matter_issue_state,
+    decode_matter_source_binding,
     decode_review_matter,
     review_matter_document,
 )
@@ -99,6 +100,32 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
             revision=matter.revision + 1,
             issues=tuple(updated_issues),
             source_bindings=matter.source_bindings,
+        )
+        decode_review_matter(review_matter_document(updated))
+        return MatterProjection(updated)
+    if event.kind == "EVIDENCE_SELECTED":
+        payload = expect_mapping(event.payload, "EVIDENCE_SELECTED.payload")
+        required = {"binding", "bound_revision"}
+        require_fields(payload, required, "EVIDENCE_SELECTED.payload")
+        reject_unknown(payload, required, "EVIDENCE_SELECTED.payload")
+        bound_revision = expect_int(
+            payload.get("bound_revision"), "EVIDENCE_SELECTED.payload.bound_revision"
+        )
+        if bound_revision != matter.revision + 1:
+            raise ValueError("EVIDENCE_SELECTED.payload.bound_revision mismatch")
+        binding = decode_matter_source_binding(payload.get("binding"))
+        existing = {item.binding_id: item for item in matter.source_bindings}
+        prior = existing.get(binding.binding_id)
+        if prior is not None:
+            if prior != binding:
+                raise ValueError("EVIDENCE_SELECTED binding identity conflict")
+            return MatterProjection(matter)
+        updated = ReviewMatter(
+            matter_id=matter.matter_id,
+            title=matter.title,
+            revision=matter.revision + 1,
+            issues=matter.issues,
+            source_bindings=(*matter.source_bindings, binding),
         )
         decode_review_matter(review_matter_document(updated))
         return MatterProjection(updated)

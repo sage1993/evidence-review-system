@@ -15,6 +15,7 @@ from evidence_review.review_matter.contracts import (
     MatterIssue,
     MatterSourceBinding,
     ReviewMatter,
+    decode_matter_source_binding,
     decode_review_matter,
     review_matter_document,
 )
@@ -47,7 +48,7 @@ class MatterSchemaError(MatterStoreError):
 class MatterStore:
     """Own one separate SQLite database for ReviewMatter work state."""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -284,6 +285,34 @@ class MatterStore:
             "bound_revision": int(row["bound_revision"]),
         }
 
+    def selected_evidence_bindings(
+        self, matter_id: str
+    ) -> tuple[MatterSourceBinding, ...]:
+        """Return only bindings explicitly promoted by EVIDENCE_SELECTED events."""
+        from evidence_review.review_matter.events import decode_matter_event
+
+        self.load(matter_id)
+        rows = self.connection.execute(
+            """
+            SELECT event_json
+            FROM matter_events
+            WHERE matter_id = ?
+            ORDER BY sequence
+            """,
+            (matter_id,),
+        ).fetchall()
+        selected: dict[str, MatterSourceBinding] = {}
+        for row in rows:
+            event = decode_matter_event(json.loads(str(row["event_json"])))
+            if event.kind != "EVIDENCE_SELECTED":
+                continue
+            binding = decode_matter_source_binding(event.payload.get("binding"))
+            prior = selected.get(binding.binding_id)
+            if prior is not None and prior != binding:
+                raise MatterSchemaError("MATTER_SELECTED_EVIDENCE_CONFLICT")
+            selected[binding.binding_id] = binding
+        return tuple(selected.values())
+
     def list_source_dependencies(self, matter_id: str) -> tuple[dict[str, str], ...]:
         """Return exact Matter source dependencies in stable order."""
         rows = self.connection.execute(
@@ -328,3 +357,51 @@ class MatterStore:
             expected_revision,
             MatterEvent(kind="TITLE_CHANGED", payload={"title": title}),
         ).matter
+
+    def apply_formalization_snapshot(self, snapshot: object) -> None:
+        """Insert one immutable snapshot inside the caller's transaction."""
+        from evidence_review.review_matter.snapshot import (
+            FormalizationSnapshot,
+            formalization_snapshot_document,
+        )
+
+        if not isinstance(snapshot, FormalizationSnapshot):
+            raise ValueError("snapshot must be a FormalizationSnapshot")
+        document = formalization_snapshot_document(snapshot)
+        try:
+            self.connection.execute(
+                """
+                INSERT INTO formalization_snapshots(
+                    snapshot_id, matter_id, matter_revision, document_json
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (
+                    snapshot.snapshot_id,
+                    snapshot.matter_id,
+                    snapshot.matter_revision,
+                    dumps(document),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            existing = self.connection.execute(
+                "SELECT document_json FROM formalization_snapshots WHERE snapshot_id = ?",
+                (snapshot.snapshot_id,),
+            ).fetchone()
+            if existing is None or str(existing[0]) != dumps(document):
+                raise MatterStoreError("FORMALIZATION_SNAPSHOT_ID_CONFLICT") from error
+
+    def load_formalization_snapshot(self, snapshot_id: str) -> object:
+        """Load and strictly decode one immutable formalization snapshot."""
+        row = self.connection.execute(
+            "SELECT document_json FROM formalization_snapshots WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchone()
+        if row is None:
+            raise MatterNotFound("FORMALIZATION_SNAPSHOT_NOT_FOUND")
+        from evidence_review.review_matter.snapshot import decode_formalization_snapshot
+
+        try:
+            document = json.loads(str(row["document_json"]))
+        except json.JSONDecodeError as error:
+            raise MatterSchemaError("FORMALIZATION_SNAPSHOT_INVALID_JSON") from error
+        return decode_formalization_snapshot(document)

@@ -64,6 +64,7 @@ class PreparedReviewQuestion:
     next_action_path: Path | None
     resumed: bool
     retrieval_guidance_path: Path | None
+    run_directory: Path | None = None
 
 
 class ReviewEvidenceSnapshotError(RuntimeError):
@@ -553,6 +554,47 @@ def _prepare_from_document(workspace: Path, document: dict[str, object]) -> Prep
         temporary.unlink(missing_ok=True)
 
 
+def prepare_review_request_document(
+    workspace: Path,
+    document: dict[str, object],
+    *,
+    additional_artifacts: Mapping[str, object] | None = None,
+) -> PreparedReviewQuestion:
+    """Prepare one already-bound immutable request through the formal core."""
+    run_id = compute_run_id_from_request(document)
+    try:
+        run_directory = verified_regular_directory(
+            workspace / "runs" / run_id,
+            field="run directory",
+        )
+        resumed = True
+        existing = _run_file(run_directory, "review-request.json")
+        if existing.read_bytes() != dump_bytes(document):
+            raise ValueError("existing immutable review run differs from request")
+    except FileNotFoundError:
+        prepared = _prepare_from_document(workspace, document)
+        run_directory = prepared.run_directory
+        resumed = False
+
+    for name, artifact in (additional_artifacts or {}).items():
+        _write_or_identical(run_directory / name, artifact)
+    if not resumed:
+        _write_or_identical(
+            run_directory / "next-action-track-a.json",
+            next_action_document(_track_a_action(run_id)),
+        )
+        _initialize_events(run_directory)
+    status, next_action_path = _resume_state(run_directory)
+    return PreparedReviewQuestion(
+        run_id=run_id,
+        status=status,
+        next_action_path=next_action_path,
+        resumed=resumed,
+        retrieval_guidance_path=None,
+        run_directory=run_directory,
+    )
+
+
 def prepare_review_question(
     workspace: Path,
     question: str,
@@ -645,6 +687,7 @@ def prepare_review_question(
         next_action_path=next_action_path,
         resumed=resumed,
         retrieval_guidance_path=guidance_path,
+        run_directory=run_directory,
     )
 
 
@@ -773,6 +816,7 @@ __all__ = [
     "build_review_run_request",
     "canonical_query_request",
     "prepare_review_question",
+    "prepare_review_request_document",
     "submit_question_track_a",
     "submit_question_track_b",
 ]

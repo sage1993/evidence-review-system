@@ -40,6 +40,10 @@ MATTER_SOURCE_BINDING_FORMAT: Final[MatterSourceBindingFormat] = (
 )
 MATTER_VERSION: Final[Literal[1]] = 1
 MATTER_SOURCE_BINDING_VERSION: Final[Literal[1]] = 1
+FORMALIZATION_SNAPSHOT_FORMAT: Final[Literal["evidence-review/formalization-snapshot"]] = (
+    "evidence-review/formalization-snapshot"
+)
+FORMALIZATION_SNAPSHOT_VERSION: Final[Literal[1]] = 1
 
 _MATTER_STATES: tuple[MatterIssueState, ...] = (
     "DRAFT",
