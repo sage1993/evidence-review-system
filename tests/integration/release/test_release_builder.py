@@ -170,6 +170,47 @@ def test_release_rejects_tampered_final_packet(tmp_path: Path) -> None:
         build_evidence_release(root, tmp_path / "release", run_id=run_id)
 
 
+def test_release_validation_path_is_relative_and_candidate_hash_is_stable(
+    tmp_path: Path,
+) -> None:
+    first_root = tmp_path / "first-location" / "workspace"
+    second_root = tmp_path / "second-location" / "workspace"
+    first_run_id = _workspace(first_root)
+    second_run_id = _workspace(second_root)
+
+    first = build_evidence_release(
+        first_root,
+        tmp_path / "first-release",
+        run_id=first_run_id,
+    )
+    second = build_evidence_release(
+        second_root,
+        tmp_path / "second-release",
+        run_id=second_run_id,
+    )
+
+    first_validation = json.loads(
+        (tmp_path / "first-release" / "release-validation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    second_validation = json.loads(
+        (tmp_path / "second-release" / "release-validation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert first_run_id == second_run_id
+    assert first["candidate_hash"] == second["candidate_hash"]
+    assert first_validation == second_validation
+    assert first_validation["final_packet"]["path"] == (
+        f"runs/{first_run_id}/final-review-packet.json"
+    )
+    validation_text = json.dumps(first_validation)
+    assert str(first_root) not in validation_text
+    assert str(second_root) not in validation_text
+
+
 def test_release_builder_script_requires_run_id_option() -> None:
     repository_root = Path(__file__).parents[3]
     environment = os.environ.copy()

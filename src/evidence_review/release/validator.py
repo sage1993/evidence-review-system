@@ -249,7 +249,7 @@ def validate_release_workspace(
         final_packet = {
             "status": "PASS",
             "run_id": selected_packet.run_id,
-            "path": str(selected_packet.path),
+            "path": selected_packet.path.relative_to(workspace_root.resolve()).as_posix(),
             "sha256": selected_packet.packet_hash,
             "packet_status": selected_packet.status,
         }

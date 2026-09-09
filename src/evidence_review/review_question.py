@@ -801,7 +801,7 @@ def submit_question_track_b(
         _append_event(run_directory, "FINALIZING", _track_b_identity(track_b_output))
     else:
         try:
-            finalized = _existing_finalized_run(run_directory)
+            finalized = _existing_finalized_run(run_directory, publish=publish)
         except ValueError:
             finalized = None
         if finalized is not None:
