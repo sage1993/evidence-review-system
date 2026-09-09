@@ -114,6 +114,27 @@ def test_visual_handoff_canonicalizes_valid_raster_sources(
     ]
 
 
+def test_visual_handoff_accepts_canonical_review_scope(
+    tmp_path: Path,
+) -> None:
+    adapters = __import__("evidence_review.review_matter.scope_adapters", fromlist=["*"])
+    source = _raster_source(tmp_path, "PNG", ".png")
+    workspace = tmp_path / "workspace-scope"
+    attachments = prepare_case_visual_sources(workspace, case_drawings=[source])
+    scope = adapters.review_scope_from_explicit_input(
+        question=_plan().original_question,
+        issues=_plan().issues,
+        facts=_plan().facts,
+        assumptions=_plan().assumptions,
+        legal_anchors=_plan().legal_anchors,
+        search_requests=_plan().search_requests,
+    )
+
+    handoff = prepare_visual_analysis_handoff(workspace, scope, attachments)
+
+    assert handoff.pages
+
+
 @pytest.mark.parametrize(
     ("image_format", "suffix"),
     [("PNG", ".png"), ("JPEG", ".jpg"), ("TIFF", ".tiff")],
