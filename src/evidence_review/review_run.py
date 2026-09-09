@@ -77,6 +77,12 @@ _FINALIZER_ARTIFACTS = (
     "track-b-output.json",
     "confidence-input.json",
 )
+_PREPARE_STATUS_FORMAT = "evidence-review/review-run-prepare-status"
+_PREPARE_REQUIRED_OUTPUTS = ("track-a-output.json", "track-b-output.json")
+_PREPARE_INSTRUCTION_TEMPLATES = {
+    "TRACK_A_INSTRUCTIONS.md": "track-a.md",
+    "TRACK_B_INSTRUCTIONS.md": "track-b.md",
+}
 
 
 class TrackBContractError(ValueError):
@@ -153,6 +159,27 @@ def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(text)
+
+
+def _prepared_instruction_text(name: str) -> str:
+    """Return the exact tracked instruction text for a prepared-run artifact."""
+    try:
+        template_name = _PREPARE_INSTRUCTION_TEMPLATES[name]
+    except KeyError as error:
+        raise ValueError(f"unsupported prepared instruction artifact: {name}") from error
+    template_root = Path(__file__).with_name("llm_layer") / "templates"
+    return (template_root / template_name).read_text(encoding="utf-8")
+
+
+def _prepare_status_document(run_id: str) -> dict[str, object]:
+    """Build the canonical status record produced with every prepared run."""
+    return {
+        "format": _PREPARE_STATUS_FORMAT,
+        "version": 1,
+        "run_id": run_id,
+        "state": "AWAITING_TRACK_OUTPUTS",
+        "required_outputs": list(_PREPARE_REQUIRED_OUTPUTS),
+    }
 
 
 def _write_json_or_identical(path: Path, document: object) -> None:
@@ -449,27 +476,17 @@ def prepare_review_run(
         _write_json(request_output, normalized_request)
         _write_json(bundle_output, track_a_bundle_document(bundle))
         _write_json(confidence_output, confidence)
-        template_root = Path(__file__).with_name("llm_layer") / "templates"
         _write_text(
             run_directory / "TRACK_A_INSTRUCTIONS.md",
-            (template_root / "track-a.md").read_text(encoding="utf-8"),
+            _prepared_instruction_text("TRACK_A_INSTRUCTIONS.md"),
         )
         _write_text(
             run_directory / "TRACK_B_INSTRUCTIONS.md",
-            (template_root / "track-b.md").read_text(encoding="utf-8"),
+            _prepared_instruction_text("TRACK_B_INSTRUCTIONS.md"),
         )
         _write_json(
             run_directory / "prepare-status.json",
-            {
-                "format": "evidence-review/review-run-prepare-status",
-                "version": 1,
-                "run_id": run_id,
-                "state": "AWAITING_TRACK_OUTPUTS",
-                "required_outputs": [
-                    "track-a-output.json",
-                    "track-b-output.json",
-                ],
-            },
+            _prepare_status_document(run_id),
         )
     except Exception:
         shutil.rmtree(run_directory, ignore_errors=True)
