@@ -270,7 +270,7 @@ def test_prepare_is_deterministic_and_refuses_overwrite(tmp_path: Path) -> None:
         prepare_review_run(first_workspace, first_request)
 
 
-def test_finalize_writes_packet_html_manifest_and_published_packet(
+def test_finalize_publish_reports_the_run_local_packet(
     tmp_path: Path,
 ) -> None:
     workspace = _workspace(tmp_path / "workspace")
@@ -293,9 +293,9 @@ def test_finalize_writes_packet_html_manifest_and_published_packet(
     assert result.packet_path.is_file()
     assert result.review_html.is_file()
     assert (prepared.run_directory / "run-manifest.json").is_file()
-    assert result.published_packet == workspace / "runs/final-review-packet.json"
-    assert result.published_packet.read_bytes() == result.packet_path.read_bytes()
-    published = json.loads(result.published_packet.read_text(encoding="utf-8"))
+    assert result.published_packet == result.packet_path
+    assert not (workspace / "runs" / "final-review-packet.json").exists()
+    published = json.loads(result.packet_path.read_text(encoding="utf-8"))
     assert published["human_decision"] is None
     html = result.review_html.read_text(encoding="utf-8")
     assert "기계 평가는 최종 판정이 아닙니다." in html
@@ -436,14 +436,14 @@ def test_finalize_open_cli_prints_only_the_protected_review_url(
     assert not document["url"].startswith("file:")
 
 
-def test_finalize_refuses_existing_publication(tmp_path: Path) -> None:
+def test_finalize_publish_keeps_two_run_packets_isolated(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path / "workspace")
     first = prepare_review_run(
         workspace,
         _write_request(tmp_path / "first.json", "첫 번째 검토"),
     )
     first_a, first_b = _write_tracks(tmp_path / "first-tracks", first.run_id)
-    finalize_review_run(
+    first_result = finalize_review_run(
         workspace,
         first.run_id,
         first_a,
@@ -455,15 +455,22 @@ def test_finalize_refuses_existing_publication(tmp_path: Path) -> None:
         workspace,
         _write_request(tmp_path / "second.json", "두 번째 검토"),
     )
+    first_packet = first_result.packet_path.read_bytes()
     second_a, second_b = _write_tracks(tmp_path / "second-tracks", second.run_id)
-    with pytest.raises(FileExistsError):
-        finalize_review_run(
-            workspace,
-            second.run_id,
-            second_a,
-            second_b,
-            publish=True,
-        )
+    second_result = finalize_review_run(
+        workspace,
+        second.run_id,
+        second_a,
+        second_b,
+        publish=True,
+    )
+
+    assert first_result.published_packet == first_result.packet_path
+    assert second_result.published_packet == second_result.packet_path
+    assert first_result.packet_path != second_result.packet_path
+    assert first_result.packet_path.read_bytes() == first_packet
+    assert second_result.packet_path.is_file()
+    assert not (workspace / "runs" / "final-review-packet.json").exists()
 
 
 def test_finalize_refuses_missing_verified_page_assets(tmp_path: Path) -> None:

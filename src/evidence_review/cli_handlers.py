@@ -591,7 +591,11 @@ def _review_question_submit_track_b(
         "stage": "submit-track-b",
         "status": result.packet.status,
         "run_id": result.run_id,
+        "packet": str(result.packet_path),
         "review_html": str(result.review_html),
+        "published_packet": (
+            None if result.published_packet is None else str(result.published_packet)
+        ),
     }
     if open_browser:
         try:

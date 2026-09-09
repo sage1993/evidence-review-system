@@ -12,8 +12,13 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("workspace", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--run-id", required=True)
     arguments = parser.parse_args()
-    manifest = build_evidence_release(arguments.workspace, arguments.output)
+    manifest = build_evidence_release(
+        arguments.workspace,
+        arguments.output,
+        run_id=arguments.run_id,
+    )
     print(manifest["status"])
     if manifest["status"] != "RELEASE_READY":
         raise SystemExit(2)

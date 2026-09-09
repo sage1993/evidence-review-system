@@ -41,8 +41,8 @@ manual verification.
 The current Evidence Review System release gates are:
 
 ```powershell
-py -3.13 scripts/validate_release.py <workspace>
-py -3.13 scripts/build_release.py <workspace> <output-dir>
+py -3.13 scripts/validate_release.py <workspace> --run-id <RUN-ID>
+py -3.13 scripts/build_release.py <workspace> <output-dir> --run-id <RUN-ID>
 ```
 
 `scripts/validate_workspace.py` is a retired ambiguous entrypoint and must not

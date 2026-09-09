@@ -8,13 +8,15 @@ from pathlib import Path
 
 from evidence_review.release import validator
 
+from ._fixtures import write_valid_finalized_run
+
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
 
-def _prepare(root: Path, *, broken: bool = False, warning: bool = False) -> None:
+def _prepare(root: Path, *, broken: bool = False, warning: bool = False) -> str:
     target = "docs/missing.md" if broken else "docs/OFFLINE_EXECUTION.md"
     external = "\nRaw http://example.com/path.\n" if warning else ""
     _write(root / "README.md", f"# Project\n\n[Offline]({target}){external}")
@@ -38,6 +40,7 @@ def _prepare(root: Path, *, broken: bool = False, warning: bool = False) -> None
         ),
         encoding="utf-8",
     )
+    return write_valid_finalized_run(root)
 
 
 def _isolate_non_documentation_checks(
@@ -74,10 +77,10 @@ def test_documentation_error_fails_workspace(
     tmp_path: Path,
     monkeypatch: object,
 ) -> None:
-    _prepare(tmp_path, broken=True)
+    run_id = _prepare(tmp_path, broken=True)
     _isolate_non_documentation_checks(monkeypatch)
 
-    report = validator.validate_release_workspace(tmp_path)
+    report = validator.validate_release_workspace(tmp_path, run_id=run_id)
 
     assert report["status"] == "FAIL"
     assert "DOCUMENTATION_INTEGRITY_FAILED" in report["errors"]
@@ -88,10 +91,10 @@ def test_warning_only_documentation_keeps_workspace_pass(
     tmp_path: Path,
     monkeypatch: object,
 ) -> None:
-    _prepare(tmp_path, warning=True)
+    run_id = _prepare(tmp_path, warning=True)
     _isolate_non_documentation_checks(monkeypatch)
 
-    report = validator.validate_release_workspace(tmp_path)
+    report = validator.validate_release_workspace(tmp_path, run_id=run_id)
 
     assert report["status"] == "PASS"
     assert report["documentation"]["status"] == "PASS"  # type: ignore[index]
@@ -103,9 +106,10 @@ def test_missing_authority_config_is_stable_documentation_failure(
     monkeypatch: object,
 ) -> None:
     _write(tmp_path / "README.md", "# Project\n")
+    run_id = write_valid_finalized_run(tmp_path)
     _isolate_non_documentation_checks(monkeypatch)
 
-    report = validator.validate_release_workspace(tmp_path)
+    report = validator.validate_release_workspace(tmp_path, run_id=run_id)
 
     assert report["status"] == "FAIL"
     assert report["documentation"]["status"] == "FAIL"  # type: ignore[index]

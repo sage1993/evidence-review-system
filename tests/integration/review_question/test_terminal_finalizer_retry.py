@@ -10,6 +10,7 @@ from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.planned_review_question import prepare_planned_review_question
 from evidence_review.review_question import (
+    _append_event,
     submit_question_track_a,
     submit_question_track_b,
 )
@@ -192,16 +193,59 @@ def test_partially_resolved_track_b_retry_is_terminal_and_idempotent(
 
     submit_question_track_a(workspace, prepared.run_id, _track_a(run_directory))
     track_b = _track_b(run_directory)
-    finalized = submit_question_track_b(workspace, prepared.run_id, track_b)
+    finalized = submit_question_track_b(
+        workspace,
+        prepared.run_id,
+        track_b,
+        publish=True,
+    )
     assert finalized.packet.status == "PARTIALLY_RESOLVED"
 
     packet_path = run_directory / "final-review-packet.json"
+    assert finalized.published_packet == packet_path
     events_directory = run_directory / "events"
     before_packet = packet_path.read_bytes()
     before_events = tuple(sorted(path.name for path in events_directory.iterdir()))
 
-    retried = submit_question_track_b(workspace, prepared.run_id, track_b)
+    retried = submit_question_track_b(
+        workspace,
+        prepared.run_id,
+        track_b,
+        publish=True,
+    )
 
     assert retried.packet.status == "PARTIALLY_RESOLVED"
+    assert retried.published_packet == packet_path
     assert packet_path.read_bytes() == before_packet
     assert tuple(sorted(path.name for path in events_directory.iterdir())) == before_events
+
+
+def test_finalizing_recovery_returns_published_packet_when_requested(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path / "workspace")
+    question = "주차장 설치 기준과 존재하지 않는 보조 기준"
+    prepared = prepare_planned_review_question(workspace, _partial_plan(question))
+    run_directory = workspace / "runs" / prepared.run_id
+    _page_assets(workspace)
+
+    submit_question_track_a(workspace, prepared.run_id, _track_a(run_directory))
+    track_b = _track_b(run_directory)
+    _append_event(run_directory, "FINALIZING", hashlib.sha256(track_b.read_bytes()).hexdigest())
+    from evidence_review.review_run import submit_track_b
+
+    submit_track_b(workspace, prepared.run_id, track_b)
+    monkeypatch.setattr(
+        "evidence_review.review_question._resume_state",
+        lambda run: ("FINALIZING", run / "next-action-track-b.json"),
+    )
+
+    finalized = submit_question_track_b(
+        workspace,
+        prepared.run_id,
+        track_b,
+        publish=True,
+    )
+
+    assert finalized.published_packet == run_directory / "final-review-packet.json"

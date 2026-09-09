@@ -249,8 +249,8 @@ NOT_RUN
 Release Validation 및 Build는 다음 명령을 사용합니다.
 
 ```powershell
-py -3.13 scripts/validate_release.py $WORKSPACE
-py -3.13 scripts/build_release.py $WORKSPACE <output>
+py -3.13 scripts/validate_release.py $WORKSPACE --run-id <RUN-ID>
+py -3.13 scripts/build_release.py $WORKSPACE <output> --run-id <RUN-ID>
 ```
 
 폐기되었거나 Legacy 상태인 Validator Boundary는 [문서 인덱스](docs/README.md)에 기록되어 있습니다.

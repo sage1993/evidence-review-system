@@ -29,7 +29,10 @@ from evidence_review.release.config import (
     resolve_evidence_database,
 )
 from evidence_review.release.output_verifier import validate_release_output
-from evidence_review.release.validator import validate_release_workspace
+from evidence_review.release.validator import (
+    validate_release_workspace,
+    verify_release_packet,
+)
 
 _FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 
@@ -122,23 +125,29 @@ class ReleaseInputs:
     """Read-only inputs validated before a release stage is created."""
 
     evidence: Path
-    packet: Path
+    run_id: str
+    packet_bytes: bytes
+    packet_hash: str
 
 
 def _preflight_release(
     workspace_root: Path,
     output_directory: Path,
     config: ReleaseConfig,
+    run_id: str | None,
 ) -> ReleaseInputs:
     if output_directory.exists():
         raise FileExistsError(output_directory)
     evidence = resolve_evidence_database(workspace_root, config)
-    packet = workspace_root / "runs" / "final-review-packet.json"
     if not evidence.is_file():
         raise FileNotFoundError(evidence)
-    if not packet.is_file():
-        raise FileNotFoundError(packet)
-    return ReleaseInputs(evidence=evidence, packet=packet)
+    selected_packet = verify_release_packet(workspace_root, run_id)
+    return ReleaseInputs(
+        evidence=evidence,
+        run_id=selected_packet.run_id,
+        packet_bytes=selected_packet.raw_bytes,
+        packet_hash=selected_packet.packet_hash,
+    )
 
 
 def _publish_stage(stage: Path, output_directory: Path) -> None:
@@ -166,12 +175,18 @@ def build_evidence_release(
     workspace_root: Path,
     output_directory: Path,
     *,
+    run_id: str | None = None,
     config: ReleaseConfig = DEFAULT_RELEASE_CONFIG,
 ) -> dict[str, object]:
     """Build and atomically publish a deterministic evidence release."""
     workspace_root = workspace_root.resolve()
     output_directory = output_directory.resolve(strict=False)
-    inputs = _preflight_release(workspace_root, output_directory, config)
+    inputs = _preflight_release(
+        workspace_root,
+        output_directory,
+        config,
+        run_id,
+    )
     output_parent = output_directory.parent
     output_parent.mkdir(parents=True, exist_ok=True)
 
@@ -182,7 +197,10 @@ def build_evidence_release(
         stage = Path(temporary) / "release"
         stage.mkdir()
         shutil.copyfile(inputs.evidence, stage / "evidence.sqlite")
-        shutil.copyfile(inputs.packet, stage / "final-review-packet.json")
+        packet_output = stage / "final-review-packet.json"
+        packet_output.write_bytes(inputs.packet_bytes)
+        if _sha(packet_output) != inputs.packet_hash:
+            raise ValueError("release staged packet hash does not match selected packet")
 
         with tempfile.TemporaryDirectory(
             prefix="evidence-review-release-build-"
@@ -200,7 +218,10 @@ def build_evidence_release(
             stage / "chatgpt-web-runtime.zip",
         )
 
-        workspace_validation = validate_release_workspace(workspace_root)
+        workspace_validation = validate_release_workspace(
+            workspace_root,
+            run_id=inputs.run_id,
+        )
         output_validation = validate_release_output(stage)
         validation = _combined_validation_report(
             workspace_validation,
@@ -212,7 +233,7 @@ def build_evidence_release(
 
         artifacts = _artifact_entries(stage)
         candidate_hash = sha256_json(artifacts)
-        packet_hash = _sha(stage / "final-review-packet.json")
+        packet_hash = inputs.packet_hash
         reasons = _automated_reason_codes(
             workspace_validation,
             output_validation,
@@ -243,6 +264,7 @@ def build_evidence_release(
             "format": RELEASE_FORMAT,
             "version": 1,
             "release": config.release_id,
+            "run_id": inputs.run_id,
             "status": status,
             "reason_codes": reasons,
             "candidate_hash": candidate_hash,
@@ -265,6 +287,12 @@ def build_evidence_release(
 def build_ansim_release(
     workspace_root: Path,
     output_directory: Path,
+    *,
+    run_id: str | None = None,
 ) -> dict[str, object]:
     """Compatibility wrapper for the original public Python function name."""
-    return build_evidence_release(workspace_root, output_directory)
+    return build_evidence_release(
+        workspace_root,
+        output_directory,
+        run_id=run_id,
+    )

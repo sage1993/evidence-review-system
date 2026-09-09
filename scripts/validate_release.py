@@ -16,8 +16,13 @@ def main() -> None:
         type=Path,
         default=Path("release-validation.json"),
     )
+    parser.add_argument("--run-id", required=True)
     arguments = parser.parse_args()
-    report = validate_release_workspace(arguments.workspace, arguments.output)
+    report = validate_release_workspace(
+        arguments.workspace,
+        arguments.output,
+        run_id=arguments.run_id,
+    )
     print(report["status"])
     raise SystemExit(0 if report["status"] == "PASS" else 1)
 

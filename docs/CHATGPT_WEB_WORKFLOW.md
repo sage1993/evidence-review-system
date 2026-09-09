@@ -40,7 +40,7 @@ evidence-review review-run finalize `
   --publish
 ```
 
-The local deterministic finalizer validates both untrusted outputs. A ChatGPT response is not accepted merely because it is well-formed; citation, calculation, rule, confidence, and Track B integrity checks must all pass.
+The local deterministic finalizer validates both untrusted outputs. A ChatGPT response is not accepted merely because it is well-formed; citation, calculation, rule, confidence, and Track B integrity checks must all pass. `--publish` keeps compatibility by reporting the run-local packet; it does not create a workspace-global packet copy.
 
 ```bash smoke
 python -c "from evidence_review.packaging.project_instructions import render_project_instructions; assert 'human_decision' in render_project_instructions()"
