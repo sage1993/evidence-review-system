@@ -182,6 +182,41 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         )
         decode_review_matter(review_matter_document(updated))
         return MatterProjection(updated)
+    if event.kind == "EVIDENCE_SELECTED":
+        payload = expect_mapping(event.payload, "EVIDENCE_SELECTED.payload")
+        require_fields(payload, {"source_binding"}, "EVIDENCE_SELECTED.payload")
+        reject_unknown(payload, {"source_binding"}, "EVIDENCE_SELECTED.payload")
+        from evidence_review.review_matter.contracts import (
+            decode_matter_source_binding,
+        )
+
+        selected = decode_matter_source_binding(payload.get("source_binding"))
+        same_id = next(
+            (
+                binding
+                for binding in matter.source_bindings
+                if binding.binding_id == selected.binding_id
+            ),
+            None,
+        )
+        if same_id is not None:
+            if same_id == selected:
+                return MatterProjection(matter)
+            raise ValueError("EVIDENCE_SELECTED binding identity conflict")
+        if any(
+            binding.evidence_id == selected.evidence_id
+            for binding in matter.source_bindings
+        ):
+            raise ValueError("EVIDENCE_SELECTED binding identity conflict")
+        updated = ReviewMatter(
+            matter_id=matter.matter_id,
+            title=matter.title,
+            revision=matter.revision + 1,
+            issues=matter.issues,
+            source_bindings=(*matter.source_bindings, selected),
+        )
+        decode_review_matter(review_matter_document(updated))
+        return MatterProjection(updated)
     if event.kind == "ISSUES_INVALIDATED":
         payload = expect_mapping(event.payload, "ISSUES_INVALIDATED.payload")
         required = {"issue_ids", "source_key", "new_source_hash"}
