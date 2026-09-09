@@ -500,7 +500,11 @@ def prepare_review_question_from_request(
         raise
 
 
-def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
+def _existing_finalized_run(
+    run_directory: Path,
+    *,
+    publish: bool = False,
+) -> FinalizedReviewRun | None:
     packet_path: Path | None
     html_path: Path | None
     try:
@@ -530,7 +534,7 @@ def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
         packet=packet,
         packet_path=packet_path,
         review_html=html_path,
-        published_packet=None,
+        published_packet=packet_path if publish else None,
     )
 
 
@@ -752,7 +756,7 @@ def submit_question_track_b(
     run_directory = workspace / "runs" / run_id
     state, _action = _resume_state(run_directory)
     if state in TERMINAL_FINALIZER_STATUSES:
-        finalized = _existing_finalized_run(run_directory)
+        finalized = _existing_finalized_run(run_directory, publish=publish)
         if finalized is None:
             raise ValueError("final review artifacts are incomplete")
         return finalized

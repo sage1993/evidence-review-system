@@ -196,7 +196,7 @@ evidence-review review-question submit-track-b `
   --publish
 ```
 
-The runtime validates Track B before finalization. Finalization creates the run-specific `final-review-packet.json` and `review.html` only after all deterministic and Track gates pass. The legacy `--publish` compatibility flag reports that same run-local packet in CLI status; it never creates a workspace-global packet copy.
+The runtime validates Track B before finalization. Finalization creates the run-specific `final-review-packet.json` and `review.html` only after all deterministic and Track gates pass. The legacy `--publish` compatibility flag reports that same run-local packet in the `packet` and `published_packet` CLI status fields, including on an idempotent terminal retry; it never creates a workspace-global packet copy.
 
 Lower-level `review-run prepare` / `review-run finalize` remain compatibility and controlled-test interfaces. They are not the normal `$ERS_REVIEW` path.
 

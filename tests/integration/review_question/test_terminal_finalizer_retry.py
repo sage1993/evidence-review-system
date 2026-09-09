@@ -192,16 +192,28 @@ def test_partially_resolved_track_b_retry_is_terminal_and_idempotent(
 
     submit_question_track_a(workspace, prepared.run_id, _track_a(run_directory))
     track_b = _track_b(run_directory)
-    finalized = submit_question_track_b(workspace, prepared.run_id, track_b)
+    finalized = submit_question_track_b(
+        workspace,
+        prepared.run_id,
+        track_b,
+        publish=True,
+    )
     assert finalized.packet.status == "PARTIALLY_RESOLVED"
 
     packet_path = run_directory / "final-review-packet.json"
+    assert finalized.published_packet == packet_path
     events_directory = run_directory / "events"
     before_packet = packet_path.read_bytes()
     before_events = tuple(sorted(path.name for path in events_directory.iterdir()))
 
-    retried = submit_question_track_b(workspace, prepared.run_id, track_b)
+    retried = submit_question_track_b(
+        workspace,
+        prepared.run_id,
+        track_b,
+        publish=True,
+    )
 
     assert retried.packet.status == "PARTIALLY_RESOLVED"
+    assert retried.published_packet == packet_path
     assert packet_path.read_bytes() == before_packet
     assert tuple(sorted(path.name for path in events_directory.iterdir())) == before_events

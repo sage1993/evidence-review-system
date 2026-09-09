@@ -159,11 +159,13 @@ def test_review_question_submit_track_b_open_returns_review_html_and_protected_u
     workspace = tmp_path / "workspace"
     run_id = "RUN-0123456789ABCDEF0123"
     html_path = workspace / "runs" / run_id / "review.html"
+    packet_path = workspace / "runs" / run_id / "final-review-packet.json"
 
     def fake_submit(*_args, **_kwargs):
         return SimpleNamespace(
             run_id=run_id,
             review_html=html_path,
+            packet_path=packet_path,
             packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
             published_packet=None,
         )
@@ -193,6 +195,46 @@ def test_review_question_submit_track_b_open_returns_review_html_and_protected_u
     assert document["review_html"] == str(html_path)
     assert document["display_status"] == "OPENED"
     assert document["url"].startswith("http://127.0.0.1:")
+
+
+def test_review_question_submit_track_b_publish_reports_run_local_packet(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_id = "RUN-0123456789ABCDEF0123"
+    packet_path = workspace / "runs" / run_id / "final-review-packet.json"
+
+    monkeypatch.setattr(
+        cli,
+        "submit_question_track_b",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            run_id=run_id,
+            review_html=workspace / "runs" / run_id / "review.html",
+            packet_path=packet_path,
+            packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
+            published_packet=packet_path,
+        ),
+    )
+
+    assert cli.main(
+        [
+            "review-question",
+            "submit-track-b",
+            "--workspace",
+            str(workspace),
+            "--run-id",
+            run_id,
+            "--track-b-output",
+            str(tmp_path / "track-b.json"),
+            "--publish",
+        ]
+    ) == 0
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["packet"] == str(packet_path)
+    assert document["published_packet"] == str(packet_path)
 
 
 def test_review_question_prepare_resumes_the_same_immutable_request(
@@ -769,6 +811,7 @@ def test_review_question_submit_track_b_open_preserves_finalization_on_display_f
         lambda *_args, **_kwargs: SimpleNamespace(
             run_id=run_id,
             review_html=html_path,
+            packet_path=workspace / "runs" / run_id / "final-review-packet.json",
             packet=SimpleNamespace(status="READY_FOR_HUMAN_REVIEW"),
             published_packet=None,
         ),

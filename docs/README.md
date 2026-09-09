@@ -20,7 +20,7 @@ The current release commands are:
 
 ```powershell
 py -3.13 scripts/validate_release.py $WORKSPACE
-py -3.13 scripts/build_release.py $WORKSPACE <output>
+py -3.13 scripts/build_release.py $WORKSPACE <output> --run-id <RUN-ID>
 ```
 
 `scripts/validate_workspace.py` is retired and is not a current release gate.

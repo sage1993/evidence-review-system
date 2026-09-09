@@ -27,7 +27,10 @@ def test_validate_workspace_is_retired_fail_closed() -> None:
     output = completed.stdout + completed.stderr
     assert "retired" in output.lower()
     assert "py -3.13 scripts/validate_release.py <workspace>" in output
-    assert "py -3.13 scripts/build_release.py <workspace> <output-dir>" in output
+    assert (
+        "py -3.13 scripts/build_release.py <workspace> <output-dir> --run-id <RUN-ID>"
+        in output
+    )
     assert "py -3.13 scripts/validate_legacy_ansim_workspace.py" in output
 
 
@@ -71,7 +74,10 @@ def test_current_docs_name_release_authority_and_legacy_scope() -> None:
 
     assert "scripts/validate_workspace.py" not in readme
     assert "py -3.13 scripts/validate_release.py <workspace>" in policy
-    assert "py -3.13 scripts/build_release.py <workspace> <output-dir>" in policy
+    assert (
+        "py -3.13 scripts/build_release.py <workspace> <output-dir> --run-id <RUN-ID>"
+        in policy
+    )
     assert "scripts/validate_legacy_ansim_workspace.py" in policy
     assert "not a current release gate" in policy.lower()
     assert "historical" in plans_index.lower()
