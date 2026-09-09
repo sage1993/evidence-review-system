@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -440,6 +441,63 @@ def _resume_state(run_directory: Path) -> tuple[str, Path | None]:
         raise ValueError(f"review question run cannot resume from {state}")
     path = _run_file(run_directory, path.name)
     return state, path
+
+
+def prepare_review_question_from_request(
+    workspace: Path, document: dict[str, object]
+) -> PreparedReviewQuestion:
+    """Prepare or resume one strict request with the canonical Track A handoff."""
+    run_id = compute_run_id_from_request(document)
+    run_directory = workspace / "runs" / run_id
+    created = False
+    try:
+        prepare_timer = start_stage()
+        try:
+            trusted_run = verified_regular_directory(
+                run_directory,
+                field="run directory",
+            )
+        except FileNotFoundError:
+            prepared = _prepare_from_document(workspace, document)
+            trusted_run = prepared.run_directory
+            created = True
+            _write_or_identical(
+                trusted_run / "next-action-track-a.json",
+                next_action_document(_track_a_action(run_id)),
+            )
+            _initialize_events(trusted_run)
+            resumed = False
+        else:
+            existing = _run_file(trusted_run, "review-request.json")
+            if existing.read_bytes() != dump_bytes(document):
+                raise ValueError("existing immutable review run differs from request")
+            resumed = True
+
+        prepare_metric = finish_stage(
+            "prepare",
+            prepare_timer,
+            status="SKIPPED" if resumed else "COMPLETED",
+        )
+        append_stage(trusted_run, prepare_metric)
+
+        status, next_action_path = _resume_state(trusted_run)
+        return PreparedReviewQuestion(
+            run_id=run_id,
+            status=status,
+            next_action_path=next_action_path,
+            resumed=resumed,
+            retrieval_guidance_path=None,
+        )
+    except Exception:
+        if created:
+            shutil.rmtree(trusted_run, ignore_errors=True)
+            runs_directory = workspace / "runs"
+            try:
+                if runs_directory.is_dir() and not any(runs_directory.iterdir()):
+                    runs_directory.rmdir()
+            except OSError:
+                pass
+        raise
 
 
 def _existing_finalized_run(run_directory: Path) -> FinalizedReviewRun | None:
