@@ -451,6 +451,7 @@ def prepare_review_question_from_request(
     run_directory = workspace / "runs" / run_id
     created = False
     try:
+        prepare_timer = start_stage()
         try:
             trusted_run = verified_regular_directory(
                 run_directory,
@@ -471,6 +472,13 @@ def prepare_review_question_from_request(
             if existing.read_bytes() != dump_bytes(document):
                 raise ValueError("existing immutable review run differs from request")
             resumed = True
+
+        prepare_metric = finish_stage(
+            "prepare",
+            prepare_timer,
+            status="SKIPPED" if resumed else "COMPLETED",
+        )
+        append_stage(trusted_run, prepare_metric)
 
         status, next_action_path = _resume_state(trusted_run)
         return PreparedReviewQuestion(

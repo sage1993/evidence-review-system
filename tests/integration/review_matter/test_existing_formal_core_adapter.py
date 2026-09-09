@@ -26,6 +26,38 @@ def _setup_workspace(tmp_path: Path) -> tuple[Path, object, object]:
     return workspace, store, snapshot
 
 
+def _track_a_output(run_directory: Path, *, issue_ids: list[str] | None = None) -> Path:
+    bundle = json.loads(
+        (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
+    )
+    citation_id = bundle["evidence"][0]["citation"]["citation_id"]
+    output = run_directory / "track-a-attempt-1.json"
+    output.write_bytes(
+        dump_bytes(
+            {
+                "run_id": bundle["run_id"],
+                "claims": [
+                    {
+                        "claim_id": "CL-1",
+                        "text": "Exact reference text",
+                        "issue_ids": issue_ids or [],
+                        "citation_ids": [citation_id],
+                        "numeric_tokens": [],
+                        "calculation_result_ids": [],
+                        "rule_references": [],
+                    }
+                ],
+                "citations": [citation_id],
+                "missing_inputs": [],
+                "exceptions": [],
+                "conflicts": [],
+                "explanation": "근거를 정리한다.",
+            }
+        )
+    )
+    return output
+
+
 def test_persisted_snapshot_adapts_to_existing_strict_formal_core_without_matter_write(
     tmp_path: Path,
 ) -> None:
@@ -63,6 +95,45 @@ def test_formalization_uses_existing_track_a_handoff(tmp_path: Path) -> None:
     assert load_workflow_events(run_directory / "events")[-1].next_state == (
         "WAITING_TRACK_A"
     )
+
+
+def test_formalization_handoff_can_submit_track_a(tmp_path: Path) -> None:
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter.formalization import formalize_snapshot
+    from evidence_review.review_question import submit_question_track_a
+
+    prepared = formalize_snapshot(workspace, snapshot)
+    run_directory = workspace / "runs" / prepared.run_id
+    bundle = json.loads(
+        (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
+    )
+    issue_id = bundle["inputs"]["question_plan"]["issues"][0]["id"]
+
+    submitted = submit_question_track_a(
+        workspace,
+        prepared.run_id,
+        _track_a_output(run_directory, issue_ids=[issue_id]),
+    )
+
+    assert submitted.next_action_path == run_directory / "next-action-track-b.json"
+
+
+def test_formalization_review_scope_requires_track_a_issue_relevance(
+    tmp_path: Path,
+) -> None:
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter.formalization import formalize_snapshot
+    from evidence_review.review_question import submit_question_track_a
+
+    prepared = formalize_snapshot(workspace, snapshot)
+    run_directory = workspace / "runs" / prepared.run_id
+
+    with pytest.raises(ValueError, match="UNRELATED_CLAIM"):
+        submit_question_track_a(
+            workspace,
+            prepared.run_id,
+            _track_a_output(run_directory),
+        )
 
 
 def test_same_snapshot_has_same_formal_request_identity(tmp_path: Path) -> None:
