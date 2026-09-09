@@ -1,9 +1,12 @@
+import sqlite3
+
 import pytest
 
 from evidence_review.review_matter.events import MatterEvent
 from evidence_review.review_matter.store import (
     MatterAlreadyExists,
     MatterRevisionConflict,
+    MatterSchemaError,
     MatterStore,
 )
 
@@ -49,3 +52,37 @@ def test_stale_revision_conflict_leaves_matter_unchanged(tmp_path) -> None:
     with pytest.raises(MatterRevisionConflict, match="MATTER_REVISION_CONFLICT"):
         store.rename("MATTER-001", expected_revision=1, title="Writer B")
     assert store.load("MATTER-001").title == "Writer A"
+
+
+@pytest.mark.parametrize("metadata_value", [None, "not-v1"])
+def test_invalid_v1_metadata_migration_rolls_back_without_schema_changes(
+    tmp_path, metadata_value
+) -> None:
+    database = tmp_path / f"invalid-v1-{metadata_value or 'missing'}.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute(
+            "CREATE TABLE matter_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        if metadata_value is not None:
+            connection.execute(
+                "INSERT INTO matter_meta(key, value) VALUES ('schema_version', ?)",
+                (metadata_value,),
+            )
+
+    with pytest.raises(MatterSchemaError):
+        MatterStore(database)
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        row = connection.execute(
+            "SELECT value FROM matter_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        assert (None if row is None else row[0]) == metadata_value
+        assert (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'formalization_snapshots'"
+            ).fetchone()
+            is None
+        )

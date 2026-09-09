@@ -82,9 +82,30 @@ class MatterStore:
         version = int(self.connection.execute("PRAGMA user_version").fetchone()[0])
         if version == 1:
             with self.transaction():
+                try:
+                    metadata_rows = self.connection.execute(
+                        """
+                        SELECT value FROM matter_meta
+                        WHERE key = 'schema_version'
+                        """
+                    ).fetchall()
+                except sqlite3.Error as error:
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_MISSING") from error
+                if len(metadata_rows) != 1:
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_MISSING")
+                if metadata_rows[0]["value"] != "1":
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_INVALID")
+                metadata_update = self.connection.execute(
+                    """
+                    UPDATE matter_meta SET value = '2'
+                    WHERE key = 'schema_version' AND value = '1'
+                    """
+                )
+                if metadata_update.rowcount != 1:
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_UPDATE_FAILED")
                 self.connection.execute(
                     """
-                    CREATE TABLE formalization_snapshots (
+                    CREATE TABLE IF NOT EXISTS formalization_snapshots (
                         snapshot_id TEXT PRIMARY KEY,
                         matter_id TEXT NOT NULL,
                         matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
@@ -95,9 +116,6 @@ class MatterStore:
                     """
                 )
                 self.connection.execute("PRAGMA user_version = 2")
-                self.connection.execute(
-                    "UPDATE matter_meta SET value = '2' WHERE key = 'schema_version'"
-                )
         elif version != self.SCHEMA_VERSION:
             raise MatterSchemaError(f"MATTER_SCHEMA_UNSUPPORTED: {version}")
 
@@ -321,12 +339,19 @@ class MatterStore:
         """Create one immutable snapshot inside the caller's transaction."""
         existing = self.connection.execute(
             """
-            SELECT canonical_document FROM formalization_snapshots
+            SELECT snapshot_id, matter_id, matter_revision, canonical_document
+            FROM formalization_snapshots
             WHERE snapshot_id = ?
             """,
             (snapshot_id,),
         ).fetchone()
         if existing is not None:
+            if (
+                existing["snapshot_id"] != snapshot_id
+                or existing["matter_id"] != matter_id
+                or existing["matter_revision"] != matter_revision
+            ):
+                raise MatterAlreadyExists("FORMALIZATION_SNAPSHOT_METADATA_MISMATCH")
             current = bytes(existing["canonical_document"])
             if current != canonical_document:
                 raise MatterAlreadyExists("FORMALIZATION_SNAPSHOT_ID_CONFLICT")
@@ -344,15 +369,52 @@ class MatterStore:
             raise MatterAlreadyExists("FORMALIZATION_SNAPSHOT_ALREADY_EXISTS") from error
         return canonical_document
 
-    def list_formalization_snapshot_documents(self) -> tuple[bytes, ...]:
-        """Return immutable snapshot documents in deterministic identity order."""
+    def load_formalization_snapshot_record(
+        self, snapshot_id: str
+    ) -> tuple[str, str, int, bytes] | None:
+        """Return one persisted snapshot with its independently stored metadata."""
+        row = self.connection.execute(
+            """
+            SELECT snapshot_id, matter_id, matter_revision, canonical_document
+            FROM formalization_snapshots
+            WHERE snapshot_id = ?
+            """,
+            (snapshot_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return (
+            str(row["snapshot_id"]),
+            str(row["matter_id"]),
+            int(row["matter_revision"]),
+            bytes(row["canonical_document"]),
+        )
+
+    def list_formalization_snapshot_records(self) -> tuple[tuple[str, str, int, bytes], ...]:
+        """Return persisted snapshots with metadata in deterministic identity order."""
         rows = self.connection.execute(
             """
-            SELECT canonical_document FROM formalization_snapshots
+            SELECT snapshot_id, matter_id, matter_revision, canonical_document
+            FROM formalization_snapshots
             ORDER BY snapshot_id
             """
         ).fetchall()
-        return tuple(bytes(row["canonical_document"]) for row in rows)
+        return tuple(
+            (
+                str(row["snapshot_id"]),
+                str(row["matter_id"]),
+                int(row["matter_revision"]),
+                bytes(row["canonical_document"]),
+            )
+            for row in rows
+        )
+
+    def list_formalization_snapshot_documents(self) -> tuple[bytes, ...]:
+        """Return immutable snapshot documents in deterministic identity order."""
+        return tuple(
+            document
+            for _, _, _, document in self.list_formalization_snapshot_records()
+        )
 
     def list_source_dependencies(self, matter_id: str) -> tuple[dict[str, str], ...]:
         """Return exact Matter source dependencies in stable order."""

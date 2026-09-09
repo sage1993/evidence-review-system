@@ -121,6 +121,7 @@ def test_formalization_snapshot_freezes_exact_matter_and_evidence_identity(tmp_p
     assert snapshot.evidence_db_sha256 == provenance["evidence_db_sha256"]
     assert snapshot.selected_evidence[0].text == "Exact reference text"
     assert snapshot.review_scope.origin == "EXPLICIT_USER"
+    assert snapshot.review_scope.search_requests[0].source == "user"
     assert not hasattr(snapshot, "final_status")
 
 
@@ -170,3 +171,30 @@ def test_snapshot_create_only_retry_is_deterministic(tmp_path: Path) -> None:
         == module.formalization_snapshot_document(second)
     )
     assert len(module.list_formalization_snapshots(store)) == 1
+
+
+def test_snapshot_listing_rejects_tampered_row_metadata(tmp_path: Path) -> None:
+    evidence_db = tmp_path / "evidence.sqlite"
+    provenance = _evidence_database(evidence_db)
+    provenance["database_path"] = str(evidence_db)
+    store = _matter_store(tmp_path / "matter.sqlite", provenance)
+    module = _snapshot_module()
+    snapshot = module.create_formalization_snapshot(
+        store, "MATTER-SNAP-1", 2, evidence_db
+    )
+    store.connection.execute(
+        "UPDATE formalization_snapshots SET matter_revision = ? WHERE snapshot_id = ?",
+        (999, snapshot.snapshot_id),
+    )
+    store.connection.commit()
+
+    with pytest.raises(ValueError, match="METADATA|metadata|INTEGRITY"):
+        module.list_formalization_snapshots(store)
+
+
+def test_snapshot_lookup_rejects_missing_snapshot_id(tmp_path: Path) -> None:
+    store = MatterStore(tmp_path / "matter.sqlite")
+    module = _snapshot_module()
+
+    with pytest.raises(ValueError, match="FORMALIZATION_SNAPSHOT_NOT_FOUND"):
+        module.load_formalization_snapshot(store, "SNAP-MISSING")

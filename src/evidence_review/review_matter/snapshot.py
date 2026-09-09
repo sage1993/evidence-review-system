@@ -276,7 +276,7 @@ def _scope_for_matter(matter: ReviewMatter) -> ReviewScope:
                 issue_ids=tuple(issue.issue_id for issue in matter.issues),
                 text=matter.title,
                 kind="phrase",
-                source="planner",
+                source="user",
                 role="supporting_fact",
             ),
         ),
@@ -434,7 +434,10 @@ def _snapshot_from_values(
     )
 
 
-def _decode_persisted(document: bytes) -> FormalizationSnapshot:
+def _decode_persisted(
+    record: tuple[str, str, int, bytes]
+) -> FormalizationSnapshot:
+    row_snapshot_id, row_matter_id, row_matter_revision, document = record
     try:
         decoded = json.loads(document.decode("utf-8"))
         snapshot = decode_formalization_snapshot(decoded)
@@ -442,6 +445,12 @@ def _decode_persisted(document: bytes) -> FormalizationSnapshot:
         raise ValueError("FORMALIZATION_SNAPSHOT_PERSISTED_DOCUMENT_INVALID") from error
     if dump_bytes(formalization_snapshot_document(snapshot)) != document:
         raise ValueError("FORMALIZATION_SNAPSHOT_PERSISTED_BYTES_MISMATCH")
+    if (
+        snapshot.snapshot_id,
+        snapshot.matter_id,
+        snapshot.matter_revision,
+    ) != (row_snapshot_id, row_matter_id, row_matter_revision):
+        raise ValueError("FORMALIZATION_SNAPSHOT_METADATA_MISMATCH")
     return snapshot
 
 
@@ -474,7 +483,7 @@ def create_formalization_snapshot(
             raise ValueError("EVIDENCE_CHANGED_DURING_FORMALIZATION")
         _validate_binding_provenance(store, latest, provenance)
         try:
-            stored = store.persist_formalization_snapshot(
+            store.persist_formalization_snapshot(
                 snapshot_id=snapshot.snapshot_id,
                 matter_id=snapshot.matter_id,
                 matter_revision=snapshot.matter_revision,
@@ -482,14 +491,27 @@ def create_formalization_snapshot(
             )
         except MatterAlreadyExists as error:
             raise ValueError(str(error)) from error
-    return _decode_persisted(stored)
+    record = store.load_formalization_snapshot_record(snapshot.snapshot_id)
+    if record is None:
+        raise ValueError("FORMALIZATION_SNAPSHOT_NOT_FOUND")
+    return _decode_persisted(record)
+
+
+def load_formalization_snapshot(
+    store: MatterStore, snapshot_id: str
+) -> FormalizationSnapshot:
+    """Load one immutable snapshot or fail closed when its ID is absent."""
+    record = store.load_formalization_snapshot_record(snapshot_id)
+    if record is None:
+        raise ValueError("FORMALIZATION_SNAPSHOT_NOT_FOUND")
+    return _decode_persisted(record)
 
 
 def list_formalization_snapshots(store: MatterStore) -> tuple[FormalizationSnapshot, ...]:
     """Load every persisted snapshot and reject malformed immutable artifacts."""
     return tuple(
-        _decode_persisted(document)
-        for document in store.list_formalization_snapshot_documents()
+        _decode_persisted(record)
+        for record in store.list_formalization_snapshot_records()
     )
 
 
@@ -500,5 +522,6 @@ __all__ = [
     "create_formalization_snapshot",
     "decode_formalization_snapshot",
     "formalization_snapshot_document",
+    "load_formalization_snapshot",
     "list_formalization_snapshots",
 ]
