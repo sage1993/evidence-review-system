@@ -24,6 +24,8 @@ ABSENT_PLANNER_REQUEST = (
     "잠수함 계류시설 최소 수심 기준을 정하는 "
     "법령·조례·지침·기준 조항을 검색한다."
 )
+HEADING_ONLY_QUESTION = "안심주택 검토"
+HEADING_ONLY_PLANNER_REQUEST = "안심주택 법령·조례·지침·기준 조항을 검색한다."
 
 
 def _plan(question: str, search_request: str) -> QuestionPlan:
@@ -178,3 +180,26 @@ def test_genuine_absence_with_shared_subject_remains_no_evidence(tmp_path: Path)
     prepared = prepare_planned_review_question(workspace, _plan(question, search_request))
 
     assert prepared.retrieval_guidance_path is not None
+    run_directory = workspace / "runs" / prepared.run_id
+    evidence_query = _evidence_query(run_directory)
+    assert evidence_query["hits"] == []
+
+
+def test_planner_request_retains_heading_scoped_fallback(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path / "heading-scoped-positive")
+
+    prepared = prepare_planned_review_question(
+        workspace,
+        _plan(HEADING_ONLY_QUESTION, HEADING_ONLY_PLANNER_REQUEST),
+    )
+
+    assert prepared.retrieval_guidance_path is None
+    run_directory = workspace / "runs" / prepared.run_id
+    evidence_query = _evidence_query(run_directory)
+    assert evidence_query["hits"]
+    assert any(
+        match["query_text"] == HEADING_ONLY_PLANNER_REQUEST
+        and match["fallback_stage"] == "HEADING_SCOPED"
+        for hit in evidence_query["hits"]
+        for match in hit["matches"]
+    )

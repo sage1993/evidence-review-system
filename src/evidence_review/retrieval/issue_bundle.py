@@ -388,7 +388,7 @@ def _bucket_candidates(
 
         result: FallbackResult | None = None
         raw_traces: list[FallbackTrace] = []
-        for query_text in query_candidates:
+        for query_index, query_text in enumerate(query_candidates):
             relevance_overrides: dict[str, IssueRelevanceDecision] = {}
 
             def issue_relevance_filter(
@@ -420,7 +420,7 @@ def _bucket_candidates(
                 fact_texts=fact_texts,
                 limit=policy.per_issue_role_limit,
                 hit_filter=issue_relevance_filter,
-                allow_heading_scoped=(len(query_candidates) == 1),
+                allow_heading_scoped=query_index == 0,
             )
             raw_traces.extend(result.traces)
             traces.extend(
