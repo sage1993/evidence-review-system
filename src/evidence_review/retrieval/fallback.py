@@ -408,6 +408,7 @@ def search_clause_with_fallback(
     fact_texts: Sequence[str] = (),
     limit: int = 20,
     hit_filter: HitFilter | None = None,
+    allow_heading_scoped: bool = True,
 ) -> FallbackResult:
     normalized = _normalize_text(query)
     if not normalized:
@@ -506,7 +507,7 @@ def search_clause_with_fallback(
     heading_query = decontaminated or normalized
     raw_heading_hits = (
         ()
-        if protected_numerics
+        if protected_numerics or not allow_heading_scoped
         else _heading_scoped_search(
             connection,
             heading_query,
