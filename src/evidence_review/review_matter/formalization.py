@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+import shutil
+from collections.abc import Mapping
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
-from evidence_review.filesystem_trust import verified_regular_file_below
+from evidence_review.filesystem_trust import (
+    verified_regular_directory,
+    verified_regular_file_below,
+)
 from evidence_review.llm_layer.track_a import (
     build_track_a_bundle,
     track_a_bundle_document,
@@ -27,44 +30,11 @@ from evidence_review.review_matter.snapshot import (
     load_formalization_snapshot,
 )
 from evidence_review.review_matter.store import MatterStore
-from evidence_review.review_question import _prepare_from_document
-from evidence_review.review_run import (
-    PreparedReviewRun,
-    _decode_confidence_input,
-    _decode_request,
+from evidence_review.review_question import (
+    PreparedReviewQuestion,
+    prepare_review_question_from_request,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class FormalizedReviewRun:
-    """One strict Formal Review run prepared from a formalization snapshot."""
-
-    run_id: str
-    status: str
-    prepared: PreparedReviewRun | None
-
-
-def _mapping_documents(values: Sequence[object], field: str) -> list[dict[str, object]]:
-    documents: list[dict[str, object]] = []
-    for index, value in enumerate(values):
-        if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
-            raise ValueError(f"{field}[{index}] must be an object")
-        documents.append(dict(value))
-    return documents
-
-
-def _strict_approved_rule_result_ids(values: Sequence[str]) -> list[str]:
-    """Apply the review-run decoder's validation and canonical sort order."""
-    approved: list[str] = []
-    for index, value in enumerate(values):
-        if not isinstance(value, str) or not value:
-            raise ValueError(
-                f"approved_rule_result_ids[{index}] must be a non-empty string"
-            )
-        approved.append(value)
-    if len(approved) != len(set(approved)):
-        raise ValueError("approved_rule_result_ids must be unique")
-    return sorted(approved)
+from evidence_review.review_run import _decode_confidence_input, _decode_request
 
 
 def _matter_store(workspace: Path) -> MatterStore:
@@ -153,10 +123,6 @@ def _request_document(
     snapshot: FormalizationSnapshot,
     provenance: Mapping[str, object],
     scope_document: Mapping[str, object],
-    *,
-    calculations: Sequence[object],
-    rules: Sequence[object],
-    approved_rule_result_ids: Sequence[str],
 ) -> dict[str, object]:
     return {
         "format": "evidence-review/review-run-request",
@@ -190,11 +156,9 @@ def _request_document(
             }
             for selected in snapshot.selected_evidence
         ],
-        "calculations": _mapping_documents(calculations, "calculations"),
-        "rules": _mapping_documents(rules, "rules"),
-        "approved_rule_result_ids": _strict_approved_rule_result_ids(
-            approved_rule_result_ids
-        ),
+        "calculations": [],
+        "rules": [],
+        "approved_rule_result_ids": [],
         "confidence_input": {
             "factors": {
                 name: {"value": "1.0", "source": "formalization:snapshot"}
@@ -289,6 +253,19 @@ def _validate_prepared_artifacts(
         raise ValueError("FORMALIZATION_PREPARED_TRACK_A_MISMATCH")
 
 
+def _discard_new_run(workspace: Path, prepared: PreparedReviewQuestion) -> None:
+    if prepared.resumed:
+        return
+    run_directory = verified_regular_directory(
+        workspace / "runs" / prepared.run_id,
+        field="prepared run directory",
+    )
+    shutil.rmtree(run_directory)
+    runs_directory = workspace / "runs"
+    if runs_directory.is_dir() and not any(runs_directory.iterdir()):
+        runs_directory.rmdir()
+
+
 def _prepare_or_resume(
     workspace: Path,
     document: dict[str, object],
@@ -297,7 +274,7 @@ def _prepare_or_resume(
     snapshot: FormalizationSnapshot,
     evidence_db: Path,
     scope_document: Mapping[str, object],
-) -> FormalizedReviewRun:
+) -> PreparedReviewQuestion:
     run_id = compute_run_id_from_request(document)
     try:
         run_directory = verified_regular_file_below(
@@ -319,12 +296,13 @@ def _prepare_or_resume(
             provenance
         ):
             raise ValueError("FORMALIZATION_EVIDENCE_PROVENANCE_MISMATCH") from None
-        prepared = _prepare_from_document(workspace, document)
-        return FormalizedReviewRun(
-            run_id=prepared.run_id,
-            status="WAITING_TRACK_A",
-            prepared=prepared,
-        )
+        prepared = prepare_review_question_from_request(workspace, document)
+        try:
+            _validated_evidence_provenance(evidence_db, snapshot)
+        except Exception:
+            _discard_new_run(workspace, prepared)
+            raise
+        return prepared
     bundle_path: Path | None = None
     confidence_path: Path | None = None
     for name in ("track-a-bundle.json", "confidence-input.json"):
@@ -350,17 +328,15 @@ def _prepare_or_resume(
     if current.revision != snapshot.matter_revision:
         raise ValueError("MATTER_CHANGED_DURING_FORMALIZATION")
     _validated_evidence_provenance(evidence_db, snapshot)
-    return FormalizedReviewRun(run_id=run_id, status="WAITING_TRACK_A", prepared=None)
+    prepared = prepare_review_question_from_request(workspace, document)
+    _validated_evidence_provenance(evidence_db, snapshot)
+    return prepared
 
 
 def formalize_snapshot(
     workspace: Path,
     snapshot: FormalizationSnapshot,
-    *,
-    calculations: Sequence[object] = (),
-    rules: Sequence[object] = (),
-    approved_rule_result_ids: Sequence[str] = (),
-) -> FormalizedReviewRun:
+) -> PreparedReviewQuestion:
     """Prepare one immutable Formal Review run from a persisted snapshot only."""
     if not isinstance(snapshot, FormalizationSnapshot):
         raise ValueError("FORMALIZATION_SNAPSHOT_REQUIRED")
@@ -373,9 +349,6 @@ def formalize_snapshot(
             persisted,
             provenance,
             scope_document,
-            calculations=calculations,
-            rules=rules,
-            approved_rule_result_ids=approved_rule_result_ids,
         )
         with store.transaction():
             current = store.load(persisted.matter_id)
@@ -391,4 +364,4 @@ def formalize_snapshot(
             )
 
 
-__all__ = ["FormalizedReviewRun", "formalize_snapshot"]
+__all__ = ["formalize_snapshot"]

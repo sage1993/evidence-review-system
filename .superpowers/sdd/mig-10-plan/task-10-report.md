@@ -2,11 +2,11 @@
 
 ## Scope
 
-- Base SHA: `3b99dbcf939d4fe52638d2a594112522f3510dd6`
-- Branch: `feat/mig-10-formalization-adapter`
+- Base SHA: `e4ec7cc2ce7bb05c74c82300e051328ab31ce9ea`
+- Branch: `feat/mig-10-formalization-adapter-sequential`
 - Implemented the adapter specified by `task-10-brief.md`; `review_run.py`,
   finalization, Track A/Track B, Review Packet, Human Decision, and evidence
-  storage were not changed.
+  storage remain authoritative and unchanged.
 
 ## Files
 
@@ -14,7 +14,11 @@
   `FormalizationSnapshot`, reloads and byte-compares its persisted artifact,
   verifies current Matter revision, finalized evidence identity, and every
   selected evidence record, then builds the existing strict review-run request
-  and delegates preparation through `review_question._prepare_from_document`.
+  and delegates preparation through the canonical `PreparedReviewQuestion`
+  handoff in `review_question.py`.
+- `src/evidence_review/review_question.py` — provides the strict-request
+  preparation façade that creates the existing Track A next-action artifact and
+  workflow journal before returning the prepared question.
 - `tests/unit/review_matter/test_formalization_adapter.py` — supplied controller
   RED tests for input and snapshot authority.
 - `tests/integration/review_matter/test_existing_formal_core_adapter.py` —
@@ -32,9 +36,11 @@
 - An identical request resumes an existing prepared run only after canonical
   request-byte and required-artifact verification; a differing existing run
   fails closed.
-- The adapter returns `WAITING_TRACK_A` as a façade state while retaining the
-  strict core's prepared-run artifact result. No Track A/B or finalizer behavior
-  is reimplemented.
+- The adapter returns the existing `PreparedReviewQuestion` contract at
+  `WAITING_TRACK_A`; it does not reimplement Track A/B or finalizer behavior.
+- FormalizationSnapshot is the only source for Matter-selected evidence and
+  scope. Calculations, rules, and approved rule IDs are empty at this one-way
+  boundary and cannot be supplied by the adapter caller.
 
 ## Round 1 fixes
 
@@ -87,6 +93,18 @@
   expected confidence documents. Any mismatch fails before `WAITING_TRACK_A`
   is returned.
 
+## Review blocker fixes
+
+- Caller-supplied calculations, rules, and approved rule IDs were removed from
+  `formalize_snapshot`; the request authority is now limited to the persisted
+  `FormalizationSnapshot` and canonical empty engine-result collections.
+- Formalization now uses the existing `PreparedReviewQuestion` handoff so
+  `next-action-track-a.json` and the append-only workflow journal are created;
+  normal `submit-track-a` resume behavior remains available.
+- Evidence provenance is revalidated after preparation. If a newly created run
+  fails that final check, its exact run directory is removed; an existing stale
+  run is retained but remains fail-closed.
+
 ## Verification
 
 - RED: `py -3.13 -c "import evidence_review.review_matter.formalization"` —
@@ -118,12 +136,18 @@
   suites — `125 passed in 18.70s`.
 - Round-4 static checks: Ruff, mypy, and compileall passed for the adapter and
   regression tests.
+- Round-5 RED: caller-supplied authority inputs, missing canonical Track A
+  handoff artifacts, and post-preparation provenance drift were reproduced
+  before the blocker fixes.
+- Round-5 GREEN: focused adapter suite — `16 passed in 15.18s`; adjacent
+  regression suite — `28 passed in 8.70s`.
+- Round-5 targeted static checks: Ruff and mypy passed for the changed runtime
+  modules and regression tests.
 
 ## Concerns
 
-- Full repository pytest, documentation validation, Windows platform stress,
-  and browser QA are not rerun for the round-4 candidate; they remain
-  `NOT_RUN`/`HOLD` as applicable.
+- Repository-wide exact-HEAD acceptance is recorded separately in the PR
+  acceptance evidence; GitHub Actions are `ACTIONS_NOT_RUN`.
 - Windows platform stress and browser QA remain `NOT_RUN` for this focused MIG
   task. Existing untracked MIG-09 pytest temp directories were preserved, so a
   clean-worktree acceptance was not established here.
