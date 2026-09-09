@@ -789,7 +789,7 @@ def finalize_review_run(
     publish: bool = False,
     bound_track_b: bool = False,
 ) -> FinalizedReviewRun:
-    """Bind external Track outputs, finalize, render, and optionally publish."""
+    """Bind external Track outputs, finalize, render, and expose the run-local packet."""
     run_directory = _require_prepared_run(workspace_root, run_id)
     track_a_document = _json(track_a_output)
     track_b_document = _json(track_b_output)
@@ -846,15 +846,6 @@ def finalize_review_run(
         break
     if existing is not None:
         raise FileExistsError(existing)
-    published = workspace_root / "runs" / "final-review-packet.json"
-    if publish:
-        try:
-            published = _run_file(run_directory.parent, published.name)
-        except FileNotFoundError:
-            published = run_directory.parent / published.name
-        else:
-            raise FileExistsError(published)
-
     manifest_path = run_directory / "run-manifest.json"
     packet_path = run_directory / "final-review-packet.json"
     html_path = run_directory / "review.html"
@@ -920,11 +911,7 @@ def finalize_review_run(
             raise
         append_stage(run_directory, finish_stage("html-render-write", html_timer))
 
-        published_path: Path | None = None
-        if publish:
-            with published.open("xb") as stream:
-                stream.write(packet_path.read_bytes())
-            published_path = published
+        published_path = packet_path if publish else None
     except Exception:
         for path in cleanup:
             path.unlink(missing_ok=True)

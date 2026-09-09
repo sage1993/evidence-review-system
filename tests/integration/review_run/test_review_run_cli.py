@@ -87,7 +87,7 @@ def test_review_run_finalize_cli_routes_publish_and_outputs_status(
     run_directory = workspace / "runs" / run_id
     packet_path = run_directory / "final-review-packet.json"
     html_path = run_directory / "review.html"
-    published_path = workspace / "runs" / "final-review-packet.json"
+    published_path = packet_path
 
     def fake_finalize(
         workspace_root: Path,
