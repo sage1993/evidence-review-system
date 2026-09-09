@@ -44,6 +44,14 @@ class MatterSchemaError(MatterStoreError):
     """Raised when a Matter database does not have the supported schema."""
 
 
+_FORMALIZATION_SNAPSHOT_COLUMNS = (
+    ("snapshot_id", "TEXT", 0, 1),
+    ("matter_id", "TEXT", 1, 0),
+    ("matter_revision", "INTEGER", 1, 0),
+    ("canonical_document", "BLOB", 1, 0),
+)
+
+
 class MatterStore:
     """Own one separate SQLite database for ReviewMatter work state."""
 
@@ -95,6 +103,7 @@ class MatterStore:
                     raise MatterSchemaError("MATTER_SCHEMA_VERSION_MISSING")
                 if metadata_rows[0]["value"] != "1":
                     raise MatterSchemaError("MATTER_SCHEMA_VERSION_INVALID")
+                self._ensure_formalization_snapshot_schema()
                 metadata_update = self.connection.execute(
                     """
                     UPDATE matter_meta SET value = '2'
@@ -103,21 +112,87 @@ class MatterStore:
                 )
                 if metadata_update.rowcount != 1:
                     raise MatterSchemaError("MATTER_SCHEMA_VERSION_UPDATE_FAILED")
-                self.connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS formalization_snapshots (
-                        snapshot_id TEXT PRIMARY KEY,
-                        matter_id TEXT NOT NULL,
-                        matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
-                        canonical_document BLOB NOT NULL,
-                        UNIQUE(matter_id, matter_revision),
-                        FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT
-                    )
-                    """
-                )
                 self.connection.execute("PRAGMA user_version = 2")
         elif version != self.SCHEMA_VERSION:
             raise MatterSchemaError(f"MATTER_SCHEMA_UNSUPPORTED: {version}")
+
+    def _ensure_formalization_snapshot_schema(self) -> None:
+        table = self.connection.execute(
+            "SELECT type FROM sqlite_master WHERE name = 'formalization_snapshots'"
+        ).fetchone()
+        if table is None:
+            self.connection.execute(
+                """
+                CREATE TABLE formalization_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    matter_id TEXT NOT NULL,
+                    matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                    canonical_document BLOB NOT NULL,
+                    UNIQUE(matter_id, matter_revision),
+                    FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT
+                )
+                """
+            )
+        self._require_formalization_snapshot_schema()
+
+    def _require_formalization_snapshot_schema(self) -> None:
+        table = self.connection.execute(
+            "SELECT type, sql FROM sqlite_master "
+            "WHERE name = 'formalization_snapshots'"
+        ).fetchone()
+        if table is None or table[0] != "table":
+            raise MatterSchemaError("MATTER_SNAPSHOT_SCHEMA_INVALID")
+
+        columns = tuple(
+            (
+                str(row[1]),
+                str(row[2]).upper(),
+                int(row[3]),
+                int(row[5]),
+            )
+            for row in self.connection.execute(
+                'PRAGMA table_info("formalization_snapshots")'
+            ).fetchall()
+        )
+        if columns != _FORMALIZATION_SNAPSHOT_COLUMNS:
+            raise MatterSchemaError("MATTER_SNAPSHOT_SCHEMA_INVALID")
+
+        has_identity_unique = False
+        for index in self.connection.execute(
+            'PRAGMA index_list("formalization_snapshots")'
+        ).fetchall():
+            if int(index[2]) != 1:
+                continue
+            index_name = str(index[1]).replace('"', '""')
+            index_columns = tuple(
+                str(column[2])
+                for column in self.connection.execute(
+                    f'PRAGMA index_info("{index_name}")'
+                ).fetchall()
+            )
+            if index_columns == ("matter_id", "matter_revision"):
+                has_identity_unique = True
+                break
+        if not has_identity_unique:
+            raise MatterSchemaError("MATTER_SNAPSHOT_SCHEMA_INVALID")
+
+        foreign_keys = tuple(
+            (
+                str(row[2]),
+                str(row[3]),
+                str(row[4]),
+                str(row[6]).upper(),
+            )
+            for row in self.connection.execute(
+                'PRAGMA foreign_key_list("formalization_snapshots")'
+            ).fetchall()
+        )
+        if foreign_keys != (("matters", "matter_id", "matter_id", "RESTRICT"),):
+            raise MatterSchemaError("MATTER_SNAPSHOT_SCHEMA_INVALID")
+
+        normalized_sql = " ".join(str(table[1]).upper().split())
+        if "CHECK (MATTER_REVISION >= 1)" not in normalized_sql:
+            raise MatterSchemaError("MATTER_SNAPSHOT_SCHEMA_INVALID")
 
     def _require_schema(self) -> None:
         version = int(self.connection.execute("PRAGMA user_version").fetchone()[0])
@@ -128,6 +203,7 @@ class MatterStore:
         ).fetchone()
         if row is None or row[0] != str(self.SCHEMA_VERSION):
             raise MatterSchemaError("MATTER_SCHEMA_VERSION_MISSING")
+        self._require_formalization_snapshot_schema()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

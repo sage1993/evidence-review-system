@@ -86,3 +86,59 @@ def test_invalid_v1_metadata_migration_rolls_back_without_schema_changes(
             ).fetchone()
             is None
         )
+
+
+@pytest.mark.parametrize("database_version", [1, 2])
+def test_malformed_snapshot_table_rejects_without_partial_schema_change(
+    tmp_path, database_version
+) -> None:
+    database = tmp_path / f"malformed-snapshots-v{database_version}.sqlite"
+    if database_version == 1:
+        with sqlite3.connect(database) as connection:
+            connection.execute("PRAGMA user_version = 1")
+            connection.execute(
+                "CREATE TABLE matter_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+            connection.execute(
+                "INSERT INTO matter_meta(key, value) VALUES ('schema_version', '1')"
+            )
+    else:
+        store = MatterStore(database)
+        store.close()
+
+    with sqlite3.connect(database) as connection:
+        if database_version == 2:
+            connection.execute("DROP TABLE formalization_snapshots")
+        connection.execute(
+            """
+            CREATE TABLE formalization_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                matter_id TEXT NOT NULL,
+                matter_revision INTEGER NOT NULL,
+                canonical_document BLOB NOT NULL
+            )
+            """
+        )
+        malformed_sql = connection.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'formalization_snapshots'"
+        ).fetchone()[0]
+
+    with pytest.raises(MatterSchemaError, match="MATTER_SNAPSHOT_SCHEMA_INVALID"):
+        MatterStore(database)
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == database_version
+        assert (
+            connection.execute(
+                "SELECT value FROM matter_meta WHERE key = 'schema_version'"
+            ).fetchone()[0]
+            == str(database_version)
+        )
+        assert (
+            connection.execute(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'formalization_snapshots'"
+            ).fetchone()[0]
+            == malformed_sql
+        )
