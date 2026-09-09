@@ -47,7 +47,7 @@ class MatterSchemaError(MatterStoreError):
 class MatterStore:
     """Own one separate SQLite database for ReviewMatter work state."""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -68,12 +68,38 @@ class MatterStore:
                 )
                 self.connection.executescript(schema)
                 self.connection.commit()
+            else:
+                self._migrate_schema()
             self._require_schema()
         except BaseException:
             self.connection.close()
             if is_new:
                 self.path.unlink(missing_ok=True)
             raise
+
+    def _migrate_schema(self) -> None:
+        """Upgrade mutable Matter storage without touching Matter projections."""
+        version = int(self.connection.execute("PRAGMA user_version").fetchone()[0])
+        if version == 1:
+            with self.transaction():
+                self.connection.execute(
+                    """
+                    CREATE TABLE formalization_snapshots (
+                        snapshot_id TEXT PRIMARY KEY,
+                        matter_id TEXT NOT NULL,
+                        matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                        canonical_document BLOB NOT NULL,
+                        UNIQUE(matter_id, matter_revision),
+                        FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT
+                    )
+                    """
+                )
+                self.connection.execute("PRAGMA user_version = 2")
+                self.connection.execute(
+                    "UPDATE matter_meta SET value = '2' WHERE key = 'schema_version'"
+                )
+        elif version != self.SCHEMA_VERSION:
+            raise MatterSchemaError(f"MATTER_SCHEMA_UNSUPPORTED: {version}")
 
     def _require_schema(self) -> None:
         version = int(self.connection.execute("PRAGMA user_version").fetchone()[0])
@@ -283,6 +309,50 @@ class MatterStore:
             "schema_version": int(row["schema_version"]),
             "bound_revision": int(row["bound_revision"]),
         }
+
+    def persist_formalization_snapshot(
+        self,
+        *,
+        snapshot_id: str,
+        matter_id: str,
+        matter_revision: int,
+        canonical_document: bytes,
+    ) -> bytes:
+        """Create one immutable snapshot inside the caller's transaction."""
+        existing = self.connection.execute(
+            """
+            SELECT canonical_document FROM formalization_snapshots
+            WHERE snapshot_id = ?
+            """,
+            (snapshot_id,),
+        ).fetchone()
+        if existing is not None:
+            current = bytes(existing["canonical_document"])
+            if current != canonical_document:
+                raise MatterAlreadyExists("FORMALIZATION_SNAPSHOT_ID_CONFLICT")
+            return current
+        try:
+            self.connection.execute(
+                """
+                INSERT INTO formalization_snapshots(
+                    snapshot_id, matter_id, matter_revision, canonical_document
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (snapshot_id, matter_id, matter_revision, canonical_document),
+            )
+        except sqlite3.IntegrityError as error:
+            raise MatterAlreadyExists("FORMALIZATION_SNAPSHOT_ALREADY_EXISTS") from error
+        return canonical_document
+
+    def list_formalization_snapshot_documents(self) -> tuple[bytes, ...]:
+        """Return immutable snapshot documents in deterministic identity order."""
+        rows = self.connection.execute(
+            """
+            SELECT canonical_document FROM formalization_snapshots
+            ORDER BY snapshot_id
+            """
+        ).fetchall()
+        return tuple(bytes(row["canonical_document"]) for row in rows)
 
     def list_source_dependencies(self, matter_id: str) -> tuple[dict[str, str], ...]:
         """Return exact Matter source dependencies in stable order."""

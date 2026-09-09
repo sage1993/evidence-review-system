@@ -101,3 +101,6 @@ MATTER_SOURCE_BINDING_FORMAT: Final[
 REVIEW_SCOPE_FORMAT: Final[Literal["evidence-review/review-scope"]] = (
     "evidence-review/review-scope"
 )
+FORMALIZATION_SNAPSHOT_FORMAT: Final[
+    Literal["evidence-review/formalization-snapshot"]
+] = "evidence-review/formalization-snapshot"
