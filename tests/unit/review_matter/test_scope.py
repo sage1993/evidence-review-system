@@ -113,6 +113,27 @@ def test_review_scope_decodes_and_preserves_question_plan_semantics() -> None:
     assert scope.search_requests[2].issue_ids == ("I2",)
 
 
+def test_explicit_user_scope_normalizes_to_the_same_canonical_contract() -> None:
+    scope_module = _scope_module()
+    planner_scope = scope_module.decode_review_scope(_scope_payload())
+
+    explicit_payload = _scope_payload()
+    explicit_payload["origin"] = "EXPLICIT_USER"
+    explicit_payload["question_plan_sha256"] = None
+
+    explicit_scope = scope_module.decode_review_scope(explicit_payload)
+
+    assert explicit_scope.origin == "EXPLICIT_USER"
+    assert explicit_scope.question_plan_sha256 is None
+    assert explicit_scope.question == planner_scope.question
+    assert explicit_scope.facts == planner_scope.facts
+    assert explicit_scope.assumptions == planner_scope.assumptions
+    assert explicit_scope.issues == planner_scope.issues
+    assert explicit_scope.legal_anchors == planner_scope.legal_anchors
+    assert explicit_scope.search_requests == planner_scope.search_requests
+    assert scope_module.review_scope_document(explicit_scope) == explicit_payload
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
