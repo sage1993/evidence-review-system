@@ -37,6 +37,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "evidence_review.evidence" = ["schema.sql", "schema_v2.sql", "schema_v3.sql"]
+"evidence_review.review_matter" = ["schema.sql"]
 "evidence_review.llm_layer" = ["templates/*.md"]
 "evidence_review.review_packet" = ["assets/*.css", "assets/*.js"]
 "evidence_review.drawing_review" = ["assets/*.css", "assets/*.js"]

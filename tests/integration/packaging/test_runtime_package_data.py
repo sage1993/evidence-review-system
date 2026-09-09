@@ -10,6 +10,7 @@ def test_runtime_templates_styles_and_scripts_are_declared_as_package_data() -> 
     )
     package_data = configuration["tool"]["setuptools"]["package-data"]
     assert "schema.sql" in package_data["evidence_review.evidence"]
+    assert "schema.sql" in package_data["evidence_review.review_matter"]
     assert "templates/*.md" in package_data["evidence_review.llm_layer"]
     assert "assets/*.css" in package_data["evidence_review.review_packet"]
     assert "assets/*.js" in package_data["evidence_review.review_packet"]

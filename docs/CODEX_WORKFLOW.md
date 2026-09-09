@@ -4,6 +4,8 @@ Use local evidence only. Project Python code does not call a model or remote API
 
 Shared status and contract governance is documented in `docs/CONTRACT_GOVERNANCE.md`. Question planning and its trust boundary are documented in `docs/question-planning.md`.
 
+The repository is incrementally migrating toward the ReviewMatter architecture. `ReviewMatter` and `matter_id` are target mutable-work identities, distinct from drawing `CaseManifest` and `case_id`. Do not use a target Matter command or module unless it exists at the exact checked-out HEAD. Until the corresponding migration boundary is merged and verified, the existing `review-question prepare-plan → prepare → Track A → Track B` path remains the current formal workflow. See [`REVIEW_MATTER_ARCHITECTURE.md`](REVIEW_MATTER_ARCHITECTURE.md).
+
 ## 0. Prove runtime provenance before business commands
 
 Use the interpreter-pinned module entrypoint before every acceptance or review run. The stdlib-only diagnostic surface runs before heavy runtime imports and reports the checkout HEAD, package source path, and required dependency state.
