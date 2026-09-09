@@ -94,3 +94,16 @@ Result: `20 passed in 7.23s`.
 
 - A Ruff run including all supplied navigation tests reports two pre-existing B017 broad-exception assertions in `tests/unit/navigation/test_service.py` (the unfinalized and stale-snapshot tests). This fix did not add or modify those assertions.
 - The full repository acceptance suite was not run.
+
+## Branch-review test cleanup
+
+- Replaced the two broad navigation assertions with `EvidenceDatabaseNotFinalized` and `EvidenceLogicalSnapshotMismatch`, the exact validation exceptions produced by the service.
+- Preserved all navigation coverage, including forged `citation_id` rejection and page-only omission.
+
+```powershell
+py -3.13 -m pytest -q tests/unit/navigation/test_service.py tests/integration/navigation/test_promotion_boundary.py tests/integration/review_question/test_issue_153_planner_false_no_evidence.py --basetemp C:\Temp\mig-06-test-cleanup
+```
+
+Result: `20 passed in 6.92s`.
+
+Ruff over both supplied navigation test files and changed production files, plus scoped compileall and `git diff --check`, passed.

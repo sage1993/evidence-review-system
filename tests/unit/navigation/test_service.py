@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from evidence_review.evidence.finalization import finalize_evidence_database
+from evidence_review.evidence.finalization import (
+    EvidenceDatabaseNotFinalized,
+    EvidenceLogicalSnapshotMismatch,
+    finalize_evidence_database,
+)
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.evidence.store import EvidenceStore
@@ -108,7 +112,7 @@ def test_navigation_rejects_unfinalized_database(tmp_path: Path) -> None:
             ),
         )
 
-    with pytest.raises(Exception):
+    with pytest.raises(EvidenceDatabaseNotFinalized):
         _navigation_service().navigate_evidence(database, "reference")
 
 
@@ -133,7 +137,7 @@ def test_navigation_rejects_stale_logical_snapshot(tmp_path: Path) -> None:
         )
         connection.commit()
 
-    with pytest.raises(Exception):
+    with pytest.raises(EvidenceLogicalSnapshotMismatch):
         _navigation_service().navigate_evidence(database, "reference")
 
 
