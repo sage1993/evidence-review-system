@@ -107,3 +107,26 @@ py -3.13 -m pytest -q tests/unit/navigation/test_service.py tests/integration/na
 Result: `20 passed in 6.92s`.
 
 Ruff over both supplied navigation test files and changed production files, plus scoped compileall and `git diff --check`, passed.
+
+## Fix round 2 — malformed promotion result guard
+
+- Added a Matter-boundary regression for an otherwise valid frozen navigation result whose hit has `citation=None`.
+- Promotion now validates the result, hits, citation, identifiers, hashes, page numbers, bboxes, and decimal score before dereferencing fields or writing Matter state. Malformed values fail closed as `NAVIGATION_RESULT_STALE`.
+
+RED:
+
+```powershell
+py -3.13 -m pytest -q tests/integration/navigation/test_promotion_boundary.py::test_promotion_rejects_missing_citation_without_matter_mutation --basetemp C:\Temp\mig-06-fix2-red
+```
+
+Result: `1 failed in 0.50s` with the expected pre-fix `AttributeError` from `hit.citation.citation_id`.
+
+GREEN and focused verification:
+
+```powershell
+py -3.13 -m pytest -q tests/unit/navigation/test_service.py tests/integration/navigation/test_promotion_boundary.py tests/integration/review_question/test_issue_153_planner_false_no_evidence.py --basetemp C:\Temp\mig-06-fix2-final
+```
+
+Result: `21 passed in 7.73s`. Ruff over the supplied navigation tests and changed production files, scoped compileall, and `git diff --check` passed.
+
+Concern: the full repository acceptance suite was not run.

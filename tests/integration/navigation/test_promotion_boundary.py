@@ -142,6 +142,41 @@ def test_promotion_rejects_forged_citation_id_without_matter_mutation(
     assert list_matter_events(matter, "MATTER-001") == events_before
 
 
+def test_promotion_rejects_missing_citation_without_matter_mutation(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence.sqlite"
+    _finalized_database(evidence, source_hash="a" * 64, text="reference")
+    matter = MatterStore(tmp_path / "matter.sqlite")
+    matter.create(matter_id="MATTER-001", title="Review")
+    bound = bind_finalized_evidence(
+        matter,
+        matter_id="MATTER-001",
+        expected_revision=1,
+        evidence_db=evidence,
+    )
+    navigation = _navigation_api().navigate_evidence(evidence, "reference")
+    malformed = replace(
+        navigation,
+        hits=(replace(navigation.hits[0], citation=None),),
+    )
+    events_before = list_matter_events(matter, "MATTER-001")
+
+    with pytest.raises(ValueError, match="NAVIGATION_RESULT_STALE"):
+        _navigation_api().promote_navigation_hit(
+            matter,
+            matter_id="MATTER-001",
+            expected_revision=bound.revision,
+            evidence_db=evidence,
+            navigation_result=malformed,
+            evidence_id="EVID-001",
+        )
+
+    assert matter.load("MATTER-001").revision == bound.revision
+    assert matter.load("MATTER-001").source_bindings == ()
+    assert list_matter_events(matter, "MATTER-001") == events_before
+
+
 def test_valid_navigation_promotion_appends_exact_matter_binding(
     tmp_path: Path,
 ) -> None:

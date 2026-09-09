@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
+from math import isfinite
 from pathlib import Path
 
-from evidence_review.contracts.common import BBox
+from evidence_review.contracts.common import BBox, Citation
+from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.contracts.validation import expect_sha256
 from evidence_review.evidence.finalization import validate_finalized_evidence
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.evidence.store import EvidenceStore
@@ -78,34 +82,101 @@ def _current_retrieval_binding(database: Path, hit: NavigationHit) -> None:
         raise _stale()
 
 
+def _validate_bbox(value: object) -> BBox:
+    if not isinstance(value, BBox):
+        raise _stale()
+    coordinates = (value.left, value.bottom, value.right, value.top)
+    if any(
+        isinstance(coordinate, bool)
+        or not isinstance(coordinate, (int, float))
+        or not isfinite(coordinate)
+        for coordinate in coordinates
+    ):
+        raise _stale()
+    if value.left > value.right or value.bottom > value.top:
+        raise _stale()
+    return value
+
+
+def _validate_identifier(value: object) -> str:
+    try:
+        return validate_identifier(value, "navigation result identifier")
+    except ValueError as error:
+        raise _stale() from error
+
+
+def _validate_sha256(value: object) -> str:
+    try:
+        return expect_sha256(value, "navigation result hash")
+    except ValueError as error:
+        raise _stale() from error
+
+
+def _validate_page_number(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise _stale()
+    return value
+
+
+def _validate_hit(value: object) -> NavigationHit:
+    if not isinstance(value, NavigationHit):
+        raise _stale()
+    evidence_id = _validate_identifier(getattr(value, "evidence_id", None))
+    document_id = _validate_identifier(getattr(value, "document_id", None))
+    revision_id = _validate_identifier(getattr(value, "revision_id", None))
+    page_number = _validate_page_number(getattr(value, "page_number", None))
+    bbox = _validate_bbox(getattr(value, "bbox", None))
+    source_hash = _validate_sha256(getattr(value, "source_hash", None))
+    title = getattr(value, "title", None)
+    text = getattr(value, "text", None)
+    score = getattr(value, "score", None)
+    citation = getattr(value, "citation", None)
+    if not isinstance(title, str) or not isinstance(text, str):
+        raise _stale()
+    if not isinstance(score, Decimal) or not score.is_finite():
+        raise _stale()
+    if not isinstance(citation, Citation):
+        raise _stale()
+    citation_id = getattr(citation, "citation_id", None)
+    if citation_id != f"CIT-{evidence_id}":
+        raise _stale()
+    if (
+        _validate_identifier(getattr(citation, "evidence_id", None)),
+        _validate_identifier(getattr(citation, "document_id", None)),
+        _validate_identifier(getattr(citation, "revision_id", None)),
+        _validate_page_number(getattr(citation, "page_number", None)),
+        _validate_bbox(getattr(citation, "bbox", None)),
+        _validate_sha256(getattr(citation, "source_hash", None)),
+    ) != (
+        evidence_id,
+        document_id,
+        revision_id,
+        page_number,
+        bbox,
+        source_hash,
+    ):
+        raise _stale()
+    return value
+
+
 def _validate_result(result: NavigationResult, evidence_id: str) -> NavigationHit:
     if not isinstance(result, NavigationResult):
         raise _stale()
-    if not isinstance(evidence_id, str):
+    if not isinstance(getattr(result, "query", None), str) or not result.query.strip():
         raise _stale()
-    matches = tuple(hit for hit in result.hits if hit.evidence_id == evidence_id)
+    _validate_sha256(getattr(result, "evidence_snapshot_hash", None))
+    _validate_sha256(getattr(result, "evidence_db_sha256", None))
+    hits = getattr(result, "hits", None)
+    if not isinstance(hits, tuple):
+        raise _stale()
+    selected_evidence_id = _validate_identifier(evidence_id)
+    validated_hits = tuple(_validate_hit(hit) for hit in hits)
+    matches = tuple(
+        hit for hit in validated_hits if hit.evidence_id == selected_evidence_id
+    )
     if len(matches) != 1:
         raise _stale()
-    hit = matches[0]
-    if hit.citation.citation_id != f"CIT-{hit.evidence_id}":
-        raise _stale()
-    if (
-        hit.citation.evidence_id,
-        hit.citation.document_id,
-        hit.citation.revision_id,
-        hit.citation.page_number,
-        hit.citation.bbox,
-        hit.citation.source_hash,
-    ) != (
-        hit.evidence_id,
-        hit.document_id,
-        hit.revision_id,
-        hit.page_number,
-        hit.bbox,
-        hit.source_hash,
-    ):
-        raise _stale()
-    return hit
+    return matches[0]
 
 
 def promote_navigation_hit(
