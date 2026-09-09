@@ -51,11 +51,19 @@ _FORMALIZATION_SNAPSHOT_COLUMNS = (
     ("canonical_document", "BLOB", 1, 0),
 )
 
+_FORMAL_RUN_BINDING_COLUMNS = (
+    ("matter_id", "TEXT", 1, 1),
+    ("matter_revision", "INTEGER", 1, 0),
+    ("snapshot_id", "TEXT", 1, 2),
+    ("run_id", "TEXT", 1, 0),
+    ("packet_sha256", "TEXT", 1, 0),
+)
+
 
 class MatterStore:
     """Own one separate SQLite database for ReviewMatter work state."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -104,15 +112,37 @@ class MatterStore:
                 if metadata_rows[0]["value"] != "1":
                     raise MatterSchemaError("MATTER_SCHEMA_VERSION_INVALID")
                 self._ensure_formalization_snapshot_schema()
+                self._ensure_formal_run_binding_schema()
                 metadata_update = self.connection.execute(
                     """
-                    UPDATE matter_meta SET value = '2'
+                    UPDATE matter_meta SET value = '3'
                     WHERE key = 'schema_version' AND value = '1'
                     """
                 )
                 if metadata_update.rowcount != 1:
                     raise MatterSchemaError("MATTER_SCHEMA_VERSION_UPDATE_FAILED")
-                self.connection.execute("PRAGMA user_version = 2")
+                self.connection.execute("PRAGMA user_version = 3")
+        elif version == 2:
+            with self.transaction():
+                metadata_rows = self.connection.execute(
+                    """
+                    SELECT value FROM matter_meta
+                    WHERE key = 'schema_version'
+                    """
+                ).fetchall()
+                if len(metadata_rows) != 1 or metadata_rows[0]["value"] != "2":
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_INVALID")
+                self._require_formalization_snapshot_schema()
+                self._ensure_formal_run_binding_schema()
+                metadata_update = self.connection.execute(
+                    """
+                    UPDATE matter_meta SET value = '3'
+                    WHERE key = 'schema_version' AND value = '2'
+                    """
+                )
+                if metadata_update.rowcount != 1:
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_UPDATE_FAILED")
+                self.connection.execute("PRAGMA user_version = 3")
         elif version != self.SCHEMA_VERSION:
             raise MatterSchemaError(f"MATTER_SCHEMA_UNSUPPORTED: {version}")
 
@@ -194,6 +224,75 @@ class MatterStore:
         if "CHECK (MATTER_REVISION >= 1)" not in normalized_sql:
             raise MatterSchemaError("MATTER_SNAPSHOT_SCHEMA_INVALID")
 
+    def _ensure_formal_run_binding_schema(self) -> None:
+        table = self.connection.execute(
+            "SELECT type FROM sqlite_master WHERE name = 'formal_run_bindings'"
+        ).fetchone()
+        if table is None:
+            self.connection.execute(
+                """
+                CREATE TABLE formal_run_bindings (
+                    matter_id TEXT NOT NULL,
+                    matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                    snapshot_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    packet_sha256 TEXT NOT NULL CHECK (length(packet_sha256) = 64),
+                    PRIMARY KEY (matter_id, snapshot_id),
+                    UNIQUE (run_id),
+                    FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT,
+                    FOREIGN KEY (snapshot_id) REFERENCES formalization_snapshots(snapshot_id)
+                        ON DELETE RESTRICT
+                )
+                """
+            )
+        self._require_formal_run_binding_schema()
+
+    def _require_formal_run_binding_schema(self) -> None:
+        table = self.connection.execute(
+            "SELECT type, sql FROM sqlite_master WHERE name = 'formal_run_bindings'"
+        ).fetchone()
+        if table is None or table[0] != "table":
+            raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
+        columns = tuple(
+            (str(row[1]), str(row[2]).upper(), int(row[3]), int(row[5]))
+            for row in self.connection.execute(
+                'PRAGMA table_info("formal_run_bindings")'
+            ).fetchall()
+        )
+        if columns != _FORMAL_RUN_BINDING_COLUMNS:
+            raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
+        unique_indexes = {
+            tuple(
+                str(column[2])
+                for column in self.connection.execute(
+                    f'PRAGMA index_info("{str(index[1]).replace(chr(34), chr(34) * 2)}")'
+                ).fetchall()
+            )
+            for index in self.connection.execute(
+                'PRAGMA index_list("formal_run_bindings")'
+            ).fetchall()
+            if int(index[2]) == 1 and int(index[4]) == 0
+        }
+        if not {("matter_id", "snapshot_id"), ("run_id",)}.issubset(unique_indexes):
+            raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
+        foreign_keys = {
+            (str(row[2]), str(row[3]), str(row[4]), str(row[6]).upper())
+            for row in self.connection.execute(
+                'PRAGMA foreign_key_list("formal_run_bindings")'
+            ).fetchall()
+        }
+        if foreign_keys != {
+            ("matters", "matter_id", "matter_id", "RESTRICT"),
+            ("formalization_snapshots", "snapshot_id", "snapshot_id", "RESTRICT"),
+        }:
+            raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
+        normalized_sql = " ".join(str(table[1]).upper().split())
+        if (
+            "CHECK (MATTER_REVISION >= 1)" not in normalized_sql
+            or "CHECK (LENGTH(PACKET_SHA256) = 64)" not in normalized_sql
+        ):
+            raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
+
     def _require_schema(self) -> None:
         version = int(self.connection.execute("PRAGMA user_version").fetchone()[0])
         if version != self.SCHEMA_VERSION:
@@ -204,6 +303,7 @@ class MatterStore:
         if row is None or row[0] != str(self.SCHEMA_VERSION):
             raise MatterSchemaError("MATTER_SCHEMA_VERSION_MISSING")
         self._require_formalization_snapshot_schema()
+        self._require_formal_run_binding_schema()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

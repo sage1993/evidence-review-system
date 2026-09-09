@@ -1,5 +1,5 @@
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 
 CREATE TABLE IF NOT EXISTS matter_meta (
     key TEXT PRIMARY KEY,
@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS matter_meta (
 );
 
 INSERT OR REPLACE INTO matter_meta(key, value)
-VALUES ('schema_version', '2');
+VALUES ('schema_version', '3');
 
 CREATE TABLE IF NOT EXISTS matters (
     matter_id TEXT PRIMARY KEY,
@@ -63,4 +63,16 @@ CREATE TABLE IF NOT EXISTS formalization_snapshots (
     canonical_document BLOB NOT NULL,
     UNIQUE(matter_id, matter_revision),
     FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS formal_run_bindings (
+    matter_id TEXT NOT NULL,
+    matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+    snapshot_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    packet_sha256 TEXT NOT NULL CHECK (length(packet_sha256) = 64),
+    PRIMARY KEY (matter_id, snapshot_id),
+    UNIQUE (run_id),
+    FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT,
+    FOREIGN KEY (snapshot_id) REFERENCES formalization_snapshots(snapshot_id) ON DELETE RESTRICT
 );

@@ -88,7 +88,7 @@ def test_invalid_v1_metadata_migration_rolls_back_without_schema_changes(
         )
 
 
-@pytest.mark.parametrize("database_version", [1, 2])
+@pytest.mark.parametrize("database_version", [1, 3])
 def test_malformed_snapshot_table_rejects_without_partial_schema_change(
     tmp_path, database_version
 ) -> None:
@@ -107,7 +107,7 @@ def test_malformed_snapshot_table_rejects_without_partial_schema_change(
         store.close()
 
     with sqlite3.connect(database) as connection:
-        if database_version == 2:
+        if database_version == 3:
             connection.execute("DROP TABLE formalization_snapshots")
         connection.execute(
             """
@@ -201,10 +201,41 @@ def test_partial_snapshot_identity_index_rejects_without_schema_change(tmp_path)
             ).fetchone()[0]
             == index_sql
         )
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert (
             connection.execute(
                 "SELECT value FROM matter_meta WHERE key = 'schema_version'"
             ).fetchone()[0]
-            == "2"
+            == "3"
+        )
+
+
+def test_v2_store_migrates_append_only_formal_run_history_schema(tmp_path) -> None:
+    database = tmp_path / "v2-store.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formal_run_bindings")
+        connection.execute("PRAGMA user_version = 2")
+        connection.execute(
+            "UPDATE matter_meta SET value = '2' WHERE key = 'schema_version'"
+        )
+
+    upgraded = MatterStore(database)
+    upgraded.close()
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert (
+            connection.execute(
+                "SELECT value FROM matter_meta WHERE key = 'schema_version'"
+            ).fetchone()[0]
+            == "3"
+        )
+        assert (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'formal_run_bindings'"
+            ).fetchone()
+            is not None
         )
