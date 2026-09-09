@@ -19,7 +19,8 @@
   RED tests for input and snapshot authority.
 - `tests/integration/review_matter/test_existing_formal_core_adapter.py` —
   supplied controller RED tests for strict-core preparation, deterministic
-  resume identity, and immutable Matter state.
+  resume identity, and immutable Matter state, plus round-1 regressions for
+  approved-ID ordering and Matter/evidence promotion races.
 
 ## Decisions
 
@@ -35,6 +36,20 @@
   strict core's prepared-run artifact result. No Track A/B or finalizer behavior
   is reimplemented.
 
+## Round 1 fixes
+
+- P1-1: approved rule result IDs are validated and sorted with the same
+  canonical order as the strict `review_run.py` decoder before run identity and
+  resume lookup.
+- P1-2: the existing Matter store `BEGIN IMMEDIATE` transaction now covers the
+  final Matter revision check and strict preparation. A revision changed before
+  the boundary is rejected; a writer arriving after the boundary is serialized
+  behind the completed promotion.
+- P1-3: finalized evidence provenance is checked before and after selected-row
+  verification and again immediately before preparation. The request uses the
+  post-selection verified provenance, and any final drift fails before run
+  creation.
+
 ## Verification
 
 - RED: `py -3.13 -c "import evidence_review.review_matter.formalization"` —
@@ -42,11 +57,19 @@
 - GREEN: `py -3.13 -m pytest -q -p no:cacheprovider tests/unit/review_matter/test_formalization_adapter.py tests/integration/review_matter/test_existing_formal_core_adapter.py` — `6 passed`.
 - Adjacent: `py -3.13 -m pytest -q -p no:cacheprovider tests/unit/review_matter/test_formalization_snapshot.py tests/unit/review_question/test_request_builder.py tests/unit/review_question/test_planned_snapshot_provenance.py tests/integration/review_run/test_review_run.py tests/integration/review_question/test_real_review_full_e2e.py` — `28 passed`.
 - Static: `py -3.13 -m ruff check src/evidence_review/review_matter/formalization.py` and `py -3.13 -m mypy src/evidence_review/review_matter/formalization.py` — passed.
+- Round-1 RED: the three new regression tests failed on the pre-fix adapter with
+  the observed nondeterministic run identity, Matter race, and provenance drift
+  behaviors.
+- Round-1 GREEN: focused adapter tests — `9 passed`.
 
 ## Concerns
 
-- Full repository acceptance, documentation validation, Windows platform stress,
-  and browser QA were not run; they remain `NOT_RUN` for this focused MIG task.
+- Full repository pytest, documentation validation, Windows platform stress,
+  and browser QA are not rerun for the round-1 candidate; they remain
+  `NOT_RUN`/`HOLD` as applicable.
+- Windows platform stress and browser QA remain `NOT_RUN` for this focused MIG
+  task. Existing untracked MIG-09 pytest temp directories were preserved, so a
+  clean-worktree acceptance was not established here.
 - Sandboxed pytest temporary directories were permission-denied. The focused and
   adjacent tests above were run with approved normal Windows temporary-directory
   permissions.

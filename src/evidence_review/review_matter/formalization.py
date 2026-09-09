@@ -40,6 +40,20 @@ def _mapping_documents(values: Sequence[object], field: str) -> list[dict[str, o
     return documents
 
 
+def _strict_approved_rule_result_ids(values: Sequence[str]) -> list[str]:
+    """Apply the review-run decoder's validation and canonical sort order."""
+    approved: list[str] = []
+    for index, value in enumerate(values):
+        if not isinstance(value, str) or not value:
+            raise ValueError(
+                f"approved_rule_result_ids[{index}] must be a non-empty string"
+            )
+        approved.append(value)
+    if len(approved) != len(set(approved)):
+        raise ValueError("approved_rule_result_ids must be unique")
+    return sorted(approved)
+
+
 def _matter_store(workspace: Path) -> MatterStore:
     path = verified_regular_file_below(
         workspace,
@@ -57,10 +71,26 @@ def _evidence_database(workspace: Path) -> Path:
     )
 
 
+def _validated_evidence_provenance(
+    evidence_db: Path, snapshot: FormalizationSnapshot
+) -> dict[str, object]:
+    provenance = finalized_evidence_provenance(evidence_db)
+    if (
+        provenance.get("evidence_snapshot_hash"),
+        provenance.get("evidence_db_sha256"),
+        provenance.get("schema_version"),
+    ) != (
+        snapshot.evidence_snapshot_hash,
+        snapshot.evidence_db_sha256,
+        snapshot.evidence_schema_version,
+    ):
+        raise ValueError("FORMALIZATION_EVIDENCE_PROVENANCE_MISMATCH")
+    return provenance
+
+
 def _validate_persisted_snapshot(
-    workspace: Path, snapshot: FormalizationSnapshot
-) -> tuple[FormalizationSnapshot, Path]:
-    store = _matter_store(workspace)
+    store: MatterStore, workspace: Path, snapshot: FormalizationSnapshot
+) -> tuple[FormalizationSnapshot, Path, dict[str, object]]:
     persisted = load_formalization_snapshot(store, snapshot.snapshot_id)
     if dump_bytes(formalization_snapshot_document(persisted)) != dump_bytes(
         formalization_snapshot_document(snapshot)
@@ -72,42 +102,32 @@ def _validate_persisted_snapshot(
         raise ValueError("MATTER_CHANGED_DURING_FORMALIZATION")
 
     evidence_db = _evidence_database(workspace)
-    provenance = finalized_evidence_provenance(evidence_db)
-    if (
-        provenance.get("evidence_snapshot_hash"),
-        provenance.get("evidence_db_sha256"),
-        provenance.get("schema_version"),
-    ) != (
-        persisted.evidence_snapshot_hash,
-        persisted.evidence_db_sha256,
-        persisted.evidence_schema_version,
-    ):
-        raise ValueError("FORMALIZATION_EVIDENCE_PROVENANCE_MISMATCH")
+    _validated_evidence_provenance(evidence_db, persisted)
 
     bindings = {binding.binding_id: binding for binding in matter.source_bindings}
     for selected in persisted.selected_evidence:
         binding = bindings.get(selected.binding_id)
         if binding is None or _database_selection(evidence_db, binding) != selected:
             raise ValueError("FORMALIZATION_SELECTED_EVIDENCE_IDENTITY_MISMATCH")
-    return persisted, evidence_db
+    provenance = _validated_evidence_provenance(evidence_db, persisted)
+    return persisted, evidence_db, provenance
 
 
 def _request_document(
     snapshot: FormalizationSnapshot,
-    evidence_db: Path,
+    provenance: Mapping[str, object],
     *,
     calculations: Sequence[object],
     rules: Sequence[object],
     approved_rule_result_ids: Sequence[str],
 ) -> dict[str, object]:
-    provenance = finalized_evidence_provenance(evidence_db)
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
         "question": snapshot.review_scope.question,
         "inputs": {
             "snapshot_hash": snapshot.evidence_snapshot_hash,
-            "evidence_snapshot_provenance": provenance,
+            "evidence_snapshot_provenance": dict(provenance),
             "formalization_snapshot_id": snapshot.snapshot_id,
             "matter_id": snapshot.matter_id,
             "matter_revision": snapshot.matter_revision,
@@ -134,7 +154,9 @@ def _request_document(
         ],
         "calculations": _mapping_documents(calculations, "calculations"),
         "rules": _mapping_documents(rules, "rules"),
-        "approved_rule_result_ids": list(approved_rule_result_ids),
+        "approved_rule_result_ids": _strict_approved_rule_result_ids(
+            approved_rule_result_ids
+        ),
         "confidence_input": {
             "factors": {
                 name: {"value": "1.0", "source": "formalization:snapshot"}
@@ -145,7 +167,12 @@ def _request_document(
 
 
 def _prepare_or_resume(
-    workspace: Path, document: dict[str, object]
+    workspace: Path,
+    document: dict[str, object],
+    *,
+    store: MatterStore,
+    snapshot: FormalizationSnapshot,
+    evidence_db: Path,
 ) -> FormalizedReviewRun:
     run_id = compute_run_id_from_request(document)
     try:
@@ -155,6 +182,19 @@ def _prepare_or_resume(
             field="prepared review request",
         )
     except FileNotFoundError:
+        current = store.load(snapshot.matter_id)
+        if current.revision != snapshot.matter_revision:
+            raise ValueError("MATTER_CHANGED_DURING_FORMALIZATION") from None
+        provenance = _validated_evidence_provenance(evidence_db, snapshot)
+        inputs = document.get("inputs")
+        if not isinstance(inputs, Mapping) or inputs.get(
+            "evidence_snapshot_provenance"
+        ) is None:
+            raise ValueError("FORMALIZATION_EVIDENCE_PROVENANCE_MISMATCH") from None
+        if dump_bytes(dict(inputs["evidence_snapshot_provenance"])) != dump_bytes(
+            provenance
+        ):
+            raise ValueError("FORMALIZATION_EVIDENCE_PROVENANCE_MISMATCH") from None
         prepared = _prepare_from_document(workspace, document)
         return FormalizedReviewRun(
             run_id=prepared.run_id,
@@ -169,6 +209,10 @@ def _prepare_or_resume(
             ("runs", run_id, name),
             field=f"prepared review artifact {name}",
         )
+    current = store.load(snapshot.matter_id)
+    if current.revision != snapshot.matter_revision:
+        raise ValueError("MATTER_CHANGED_DURING_FORMALIZATION")
+    _validated_evidence_provenance(evidence_db, snapshot)
     return FormalizedReviewRun(run_id=run_id, status="WAITING_TRACK_A", prepared=None)
 
 
@@ -184,17 +228,28 @@ def formalize_snapshot(
     if not isinstance(snapshot, FormalizationSnapshot):
         raise ValueError("FORMALIZATION_SNAPSHOT_REQUIRED")
     workspace_root = Path(workspace)
-    persisted, evidence_db = _validate_persisted_snapshot(workspace_root, snapshot)
-    return _prepare_or_resume(
-        workspace_root,
-        _request_document(
+    with _matter_store(workspace_root) as store:
+        persisted, evidence_db, provenance = _validate_persisted_snapshot(
+            store, workspace_root, snapshot
+        )
+        document = _request_document(
             persisted,
-            evidence_db,
+            provenance,
             calculations=calculations,
             rules=rules,
             approved_rule_result_ids=approved_rule_result_ids,
-        ),
-    )
+        )
+        with store.transaction():
+            current = store.load(persisted.matter_id)
+            if current.revision != persisted.matter_revision:
+                raise ValueError("MATTER_CHANGED_DURING_FORMALIZATION")
+            return _prepare_or_resume(
+                workspace_root,
+                document,
+                store=store,
+                snapshot=persisted,
+                evidence_db=evidence_db,
+            )
 
 
 __all__ = ["FormalizedReviewRun", "formalize_snapshot"]
