@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import shutil
 import tempfile
@@ -14,11 +13,6 @@ from typing import cast
 
 from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.formats import RELEASE_FORMAT
-from evidence_review.contracts.identifiers import validate_identifier
-from evidence_review.filesystem_trust import (
-    verified_regular_directory,
-    verified_regular_file_below,
-)
 from evidence_review.packaging.codex_bundle import build_codex_bundle
 from evidence_review.packaging.web_bundle import build_web_runtime_zip
 from evidence_review.release.attestation import (
@@ -35,7 +29,10 @@ from evidence_review.release.config import (
     resolve_evidence_database,
 )
 from evidence_review.release.output_verifier import validate_release_output
-from evidence_review.release.validator import validate_release_workspace
+from evidence_review.release.validator import (
+    validate_release_workspace,
+    verify_release_packet,
+)
 
 _FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 
@@ -141,36 +138,15 @@ def _preflight_release(
 ) -> ReleaseInputs:
     if output_directory.exists():
         raise FileExistsError(output_directory)
-    if run_id is None:
-        raise ValueError("release requires an explicit run_id")
-    selected_run_id = validate_identifier(run_id, "run_id")
     evidence = resolve_evidence_database(workspace_root, config)
     if not evidence.is_file():
         raise FileNotFoundError(evidence)
-    runs_directory = verified_regular_directory(
-        workspace_root / "runs",
-        field="release runs directory",
-    )
-    packet = verified_regular_file_below(
-        runs_directory,
-        (selected_run_id, "final-review-packet.json"),
-        field="release final packet",
-    )
-    try:
-        packet_bytes = packet.read_bytes()
-        packet_document = json.loads(packet_bytes)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError("release final packet must be valid JSON") from error
-    if (
-        not isinstance(packet_document, Mapping)
-        or packet_document.get("run_id") != selected_run_id
-    ):
-        raise ValueError("release final packet run_id does not match selected run_id")
+    selected_packet = verify_release_packet(workspace_root, run_id)
     return ReleaseInputs(
         evidence=evidence,
-        run_id=selected_run_id,
-        packet_bytes=packet_bytes,
-        packet_hash=hashlib.sha256(packet_bytes).hexdigest(),
+        run_id=selected_packet.run_id,
+        packet_bytes=selected_packet.raw_bytes,
+        packet_hash=selected_packet.packet_hash,
     )
 
 
@@ -242,7 +218,10 @@ def build_evidence_release(
             stage / "chatgpt-web-runtime.zip",
         )
 
-        workspace_validation = validate_release_workspace(workspace_root)
+        workspace_validation = validate_release_workspace(
+            workspace_root,
+            run_id=inputs.run_id,
+        )
         output_validation = validate_release_output(stage)
         validation = _combined_validation_report(
             workspace_validation,

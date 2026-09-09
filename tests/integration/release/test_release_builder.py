@@ -13,10 +13,10 @@ from evidence_review.release.attestation import REQUIRED_CHECK_IDS
 from evidence_review.release.builder import build_ansim_release, build_evidence_release
 from evidence_review.release.config import ReleaseConfig
 
-_RUN_ID = "RUN-0123456789ABCDEF0123"
+from ._fixtures import write_valid_finalized_run
 
 
-def _workspace(root: Path) -> None:
+def _workspace(root: Path) -> str:
     repository_root = Path(__file__).parents[3]
     shutil.copytree(
         repository_root / "src/evidence_review",
@@ -76,7 +76,7 @@ def _workspace(root: Path) -> None:
         ),
         encoding="utf-8",
     )
-    _run_local_packet(root)
+    return write_valid_finalized_run(root)
 
 
 def _attestation(
@@ -118,26 +118,10 @@ def _legacy_acceptance(candidate_hash: str, packet_hash: str) -> dict[str, objec
     }
 
 
-def _run_local_packet(root: Path, *, run_id: str = _RUN_ID) -> Path:
-    packet = root / "runs" / run_id / "final-review-packet.json"
-    packet.parent.mkdir(parents=True, exist_ok=True)
-    packet.write_text(
-        json.dumps(
-            {
-                "run_id": run_id,
-                "human_decision": None,
-                "status": "READY_FOR_HUMAN_REVIEW",
-            }
-        ),
-        encoding="utf-8",
-    )
-    return packet
-
-
 def test_release_rejects_packet_bound_to_a_different_run(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
-    selected_packet = _run_local_packet(root)
+    run_id = _workspace(root)
+    selected_packet = root / "runs" / run_id / "final-review-packet.json"
     selected_packet.write_text(
         json.dumps(
             {
@@ -150,24 +134,46 @@ def test_release_rejects_packet_bound_to_a_different_run(tmp_path: Path) -> None
     )
 
     with pytest.raises(ValueError, match="run_id"):
-        build_evidence_release(root, tmp_path / "release", run_id=_RUN_ID)
+        build_evidence_release(root, tmp_path / "release", run_id=run_id)
 
 
 def test_release_requires_explicit_run_local_packet_selection(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
-    packet = _run_local_packet(root)
+    run_id = _workspace(root)
+    packet = root / "runs" / run_id / "final-review-packet.json"
     output = tmp_path / "release"
 
     with pytest.raises(ValueError, match="run_id"):
         build_evidence_release(root, output)
 
-    manifest = build_evidence_release(root, output, run_id=_RUN_ID)
+    manifest = build_evidence_release(root, output, run_id=run_id)
 
-    assert manifest["run_id"] == _RUN_ID
+    assert manifest["run_id"] == run_id
     assert manifest["packet_hash"] == hashlib.sha256(packet.read_bytes()).hexdigest()
     assert (output / "final-review-packet.json").read_bytes() == packet.read_bytes()
     assert not output.joinpath("runs", "final-review-packet.json").exists()
+
+
+def test_release_rejects_incomplete_final_packet(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    run_id = _workspace(root)
+    packet = root / "runs" / run_id / "final-review-packet.json"
+    packet.write_bytes(json.dumps({"run_id": run_id}).encode("utf-8"))
+
+    with pytest.raises(ValueError, match="final packet"):
+        build_evidence_release(root, tmp_path / "release", run_id=run_id)
+
+
+def test_release_rejects_tampered_final_packet(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    run_id = _workspace(root)
+    packet = root / "runs" / run_id / "final-review-packet.json"
+    document = json.loads(packet.read_text(encoding="utf-8"))
+    document["human_decision"] = "SATISFIED"
+    packet.write_bytes(json.dumps(document).encode("utf-8"))
+
+    with pytest.raises(ValueError, match="final packet"):
+        build_evidence_release(root, tmp_path / "release", run_id=run_id)
 
 
 def test_release_builder_script_requires_run_id_option() -> None:
@@ -192,9 +198,9 @@ def test_release_blocks_until_exact_process_attestation_is_present(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
+    run_id = _workspace(root)
     blocked_output = tmp_path / "blocked"
-    blocked = build_ansim_release(root, blocked_output, run_id=_RUN_ID)
+    blocked = build_ansim_release(root, blocked_output, run_id=run_id)
     assert blocked["format"] == "evidence-review/release"
     assert blocked["release"] == "evidence-review-v1.0"
     assert blocked["status"] == "BLOCKED"
@@ -232,7 +238,7 @@ def test_release_blocks_until_exact_process_attestation_is_present(
     legacy_blocked = build_ansim_release(
         root,
         tmp_path / "legacy-blocked",
-        run_id=_RUN_ID,
+        run_id=run_id,
     )
     assert legacy_blocked["status"] == "BLOCKED"
     assert legacy_blocked["reason_codes"] == ["PROCESS_ATTESTATION_MISSING"]
@@ -248,7 +254,7 @@ def test_release_blocks_until_exact_process_attestation_is_present(
         ),
         encoding="utf-8",
     )
-    ready = build_ansim_release(root, tmp_path / "ready", run_id=_RUN_ID)
+    ready = build_ansim_release(root, tmp_path / "ready", run_id=run_id)
     assert ready["status"] == "RELEASE_READY"
     assert ready["reason_codes"] == []
     assert ready["tag_allowed"] is True
@@ -261,8 +267,8 @@ def test_release_blocks_until_exact_process_attestation_is_present(
 
 def test_release_rejects_stale_attestation_hashes(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
-    first = build_ansim_release(root, tmp_path / "first", run_id=_RUN_ID)
+    run_id = _workspace(root)
+    first = build_ansim_release(root, tmp_path / "first", run_id=run_id)
     attestation_dir = root / "releases/evidence-review-v1.0"
     attestation_dir.mkdir(parents=True)
     (attestation_dir / "human-attestation.json").write_text(
@@ -270,7 +276,7 @@ def test_release_rejects_stale_attestation_hashes(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    blocked = build_ansim_release(root, tmp_path / "stale", run_id=_RUN_ID)
+    blocked = build_ansim_release(root, tmp_path / "stale", run_id=run_id)
 
     assert blocked["status"] == "BLOCKED"
     assert blocked["reason_codes"] == ["PROCESS_ATTESTATION_INVALID"]
@@ -281,12 +287,12 @@ def test_release_rejects_configured_reviewer_identity_mismatch(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
+    run_id = _workspace(root)
     config = ReleaseConfig(expected_reviewer_id="reviewer-b@example.com")
     first = build_evidence_release(
         root,
         tmp_path / "first",
-        run_id=_RUN_ID,
+        run_id=run_id,
         config=config,
     )
     attestation_dir = root / "releases/evidence-review-v1.0"
@@ -305,7 +311,7 @@ def test_release_rejects_configured_reviewer_identity_mismatch(
     blocked = build_evidence_release(
         root,
         tmp_path / "mismatch",
-        run_id=_RUN_ID,
+        run_id=run_id,
         config=config,
     )
 
@@ -318,7 +324,7 @@ def test_release_candidate_ignores_generated_python_files(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
+    run_id = _workspace(root)
 
     generated = (
         root
@@ -331,7 +337,7 @@ def test_release_candidate_ignores_generated_python_files(
     generated.parent.mkdir(parents=True, exist_ok=True)
     generated.write_bytes(b"first-generated-bytecode")
 
-    first = build_ansim_release(root, tmp_path / "first", run_id=_RUN_ID)
+    first = build_ansim_release(root, tmp_path / "first", run_id=run_id)
 
     generated.write_bytes(b"second-different-bytecode")
 
@@ -342,7 +348,7 @@ def test_release_candidate_ignores_generated_python_files(
         encoding="utf-8",
     )
 
-    second = build_ansim_release(root, tmp_path / "second", run_id=_RUN_ID)
+    second = build_ansim_release(root, tmp_path / "second", run_id=run_id)
 
     assert first["candidate_hash"] == second["candidate_hash"]
 
@@ -350,12 +356,12 @@ def test_release_preflight_failure_leaves_no_final_output(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
+    run_id = _workspace(root)
     (root / "evidence" / "evidence.sqlite").unlink()
     output = tmp_path / "release"
 
     with pytest.raises(FileNotFoundError):
-        build_evidence_release(root, output, run_id=_RUN_ID)
+        build_evidence_release(root, output, run_id=run_id)
 
     assert not output.exists()
 
@@ -365,7 +371,7 @@ def test_release_stage_failure_leaves_no_final_output_or_stage(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "workspace"
-    _workspace(root)
+    run_id = _workspace(root)
     output = tmp_path / "release"
 
     def fail_zip(source: Path, target: Path) -> None:
@@ -375,7 +381,7 @@ def test_release_stage_failure_leaves_no_final_output_or_stage(
 
     monkeypatch.setattr(builder, "_zip_directory", fail_zip)
     with pytest.raises(OSError, match="injected build failure"):
-        build_evidence_release(root, output, run_id=_RUN_ID)
+        build_evidence_release(root, output, run_id=run_id)
 
     assert not output.exists()
     assert not list(tmp_path.glob(".release.stage-*"))

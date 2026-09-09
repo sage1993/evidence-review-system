@@ -26,7 +26,10 @@ def test_validate_workspace_is_retired_fail_closed() -> None:
     assert completed.returncode == 2
     output = completed.stdout + completed.stderr
     assert "retired" in output.lower()
-    assert "py -3.13 scripts/validate_release.py <workspace>" in output
+    assert (
+        "py -3.13 scripts/validate_release.py <workspace> --run-id <RUN-ID>"
+        in output
+    )
     assert (
         "py -3.13 scripts/build_release.py <workspace> <output-dir> --run-id <RUN-ID>"
         in output
@@ -73,7 +76,10 @@ def test_current_docs_name_release_authority_and_legacy_scope() -> None:
     )
 
     assert "scripts/validate_workspace.py" not in readme
-    assert "py -3.13 scripts/validate_release.py <workspace>" in policy
+    assert (
+        "py -3.13 scripts/validate_release.py <workspace> --run-id <RUN-ID>"
+        in policy
+    )
     assert (
         "py -3.13 scripts/build_release.py <workspace> <output-dir> --run-id <RUN-ID>"
         in policy
