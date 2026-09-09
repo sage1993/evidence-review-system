@@ -6,7 +6,11 @@ import json
 
 import pytest
 
-from evidence_review.contracts.question_plan import QUESTION_PLAN_FORMAT
+from evidence_review.contracts.question_plan import (
+    QUESTION_PLAN_FORMAT,
+    decode_question_plan,
+)
+from evidence_review.question_planning import question_plan_sha256
 
 QUESTION = "제12조 기준에서 300m 이격과 1,500㎡ 부지의 검토 가능 여부를 확인해줘."
 
@@ -85,7 +89,9 @@ def _scope_payload() -> dict[str, object]:
         "legal_anchors": copy.deepcopy(_question_plan_payload()["legal_anchors"]),
         "search_requests": copy.deepcopy(_question_plan_payload()["search_requests"]),
         "origin": "PLANNER",
-        "question_plan_sha256": "a" * 64,
+        "question_plan_sha256": (
+            "56cb2942a1dfdb7a45722b136db23e9d72514e0d77a3010f2e17fe6645852020"
+        ),
     }
 
 
@@ -96,7 +102,9 @@ def test_review_scope_decodes_and_preserves_question_plan_semantics() -> None:
 
     assert scope.question == QUESTION
     assert scope.origin == "PLANNER"
-    assert scope.question_plan_sha256 == "a" * 64
+    assert scope.question_plan_sha256 == question_plan_sha256(
+        decode_question_plan(_question_plan_payload(), QUESTION)
+    )
     assert scope.facts[0].text.endswith("300m 이격되어 있다.")
     assert scope.facts[1].text.endswith("1,500㎡이다.")
     assert scope.assumptions[0].polarity == "negative"
@@ -154,6 +162,24 @@ def test_review_scope_rejects_search_request_bound_to_wrong_issue_role() -> None
     requests[0]["role"] = "supporting_fact"
 
     with pytest.raises(ValueError, match="role|issue"):
+        _scope_module().decode_review_scope(payload)
+
+
+def test_review_scope_rejects_planner_hash_for_changed_semantic_payload() -> None:
+    payload = _scope_payload()
+    facts = payload["facts"]
+    assert isinstance(facts, list)
+    facts[0]["text"] = "경계에서 301m 이격되어 있다."
+
+    with pytest.raises(ValueError, match="sha256|provenance"):
+        _scope_module().decode_review_scope(payload)
+
+
+def test_review_scope_rejects_non_string_question() -> None:
+    payload = _scope_payload()
+    payload["question"] = 123
+
+    with pytest.raises(ValueError, match="question"):
         _scope_module().decode_review_scope(payload)
 
 

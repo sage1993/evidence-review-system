@@ -15,6 +15,7 @@ from evidence_review.contracts.question_plan import (
     SearchRequest,
     decode_question_plan,
 )
+from evidence_review.question_planning import question_plan_sha256
 
 REVIEW_SCOPE_VERSION = 1
 ReviewScopeOrigin = Literal["PLANNER", "EXPLICIT_USER"]
@@ -93,7 +94,12 @@ def decode_review_scope(value: object) -> ReviewScope:
         raise ValueError("unsupported review scope format")
     _expect_version(payload["version"])
     origin = _expect_origin(payload["origin"])
-    question_plan_sha256 = _expect_provenance(payload["question_plan_sha256"], origin)
+    provenance_sha256 = _expect_provenance(payload["question_plan_sha256"], origin)
+    question = payload["question"]
+    if not isinstance(question, str):
+        raise ValueError("question must be a string")
+    if not question.strip():
+        raise ValueError("question must not be empty")
 
     plan = decode_question_plan(
         {
@@ -106,8 +112,10 @@ def decode_review_scope(value: object) -> ReviewScope:
             "legal_anchors": payload["legal_anchors"],
             "search_requests": payload["search_requests"],
         },
-        cast(str, payload["question"]),
+        question,
     )
+    if origin == "PLANNER" and provenance_sha256 != question_plan_sha256(plan):
+        raise ValueError("question_plan_sha256 does not match canonical QuestionPlan")
     return ReviewScope(
         question=plan.original_question,
         facts=plan.facts,
@@ -116,7 +124,7 @@ def decode_review_scope(value: object) -> ReviewScope:
         legal_anchors=plan.legal_anchors,
         search_requests=plan.search_requests,
         origin=origin,
-        question_plan_sha256=question_plan_sha256,
+        question_plan_sha256=provenance_sha256,
     )
 
 
