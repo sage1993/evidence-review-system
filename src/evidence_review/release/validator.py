@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -81,9 +81,27 @@ def verify_release_packet(
     )
     try:
         before = packet_path.read_bytes()
+    except OSError as error:
+        raise ValueError("release final packet failed canonical verification") from error
+    try:
+        packet_document = json.loads(before.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        packet_document = None
+    if (
+        isinstance(packet_document, Mapping)
+        and packet_document.get("run_id") is not None
+        and packet_document.get("run_id") != selected_run_id
+    ):
+        raise ValueError("release final packet run_id does not match selected run_id")
+    try:
         packet = verify_finalized_run(run_directory)
         after = packet_path.read_bytes()
-    except (KeyError, OSError, TypeError, ValueError) as error:
+    except (
+        KeyError,
+        OSError,
+        TypeError,
+        ValueError,
+    ) as error:
         raise ValueError("release final packet failed canonical verification") from error
     if before != after:
         raise ValueError("release final packet changed during verification")

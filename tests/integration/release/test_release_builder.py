@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from evidence_review.canonical_json import dump_bytes
 from evidence_review.release.attestation import REQUIRED_CHECK_IDS
 from evidence_review.release.builder import build_ansim_release, build_evidence_release
 from evidence_review.release.config import ReleaseConfig
@@ -122,16 +123,9 @@ def test_release_rejects_packet_bound_to_a_different_run(tmp_path: Path) -> None
     root = tmp_path / "workspace"
     run_id = _workspace(root)
     selected_packet = root / "runs" / run_id / "final-review-packet.json"
-    selected_packet.write_text(
-        json.dumps(
-            {
-                "run_id": "RUN-ABCDEF0123456789ABCD",
-                "human_decision": None,
-                "status": "READY_FOR_HUMAN_REVIEW",
-            }
-        ),
-        encoding="utf-8",
-    )
+    packet_document = json.loads(selected_packet.read_text(encoding="utf-8"))
+    packet_document["run_id"] = "RUN-ABCDEF0123456789ABCD"
+    selected_packet.write_bytes(dump_bytes(packet_document))
 
     with pytest.raises(ValueError, match="run_id"):
         build_evidence_release(root, tmp_path / "release", run_id=run_id)
