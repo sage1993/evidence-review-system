@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +12,10 @@ from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.filesystem_trust import verified_regular_file_below
-from evidence_review.review_matter.scope import review_scope_document
+from evidence_review.review_matter.scope import (
+    decode_review_scope,
+    review_scope_document,
+)
 from evidence_review.review_matter.snapshot import (
     FormalizationSnapshot,
     _database_selection,
@@ -89,10 +93,33 @@ def _validated_evidence_provenance(
     return provenance
 
 
+def _validated_scope_payload(value: object) -> dict[str, object]:
+    try:
+        decoded_scope = decode_review_scope(value)
+        canonical_scope = review_scope_document(decoded_scope)
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise ValueError("FORMALIZATION_REVIEW_SCOPE_INVALID") from error
+    if dump_bytes(canonical_scope) != dump_bytes(value):
+        raise ValueError("FORMALIZATION_REVIEW_SCOPE_CANONICAL_MISMATCH")
+    return canonical_scope
+
+
+def _validated_scope_document(snapshot: FormalizationSnapshot) -> dict[str, object]:
+    try:
+        snapshot_scope = review_scope_document(snapshot.review_scope)
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise ValueError("FORMALIZATION_REVIEW_SCOPE_INVALID") from error
+    return _validated_scope_payload(snapshot_scope)
+
+
 def _validate_persisted_snapshot(
     store: MatterStore, workspace: Path, snapshot: FormalizationSnapshot
-) -> tuple[FormalizationSnapshot, Path, dict[str, object]]:
+) -> tuple[FormalizationSnapshot, Path, dict[str, object], dict[str, object]]:
+    supplied_scope = _validated_scope_document(snapshot)
     persisted = load_formalization_snapshot(store, snapshot.snapshot_id)
+    persisted_scope = _validated_scope_document(persisted)
+    if dump_bytes(persisted_scope) != dump_bytes(supplied_scope):
+        raise ValueError("FORMALIZATION_REVIEW_SCOPE_CANONICAL_MISMATCH")
     if dump_bytes(formalization_snapshot_document(persisted)) != dump_bytes(
         formalization_snapshot_document(snapshot)
     ):
@@ -111,12 +138,13 @@ def _validate_persisted_snapshot(
         if binding is None or _database_selection(evidence_db, binding) != selected:
             raise ValueError("FORMALIZATION_SELECTED_EVIDENCE_IDENTITY_MISMATCH")
     provenance = _validated_evidence_provenance(evidence_db, persisted)
-    return persisted, evidence_db, provenance
+    return persisted, evidence_db, provenance, persisted_scope
 
 
 def _request_document(
     snapshot: FormalizationSnapshot,
     provenance: Mapping[str, object],
+    scope_document: Mapping[str, object],
     *,
     calculations: Sequence[object],
     rules: Sequence[object],
@@ -125,14 +153,14 @@ def _request_document(
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
-        "question": snapshot.review_scope.question,
+        "question": scope_document["question"],
         "inputs": {
             "snapshot_hash": snapshot.evidence_snapshot_hash,
             "evidence_snapshot_provenance": dict(provenance),
             "formalization_snapshot_id": snapshot.snapshot_id,
             "matter_id": snapshot.matter_id,
             "matter_revision": snapshot.matter_revision,
-            "review_scope": review_scope_document(snapshot.review_scope),
+            "review_scope": dict(scope_document),
         },
         "evidence": [
             {
@@ -168,6 +196,23 @@ def _request_document(
     }
 
 
+def _validate_prepared_bundle_scope(
+    bundle_path: Path, expected_scope: Mapping[str, object]
+) -> None:
+    try:
+        payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            raise ValueError("track-a-bundle must be an object")
+        inputs = payload["inputs"]
+        if not isinstance(inputs, Mapping):
+            raise ValueError("track-a-bundle inputs must be an object")
+        scope = _validated_scope_payload(inputs["review_scope"])
+    except (KeyError, OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError("FORMALIZATION_REVIEW_SCOPE_INVALID") from error
+    if dump_bytes(scope) != dump_bytes(expected_scope):
+        raise ValueError("FORMALIZATION_REVIEW_SCOPE_MISMATCH")
+
+
 def _prepare_or_resume(
     workspace: Path,
     document: dict[str, object],
@@ -175,6 +220,7 @@ def _prepare_or_resume(
     store: MatterStore,
     snapshot: FormalizationSnapshot,
     evidence_db: Path,
+    scope_document: Mapping[str, object],
 ) -> FormalizedReviewRun:
     run_id = compute_run_id_from_request(document)
     try:
@@ -205,12 +251,18 @@ def _prepare_or_resume(
         )
     if run_directory.read_bytes() != dump_bytes(document):
         raise ValueError("existing immutable review run differs from formalization request")
+    bundle_path: Path | None = None
     for name in ("track-a-bundle.json", "confidence-input.json"):
-        verified_regular_file_below(
+        artifact = verified_regular_file_below(
             workspace,
             ("runs", run_id, name),
             field=f"prepared review artifact {name}",
         )
+        if name == "track-a-bundle.json":
+            bundle_path = artifact
+    if bundle_path is None:
+        raise ValueError("FORMALIZATION_REVIEW_SCOPE_INVALID")
+    _validate_prepared_bundle_scope(bundle_path, scope_document)
     current = store.load(snapshot.matter_id)
     if current.revision != snapshot.matter_revision:
         raise ValueError("MATTER_CHANGED_DURING_FORMALIZATION")
@@ -231,12 +283,13 @@ def formalize_snapshot(
         raise ValueError("FORMALIZATION_SNAPSHOT_REQUIRED")
     workspace_root = Path(workspace)
     with _matter_store(workspace_root) as store:
-        persisted, evidence_db, provenance = _validate_persisted_snapshot(
+        persisted, evidence_db, provenance, scope_document = _validate_persisted_snapshot(
             store, workspace_root, snapshot
         )
         document = _request_document(
             persisted,
             provenance,
+            scope_document,
             calculations=calculations,
             rules=rules,
             approved_rule_result_ids=approved_rule_result_ids,
@@ -251,6 +304,7 @@ def formalize_snapshot(
                 store=store,
                 snapshot=persisted,
                 evidence_db=evidence_db,
+                scope_document=scope_document,
             )
 
 

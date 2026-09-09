@@ -117,6 +117,57 @@ def test_prepared_request_preserves_canonical_review_scope_bytes(tmp_path: Path)
     assert dump_bytes(request["inputs"]["review_scope"]) == dump_bytes(expected_scope)
 
 
+def test_malformed_review_scope_is_rejected_before_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter import formalization
+
+    original_scope_document = formalization.review_scope_document
+
+    def malformed_scope(scope: object) -> dict[str, object]:
+        document = original_scope_document(scope)
+        document["issues"] = [dict(document["issues"][0])]
+        document["issues"][0].pop("question")
+        return document
+
+    monkeypatch.setattr(formalization, "review_scope_document", malformed_scope)
+
+    with pytest.raises(ValueError, match="FORMALIZATION_REVIEW_SCOPE"):
+        formalization.formalize_snapshot(workspace, snapshot)
+
+    assert not (workspace / "runs").exists()
+
+
+def test_track_a_bundle_preserves_canonical_review_scope_bytes(tmp_path: Path) -> None:
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter.formalization import formalize_snapshot
+
+    prepared = formalize_snapshot(workspace, snapshot)
+    bundle = json.loads(
+        (workspace / "runs" / prepared.run_id / "track-a-bundle.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_scope = review_scope_document(snapshot.review_scope)
+
+    assert dump_bytes(bundle["inputs"]["review_scope"]) == dump_bytes(expected_scope)
+
+
+def test_tampered_prepared_track_a_scope_fails_before_resume(tmp_path: Path) -> None:
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter.formalization import formalize_snapshot
+
+    prepared = formalize_snapshot(workspace, snapshot)
+    bundle_path = workspace / "runs" / prepared.run_id / "track-a-bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["inputs"]["review_scope"] = {"tampered": True}
+    bundle_path.write_bytes(dump_bytes(bundle))
+
+    with pytest.raises(ValueError, match="FORMALIZATION_REVIEW_SCOPE"):
+        formalize_snapshot(workspace, snapshot)
+
+
 def test_matter_revision_change_before_preparation_cannot_create_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -61,6 +61,19 @@
 - The regression compares canonical JSON bytes from prepared
   `review-request.json` with the snapshot's canonical scope document.
 
+## Round 3 fix
+
+- The strict request decoder permits arbitrary nested `inputs` keys, so the
+  adapter now strictly decodes `review_scope_document(snapshot.review_scope)`
+  and re-encodes it before request construction.
+- The adapter compares the supplied and persisted scope documents by canonical
+  bytes and uses only the validated canonical document for the request and
+  Track A bundle. Existing prepared Track A bundles are re-decoded and compared
+  with that same canonical document before resume.
+- Existing prepared requests remain fail-closed through canonical request-byte
+  equality, while malformed or mismatched scope serialization is rejected
+  before any new run is created or resumed.
+
 ## Verification
 
 - RED: `py -3.13 -c "import evidence_review.review_matter.formalization"` —
@@ -78,11 +91,18 @@
   — `121 passed`.
 - Round-2 static checks: Ruff, mypy, and compileall passed for the adapter and
   regression tests.
+- Round-3 RED: malformed snapshot scope and tampered prepared Track A scope
+  regressions both reproduced successful acceptance (`DID NOT RAISE`) before
+  boundary validation was added; the exact-byte bundle regression established
+  the required canonical output.
+- Round-3 GREEN: focused and adjacent suites — `124 passed in 18.41s`.
+- Round-3 static checks: Ruff, mypy, and compileall passed for the adapter and
+  regression tests.
 
 ## Concerns
 
 - Full repository pytest, documentation validation, Windows platform stress,
-  and browser QA are not rerun for the round-1 candidate; they remain
+  and browser QA are not rerun for the round-3 candidate; they remain
   `NOT_RUN`/`HOLD` as applicable.
 - Windows platform stress and browser QA remain `NOT_RUN` for this focused MIG
   task. Existing untracked MIG-09 pytest temp directories were preserved, so a
