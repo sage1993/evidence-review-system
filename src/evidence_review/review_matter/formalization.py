@@ -11,6 +11,7 @@ from evidence_review.confidence.policy import FACTOR_WEIGHTS
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.filesystem_trust import verified_regular_file_below
+from evidence_review.review_matter.scope import review_scope_document
 from evidence_review.review_matter.snapshot import (
     FormalizationSnapshot,
     _database_selection,
@@ -131,6 +132,7 @@ def _request_document(
             "formalization_snapshot_id": snapshot.snapshot_id,
             "matter_id": snapshot.matter_id,
             "matter_revision": snapshot.matter_revision,
+            "review_scope": review_scope_document(snapshot.review_scope),
         },
         "evidence": [
             {

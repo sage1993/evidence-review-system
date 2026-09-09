@@ -50,6 +50,17 @@
   post-selection verified provenance, and any final drift fails before run
   creation.
 
+## Round 2 fix
+
+- The strict request contract already permits arbitrary canonical keys inside
+  its existing `inputs` mapping, so no decoder/version change was required.
+- The adapter now carries `review_scope_document(snapshot.review_scope)` at
+  `inputs.review_scope`. This preserves facts, assumptions, issues, legal
+  anchors, and search-request lineage through the strict request decoder and
+  into the Track A bundle.
+- The regression compares canonical JSON bytes from prepared
+  `review-request.json` with the snapshot's canonical scope document.
+
 ## Verification
 
 - RED: `py -3.13 -c "import evidence_review.review_matter.formalization"` —
@@ -61,6 +72,12 @@
   the observed nondeterministic run identity, Matter race, and provenance drift
   behaviors.
 - Round-1 GREEN: focused adapter tests — `9 passed`.
+- Round-2 RED: the new scope-preservation regression failed with `KeyError:
+  'review_scope'` before the compatibility field was added.
+- Round-2 GREEN: relevant ReviewMatter, review-run, and scope-provenance tests
+  — `121 passed`.
+- Round-2 static checks: Ruff, mypy, and compileall passed for the adapter and
+  regression tests.
 
 ## Concerns
 

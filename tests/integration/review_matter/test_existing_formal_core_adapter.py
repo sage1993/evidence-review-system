@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from evidence_review.canonical_json import dump_bytes
+from evidence_review.review_matter.scope import review_scope_document
 from evidence_review.review_matter.snapshot import create_formalization_snapshot
 
 
@@ -98,6 +100,21 @@ def test_unsorted_approved_rule_ids_use_strict_decoder_identity(tmp_path: Path) 
         )
     )
     assert request["approved_rule_result_ids"] == ["RULE-A", "RULE-B"]
+
+
+def test_prepared_request_preserves_canonical_review_scope_bytes(tmp_path: Path) -> None:
+    workspace, _store, snapshot = _setup_workspace(tmp_path)
+    from evidence_review.review_matter.formalization import formalize_snapshot
+
+    prepared = formalize_snapshot(workspace, snapshot)
+    request = json.loads(
+        (workspace / "runs" / prepared.run_id / "review-request.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_scope = review_scope_document(snapshot.review_scope)
+
+    assert dump_bytes(request["inputs"]["review_scope"]) == dump_bytes(expected_scope)
 
 
 def test_matter_revision_change_before_preparation_cannot_create_run(
