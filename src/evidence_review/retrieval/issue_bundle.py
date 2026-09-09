@@ -18,6 +18,7 @@ from evidence_review.retrieval.clause_resolution import (
     resolve_clause_to_evidence,
 )
 from evidence_review.retrieval.fallback import (
+    FallbackResult,
     FallbackStage,
     FallbackTrace,
     legal_compound_queries,
@@ -338,6 +339,7 @@ def _bind_fallback_trace(
 def _legacy_queries_from_fallback(
     request: SearchRequest,
     traces: Sequence[FallbackTrace],
+    additional_queries: Sequence[str] = (),
 ) -> tuple[str, ...]:
     allowed = {
         FallbackStage.FACT_DECONTAMINATED,
@@ -347,6 +349,7 @@ def _legacy_queries_from_fallback(
     }
     values = [
         request.text,
+        *additional_queries,
         *(trace.derived_query for trace in traces if trace.stage in allowed),
         *legal_compound_queries(request.text),
     ]
@@ -371,6 +374,7 @@ def _bucket_candidates(
     requests: tuple[SearchRequest, ...],
     fact_texts: Sequence[str],
     policy: RetrievalPolicy,
+    original_question: str | None = None,
 ) -> tuple[tuple[IssueClauseCandidate, ...], tuple[IssueFallbackTrace, ...]]:
     by_clause: dict[str, IssueClauseCandidate] = {}
     traces: list[IssueFallbackTrace] = []
@@ -378,49 +382,67 @@ def _bucket_candidates(
         if request.role != role:
             continue
 
-        relevance_overrides: dict[str, IssueRelevanceDecision] = {}
+        query_candidates = [request.text]
+        if original_question and original_question != request.text:
+            query_candidates.append(original_question)
 
-        def issue_relevance_filter(
-            hit: ClauseRetrievalHit,
-            bound_request: SearchRequest = request,
-            bound_overrides: dict[
-                str, IssueRelevanceDecision
-            ] = relevance_overrides,
-        ) -> bool:
-            decision = evaluate_issue_clause_relevance(
-                issue_id=issue.id,
-                issue_question=issue.question,
-                search_request_id=bound_request.id,
-                query_text=bound_request.text,
-                clause=hit,
-            )
-            bound_overrides[hit.clause_id] = IssueRelevanceDecision(
-                issue_id=issue.id,
-                search_request_id=bound_request.id,
-                clause_id=hit.clause_id,
-                accepted=decision.accepted,
-                reason_codes=decision.reason_codes,
-            )
-            return decision.accepted
+        result: FallbackResult | None = None
+        raw_traces: list[FallbackTrace] = []
+        for query_text in query_candidates:
+            relevance_overrides: dict[str, IssueRelevanceDecision] = {}
 
-        result = search_clause_with_fallback(
-            connection,
-            request.text,
-            fact_texts=fact_texts,
-            limit=policy.per_issue_role_limit,
-            hit_filter=issue_relevance_filter,
-        )
-        traces.extend(
-            _bind_fallback_trace(
-                issue,
-                request,
-                trace,
-                relevance_overrides,
+            def issue_relevance_filter(
+                hit: ClauseRetrievalHit,
+                bound_request: SearchRequest = request,
+                bound_overrides: dict[
+                    str, IssueRelevanceDecision
+                ] = relevance_overrides,
+            ) -> bool:
+                decision = evaluate_issue_clause_relevance(
+                    issue_id=issue.id,
+                    issue_question=issue.question,
+                    search_request_id=bound_request.id,
+                    query_text=bound_request.text,
+                    clause=hit,
+                )
+                bound_overrides[hit.clause_id] = IssueRelevanceDecision(
+                    issue_id=issue.id,
+                    search_request_id=bound_request.id,
+                    clause_id=hit.clause_id,
+                    accepted=decision.accepted,
+                    reason_codes=decision.reason_codes,
+                )
+                return decision.accepted
+
+            result = search_clause_with_fallback(
+                connection,
+                query_text,
+                fact_texts=fact_texts,
+                limit=policy.per_issue_role_limit,
+                hit_filter=issue_relevance_filter,
+                allow_heading_scoped=(len(query_candidates) == 1),
             )
-            for trace in result.traces
-        )
+            raw_traces.extend(result.traces)
+            traces.extend(
+                _bind_fallback_trace(
+                    issue,
+                    request,
+                    trace,
+                    relevance_overrides,
+                )
+                for trace in result.traces
+            )
+            if result.success_stage is not None and result.successful_query is not None:
+                break
+
+        if result is None:
+            raise RuntimeError("fallback query candidates must not be empty")
         if result.success_stage is None or result.successful_query is None:
-            legacy_queries = _legacy_queries_from_fallback(request, result.traces)
+            legacy_queries = _legacy_queries_from_fallback(
+                request,
+                tuple(raw_traces),
+                query_candidates[1:],
+            )
             legacy_hits: tuple[RetrievalHit, ...] = ()
             legacy_query = request.text
             for candidate_query in legacy_queries:
@@ -747,6 +769,7 @@ def retrieve_issue_bundle(
                 selected_requests,
                 fact_texts,
                 effective_policy,
+                plan.original_question,
             )
             fallback_traces.extend(traces)
             buckets.append(
