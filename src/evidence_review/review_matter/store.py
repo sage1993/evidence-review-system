@@ -273,7 +273,7 @@ class MatterStore:
             ).fetchall()
             if int(index[2]) == 1 and int(index[4]) == 0
         }
-        if not {("matter_id", "snapshot_id"), ("run_id",)}.issubset(unique_indexes):
+        if unique_indexes != {("matter_id", "snapshot_id"), ("run_id",)}:
             raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
         foreign_keys = {
             (str(row[2]), str(row[3]), str(row[4]), str(row[6]).upper())

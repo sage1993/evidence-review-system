@@ -239,3 +239,18 @@ def test_v2_store_migrates_append_only_formal_run_history_schema(tmp_path) -> No
             ).fetchone()
             is not None
         )
+
+
+def test_reopened_store_rejects_extra_unique_matter_run_constraint(tmp_path) -> None:
+    """A Matter must retain its ability to append more than one formal run."""
+    database = tmp_path / "extra-unique-matter-run.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_one_run_per_matter "
+            "ON formal_run_bindings(matter_id)"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)

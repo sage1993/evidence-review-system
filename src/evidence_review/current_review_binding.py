@@ -116,6 +116,8 @@ def bind_current_review(
     repository_root: Path,
     run_id: str,
     packet_sha256: str,
+    *,
+    workspace_root: Path,
 ) -> CurrentReviewBinding:
     """Atomically replace only the local current-review selector."""
     root, _state = _state_directory(repository_root)
@@ -123,17 +125,21 @@ def bind_current_review(
         run_id=_run_id(run_id),
         packet_sha256=expect_sha256(packet_sha256, "packet_sha256"),
     )
-    _resolve_binding(root, binding)
+    _resolve_binding(workspace_root, binding)
     _write_binding(root / ".ers" / "current-review.json", binding)
     return binding
 
 
 def _resolve_binding(
-    root: Path, binding: CurrentReviewBinding
+    workspace_root: Path, binding: CurrentReviewBinding
 ) -> ResolvedCurrentReview:
     """Verify one selected run-local packet without accepting a pointer file."""
     try:
-        runs = verified_regular_directory(root / "runs", field="current review runs")
+        workspace = verified_regular_directory(
+            workspace_root,
+            field="current review workspace",
+        )
+        runs = verified_regular_directory(workspace / "runs", field="current review runs")
         run_directory = verified_regular_directory(
             runs / binding.run_id,
             field="current review run directory",
@@ -164,7 +170,11 @@ def _resolve_binding(
     )
 
 
-def resolve_current_review(repository_root: Path) -> ResolvedCurrentReview:
+def resolve_current_review(
+    repository_root: Path,
+    *,
+    workspace_root: Path,
+) -> ResolvedCurrentReview:
     """Resolve a canonical pointer only when its local final packet still verifies."""
     root = verified_regular_directory(repository_root, field="repository root")
     try:
@@ -184,7 +194,7 @@ def resolve_current_review(repository_root: Path) -> ResolvedCurrentReview:
             raise ValueError("current review binding is not canonical")
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         raise ValueError("CURRENT_REVIEW_BINDING_INVALID") from error
-    return _resolve_binding(root, binding)
+    return _resolve_binding(workspace_root, binding)
 
 
 __all__ = [
