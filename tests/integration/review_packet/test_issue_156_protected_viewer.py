@@ -228,6 +228,26 @@ def test_issue_156_case_asset_reports_elevated_created_cache_denial(
     assert denied == ("ASSET_PERMISSION_DENIED", None)
 
 
+def test_issue_156_case_asset_reports_trusted_path_permission_denial(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    route = _route()
+
+    def deny_trusted_path(*_args, **_kwargs):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(
+        case_visual_asset_server,
+        "verified_regular_file_below",
+        deny_trusted_path,
+    )
+
+    denied = case_visual_asset_server._page_asset(tmp_path, route)
+
+    assert denied == ("ASSET_PERMISSION_DENIED", None)
+
+
 def test_issue_156_tile_manifest_read_permission_denial_is_not_invalid(
     monkeypatch,
     tmp_path: Path,

@@ -32,6 +32,27 @@ def test_verified_regular_file_below_accepts_normal_file(tmp_path: Path) -> None
     assert resolved == target.resolve(strict=True)
 
 
+def test_verified_regular_file_below_preserves_permission_denied(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    target = root / "asset.png"
+    target.write_bytes(b"png")
+    original_lstat = Path.lstat
+
+    def deny_target(path: Path):
+        if path == target:
+            raise PermissionError("access denied")
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", deny_target)
+
+    with pytest.raises(PermissionError, match="access denied"):
+        verified_regular_file_below(root, ("asset.png",), field="asset")
+
+
 def test_verified_regular_directory_accepts_normal_directory(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()
