@@ -69,7 +69,8 @@ def test_ingest_copies_source_bytes_and_never_overwrites(tmp_path: Path) -> None
     )
     stored = case_dir / "sources" / "drawings" / "ATT-001.png"
     assert stored.read_bytes() == payload
-    assert attachment.stored_path == "inputs/original/ATT-001.png"
+    assert attachment.stored_path == "cases/case/sources/drawings/ATT-001.png"
+    assert attachment.case_id == "case"
 
     source.write_bytes(payload)
     with pytest.raises(FileExistsError):
@@ -89,7 +90,8 @@ def test_ingest_accepts_extension_alias_and_normalizes_path(tmp_path: Path) -> N
         DrawingIntakePolicy(),
     )
     assert attachment.mime == "image/jpeg"
-    assert attachment.stored_path == "inputs/original/ATT-002.jpg"
+    assert attachment.stored_path == "cases/case/sources/drawings/ATT-002.jpg"
+    assert attachment.case_id == "case"
 
 
 def test_verify_attachment_reports_size_and_hash_tampering(tmp_path: Path) -> None:

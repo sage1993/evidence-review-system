@@ -15,10 +15,11 @@
   ],
   "properties": {
     "attachment_id": {"type": "string", "minLength": 1},
+    "case_id": {"type": "string", "minLength": 1},
     "original_name": {"type": "string", "minLength": 1},
     "stored_path": {
       "type": "string",
-      "pattern": "^inputs/original/[^/]+$"
+      "pattern": "^(inputs/original/[^/]+|cases/[^/]+/sources/drawings/[^/]+)$"
     },
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "byte_size": {"type": "integer", "minimum": 1},

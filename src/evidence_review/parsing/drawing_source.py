@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 from evidence_review.contracts.attachments import (
     AttachmentRole,
     ImmutableAttachment,
+    case_visual_source_relative_parts,
 )
 from evidence_review.filesystem_trust import (
     verified_regular_file,
@@ -77,11 +78,13 @@ def _extension_matches(source_path: Path, mime: str) -> None:
         raise ValueError("source extension does not match MIME")
 
 
-def _logical_stored_path(attachment_id: str, extension: str) -> str:
-    return f"inputs/original/{attachment_id}{extension}"
+def _logical_stored_path(case_id: str, attachment_id: str, extension: str) -> str:
+    return f"cases/{case_id}/sources/drawings/{attachment_id}{extension}"
 
 
 def _physical_relative_path(attachment: ImmutableAttachment) -> str:
+    if attachment.case_id is not None:
+        return "/".join(case_visual_source_relative_parts(attachment)[2:])
     parsed = PurePosixPath(attachment.stored_path)
     expected_prefix = ("inputs", "original")
     if parsed.parts[:2] != expected_prefix or len(parsed.parts) != 3:
@@ -167,6 +170,7 @@ def ingest_drawing_source(
 ) -> ImmutableAttachment:
     """Copy one supported source into immutable case storage and hash copied bytes."""
     validate_artifact_id(attachment_id, "attachment_id")
+    case_id = validate_artifact_id(case_dir.name, "case_id")
     if role == "REFERENCE_DOCUMENT":
         raise ValueError("reference documents must use the reference ingestion pipeline")
     validate_source_path(source_path)
@@ -195,11 +199,14 @@ def ingest_drawing_source(
     return ImmutableAttachment(
         attachment_id=attachment_id,
         original_name=source_path.name,
-        stored_path=_logical_stored_path(attachment_id, canonical_extension),
+        stored_path=_logical_stored_path(
+            case_id, attachment_id, canonical_extension
+        ),
         sha256=source_hash,
         byte_size=byte_size,
         mime=mime,
         role=role,
+        case_id=case_id,
     )
 
 

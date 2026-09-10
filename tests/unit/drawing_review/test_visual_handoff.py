@@ -92,6 +92,7 @@ def test_visual_handoff_canonicalizes_valid_raster_sources(
     assert bundle["attachments"] == [
         {
             "attachment_id": attachment.attachment_id,
+            "case_id": attachment.case_id,
             "original_name": source.name,
             "stored_path": attachment.stored_path,
             "sha256": attachment.sha256,

@@ -95,17 +95,21 @@ def _case_id(descriptors: Sequence[Mapping[str, object]]) -> str:
 
 
 def _reconstructed_attachment(
-    descriptor: Mapping[str, object], attachment_id: str
+    descriptor: Mapping[str, object], attachment_id: str, case_id: str
 ) -> ImmutableAttachment:
     mime = cast(str, descriptor["mime"])
     return ImmutableAttachment(
         attachment_id=attachment_id,
         original_name=cast(str, descriptor["original_name"]),
-        stored_path=f"inputs/original/{attachment_id}{_CANONICAL_EXTENSION[mime]}",
+        stored_path=(
+            f"cases/{case_id}/sources/drawings/"
+            f"{attachment_id}{_CANONICAL_EXTENSION[mime]}"
+        ),
         sha256=cast(str, descriptor["sha256"]),
         byte_size=cast(int, descriptor["byte_size"]),
         mime=mime,
         role=cast(AttachmentRole, descriptor["role"]),
+        case_id=case_id,
     )
 
 
@@ -135,7 +139,7 @@ def prepare_case_visual_sources(
     attachments: list[ImmutableAttachment] = []
     for source_path, descriptor in descriptors:
         attachment_id = _attachment_id(descriptor)
-        expected = _reconstructed_attachment(descriptor, attachment_id)
+        expected = _reconstructed_attachment(descriptor, attachment_id, case_id)
         canonical_extension = _CANONICAL_EXTENSION[expected.mime]
         physical = (
             case_dir

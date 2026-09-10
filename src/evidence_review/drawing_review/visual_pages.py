@@ -16,8 +16,12 @@ from typing import cast
 from PIL import Image, ImageOps
 
 from evidence_review.canonical_json import dump_bytes
-from evidence_review.contracts.attachments import ImmutableAttachment
+from evidence_review.contracts.attachments import (
+    ImmutableAttachment,
+    case_visual_source_relative_parts,
+)
 from evidence_review.contracts.drawing import CoordinateSystem
+from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 from evidence_review.parsing.source_manifest import sha256_file
 
@@ -59,13 +63,13 @@ class VisualPageTile:
 
 
 def _source_path(workspace: Path, attachment: ImmutableAttachment) -> Path:
-    filename = Path(attachment.stored_path).name
-    matches = sorted(workspace.glob(f"cases/*/sources/drawings/{filename}"))
-    if len(matches) != 1:
-        raise FileNotFoundError(
-            f"case visual source path is not uniquely resolvable: {attachment.attachment_id}"
-        )
-    source = matches[0]
+    source = verified_regular_file_below(
+        workspace,
+        case_visual_source_relative_parts(attachment),
+        field="case visual source",
+    )
+    if source.stat().st_size != attachment.byte_size:
+        raise ValueError("case visual source size mismatch")
     if sha256_file(source) != attachment.sha256:
         raise ValueError("case visual source hash mismatch")
     return source
@@ -400,7 +404,14 @@ def prepare_visual_page_assets(
 ) -> tuple[VisualPageAsset, ...]:
     """Render/canonicalize every visual attachment without reference parsing."""
     assets: list[VisualPageAsset] = []
+    identities: set[tuple[str, str]] = set()
     for attachment in attachments:
+        if attachment.case_id is None:
+            raise ValueError("case visual attachment identity requires case_id")
+        identity = (attachment.case_id, attachment.attachment_id)
+        if identity in identities:
+            raise ValueError("case visual source binding is ambiguous")
+        identities.add(identity)
         source = _source_path(workspace, attachment)
         if attachment.mime == "application/pdf":
             assets.extend(_pdf_assets(workspace, attachment, source))
