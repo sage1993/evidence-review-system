@@ -105,6 +105,36 @@ Exact Python 3.13 verification at `9afa848e3dcc667c0f207fe98e2efa6e571d0998`:
   warnings.
 - `git diff --check`: PASS.
 
+## Fix round 3
+
+Sol-high review found that `CASE-*` Matter IDs were rejected only by the
+canonical Matter decoder after `create()` had already opened the create-capable
+store. The focused RED regression reproduced the leak. The service now imports
+and uses the canonical Matter contract identifier rule before any store
+creation, preserving valid Matter IDs and all prior behavior.
+
+Fix-round-3 RED: 1 failed and 14 passed in 2.62s. GREEN: 15 passed in 2.32s.
+Adjacent Matter/navigation/formal regressions passed 196 in 45.23s before the
+code commit. The exact verified code head is
+`baf1bf8a57c789ae4f61aef5a241fb6dc6d3af44`; its focused verification passed 15
+in 2.25s and adjacent verification passed 196 in 47.54s.
+
+Exact Python 3.13 verification at
+`baf1bf8a57c789ae4f61aef5a241fb6dc6d3af44`:
+
+- Full pytest: 2110 passed, 1 skipped in 393.66s.
+- Ruff: PASS.
+- mypy `src`: PASS, 260 source files.
+- mypy `--platform win32 src`: PASS, 260 source files.
+- compileall (`src scripts web_runtime tests`): PASS.
+- Source-tree documentation validation: PASS, 50 documents, 0 errors, 145
+  warnings.
+- `git diff --check`: PASS.
+
+The initial code commit `b0fe527` passed the full suite but required a
+formatting-only import-order follow-up; all exact final statuses above are at
+`baf1bf8`.
+
 ## Not run
 
 - Browser/manual acceptance: `NOT_RUN`.

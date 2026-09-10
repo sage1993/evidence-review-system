@@ -97,3 +97,24 @@
   `git diff --check`: PASS. Both mypy runs checked 260 source files.
 - Exact-head source-tree documentation validation: PASS; 50 documents,
   errors=0, warnings=145.
+
+## Fix-round-3 execution record
+
+- Sol-high blocker reproduced with the focused RED test (Python 3.13.14,
+  fresh elevated Windows temp base): 1 failed, 14 passed in 2.62s. A rejected
+  `CASE-INVALID` create returned the canonical error but left `matter.sqlite`.
+- GREEN: 15 focused tests passed in 2.32s. `ReviewMatterService` now uses the
+  canonical Matter contract identifier rule before `_create_store`, so invalid
+  `CASE-*` IDs leave no file or side effects.
+- Adjacent Matter/navigation/formal CLI suite before the code commit: 196
+  passed in 45.23s.
+- Fix-round-3 code commit `b0fe527` passed the full suite but Ruff identified
+  one import-order issue; the formatting-only follow-up is the verified code
+  head `baf1bf8a57c789ae4f61aef5a241fb6dc6d3af44`.
+- Exact-head focused CLI flow: 15 passed in 2.25s; adjacent suite: 196
+  passed in 47.54s.
+- Exact-head full Python 3.13 pytest: 2110 passed, 1 skipped in 393.66s.
+- Exact-head Ruff, mypy `src`, mypy `--platform win32 src`, compileall, and
+  `git diff --check`: PASS. Both mypy runs checked 260 source files.
+- Exact-head source-tree documentation validation: PASS; 50 documents,
+  errors=0, warnings=145.
