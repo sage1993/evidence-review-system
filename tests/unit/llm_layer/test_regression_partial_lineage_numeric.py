@@ -211,6 +211,40 @@ def test_e4f3_45_percent_is_below_strict_majority_threshold() -> None:
     assert relation_holds("45%", ">", "50%") is False
 
 
+def test_korean_ordinal_category_claim_reaches_track_b_without_numeric_tokens() -> None:
+    bundle = _bundle(
+        question="대상지는 제2종일반주거지역이다.",
+        evidence_text="대상지는 제2종일반주거지역이다.",
+    )
+    validated = validate_track_a_output(
+        _payload(
+            claim_id="CL-I1-1",
+            text="대상지는 제2종일반주거지역이다.",
+        ),
+        bundle,
+    )
+
+    validate_track_a_integrity(validated, bundle)
+    audit = validate_track_b_output(
+        {
+            "run_id": "RUN-REGRESSION",
+            "claim_audits": [
+                {
+                    "claim_id": "CL-I1-1",
+                    "disposition": "ACCEPT",
+                    "finding_codes": [],
+                    "notes": "",
+                }
+            ],
+            "overall_disposition": "ACCEPT",
+        },
+        validated,
+    )
+
+    assert validated.draft.claims[0].numeric_tokens == ()
+    assert audit.overall_disposition == "ACCEPT"
+
+
 def test_numeric_tokens_are_inferred_only_when_omitted_or_empty() -> None:
     bundle = _bundle(
         question="대상 면적은 4,800㎡이다.",

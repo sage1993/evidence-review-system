@@ -14,7 +14,10 @@ from evidence_review.llm_layer.numeric_grammar import (
         ("값은 -12이다.", ("-12",)),
         ("값은 +3이다.", ("+3",)),
         ("면적은 1,234이다.", ("1,234",)),
+        ("면적은 1,000㎡이다.", ("1,000",)),
         ("비율은 12.50%이다.", ("12.50%",)),
+        ("용적률은 100%이다.", ("100%",)),
+        ("연면적은 5,000㎡이다.", ("5,000",)),
         ("A는 10이고 B는 20이다.", ("10", "20")),
         ("치수는 0.5미터이다.", ("0.5",)),
     ],
@@ -31,6 +34,23 @@ def test_scanner_returns_original_spans() -> None:
 
     assert token.text == "9.375%"
     assert text[token.start : token.end] == "9.375%"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "제1종일반주거지역",
+        "제2종일반주거지역",
+        "제12종특별지역",
+    ],
+)
+def test_scanner_treats_korean_ordinal_category_labels_as_lexical_text(
+    text: str,
+) -> None:
+    tokens = scan_numeric_tokens(text)
+
+    assert tokens == ()
+    reject_unsupported_numeric_syntax(text, tokens)
 
 
 @pytest.mark.parametrize("text", ["R1", "DOC-A", "RUN-ABC", "A12B"])

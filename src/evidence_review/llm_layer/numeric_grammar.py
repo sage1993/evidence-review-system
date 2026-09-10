@@ -73,6 +73,18 @@ def _has_valid_right_boundary(text: str, end: int) -> bool:
     return _ATTACHED_MEASUREMENT_UNIT.match(text, end) is not None
 
 
+def _korean_ordinal_category_end(text: str, start: int) -> int | None:
+    """Return the ``종`` position for a contiguous Korean ordinal category."""
+    if start == 0 or text[start - 1] != "제":
+        return None
+    end = start
+    while end < len(text) and _is_ascii_digit(text[end]):
+        end += 1
+    if end == start or end >= len(text) or text[end] != "종":
+        return None
+    return end
+
+
 def _scan_number_end(text: str, start: int) -> int | None:
     cursor = start
     if text[cursor] in "+-":
@@ -126,6 +138,10 @@ def scan_numeric_tokens(text: str) -> tuple[NumericToken, ...]:
         )
         if not is_start or not _has_valid_left_boundary(text, cursor):
             cursor += 1
+            continue
+        ordinal_end = _korean_ordinal_category_end(text, cursor)
+        if ordinal_end is not None:
+            cursor = ordinal_end + 1
             continue
         end = _scan_number_end(text, cursor)
         if end is None or not _has_valid_right_boundary(text, end):
@@ -246,6 +262,10 @@ def reject_unsupported_numeric_syntax(
             index = max(index + 1, end)
             continue
         if _is_ascii_digit(character) and not _is_identifier_digit(text, index):
+            ordinal_end = _korean_ordinal_category_end(text, index)
+            if ordinal_end is not None:
+                index = ordinal_end + 1
+                continue
             end = index + 1
             while end < len(text) and _is_ascii_digit(text[end]) and not consumed[end]:
                 end += 1
