@@ -171,6 +171,52 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--request", required=True, type=Path)
     query.add_argument("--output", required=True, type=Path)
 
+    review_matter = subparsers.add_parser(
+        "review-matter", help="manage mutable ReviewMatter work before formalization"
+    )
+    matter_stages = review_matter.add_subparsers(dest="review_matter_stage", required=True)
+
+    def matter_workspace_and_id(stage: argparse.ArgumentParser) -> None:
+        stage.add_argument("--workspace", required=True, type=Path)
+        stage.add_argument("--matter-id", required=True)
+
+    matter_create = matter_stages.add_parser("create", help="create one mutable Matter")
+    matter_workspace_and_id(matter_create)
+    matter_create.add_argument("--title", required=True)
+    matter_status = matter_stages.add_parser("status", help="show mutable Matter work state")
+    matter_workspace_and_id(matter_status)
+    matter_issue = matter_stages.add_parser("add-issue", help="append one Matter issue")
+    matter_workspace_and_id(matter_issue)
+    matter_issue.add_argument("--expected-revision", required=True, type=int)
+    matter_issue.add_argument("--issue-id", required=True)
+    matter_issue.add_argument("--question", required=True)
+    matter_issue.add_argument("--work-state", default="DRAFT")
+    matter_issue.add_argument("--depends-on", action="append", default=[])
+    matter_bind = matter_stages.add_parser(
+        "bind-evidence", help="bind the workspace's exact finalized evidence"
+    )
+    matter_workspace_and_id(matter_bind)
+    matter_bind.add_argument("--expected-revision", required=True, type=int)
+    matter_search = matter_stages.add_parser(
+        "search", help="navigate the workspace's exact finalized evidence"
+    )
+    matter_workspace_and_id(matter_search)
+    matter_search.add_argument("--query", required=True)
+    matter_search.add_argument("--limit", type=int, default=20)
+    matter_select = matter_stages.add_parser(
+        "select-evidence", help="promote one current navigation hit into Matter work"
+    )
+    matter_workspace_and_id(matter_select)
+    matter_select.add_argument("--expected-revision", required=True, type=int)
+    matter_select.add_argument("--evidence-id", required=True)
+    matter_select.add_argument("--query", required=True)
+    matter_select.add_argument("--limit", type=int, default=20)
+    matter_formalize = matter_stages.add_parser(
+        "formalize", help="freeze one Matter revision and prepare its immutable Formal Run"
+    )
+    matter_workspace_and_id(matter_formalize)
+    matter_formalize.add_argument("--expected-revision", required=True, type=int)
+
     review_question = subparsers.add_parser(
         "review-question", help="retrieve evidence and drive one staged formal review run"
     )

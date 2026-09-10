@@ -1,6 +1,7 @@
 """Command-line interface for the deterministic evidence review runtime."""
 from __future__ import annotations
 
+import argparse
 import json
 import sqlite3
 import sys
@@ -34,6 +35,9 @@ from evidence_review.parsing.source_batch_importer import (
 )
 from evidence_review.release.attestation import PROCESS_ATTESTATION, validate_attestation
 from evidence_review.retrieval.bundle import build_evidence_bundle
+from evidence_review.review_matter.contracts import ReviewMatter, review_matter_document
+from evidence_review.review_matter.service import ReviewMatterService
+from evidence_review.review_matter.store import MatterStoreError
 from evidence_review.review_question import (
     prepare_review_question,
     submit_question_track_a,
@@ -451,6 +455,141 @@ def _write_stdout(document: object) -> None:
     sys.stdout.buffer.write(dump_bytes(document))
 
 
+def _matter_document(
+    stage: str, status: str, matter: ReviewMatter
+) -> dict[str, object]:
+    return {
+        "format": "evidence-review/review-matter-cli-status",
+        "version": 1,
+        "stage": stage,
+        "status": status,
+        "matter": review_matter_document(matter),
+    }
+
+
+def _review_matter_dispatch(args: argparse.Namespace) -> int:
+    """Delegate every Matter mutation to the canonical application service."""
+    try:
+        service = ReviewMatterService.open(args.workspace)
+        stage = args.review_matter_stage
+        if stage == "create":
+            _write_stdout(
+                _matter_document("create", "MATTER_CREATED", service.create(
+                    matter_id=args.matter_id, title=args.title
+                ))
+            )
+            return 0
+        if stage == "status":
+            _write_stdout(
+                _matter_document(
+                    "status", "MUTABLE_MATTER_WORK", service.status(matter_id=args.matter_id)
+                )
+            )
+            return 0
+        if stage == "add-issue":
+            _write_stdout(
+                _matter_document(
+                    "add-issue",
+                    "MATTER_UPDATED",
+                    service.add_issue(
+                        matter_id=args.matter_id,
+                        expected_revision=args.expected_revision,
+                        issue_id=args.issue_id,
+                        question=args.question,
+                        work_state=args.work_state,
+                        depends_on=args.depends_on,
+                    ),
+                )
+            )
+            return 0
+        if stage == "bind-evidence":
+            _write_stdout(
+                _matter_document(
+                    "bind-evidence",
+                    "MATTER_EVIDENCE_BOUND",
+                    service.bind_evidence(
+                        matter_id=args.matter_id,
+                        expected_revision=args.expected_revision,
+                    ),
+                )
+            )
+            return 0
+        if stage == "search":
+            navigation_result = service.search(query=args.query, limit=args.limit)
+            _write_stdout(
+                {
+                    "format": "evidence-review/review-matter-cli-status",
+                    "version": 1,
+                    "stage": "search",
+                    "status": "NAVIGATION_RESULTS",
+                    "query": navigation_result.query,
+                    "evidence_snapshot_hash": navigation_result.evidence_snapshot_hash,
+                    "evidence_db_sha256": navigation_result.evidence_db_sha256,
+                    "hits": [
+                        {
+                            "evidence_id": hit.evidence_id,
+                            "document_id": hit.document_id,
+                            "revision_id": hit.revision_id,
+                            "page_number": hit.page_number,
+                            "bbox": [
+                                hit.bbox.left,
+                                hit.bbox.bottom,
+                                hit.bbox.right,
+                                hit.bbox.top,
+                            ],
+                            "source_hash": hit.source_hash,
+                            "title": hit.title,
+                            "text": hit.text,
+                            "citation_id": hit.citation.citation_id,
+                        }
+                        for hit in navigation_result.hits
+                    ],
+                }
+            )
+            return 0
+        if stage == "select-evidence":
+            _write_stdout(
+                _matter_document(
+                    "select-evidence",
+                    "MATTER_EVIDENCE_SELECTED",
+                    service.select_evidence(
+                        matter_id=args.matter_id,
+                        expected_revision=args.expected_revision,
+                        query=args.query,
+                        evidence_id=args.evidence_id,
+                        limit=args.limit,
+                    ),
+                )
+            )
+            return 0
+        if stage == "formalize":
+            formalized = service.formalize(
+                matter_id=args.matter_id,
+                expected_revision=args.expected_revision,
+            )
+            _write_stdout(
+                {
+                    "format": "evidence-review/review-matter-cli-status",
+                    "version": 1,
+                    "stage": "formalize",
+                    "status": formalized.prepared.status,
+                    "matter_id": formalized.snapshot.matter_id,
+                    "matter_revision": formalized.snapshot.matter_revision,
+                    "snapshot_id": formalized.snapshot.snapshot_id,
+                    "run_id": formalized.prepared.run_id,
+                    "run_directory": str(
+                            service.workspace / "runs" / formalized.prepared.run_id
+                    ),
+                    "next_action_path": str(formalized.prepared.next_action_path),
+                }
+            )
+            return 0
+        raise RuntimeError("unreachable review-matter command state")
+    except (FileNotFoundError, OSError, sqlite3.Error, MatterStoreError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+
 def _review_run_prepare(workspace: Path, request: Path) -> int:
     try:
         result = prepare_review_run(workspace, request)
@@ -715,6 +854,8 @@ def dispatch(argv: Sequence[str] | None = None) -> int:
         return _math_run(args.request, args.output)
     if args.command == "query":
         return _query_run(args.db, args.request, args.output)
+    if args.command == "review-matter":
+        return _review_matter_dispatch(args)
     if args.command == "review-question" and args.review_question_stage == "prepare":
         return _review_question_prepare(
             args.workspace,

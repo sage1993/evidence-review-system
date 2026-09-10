@@ -59,6 +59,32 @@ class MatterProjection:
 
 def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
     """Apply one supported event to a Matter without performing I/O."""
+    if event.kind == "ISSUE_ADDED":
+        payload = expect_mapping(event.payload, "ISSUE_ADDED.payload")
+        required = {"issue_id", "question", "work_state", "depends_on"}
+        require_fields(payload, required, "ISSUE_ADDED.payload")
+        reject_unknown(payload, required, "ISSUE_ADDED.payload")
+        issue_id = validate_identifier(payload.get("issue_id"), "issue_id")
+        if issue_id in {issue.issue_id for issue in matter.issues}:
+            raise ValueError("ISSUE_ADDED duplicate issue")
+        issue = MatterIssue(
+            issue_id=issue_id,
+            question=expect_string(payload.get("question"), "question"),
+            work_state=decode_matter_issue_state(payload.get("work_state"), "work_state"),
+            depends_on=tuple(
+                validate_identifier(item, "depends_on")
+                for item in expect_sequence(payload.get("depends_on"), "depends_on")
+            ),
+        )
+        updated = ReviewMatter(
+            matter_id=matter.matter_id,
+            title=matter.title,
+            revision=matter.revision + 1,
+            issues=(*matter.issues, issue),
+            source_bindings=matter.source_bindings,
+        )
+        decode_review_matter(review_matter_document(updated))
+        return MatterProjection(updated)
     if event.kind == "TITLE_CHANGED":
         payload = expect_mapping(event.payload, "TITLE_CHANGED.payload")
         reject_unknown(payload, {"title"}, "TITLE_CHANGED.payload")

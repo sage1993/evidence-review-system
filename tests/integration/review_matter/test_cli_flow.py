@@ -1,0 +1,161 @@
+"""End-to-end contract coverage for the ReviewMatter command surface."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from evidence_review.command_dispatch import main
+from evidence_review.review_matter.store import MatterStore
+from tests.unit.review_matter.test_formalization_snapshot import _evidence_database
+
+
+def _run(arguments: list[str], capsys) -> tuple[int, dict[str, object], str]:
+    capsys.readouterr()
+    code = main(arguments)
+    captured = capsys.readouterr()
+    document = json.loads(captured.out) if captured.out else {}
+    return code, document, captured.err
+
+
+def _workspace_with_finalized_evidence(tmp_path: Path) -> Path:
+    workspace = tmp_path / "workspace"
+    evidence_database = workspace / "evidence" / "evidence.sqlite"
+    evidence_database.parent.mkdir(parents=True)
+    _evidence_database(evidence_database)
+    return workspace
+
+
+def test_review_matter_cli_flow_keeps_work_state_and_formal_identities_distinct(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = _workspace_with_finalized_evidence(tmp_path)
+    common = ["--workspace", str(workspace), "--matter-id", "MATTER-001"]
+
+    code, created, error = _run(
+        [
+            "review-matter",
+            "create",
+            *common,
+            "--title",
+            "Exact reference review",
+        ],
+        capsys,
+    )
+    assert code == 0, error
+    assert created["status"] == "MATTER_CREATED"
+    assert created["matter"]["revision"] == 1
+
+    code, issue, error = _run(
+        [
+            "review-matter",
+            "add-issue",
+            *common,
+            "--expected-revision",
+            "1",
+            "--issue-id",
+            "ISSUE-001",
+            "--question",
+            "Does the exact source support the review?",
+            "--work-state",
+            "READY_TO_FORMALIZE",
+        ],
+        capsys,
+    )
+    assert code == 0, error
+    assert issue["matter"]["revision"] == 2
+    assert issue["matter"]["issues"][0]["work_state"] == "READY_TO_FORMALIZE"
+
+    code, bound, error = _run(
+        [
+            "review-matter",
+            "bind-evidence",
+            *common,
+            "--expected-revision",
+            "2",
+        ],
+        capsys,
+    )
+    assert code == 0, error
+    assert bound["matter"]["revision"] == 3
+
+    code, search, error = _run(
+        ["review-matter", "search", *common, "--query", "exact reference"], capsys
+    )
+    assert code == 0, error
+    assert search["status"] == "NAVIGATION_RESULTS"
+    assert search["hits"][0]["evidence_id"] == "EVID-SNAP-1"
+
+    code, selected, error = _run(
+        [
+            "review-matter",
+            "select-evidence",
+            *common,
+            "--expected-revision",
+            "3",
+            "--evidence-id",
+            "EVID-SNAP-1",
+            "--query",
+            "exact reference",
+        ],
+        capsys,
+    )
+    assert code == 0, error
+    assert selected["matter"]["revision"] == 4
+
+    code, status, error = _run(["review-matter", "status", *common], capsys)
+    assert code == 0, error
+    assert status["status"] == "MUTABLE_MATTER_WORK"
+    assert status["matter"]["revision"] == 4
+    assert "snapshot_id" not in status
+    assert "run_id" not in status
+
+    code, formalized, error = _run(
+        [
+            "review-matter",
+            "formalize",
+            *common,
+            "--expected-revision",
+            "4",
+        ],
+        capsys,
+    )
+    assert code == 0, error
+    assert formalized["status"] == "WAITING_TRACK_A"
+    assert formalized["snapshot_id"].startswith("SNAP-")
+    assert formalized["run_id"].startswith("RUN-")
+    assert formalized["matter_revision"] == 4
+
+
+def test_review_matter_cli_rejects_stale_revision_without_partial_mutation(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    common = ["--workspace", str(workspace), "--matter-id", "MATTER-001"]
+    code, _created, error = _run(
+        ["review-matter", "create", *common, "--title", "Review"], capsys
+    )
+    assert code == 0, error
+
+    code, _result, error = _run(
+        [
+            "review-matter",
+            "add-issue",
+            *common,
+            "--expected-revision",
+            "0",
+            "--issue-id",
+            "ISSUE-001",
+            "--question",
+            "Check width",
+        ],
+        capsys,
+    )
+    assert code == 2
+    assert "MATTER_REVISION_CONFLICT" in error
+
+    with MatterStore(workspace / "matter.sqlite") as store:
+        matter = store.load("MATTER-001")
+    assert matter.revision == 1
+    assert matter.issues == ()
