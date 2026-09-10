@@ -189,6 +189,32 @@ def test_invalid_create_id_does_not_create_matter_store(
     assert tuple(workspace.iterdir()) == ()
 
 
+def test_case_matter_id_does_not_create_matter_store(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    code, _result, error = _run(
+        [
+            "review-matter",
+            "create",
+            "--workspace",
+            str(workspace),
+            "--matter-id",
+            "CASE-INVALID",
+            "--title",
+            "Review",
+        ],
+        capsys,
+    )
+
+    assert code == 2
+    assert "drawing case identity" in error
+    assert not (workspace / "matter.sqlite").exists()
+    assert tuple(workspace.iterdir()) == ()
+
+
 def test_add_issue_accepts_dependency_on_existing_issue(
     tmp_path: Path, capsys
 ) -> None:

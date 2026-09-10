@@ -18,6 +18,7 @@ from evidence_review.navigation.models import NavigationResult
 from evidence_review.navigation.promotion import promote_navigation_hit
 from evidence_review.navigation.service import navigate_evidence
 from evidence_review.review_matter.contracts import (
+    _identifier as _validate_matter_id,
     MatterIssue,
     MatterIssueState,
     ReviewMatter,
@@ -125,7 +126,7 @@ class ReviewMatterService:
             yield store
 
     def _validated_matter_id(self, matter_id: str) -> str:
-        return validate_identifier(matter_id, "matter_id")
+        return _validate_matter_id(matter_id, "matter_id")
 
     def create(self, *, matter_id: str, title: str) -> ReviewMatter:
         """Create one distinct mutable Matter at the explicitly supplied workspace."""
