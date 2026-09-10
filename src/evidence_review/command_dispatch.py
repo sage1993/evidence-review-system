@@ -1,4 +1,5 @@
 """Fail-closed canonical CLI dispatch for governance-sensitive commands."""
+
 from __future__ import annotations
 
 import argparse
@@ -18,6 +19,7 @@ from evidence_review.filesystem_trust import (
     verified_regular_file_below,
 )
 from evidence_review.network_guard import install_network_guard
+from evidence_review.review_matter.service import ReviewMatterService
 from evidence_review.review_packet.browser_launcher import (
     open_protected_review_workspace,
     serve_review_server,
@@ -32,6 +34,11 @@ from evidence_review.rule_engine.manifest import load_governed_active_rules
 from evidence_review.rule_engine.selection import (
     load_rule_selection_context_bytes,
     rule_selection_result_bytes,
+)
+from evidence_review.workbench.local_server import (
+    serve_workbench,
+    stop_workbench_server,
+    workbench_server_status,
 )
 from evidence_review.workspace_binding import (
     ActiveWorkspaceBinding,
@@ -239,6 +246,79 @@ def _review_import_decision(args: argparse.Namespace) -> int:
     return 0
 
 
+def _workbench_status_document(
+    *,
+    stage: str,
+    status: str,
+    matter_id: str,
+    server: dict[str, object] | None = None,
+    reviewer_id: str | None = None,
+    url: str | None = None,
+    idle_timeout_seconds: float | None = None,
+) -> dict[str, object]:
+    document: dict[str, object] = {
+        "format": "evidence-review/workbench-cli-status",
+        "version": 1,
+        "stage": stage,
+        "status": status,
+        "matter_id": matter_id,
+    }
+    if server is not None:
+        document["server"] = server
+    if reviewer_id is not None:
+        document["reviewer_id"] = reviewer_id
+    if url is not None:
+        document["url"] = url
+    if idle_timeout_seconds is not None:
+        document["idle_timeout_seconds"] = idle_timeout_seconds
+    return document
+
+
+def _workbench_dispatch(args: argparse.Namespace) -> int:
+    workspace = cast(Path, args.workspace)
+    matter_id = cast(str, args.matter_id)
+    try:
+        service = ReviewMatterService.open(workspace)
+        service.status(matter_id=matter_id)
+        if args.workbench_stage == "serve":
+            reviewer_id = cast(str, args.reviewer_id)
+            session = serve_workbench(
+                service.workspace,
+                matter_id,
+                reviewer_id=reviewer_id,
+                detach=True,
+                idle_timeout_seconds=args.idle_timeout_seconds,
+            )
+            document = _workbench_status_document(
+                stage="serve",
+                status="DETACHED",
+                matter_id=matter_id,
+                reviewer_id=reviewer_id,
+                url=session.url,
+                idle_timeout_seconds=args.idle_timeout_seconds,
+            )
+        elif args.workbench_stage == "serve-status":
+            server = workbench_server_status(service.workspace, matter_id)
+            document = _workbench_status_document(
+                stage="serve-status",
+                status="RUNNING" if server["running"] else "STOPPED",
+                matter_id=matter_id,
+                server=server,
+            )
+        elif args.workbench_stage == "serve-stop":
+            stop_workbench_server(service.workspace, matter_id)
+            document = _workbench_status_document(
+                stage="serve-stop", status="STOPPED", matter_id=matter_id
+            )
+        else:
+            raise RuntimeError("unreachable workbench command state")
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    sys.stdout.buffer.write(dump_bytes(document))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Dispatch strict commands and delegate the remaining legacy-compatible CLI."""
     arguments = list(sys.argv[1:] if argv is None else argv)
@@ -269,6 +349,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.review_stage == "import-decision":
                 return _review_import_decision(args)
             raise RuntimeError("unreachable review command state")
+    if len(arguments) >= 2 and arguments[:2] == ["review-matter", "workbench"]:
+        args = runtime_handlers.build_parser().parse_args(arguments)
+        return _workbench_dispatch(args)
     if arguments and arguments[0] == "review-matter":
         return runtime_handlers.dispatch(arguments)
     if len(arguments) < 2 or arguments[0] != "rules":

@@ -1,4 +1,5 @@
 """Dependency-safe construction of the evidence-review CLI parser."""
+
 from __future__ import annotations
 
 import argparse
@@ -66,9 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     reproducibility = parser_stages.add_parser(
         "reproducibility", help="compare two immutable OpenDataLoader parser runs"
     )
-    reproducibility_actions = reproducibility.add_subparsers(
-        dest="parser_action", required=True
-    )
+    reproducibility_actions = reproducibility.add_subparsers(dest="parser_action", required=True)
     reproducibility_validate = reproducibility_actions.add_parser(
         "validate", help="write a canonical two-run reproducibility report"
     )
@@ -151,9 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     documentation = subparsers.add_parser(
         "documentation", help="validate repository documentation integrity"
     )
-    documentation_stages = documentation.add_subparsers(
-        dest="documentation_stage", required=True
-    )
+    documentation_stages = documentation.add_subparsers(dest="documentation_stage", required=True)
     documentation_validate = documentation_stages.add_parser(
         "validate", help="write a canonical documentation integrity report"
     )
@@ -161,9 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     documentation_validate.add_argument("--config", required=True, type=Path)
     documentation_validate.add_argument("--output", required=True, type=Path)
 
-    math_run = subparsers.add_parser(
-        "math-run", help="run a deterministic calculation request"
-    )
+    math_run = subparsers.add_parser("math-run", help="run a deterministic calculation request")
     math_run.add_argument("--request", required=True, type=Path)
     math_run.add_argument("--output", required=True, type=Path)
     query = subparsers.add_parser("query", help="retrieve a deterministic evidence bundle")
@@ -216,13 +211,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     matter_workspace_and_id(matter_formalize)
     matter_formalize.add_argument("--expected-revision", required=True, type=int)
+    matter_workbench = matter_stages.add_parser(
+        "workbench",
+        help="serve one mutable Matter through its protected loopback Workbench route",
+    )
+    workbench_stages = matter_workbench.add_subparsers(dest="workbench_stage", required=True)
+    workbench_serve = workbench_stages.add_parser(
+        "serve", help="start a detached protected Workbench server"
+    )
+    matter_workspace_and_id(workbench_serve)
+    workbench_serve.add_argument("--reviewer-id", required=True)
+    workbench_serve.add_argument(
+        "--idle-timeout-seconds",
+        type=idle_timeout_argument,
+        default=1800.0,
+        help=(
+            "terminate the detached Workbench server after this many seconds "
+            "without valid activity"
+        ),
+    )
+    workbench_status = workbench_stages.add_parser(
+        "serve-status", help="show whether the exact Matter Workbench server is running"
+    )
+    matter_workspace_and_id(workbench_status)
+    workbench_stop = workbench_stages.add_parser(
+        "serve-stop", help="stop the exact Matter Workbench server if it remains verified"
+    )
+    matter_workspace_and_id(workbench_stop)
 
     review_question = subparsers.add_parser(
         "review-question", help="retrieve evidence and drive one staged formal review run"
     )
-    question_stages = review_question.add_subparsers(
-        dest="review_question_stage", required=True
-    )
+    question_stages = review_question.add_subparsers(dest="review_question_stage", required=True)
     question_prepare_plan = question_stages.add_parser(
         "prepare-plan", help="emit the external AI QuestionPlan handoff without retrieving evidence"
     )
@@ -235,9 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     question_prepare.add_argument("--question", required=True)
     question_prepare.add_argument("--question-plan-output", type=Path)
     question_prepare.add_argument("--expansion", action="append", default=[])
-    question_prepare.add_argument(
-        "--calculation-result", action="append", default=[], type=Path
-    )
+    question_prepare.add_argument("--calculation-result", action="append", default=[], type=Path)
     question_prepare.add_argument("--rule-result", action="append", default=[], type=Path)
     question_prepare.add_argument("--approved-rule-result-id", action="append", default=[])
     question_track_a = question_stages.add_parser(
