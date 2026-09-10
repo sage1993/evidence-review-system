@@ -12,13 +12,13 @@
 
 ## Acceptance checklist
 
-- [ ] RED focused CLI flow fails only for the missing canonical service/CLI contract
-- [ ] ReviewMatterService owns all Matter mutations
-- [ ] create/status/add-issue/bind-evidence/search/select-evidence/formalize CLI flow works
-- [ ] Stale expected revision and invalid Matter ID fail closed without partial mutation
-- [ ] Formalization returns immutable snapshot/run identities
-- [ ] Existing formal CLI regressions pass
-- [ ] Focused/adjacent/static/full exact-head gates pass
+- [x] RED focused CLI flow fails only for the missing canonical service/CLI contract
+- [x] ReviewMatterService owns all Matter mutations
+- [x] create/status/add-issue/bind-evidence/search/select-evidence/formalize CLI flow works
+- [x] Stale expected revision and invalid Matter ID fail closed without partial mutation
+- [x] Formalization returns immutable snapshot/run identities
+- [x] Existing formal CLI regressions pass
+- [x] Focused/adjacent/static/full implementation-candidate gates pass
 - [ ] Independent gpt-5.6-sol-high review PASS/APPROVED
 - [ ] Remote SHA parity, PR, merge, Issue #182 closure, and ancestry verified
 
@@ -31,3 +31,24 @@
   canonical event projection required by the new service; it does not alter
   Matter schema, finalized evidence, Formal Run, Track A/B, finalizer, or UI.
 - Do not modify protected Workbench/UI, evidence authority, or unrelated legacy compatibility paths.
+
+## Execution record
+
+- Base SHA: `b766707`; branch: `feat/mig-12-review-matter-cli`.
+- RED (Python 3.13.14, fresh elevated Windows temp base): 2 failed in 0.96s,
+  both because `review-matter` was absent from the parser. The initial sandboxed
+  run was a host ACL error before test setup and is not RED evidence.
+- GREEN: focused CLI flow 2 passed in 1.33s. It covers create, add-issue,
+  bind-evidence, read-only navigation search, evidence selection, status, and
+  formalization; it also proves a stale expected revision returns
+  `MATTER_REVISION_CONFLICT` without an issue/event write.
+- Adjacent Matter/navigation/formal CLI suite: 183 passed in 45.84s.
+- Full Python 3.13 pytest at implementation candidate
+  `1d44346ef3e21e8a3a11a6e3fbeee4dc35b5fa9f`: 2097 passed, 1 skipped in
+  391.20s.
+- Ruff, mypy (`src`), mypy (`--platform win32 src`), compileall, source-tree
+  documentation validation (50 documents, errors=0, warnings=145), and diff
+  check: PASS at that implementation candidate.
+- Browser/manual acceptance: `NOT_RUN`. GitHub Actions: `ACTIONS_NOT_RUN`.
+- Independent gpt-5.6-sol-high review, push, remote SHA parity, PR, merge, and
+  Issue #182 closure: `NOT_RUN` (outside this implementer authorization).
