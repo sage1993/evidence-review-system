@@ -144,7 +144,7 @@ def test_visual_source_rejects_unrecognized_content_before_decoder(
         (b"II*\x00broken", "image/tiff", ".tif"),
     ],
 )
-def test_visual_source_rejects_magic_valid_malformed_image_before_normalization(
+def test_visual_source_preserves_decoder_oserror_for_magic_valid_malformed_image(
     tmp_path: Path,
     payload: bytes,
     mime: str,
@@ -159,7 +159,7 @@ def test_visual_source_rejects_magic_valid_malformed_image_before_normalization(
     )
     _store(tmp_path, attachment, payload)
 
-    with pytest.raises(ValueError, match="CASE_VISUAL_IMAGE_DECODER_INVALID"):
+    with pytest.raises(OSError):
         prepare_visual_page_assets(tmp_path, (attachment,))
 
 

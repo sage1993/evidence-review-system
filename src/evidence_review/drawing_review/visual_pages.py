@@ -222,6 +222,8 @@ def _normalized_image_asset(
                     normalized.save(output, format="PNG", compress_level=6)
             except ValueError:
                 raise
+            except OSError:
+                raise
             except Exception as error:
                 raise ValueError("CASE_VISUAL_IMAGE_DECODER_INVALID") from error
             image_bytes = output.getvalue()
