@@ -47,5 +47,5 @@ Branch: `fix/issue-164-reviewer-binding`. Python: `3.13.14` on Windows.
 | --- | --- |
 | Browser/manual | `NOT_RUN` |
 | GitHub Actions | `ACTIONS_NOT_RUN` |
-| Independent gpt-5.6-sol-high review | `NOT_RUN` — not authorized for this implementer |
-| Push, remote SHA parity, PR, merge, issue closure | `NOT_RUN` — explicitly out of scope |
+| Independent gpt-5.6-sol-high review | PASS/APPROVED — no Critical, Important, or Minor findings |
+| Push, remote SHA parity, PR, merge, issue closure | Pending controller GitHub workflow |
