@@ -3,6 +3,9 @@ from __future__ import annotations
 import hashlib
 import http.client
 import json
+import socket
+import threading
+import time
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -80,6 +83,288 @@ def _post(server_url: str, origin: str, payload: bytes) -> tuple[int, bytes]:
             return response.status, response.read()
     except HTTPError as error:
         return error.code, error.read()
+
+
+def _raw_request_headers(
+    server: object,
+    path: str,
+    content_length: int,
+    *,
+    duplicate_header: tuple[str, str] | None = None,
+) -> bytes:
+    host = f"{server.host}:{server.port}"  # type: ignore[attr-defined]
+    headers = [
+        f"POST {path} HTTP/1.1",
+        f"Host: {host}",
+        f"Origin: http://{host}",
+        "Content-Type: application/json",
+        f"Content-Length: {content_length}",
+        "Connection: close",
+    ]
+    if duplicate_header is not None:
+        headers.append(f"{duplicate_header[0]}: {duplicate_header[1]}")
+    return ("\r\n".join(headers) + "\r\n\r\n").encode("ascii")
+
+
+def _read_http_response(
+    connection: socket.socket, *, deadline_seconds: float = 2.0
+) -> tuple[bytes, bytes]:
+    deadline = time.monotonic() + deadline_seconds
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("timed out waiting for HTTP response headers")
+        connection.settimeout(remaining)
+        chunk = connection.recv(8192)
+        if not chunk:
+            raise AssertionError("connection closed before HTTP response headers")
+        response.extend(chunk)
+    header_bytes, body = bytes(response).split(b"\r\n\r\n", 1)
+    headers: dict[bytes, bytes] = {}
+    for line in header_bytes.split(b"\r\n")[1:]:
+        name, value = line.split(b":", 1)
+        headers[name.lower()] = value.strip()
+    content_length = int(headers[b"content-length"])
+    while len(body) < content_length:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("timed out waiting for HTTP response body")
+        connection.settimeout(remaining)
+        chunk = connection.recv(8192)
+        if not chunk:
+            raise AssertionError("connection closed before HTTP response body")
+        body += chunk
+    return header_bytes, body[:content_length]
+
+
+@pytest.mark.parametrize(
+    ("path_template", "duplicate_header"),
+    [
+        ("/annotation/{token}/actions", ("Host", "attacker.invalid")),
+        ("/annotation/{token}/actions", ("Origin", "http://attacker.invalid")),
+        ("/calibration/{token}", ("Host", "attacker.invalid")),
+        ("/calibration/{token}", ("Origin", "http://attacker.invalid")),
+    ],
+)
+def test_mutation_routes_reject_duplicate_security_headers(
+    tmp_path: Path,
+    path_template: str,
+    duplicate_header: tuple[str, str],
+) -> None:
+    case_dir = tmp_path / "cases" / "CASE-001"
+    case_dir.mkdir(parents=True)
+
+    with serve_annotation_workspace(
+        html="<p>annotation</p>",
+        case_dir=case_dir,
+        page=_page(),
+        candidate_entries={},
+        token=TOKEN,
+    ) as server:
+        with socket.create_connection((server.host, server.port), timeout=5) as connection:
+            connection.sendall(
+                _raw_request_headers(
+                    server,
+                    path_template.format(token=TOKEN),
+                    2,
+                    duplicate_header=duplicate_header,
+                )
+                + b"{}"
+            )
+            response_headers, response_body = _read_http_response(connection)
+
+    assert response_headers.startswith(b"HTTP/1.0 403 ")
+    assert response_body == b'{"error":"FORBIDDEN"}'
+
+
+@pytest.mark.parametrize("path_template", ["/annotation/{token}/actions", "/calibration/{token}"])
+def test_oversized_header_only_mutation_request_returns_413_promptly(
+    tmp_path: Path, path_template: str
+) -> None:
+    case_dir = tmp_path / "cases" / "CASE-001"
+    case_dir.mkdir(parents=True)
+
+    with serve_annotation_workspace(
+        html="<p>annotation</p>",
+        case_dir=case_dir,
+        page=_page(),
+        candidate_entries={},
+        token=TOKEN,
+        max_body_bytes=8,
+    ) as server:
+        started = time.monotonic()
+        with socket.create_connection((server.host, server.port), timeout=5) as connection:
+            connection.sendall(
+                _raw_request_headers(server, path_template.format(token=TOKEN), 1024)
+            )
+            response_headers, response_body = _read_http_response(
+                connection, deadline_seconds=0.75
+            )
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 0.5
+    assert response_headers.startswith(b"HTTP/1.0 413 ")
+    assert response_body == b'{"error":"BODY_TOO_LARGE"}'
+
+
+@pytest.mark.parametrize("path_template", ["/annotation/{token}/actions", "/calibration/{token}"])
+def test_oversized_mutation_request_drains_full_body_before_clean_close(
+    tmp_path: Path, path_template: str
+) -> None:
+    case_dir = tmp_path / "cases" / "CASE-001"
+    case_dir.mkdir(parents=True)
+    payload = b"x" * (256 * 1024)
+
+    with serve_annotation_workspace(
+        html="<p>annotation</p>",
+        case_dir=case_dir,
+        page=_page(),
+        candidate_entries={},
+        token=TOKEN,
+        max_body_bytes=8,
+    ) as server:
+        with socket.create_connection((server.host, server.port), timeout=5) as connection:
+            prefix_length = 16 * 1024
+            connection.sendall(
+                _raw_request_headers(
+                    server, path_template.format(token=TOKEN), len(payload)
+                )
+                + payload[:prefix_length]
+            )
+            release_sender = threading.Event()
+            send_errors: list[BaseException] = []
+
+            def send_remainder() -> None:
+                if not release_sender.wait(timeout=5):
+                    send_errors.append(AssertionError("body sender was not released"))
+                    return
+                try:
+                    for offset in range(prefix_length, len(payload), 8192):
+                        connection.sendall(payload[offset : offset + 8192])
+                except BaseException as error:
+                    send_errors.append(error)
+
+            sender = threading.Thread(target=send_remainder, daemon=True)
+            sender.start()
+            response_headers, response_body = _read_http_response(connection)
+            release_sender.set()
+            sender.join(timeout=5)
+            assert not sender.is_alive()
+            assert send_errors == []
+            connection.shutdown(socket.SHUT_WR)
+            connection.settimeout(5)
+            try:
+                while connection.recv(8192):
+                    pass
+            except (ConnectionAbortedError, ConnectionResetError) as error:
+                raise AssertionError("connection did not reach EOF cleanly") from error
+
+    assert response_headers.startswith(b"HTTP/1.0 413 ")
+    assert response_body == b'{"error":"BODY_TOO_LARGE"}'
+
+
+@pytest.mark.parametrize("path_template", ["/annotation/{token}/actions", "/calibration/{token}"])
+def test_oversized_mutation_request_slow_sender_has_bounded_completion(
+    tmp_path: Path, path_template: str
+) -> None:
+    case_dir = tmp_path / "cases" / "CASE-001"
+    case_dir.mkdir(parents=True)
+
+    with serve_annotation_workspace(
+        html="<p>annotation</p>",
+        case_dir=case_dir,
+        page=_page(),
+        candidate_entries={},
+        token=TOKEN,
+        max_body_bytes=8,
+    ) as server:
+        with socket.create_connection((server.host, server.port), timeout=5) as connection:
+            connection.sendall(
+                _raw_request_headers(server, path_template.format(token=TOKEN), 1024) + b"x"
+            )
+            response_headers, response_body = _read_http_response(connection)
+            send_errors: list[BaseException] = []
+
+            def send_slowly() -> None:
+                try:
+                    for _ in range(20):
+                        time.sleep(0.1)
+                        connection.sendall(b"x")
+                except BaseException as error:
+                    send_errors.append(error)
+
+            sender = threading.Thread(target=send_slowly, daemon=True)
+            started = time.monotonic()
+            sender.start()
+            sender.join(timeout=1)
+            elapsed = time.monotonic() - started
+            assert not sender.is_alive()
+            assert send_errors
+            assert elapsed < 1
+
+    assert response_headers.startswith(b"HTTP/1.0 413 ")
+    assert response_body == b'{"error":"BODY_TOO_LARGE"}'
+
+
+def test_oversized_mutation_transport_windows_stress_full_body_500_iterations(
+    tmp_path: Path,
+) -> None:
+    case_dir = tmp_path / "cases" / "CASE-001"
+    case_dir.mkdir(parents=True)
+    paths = ("/annotation/{token}/actions", "/calibration/{token}")
+    payload = b"x" * 1024
+
+    with serve_annotation_workspace(
+        html="<p>annotation</p>",
+        case_dir=case_dir,
+        page=_page(),
+        candidate_entries={},
+        token=TOKEN,
+        max_body_bytes=8,
+    ) as server:
+        for iteration in range(500):
+            with socket.create_connection((server.host, server.port), timeout=5) as connection:
+                connection.sendall(
+                    _raw_request_headers(
+                        server,
+                        paths[iteration % len(paths)].format(token=TOKEN),
+                        len(payload),
+                    )
+                    + payload
+                )
+                response_headers, response_body = _read_http_response(connection)
+            assert response_headers.startswith(b"HTTP/1.0 413 ")
+            assert response_body == b'{"error":"BODY_TOO_LARGE"}'
+
+
+def test_oversized_mutation_transport_windows_stress_header_only_100_iterations(
+    tmp_path: Path,
+) -> None:
+    case_dir = tmp_path / "cases" / "CASE-001"
+    case_dir.mkdir(parents=True)
+    paths = ("/annotation/{token}/actions", "/calibration/{token}")
+
+    with serve_annotation_workspace(
+        html="<p>annotation</p>",
+        case_dir=case_dir,
+        page=_page(),
+        candidate_entries={},
+        token=TOKEN,
+        max_body_bytes=8,
+    ) as server:
+        for iteration in range(100):
+            with socket.create_connection((server.host, server.port), timeout=5) as connection:
+                connection.sendall(
+                    _raw_request_headers(
+                        server,
+                        paths[iteration % len(paths)].format(token=TOKEN),
+                        1024,
+                    )
+                )
+                response_headers, response_body = _read_http_response(connection)
+            assert response_headers.startswith(b"HTTP/1.0 413 ")
+            assert response_body == b'{"error":"BODY_TOO_LARGE"}'
 
 
 def test_serves_tokenized_page_on_loopback(tmp_path: Path) -> None:

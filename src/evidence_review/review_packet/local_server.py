@@ -11,7 +11,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from io import BufferedReader
 from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, Literal, cast
@@ -21,6 +20,13 @@ from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
+)
+from evidence_review.local_http_transport import (
+    ContentLengthError,
+    loopback_request_is_authorized,
+    reject_oversized_body,
+    send_protected_response,
+    validate_content_length,
 )
 from evidence_review.review_packet.decision_record import (
     HumanDecisionRecord,
@@ -44,8 +50,6 @@ _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
-_OVERSIZED_BODY_DRAIN_TIMEOUT_SECONDS = 0.5
-_OVERSIZED_BODY_READ_CHUNK_BYTES = 8192
 _CSP = (
     "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
@@ -374,15 +378,13 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         del format, args
 
     def _send_bytes(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", _CSP)
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.end_headers()
-        self.wfile.write(body)
+        send_protected_response(
+            self,
+            status,
+            body,
+            content_type,
+            content_security_policy=_CSP,
+        )
 
     def _send_json(self, status: HTTPStatus, payload: Mapping[str, object]) -> None:
         body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -392,25 +394,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         self._send_json(status, {"error": code})
 
     def _reject_oversized_body(self, length: int) -> None:
-        """Send 413, then drain the declared body within one total deadline."""
-        self.close_connection = True
-        self._reject(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "BODY_TOO_LARGE")
-        try:
-            self.wfile.flush()
-            deadline = time.monotonic() + _OVERSIZED_BODY_DRAIN_TIMEOUT_SECONDS
-            body_reader = cast(BufferedReader, self.rfile)
-            remaining = length
-            while remaining:
-                timeout = deadline - time.monotonic()
-                if timeout <= 0:
-                    break
-                self.connection.settimeout(timeout)
-                chunk = body_reader.read1(min(_OVERSIZED_BODY_READ_CHUNK_BYTES, remaining))
-                if not chunk:
-                    break
-                remaining -= len(chunk)
-        except OSError:
-            return
+        reject_oversized_body(self, length, self._reject)
 
     def _route(self) -> _Route | None:
         route = _route_path(self.path)
@@ -419,26 +403,14 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         return route
 
     def _authorized(self, route: _Route, *, require_origin: bool) -> bool:
-        host_values = self.headers.get_all("Host") or []
-        if len(host_values) != 1 or host_values[0] != self.state.expected_host:
-            self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
-            return False
-        origin_values = self.headers.get_all("Origin") or []
-        if len(origin_values) > 1:
-            self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
-            return False
-        if require_origin and (
-            len(origin_values) != 1 or origin_values[0] != self.state.origin
+        if not loopback_request_is_authorized(
+            self.headers,
+            expected_host=self.state.expected_host,
+            expected_origin=self.state.origin,
+            require_origin=require_origin,
+            presented_token=route.token,
+            expected_token=self.state.run_tokens.get(route.run_id),
         ):
-            self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
-            return False
-        if origin_values and origin_values[0] != self.state.origin:
-            self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
-            return False
-        if route.token is None:
-            return True
-        expected_token = self.state.run_tokens.get(route.run_id)
-        if expected_token is None or not secrets.compare_digest(route.token, expected_token):
             self._reject(HTTPStatus.FORBIDDEN, "FORBIDDEN")
             return False
         return True
@@ -597,22 +569,19 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         )
 
     def _content_length(self) -> int | None:
-        value = self.headers.get("Content-Length")
-        if value is None:
-            self._reject(HTTPStatus.LENGTH_REQUIRED, "CONTENT_LENGTH_REQUIRED")
-            return None
         try:
-            length = int(value)
-        except ValueError:
-            self._reject(HTTPStatus.BAD_REQUEST, "INVALID_CONTENT_LENGTH")
+            return validate_content_length(self.headers, self.state.max_body_bytes)
+        except ContentLengthError as error:
+            if error.length is not None:
+                self._reject_oversized_body(error.length)
+                return None
+            self._reject(
+                HTTPStatus.LENGTH_REQUIRED
+                if error.code == "CONTENT_LENGTH_REQUIRED"
+                else HTTPStatus.BAD_REQUEST,
+                error.code,
+            )
             return None
-        if length < 1:
-            self._reject(HTTPStatus.BAD_REQUEST, "EMPTY_BODY")
-            return None
-        if length > self.state.max_body_bytes:
-            self._reject_oversized_body(length)
-            return None
-        return length
 
     def _decision_payload(self, body: bytes, run_id: str) -> dict[str, str]:
         try:
