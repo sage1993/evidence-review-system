@@ -249,8 +249,14 @@ def build_calibration(
         raise ValueError("at least one calibration reference is required")
     if len({reference.axis for reference in references}) != len(references):
         raise ValueError("each calibration axis may have only one reference")
-    if not reviewer or "/" in reviewer or "\\" in reviewer or any(
-        ord(character) < 32 for character in reviewer
+    if (
+        not isinstance(reviewer, str)
+        or not reviewer
+        or reviewer != reviewer.strip()
+        or len(reviewer) > 128
+        or "/" in reviewer
+        or "\\" in reviewer
+        or any(ord(character) < 32 or ord(character) == 127 for character in reviewer)
     ):
         raise ValueError("reviewer must be path-safe and non-empty")
     timestamp = _confirmed_timestamp(confirmed_at)

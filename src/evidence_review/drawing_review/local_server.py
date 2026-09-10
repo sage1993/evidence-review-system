@@ -153,10 +153,13 @@ def _calibration_html(
     source_sha256: str,
     candidate_id: str | None,
     confirmation_id: str | None,
+    reviewer: str | None,
     confirmed_at: str,
 ) -> str:
     candidate_value = "" if candidate_id is None else escape(candidate_id, quote=True)
     confirmation_value = "" if confirmation_id is None else escape(confirmation_id, quote=True)
+    reviewer_value = "" if reviewer is None else escape(reviewer, quote=True)
+    reviewer_readonly = "" if reviewer is None else " readonly"
     return (
         "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\"><title>Calibration</title>"
         "<style>body{font-family:system-ui,sans-serif;margin:2rem;color:#172033}"
@@ -169,7 +172,8 @@ def _calibration_html(
         f"value=\"{escape(confirmed_at, quote=True)}\">"
         f"<input type=\"hidden\" name=\"candidate_id\" value=\"{candidate_value}\">"
         f"<input type=\"hidden\" name=\"confirmation_id\" value=\"{confirmation_value}\">"
-        "<label>Reviewer ID<input name=\"reviewer\" value=\"ksh\" required></label>"
+        f"<label>Reviewer ID<input name=\"reviewer\" value=\"{reviewer_value}\" required"
+        f"{reviewer_readonly}></label>"
         "<label>Axis<select name=\"axis\"><option value=\"x\">x</option>"
         "<option value=\"y\">y</option></select></label>"
         "<label>First pixel point<input name=\"point_1\" value=\"1200,900\" required></label>"
@@ -466,6 +470,7 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
                 return
             candidate_id = query.get("candidate_id")
             confirmation_id = query.get("confirmation_id")
+            reviewer: str | None = None
             if (
                 confirmation_id is not None
                 and confirmation_id not in self.state.confirmation_records
@@ -476,6 +481,7 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
             if confirmation_id is not None:
                 confirmation = self.state.confirmation_records[confirmation_id][0]
                 confirmed_at = confirmation.confirmed_at
+                reviewer = confirmation.reviewer
                 if candidate_id is None:
                     candidate_id = confirmation.candidate_id
             self._send_bytes(
@@ -485,6 +491,7 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
                     source_sha256=self.state.page.source_sha256,
                     candidate_id=candidate_id,
                     confirmation_id=confirmation_id,
+                    reviewer=reviewer,
                     confirmed_at=confirmed_at,
                 ).encode("utf-8"),
                 "text/html; charset=utf-8",

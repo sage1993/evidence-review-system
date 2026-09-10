@@ -49,6 +49,24 @@ def test_calibration_rejects_missing_or_ambiguous_reference() -> None:
         )
 
 
+def test_calibration_rejects_whitespace_only_reviewer_before_persistence() -> None:
+    with pytest.raises(ValueError, match="reviewer"):
+        build_calibration(
+            source_sha256=SOURCE_HASH,
+            page=1,
+            references=(
+                CalibrationReference(
+                    pixel_points=((10, 20), (110, 20)),
+                    real_length="35.0",
+                    unit="m",
+                    axis="x",
+                ),
+            ),
+            reviewer="   ",
+            confirmed_at="2026-08-05T10:00:00+09:00",
+        )
+
+
 def test_browser_calibration_persists_candidate_and_confirmation_bindings() -> None:
     result = build_calibration(
         source_sha256=SOURCE_HASH,
