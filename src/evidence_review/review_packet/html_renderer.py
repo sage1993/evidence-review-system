@@ -799,6 +799,7 @@ def _render_review_html(
         (
             '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
+            '<link rel="icon" href="data:,">',
             f"<title>근거 검토 · {_text(model.get('question'))}</title><style>{css_bundle}</style>",
             '</head><body><div class="app-shell" data-viewer-mode="compare"',
             ' data-protected-presentation="true"' if protected else "",
