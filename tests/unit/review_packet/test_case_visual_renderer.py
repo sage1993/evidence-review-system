@@ -447,6 +447,13 @@ def test_related_only_finding_keeps_not_comparable_status() -> None:
 
     assert 'data-finding-status="not_comparable"' in html
     assert "비교 불가" in html
+    assert "직접 기준 근거가 없어 기준 비교 창을 숨겼습니다." in html
+    assert "직접 대조 가능한 기준을 찾지 못했습니다." in html
+    assert "관련 근거 1건" in html
+    assert "직접 인용문" in html
+    assert 'data-reference-role="related"' in html
+    assert 'class="reference-viewer"' not in html
+    assert re.search(r'<button[^>]+data-case-divider', html) is None
 
 
 def test_renderer_consumes_case_raster_payload_before_review_model_serialization() -> None:

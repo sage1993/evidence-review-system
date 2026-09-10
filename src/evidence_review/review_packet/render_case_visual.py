@@ -573,6 +573,32 @@ def _has_direct_reference(
     )
 
 
+def _has_related_reference(
+    finding: Mapping[str, object],
+    claims: Mapping[str, Mapping[str, object]],
+) -> bool:
+    """Return whether a finding has related reference content to present."""
+    direct_anchors = _sequence(
+        finding.get("direct_reference_anchors", []),
+        "finding.direct_reference_anchors",
+    )
+    related_anchors = _sequence(
+        finding.get("related_reference_anchors", []),
+        "finding.related_reference_anchors",
+    )
+    if direct_anchors or related_anchors:
+        return bool(related_anchors)
+    return any(
+        claim_id in claims and bool(_citation_cards(claims[claim_id])[0])
+        for claim_id in (
+            str(item)
+            for item in _sequence(
+                finding.get("related_claim_ids", []), "finding.related_claim_ids"
+            )
+        )
+    )
+
+
 def _fallback_findings(pages: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
     """Keep older visual projections renderable while new projections supply findings."""
     findings: list[dict[str, object]] = []
@@ -818,12 +844,14 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
     finding_html: list[str] = []
     status_counts = {key: 0 for key in _STATUS_META}
     any_direct = False
+    any_related = False
     for index, finding in enumerate(findings):
         finding_id = _raw_text(finding.get("finding_id")) or f"VF-{index + 1}"
         refs, criterion = _references_for_finding(
             finding, claims, reference_pages, related_reference_texts
         )
         any_direct = any_direct or _has_direct_reference(finding, claims)
+        any_related = any_related or _has_related_reference(finding, claims)
         reference_html.append(
             f'<section class="reference-focus{" is-active" if index == 0 else ""}" '
             f'data-case-reference="{_text(finding_id)}"{"" if index == 0 else " hidden"}>{refs}</section>'
@@ -899,6 +927,13 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
                 if any_direct
                 else '<p class="reference-unavailable" role="status">직접 기준 근거가 없어 기준 비교 창을 숨겼습니다.</p>'
             ),
+            (
+                '<aside class="related-reference-fallback" aria-label="관련 근거">'
+                + "".join(reference_html)
+                + "</aside>"
+                if not any_direct and any_related
+                else ""
+            ),
             '<div class="workspace-grid">',
             f'<div class="comparison-workspace" data-case-split style="--reference-width:{initial_reference_width}%">',
             (
@@ -962,6 +997,9 @@ CASE_VISUAL_CSS = r"""
 ISSUE_152_CASE_VISUAL_CSS = r"""
 #case-visual-review[data-reference-available="false"] .comparison-workspace{grid-template-columns:minmax(0,1fr)}
 #case-visual-review[data-reference-available="false"] .reference-unavailable{position:absolute;z-index:12;left:12px;top:10px;margin:0;border:1px solid #b9cde8;border-radius:7px;padding:7px 10px;background:rgba(242,247,255,.96);color:#18365f;font-size:12px;line-height:1.4}
+#case-visual-review[data-reference-available="false"] .related-reference-fallback{position:absolute;z-index:12;left:12px;top:54px;max-width:min(420px,42vw);max-height:calc(100% - 66px);overflow:auto;border:1px solid #b9cde8;border-radius:7px;padding:8px 10px;background:rgba(255,255,255,.96)}
+#case-visual-review[data-reference-available="false"] .related-reference-fallback .reference-focus{height:auto;overflow:visible}
+#case-visual-review[data-reference-available="false"] .related-reference-fallback .reference-empty{display:block;min-height:0;text-align:left}
 #case-visual-review .viewer-controls button{width:40px;height:40px;min-height:0;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:0}
 #case-visual-review .finding-filter{height:32px;min-height:0;padding:0 8px;font-size:12px}
 .finding-pagination{font-size:12px}
