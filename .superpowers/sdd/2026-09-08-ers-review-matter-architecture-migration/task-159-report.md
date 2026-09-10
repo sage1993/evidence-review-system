@@ -64,11 +64,12 @@ All required socket gates passed in one focused run: 4 passed in 4.44s.
 | compileall | PASS |
 | Source-tree documentation validation | PASS — 50 documents, errors=0, warnings=145 |
 | Installed documentation command | `SOURCE_MISMATCH` — installed executable resolves another checkout |
-| Full Python 3.13 pytest | `NOT_RUN` for the documentation-correction candidate; the prior background run was stopped before a summary |
-| Final `git diff --check` | `NOT_RUN` for the documentation-correction candidate |
+| Full Python 3.13 pytest | PASS — 2092 passed, 1 skipped in 414.39s at `0e70485a69a70b789c9f0718681eb4487287b825` |
+| Final `git diff --check` | PASS at `0e70485a69a70b789c9f0718681eb4487287b825` |
 | Browser/manual | `NOT_RUN` |
 | GitHub Actions | `ACTIONS_NOT_RUN` |
 
-Controller review and the GitHub workflow are pending. Remote SHA verification,
+The `gpt-5.6-sol-high` controller review is PASS/APPROVED. The GitHub workflow
+is pending. Remote SHA verification,
 pull request creation, merge, issue closure, and post-merge ancestry are not
 claimed or performed.

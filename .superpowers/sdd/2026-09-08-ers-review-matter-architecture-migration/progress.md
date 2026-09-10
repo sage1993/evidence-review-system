@@ -207,8 +207,9 @@
 - [x] Full-body 500-iteration, header-only 100-iteration, and partial/slow-sender Windows stress gates passed
 - [x] Focused and adjacent Review/Drawing local-server regression passed
 - [x] Ruff, default/win32 mypy, compileall, and source-tree documentation validation passed at code candidate `4e1d4438de2465c99b76b88b4fef9af8fbbdbb35`
-- [ ] Exact-candidate full Python 3.13 pytest and final diff check after this documentation correction
-- [ ] Controller review and GitHub workflow
+- [x] Exact-candidate full Python 3.13 pytest and final diff check after this documentation correction
+- [x] Controller review with `gpt-5.6-sol-high`: spec compliance PASS; task quality APPROVED; no findings
+- [ ] GitHub workflow
 - [ ] Remote SHA verification, pull request, merge, issue closure, and post-merge ancestry
 
 ### Results recorded before controller review
@@ -231,10 +232,11 @@
   259 source files. `compileall` passed. Source-tree documentation validation
   passed with 50 documents, 0 errors, and 145 warnings. The installed command
   reported `SOURCE_MISMATCH` because it resolves a different checkout.
-- Full Python 3.13 pytest is `NOT_RUN` for this documentation-correction
-  candidate: the prior background run was stopped on controller interruption
-  before a final summary. Browser/manual acceptance is `NOT_RUN`; GitHub
-  Actions is `ACTIONS_NOT_RUN`.
+- Full Python 3.13 pytest passed for this documentation-correction candidate:
+  `2092 passed, 1 skipped` in 414.39s at
+  `0e70485a69a70b789c9f0718681eb4487287b825`. Final `git diff --check` also
+  passed at that SHA. Browser/manual acceptance is `NOT_RUN`; GitHub Actions is
+  `ACTIONS_NOT_RUN`.
 - Remote SHA verification, pull request creation, merge, issue closure, and
   post-merge ancestry are pending the controller's review and GitHub workflow;
   none is claimed or performed here.
