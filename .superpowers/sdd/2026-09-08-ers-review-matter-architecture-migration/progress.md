@@ -160,3 +160,22 @@
   `F:\2026-PJ\evidence-review-system`.
 - Browser/manual acceptance remains `NOT_RUN`; GitHub Actions remains
   `ACTIONS_NOT_RUN`. No drawing, visual, viewer, service, or UI path changed.
+
+## Fix round 6 result
+
+- Round-5 implementation/verification was at `f03f07c`; the later report/ledger
+  commit was `b8a91a1`.
+- An exact-head rerun after `b8a91a1` passed the full Python 3.13 suite:
+  `2070 passed, 1 skipped` in `364.26s`; Ruff, default/win32 mypy, compileall,
+  source-tree docs, and diff check also passed. Installed docs remained a
+  separate `SOURCE_MISMATCH`.
+- Round-6 code/tests are committed at
+  `1740d9d5d999347004d760cb805fe7fa787e380a1`. Round-6 regressions passed 10
+  tests; focused/adjacent pytest passed 87 tests.
+- Round-6 closes comment-obfuscated non-default conflict policies and requires
+  the exact persisted Matter lineage tuple before current-review resolution;
+  direct non-Matter current-review behavior remains supported.
+- Full pytest, Ruff, default/win32 mypy, compileall, source-tree docs, and diff
+  check were rerun after the report/ledger record was committed at the final
+  exact HEAD. Browser/manual acceptance remains `NOT_RUN`; GitHub Actions
+  remains `ACTIONS_NOT_RUN`.

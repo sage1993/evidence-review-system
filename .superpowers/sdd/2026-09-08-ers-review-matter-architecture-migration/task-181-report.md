@@ -1,4 +1,4 @@
-# Issue #181 / MIG-11 fix-round-5 report
+# Issue #181 / MIG-11 fix-round-6 report
 
 ## Scope
 
@@ -29,15 +29,19 @@ regressions; no drawing, visual, viewer, service, or UI path changed.
   bytes, and the manifest-bound final packet must all agree. When a request
   declares Matter lineage, the validator opens the supplied workspace's
   `matter.sqlite`, loads the declared persisted snapshot, and compares the
-  complete request reconstructed from that snapshot. Invented, incomplete, or
-  copied identity fields therefore fail closed; lower-level direct runs with no
-  Matter claim retain their existing selector behavior.
+  complete request reconstructed from that snapshot. Current-review bind and
+  resolve additionally require the exact persisted `formal_run_bindings` tuple
+  `(matter_id, snapshot_id, run_id, packet_sha256)`. Invented, incomplete,
+  copied, or unpersisted Matter claims therefore fail closed; lower-level direct
+  runs with no Matter claim retain their existing selector behavior.
 - MatterStore requires the exact two unique constraints for
   `formal_run_bindings`; validation preserves uniqueness, origin, partial
   status, ordered columns, and multiplicity. Any unexpected, duplicate,
   partial, or replacement unique index fails closed after restart. The table
-  SQL must also retain the canonical default SQLite `ABORT` conflict policy;
-  explicit `IGNORE`, `REPLACE`, `FAIL`, or `ROLLBACK` policies are rejected.
+  SQL is comment-stripped and token-normalized before policy validation, so the
+  canonical default SQLite `ABORT` conflict policy cannot be bypassed by
+  comments, casing, or whitespace; explicit `IGNORE`, `REPLACE`, `FAIL`, or
+  `ROLLBACK` policies are rejected.
 
 ## TDD evidence
 
@@ -80,19 +84,41 @@ accepted. GREEN passed the nine new checks in 1.28s. A positive regression for
 a correctly bound formal RUN also passed, including separate repository and
 workspace roots; the current-review regression set passed 9 tests in 1.59s.
 
-## Fix-round-5 verification
+The round-6 RED command covered comment-obfuscated `IGNORE`, `REPLACE`, `FAIL`,
+and `ROLLBACK` policies on both lineage constraints plus a current-review
+binding whose finalized Matter run had no persisted lineage row. It failed as
+intended with 10 failures. GREEN passed all 10 regressions in 2.38s; the
+focused/adjacent suite passed 87 tests in 23.66s.
+
+## Historical round-5 verification provenance
 
 The implementation and regression commit was `f03f07c`
 (`fix(mig-11): authenticate Matter lineage and schema policy`). The exact full
 suite and all static gates below were rerun after that code commit.
 
+The later report/ledger commit was `b8a91a1` (`docs(mig-11): record round-5
+verification`). After that report/ledger commit, an exact-head rerun at clean
+`b8a91a1` confirmed the full Python 3.13 suite at 2,070 passed and 1 skipped in
+364.26s. The static, compile, source-tree documentation, and diff checks also
+passed at that exact head; the installed documentation command remained a
+separate `SOURCE_MISMATCH`.
+
+## Fix-round-6 verification
+
+The round-6 implementation and regression commit is
+`1740d9d5d999347004d760cb805fe7fa787e380a1`
+(`fix(mig-11): require persisted Matter lineage`). The exact full suite and
+all static gates below were run after that code commit. The report/ledger
+commit containing this round-6 record was then checked again at its final
+exact HEAD; results were unchanged.
+
 ## Verification
 
 | Gate | Result |
 | --- | --- |
-| Round-5 regression pytest | PASS — 9 passed in 1.28s |
-| Focused/adjacent Matter/current-review/formalization/finalizer pytest | PASS — 76 passed in 20.23s |
-| Full Python 3.13 pytest at `f03f07c` | PASS — 2,070 passed, 1 skipped in 364.54s |
+| Round-6 regression pytest | PASS — 10 passed in 2.38s |
+| Focused/adjacent Matter/current-review/formalization/finalizer pytest | PASS — 87 passed in 23.66s |
+| Full Python 3.13 pytest at `1740d9d` | PASS — 2,080 passed, 1 skipped in 363.92s |
 | Ruff `src tests web_runtime` | PASS — all checks passed |
 | mypy `src` | PASS — 258 source files |
 | mypy `--platform win32 src` | PASS — 258 source files |
@@ -110,10 +136,10 @@ the ignored `.acceptance/` directory; it passed as recorded above.
 
 This round supersedes the earlier claim that current-review validation stopped
 at request/Track A/confidence/packet consistency: it now authenticates declared
-Matter lineage from the workspace-persisted snapshot and uses the same full
-validator as formal binding. It also supersedes the earlier schema claim by
-recording canonical conflict-policy validation in addition to exact unique
-index semantics.
+Matter lineage from the workspace-persisted snapshot, requires the persisted
+lineage tuple, and uses the same full validator as formal binding. It also
+supersedes the earlier schema claim by recording comment-obscured conflict
+policy rejection in addition to exact unique-index semantics.
 
 ## Not run / unresolved
 
