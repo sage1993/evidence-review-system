@@ -16,6 +16,7 @@ from evidence_review.contracts.question_plan import (
 )
 from evidence_review.drawing_review import visual_handoff as visual_handoff_module
 from evidence_review.drawing_review.visual_handoff import prepare_visual_analysis_handoff
+from evidence_review.drawing_review.visual_pages import visual_cache_identity
 
 
 def _plan() -> QuestionPlan:
@@ -194,7 +195,11 @@ def test_visual_handoff_prewarms_tiles_for_large_page(tmp_path: Path) -> None:
     manifest = (
         workspace
         / "case-page-tiles-v1"
-        / page.attachment_id
+        / visual_cache_identity(
+            page.case_id,
+            page.attachment_id,
+            page.source_sha256,
+        )
         / "page-0001"
         / "manifest.json"
     )
