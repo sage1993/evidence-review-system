@@ -1,6 +1,9 @@
 import hashlib
 from pathlib import Path
 
+import pytest
+
+from evidence_review.contracts.attachments import decode_immutable_attachment
 from evidence_review.review_packet.case_visual_projection import (
     _resolve_visual_raster_path,
 )
@@ -24,8 +27,50 @@ def test_projection_prefers_hash_matched_high_resolution_case_pdf_cache(
     hq.write_bytes(b"high-resolution-page")
     normal.write_bytes(b"stale-normal-page")
     expected = hashlib.sha256(hq.read_bytes()).hexdigest()
+    attachment = decode_immutable_attachment(
+        {
+            "attachment_id": attachment_id,
+            "original_name": "legacy-drawing.pdf",
+            "stored_path": f"inputs/original/{attachment_id}.pdf",
+            "sha256": "a" * 64,
+            "byte_size": 1,
+            "mime": "application/pdf",
+            "role": "CASE_DRAWING",
+        }
+    )
 
-    assert _resolve_visual_raster_path(workspace, attachment_id, 1, expected) == hq
+    assert _resolve_visual_raster_path(workspace, attachment, 1, expected) == hq
+
+
+def test_projection_does_not_use_legacy_cache_for_case_local_attachment(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    attachment_id = "ATT-VISUAL-1"
+    source_hash = "a" * 64
+    legacy = workspace / "case-page-images" / attachment_id / "page-0001.png"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_bytes(b"legacy-raster")
+    attachment = decode_immutable_attachment(
+        {
+            "case_id": "CASE-1",
+            "attachment_id": attachment_id,
+            "original_name": "drawing.pdf",
+            "stored_path": f"cases/CASE-1/sources/drawings/{attachment_id}.pdf",
+            "sha256": source_hash,
+            "byte_size": 1,
+            "mime": "application/pdf",
+            "role": "CASE_DRAWING",
+        }
+    )
+
+    with pytest.raises(FileNotFoundError):
+        _resolve_visual_raster_path(
+            workspace,
+            attachment,
+            1,
+            hashlib.sha256(legacy.read_bytes()).hexdigest(),
+        )
 
 
 def test_renderer_defers_large_page_tile_decode_until_viewport_use() -> None:

@@ -40,7 +40,7 @@ _TILE_TRIGGER_DIMENSION = 4096
 class VisualPageAsset:
     """One verified raster page presented to the external visual analyzer."""
 
-    case_id: str
+    case_id: str | None
     attachment_id: str
     source_sha256: str
     page: int
@@ -52,11 +52,13 @@ class VisualPageAsset:
 
 
 def visual_cache_identity(
-    case_id: str,
+    case_id: str | None,
     attachment_id: str,
     source_sha256: str,
 ) -> str:
-    """Return the cache key for one immutable case-local visual source."""
+    """Return a case-local cache key, or the exact legacy attachment key."""
+    if case_id is None:
+        return attachment_id
     return f"{case_id}--{attachment_id}--{source_sha256}"
 
 
@@ -102,7 +104,7 @@ def _pdf_assets(
     # document viewer because reviewers zoom into dimensions, notes, and linework.
     # Keep this cache isolated so reference/legal-document rendering remains unchanged.
     cache_identity = visual_cache_identity(
-        attachment.case_id or "",
+        attachment.case_id,
         attachment.attachment_id,
         attachment.sha256,
     )
@@ -132,7 +134,7 @@ def _pdf_assets(
         width, height = _image_size(image_path)
         assets.append(
             VisualPageAsset(
-                case_id=attachment.case_id or "",
+                case_id=attachment.case_id,
                 attachment_id=attachment.attachment_id,
                 source_sha256=attachment.sha256,
                 page=page,
@@ -174,7 +176,7 @@ def _normalized_image_asset(
     source: Path,
 ) -> VisualPageAsset:
     directory = workspace / "case-page-images" / visual_cache_identity(
-        attachment.case_id or "",
+        attachment.case_id,
         attachment.attachment_id,
         attachment.sha256,
     )
@@ -231,7 +233,7 @@ def _normalized_image_asset(
                 pass
             raise
     return VisualPageAsset(
-        case_id=attachment.case_id or "",
+        case_id=attachment.case_id,
         attachment_id=attachment.attachment_id,
         source_sha256=attachment.sha256,
         page=1,

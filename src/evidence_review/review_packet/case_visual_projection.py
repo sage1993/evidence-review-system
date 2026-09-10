@@ -241,12 +241,15 @@ def _resolve_visual_raster_path(
     filename = f"page-{page_number:04d}.png"
     found_regular = False
     if attachment.case_id is None:
-        raise ValueError("case visual attachment identity requires case_id")
-    cache_identity = visual_cache_identity(
-        attachment.case_id,
-        attachment.attachment_id,
-        attachment.sha256,
-    )
+        if not attachment.stored_path.startswith("inputs/original/"):
+            raise ValueError("legacy case visual attachment storage is invalid")
+        cache_identity = attachment.attachment_id
+    else:
+        cache_identity = visual_cache_identity(
+            attachment.case_id,
+            attachment.attachment_id,
+            attachment.sha256,
+        )
     for cache_name in (_CASE_PDF_CACHE_DIR, _CASE_IMAGE_CACHE_DIR):
         cache_root = workspace_root / cache_name
         try:
@@ -543,7 +546,7 @@ def build_case_visual_projection(
             image_sha256,
         )
         asset = VisualPageAsset(
-            case_id=page_attachment.case_id or "",
+            case_id=page_attachment.case_id,
             attachment_id=attachment_id,
             source_sha256=source_sha256,
             page=page_number,

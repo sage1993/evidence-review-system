@@ -32,6 +32,13 @@ def test_attachment_schema_accepts_legacy_reference_storage() -> None:
     assert not list(_schema().iter_errors(_attachment()))
 
 
+@pytest.mark.parametrize("role", ["CASE_DRAWING", "SUPPORTING_IMAGE"])
+def test_attachment_schema_accepts_legacy_visual_storage(
+    role: str,
+) -> None:
+    assert not list(_schema().iter_errors(_attachment(role=role)))
+
+
 def test_attachment_schema_accepts_case_visual_storage() -> None:
     value = _attachment(
         case_id="CASE-1",
@@ -52,7 +59,6 @@ def test_attachment_schema_accepts_case_visual_storage() -> None:
             "role": "REFERENCE_DOCUMENT",
         },
         {"case_id": "CASE-1"},
-        {"stored_path": "inputs/original/plan.pdf", "role": "CASE_DRAWING"},
     ],
 )
 def test_attachment_schema_rejects_mixed_case_and_legacy_bindings(

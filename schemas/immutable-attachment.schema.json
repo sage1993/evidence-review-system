@@ -52,22 +52,9 @@
         }
       },
       "else": {
-        "allOf": [
-          {
-            "not": {
-              "required": ["case_id"]
-            }
-          },
-          {
-            "properties": {
-              "role": {
-                "not": {
-                  "enum": ["CASE_DRAWING", "SUPPORTING_IMAGE"]
-                }
-              }
-            }
-          }
-        ]
+        "not": {
+          "required": ["case_id"]
+        }
       }
     }
   ]

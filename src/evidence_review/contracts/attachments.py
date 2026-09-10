@@ -117,8 +117,6 @@ def decode_immutable_attachment(value: object) -> ImmutableAttachment:
         parsed = PurePosixPath(attachment.stored_path)
         if parsed.parts[:2] != ("inputs", "original") or len(parsed.parts) < 3:
             raise ValueError("stored_path must be under inputs/original/")
-        if attachment.role in {"CASE_DRAWING", "SUPPORTING_IMAGE"}:
-            raise ValueError("case visual attachment identity requires case_id")
     else:
         case_visual_source_relative_parts(attachment)
     return attachment
