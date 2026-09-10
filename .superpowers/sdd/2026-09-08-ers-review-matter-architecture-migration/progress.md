@@ -187,3 +187,56 @@
   check were rerun after the report/ledger record was committed at the final
   exact HEAD. Browser/manual acceptance remains `NOT_RUN`; GitHub Actions
   remains `ACTIONS_NOT_RUN`.
+
+## Issue #159 / shared local HTTP transport
+
+### Preflight
+
+| Interface | Producer / consumer | Ruling |
+| --- | --- | --- |
+| Review Packet local server ↔ shared transport | `/decision` had the hardened oversized-body response/drain path. | Preserve its early `413`, flush, bounded drain deadline, and connection close as the canonical behavior. |
+| Drawing Review local server ↔ shared transport | `/actions` and `/calibration` had sibling body-handling and header-cardinality drift. | Route both through one shared protected-loopback transport primitive. |
+| Host/Origin/token/CSP security ↔ route handlers | These checks protect mutable local actions and immutable review decisions. | Preserve fail-closed cardinality, token/origin behavior, CSP, and existing route authority. |
+| Windows socket lifecycle ↔ oversized sender | Header-only and slow clients can otherwise block a request handler or reset a sender. | Send/flush `413` before draining, enforce one bounded deadline, then close. |
+
+### Acceptance checklist
+
+- [x] Focused RED reproduced the Drawing sibling transport drift without an unrelated host/collection failure
+- [x] One shared protected-loopback transport primitive is used by both servers
+- [x] Duplicate Host and Origin behavior is identical for `/actions` and `/calibration`
+- [x] Full-body 500-iteration, header-only 100-iteration, and partial/slow-sender Windows stress gates passed
+- [x] Focused and adjacent Review/Drawing local-server regression passed
+- [x] Ruff, default/win32 mypy, compileall, and source-tree documentation validation passed at code candidate `4e1d4438de2465c99b76b88b4fef9af8fbbdbb35`
+- [x] Exact-candidate full Python 3.13 pytest and final diff check after this documentation correction
+- [x] Controller review with `gpt-5.6-sol-high`: spec compliance PASS; task quality APPROVED; no findings
+- [ ] GitHub workflow
+- [ ] Remote SHA verification, pull request, merge, issue closure, and post-merge ancestry
+
+### Results recorded before controller review
+
+- Code candidate: `4e1d4438de2465c99b76b88b4fef9af8fbbdbb35`
+  (`fix(issue-159): share protected HTTP transport`), based on
+  `ad57418122f432363b5fd03469737456141b376f` (`origin/main`).
+- Python: `3.13.14` on Windows. RED ran 8 focused cases and produced the
+  intended 7 failures / 1 control pass in 6.52s: valid-first duplicate
+  Host/Origin was accepted, `/actions` delayed its oversized response, and
+  Drawing full-body handling did not drain cleanly. The run used a fresh
+  system-temporary pytest base after the sandbox ACL blocked worktree-local
+  pytest cleanup; no host/collection failure was used as RED evidence.
+- GREEN passed 8 focused cases in 4.59s. Adjacent Review/Drawing local-server
+  regression passed 53 tests in 26.04s. Windows transport stress passed 4
+  selected tests in 4.44s: 500 full oversized requests and 100 header-only
+  requests alternating `/actions` and `/calibration`, plus bounded partial/slow
+  senders for each route.
+- Repository Ruff passed. Default and `--platform win32` mypy each passed for
+  259 source files. `compileall` passed. Source-tree documentation validation
+  passed with 50 documents, 0 errors, and 145 warnings. The installed command
+  reported `SOURCE_MISMATCH` because it resolves a different checkout.
+- Full Python 3.13 pytest passed for this documentation-correction candidate:
+  `2092 passed, 1 skipped` in 414.39s at
+  `0e70485a69a70b789c9f0718681eb4487287b825`. Final `git diff --check` also
+  passed at that SHA. Browser/manual acceptance is `NOT_RUN`; GitHub Actions is
+  `ACTIONS_NOT_RUN`.
+- Remote SHA verification, pull request creation, merge, issue closure, and
+  post-merge ancestry are pending the controller's review and GitHub workflow;
+  none is claimed or performed here.

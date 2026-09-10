@@ -35,6 +35,15 @@ from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
 )
+from evidence_review.local_http_transport import (
+    ContentLengthError,
+    allowed_methods_for_tokenized_route,
+    loopback_request_is_authorized,
+    reject_oversized_body,
+    send_protected_response,
+    tokenized_route_matches,
+    validate_content_length,
+)
 from evidence_review.math_engine.formulas import (
     DRAWING_REGISTRY,
     DRAWING_SCALE_ID,
@@ -58,7 +67,6 @@ from evidence_review.review_packet.drawing_evidence import render_drawing_eviden
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _DEFAULT_MAX_BODY_BYTES = 64 * 1024
-_MAX_REJECT_DRAIN_BYTES = 4 * 1024 * 1024
 _CSP = (
     "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
@@ -108,19 +116,7 @@ def _query(path: str, allowed: set[str]) -> dict[str, str]:
     return result
 
 
-def _json_body(handler: BaseHTTPRequestHandler, max_bytes: int) -> object:
-    raw_length = handler.headers.get("Content-Length")
-    if raw_length is None or handler.headers.get("Transfer-Encoding"):
-        raise LookupError("CONTENT_LENGTH_REQUIRED")
-    try:
-        length = int(raw_length)
-    except ValueError as error:
-        raise ValueError("INVALID_CALIBRATION") from error
-    if length < 1:
-        raise ValueError("INVALID_CALIBRATION")
-    if length > max_bytes:
-        raise OverflowError("BODY_TOO_LARGE")
-    body = handler.rfile.read(length)
+def _json_body(body: bytes) -> object:
     try:
         return json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -340,17 +336,14 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         content_type: str,
         allow: str | None = None,
     ) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", _CSP)
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        if allow is not None:
-            self.send_header("Allow", allow)
-        self.end_headers()
-        self.wfile.write(body)
+        send_protected_response(
+            self,
+            status,
+            body,
+            content_type,
+            content_security_policy=_CSP,
+            allow=allow,
+        )
 
     def _send_json(
         self,
@@ -367,26 +360,6 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         ).encode("utf-8")
         self._send_bytes(status, body, "application/json; charset=utf-8", allow=allow)
 
-    def _discard_request_body(self) -> None:
-        """Drain a bounded rejected body so Windows clients receive the response."""
-        raw_length = self.headers.get("Content-Length")
-        if raw_length is None:
-            return
-        try:
-            length = int(raw_length)
-        except ValueError:
-            return
-        if length <= 0:
-            return
-        remaining = min(length, _MAX_REJECT_DRAIN_BYTES)
-        while remaining:
-            chunk = self.rfile.read(min(8192, remaining))
-            if not chunk:
-                break
-            remaining -= len(chunk)
-        if length > _MAX_REJECT_DRAIN_BYTES:
-            self.close_connection = True
-
     def _reject(
         self,
         status: int,
@@ -395,19 +368,27 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         drain_body: bool = True,
         allow: str | None = None,
     ) -> None:
-        if drain_body:
-            self._discard_request_body()
+        del drain_body
         self._send_json(status, {"error": code}, allow=allow)
 
+    def _reject_oversized_body(self, length: int) -> None:
+        reject_oversized_body(
+            self,
+            length,
+            lambda status, code: self._reject(status, code, drain_body=False),
+        )
+
     def _method_not_allowed(self) -> None:
-        path = urlsplit(self.path).path
-        routes = {
-            f"/annotation/{self.state.token}": "GET",
-            f"/annotation/{self.state.token}/actions": "POST",
-            f"/calibration/{self.state.token}": "GET, POST",
-            f"/review-packet/{self.state.token}": "GET",
-        }
-        allow = routes.get(path)
+        allow = allowed_methods_for_tokenized_route(
+            urlsplit(self.path).path,
+            expected_token=self.state.token,
+            routes={
+                ("annotation", ()): "GET",
+                ("annotation", ("actions",)): "POST",
+                ("calibration", ()): "GET, POST",
+                ("review-packet", ()): "GET",
+            },
+        )
         if allow is None:
             self._reject(404, "NOT_FOUND")
             return
@@ -415,11 +396,16 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
 
     def _matches_route(self, suffix: str) -> bool:
         parsed = urlsplit(self.path)
-        expected = f"/annotation/{self.state.token}{suffix}"
         if parsed.query or parsed.fragment:
             self._reject(404, "NOT_FOUND")
             return False
-        if parsed.path == expected:
+        suffix_parts = () if not suffix else tuple(suffix.removeprefix("/").split("/"))
+        if tokenized_route_matches(
+            parsed.path,
+            route_name="annotation",
+            expected_token=self.state.token,
+            suffix=suffix_parts,
+        ):
             return True
         if parsed.path.startswith("/annotation/"):
             self._reject(403, "FORBIDDEN")
@@ -429,8 +415,11 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
 
     def _matches_workspace_route(self, name: str) -> tuple[object, str] | None:
         parsed = urlsplit(self.path)
-        expected = f"/{name}/{self.state.token}"
-        if parsed.fragment or parsed.path != expected:
+        if parsed.fragment or not tokenized_route_matches(
+            parsed.path,
+            route_name=name,
+            expected_token=self.state.token,
+        ):
             if parsed.path.startswith(f"/{name}/"):
                 self._reject(403, "FORBIDDEN")
             else:
@@ -439,21 +428,23 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         return parsed, parsed.query
 
     def _authorized(self, *, require_origin: bool) -> bool:
-        if self.headers.get("Host") != self.state.expected_host:
-            self._reject(403, "FORBIDDEN")
-            return False
-        origin = self.headers.get("Origin")
-        if require_origin and origin != self.state.origin:
-            self._reject(403, "FORBIDDEN")
-            return False
-        if origin is not None and origin != self.state.origin:
+        if not loopback_request_is_authorized(
+            self.headers,
+            expected_host=self.state.expected_host,
+            expected_origin=self.state.origin,
+            require_origin=require_origin,
+        ):
             self._reject(403, "FORBIDDEN")
             return False
         return True
 
     def do_GET(self) -> None:
         parsed = urlsplit(self.path)
-        if parsed.path == f"/annotation/{self.state.token}" and not parsed.query:
+        if tokenized_route_matches(
+            parsed.path,
+            route_name="annotation",
+            expected_token=self.state.token,
+        ) and not parsed.query:
             if not self._authorized(require_origin=False):
                 return
             self._send_bytes(200, self.state.html_bytes, "text/html; charset=utf-8")
@@ -461,7 +452,11 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/annotation/"):
             self._matches_route("")
             return
-        if parsed.path == f"/calibration/{self.state.token}":
+        if tokenized_route_matches(
+            parsed.path,
+            route_name="calibration",
+            expected_token=self.state.token,
+        ):
             if not self._authorized(require_origin=False):
                 return
             try:
@@ -495,7 +490,11 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
                 "text/html; charset=utf-8",
             )
             return
-        if parsed.path == f"/review-packet/{self.state.token}":
+        if tokenized_route_matches(
+            parsed.path,
+            route_name="review-packet",
+            expected_token=self.state.token,
+        ):
             if not self._authorized(require_origin=False):
                 return
             try:
@@ -675,26 +674,39 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         self._reject(404, "NOT_FOUND")
 
     def _content_length(self) -> int | None:
-        value = self.headers.get("Content-Length")
-        if value is None:
-            self._reject(411, "CONTENT_LENGTH_REQUIRED")
-            return None
         try:
-            length = int(value)
-        except ValueError:
-            self._reject(400, "INVALID_CONTENT_LENGTH")
+            return validate_content_length(self.headers, self.state.max_body_bytes)
+        except ContentLengthError as error:
+            if error.length is not None:
+                self._reject_oversized_body(error.length)
+                return None
+            self._reject(411 if error.code == "CONTENT_LENGTH_REQUIRED" else 400, error.code)
             return None
-        if length < 1:
-            self._reject(400, "EMPTY_BODY")
+
+    def _calibration_content_length(self) -> int | None:
+        try:
+            return validate_content_length(
+                self.headers,
+                self.state.max_body_bytes,
+                reject_transfer_encoding=True,
+            )
+        except ContentLengthError as error:
+            if error.length is not None:
+                self._reject_oversized_body(error.length)
+                return None
+            if error.code == "CONTENT_LENGTH_REQUIRED":
+                self._reject(411, error.code, drain_body=False)
+            else:
+                self._reject(400, "INVALID_CALIBRATION", drain_body=False)
             return None
-        if length > self.state.max_body_bytes:
-            self._reject(413, "BODY_TOO_LARGE")
-            return None
-        return length
 
     def do_POST(self) -> None:
         parsed = urlsplit(self.path)
-        if parsed.path == f"/calibration/{self.state.token}":
+        if tokenized_route_matches(
+            parsed.path,
+            route_name="calibration",
+            expected_token=self.state.token,
+        ):
             self._post_calibration()
             return
         if not self._matches_route("/actions"):
@@ -756,8 +768,11 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         if self.headers.get("Content-Type", "") != "application/json":
             self._reject(415, "UNSUPPORTED_MEDIA_TYPE")
             return
+        length = self._calibration_content_length()
+        if length is None:
+            return
         try:
-            payload = _json_body(self, self.state.max_body_bytes)
+            payload = _json_body(self.rfile.read(length))
             if not isinstance(payload, Mapping):
                 raise ValueError("INVALID_CALIBRATION")
             required = {
@@ -814,12 +829,6 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
             )
             entry = persist_calibration(self.state.case_dir, record)
             self.state.calibration_records[record.calibration_id] = (record, entry)
-        except LookupError as error:
-            self._reject(411, str(error), drain_body=False)
-            return
-        except OverflowError:
-            self._reject(413, "BODY_TOO_LARGE", drain_body=False)
-            return
         except FileExistsError:
             self._reject(409, "ALREADY_EXISTS", drain_body=False)
             return
