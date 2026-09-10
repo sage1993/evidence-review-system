@@ -75,3 +75,25 @@
   errors=0, warnings=145. The initial invocation against an unrelated
   installed checkout returned `SOURCE_MISMATCH`; the corrected source-tree
   invocation with this worktree's `src` on `PYTHONPATH` passed.
+
+## Fix-round-2 execution record
+
+- Sol-high blockers reproduced with focused RED tests (Python 3.13.14, fresh
+  elevated Windows temp base): 3 failed, 11 passed in 3.68s. Invalid create
+  left `matter.sqlite`; an existing dependency was rejected as unknown; and a
+  self-dependency was accepted.
+- GREEN: 14 focused tests passed in 3.22s. Create identity/title validation
+  now precedes create-store opening. Candidate issue validation uses the
+  actual current Matter, rejects self-dependency, and preserves the existing
+  dependency graph and formal lineage.
+- Adjacent Matter/navigation/formal CLI suite before the candidate commit:
+  195 passed in 64.09s.
+- Fix-round-2 exact code candidate:
+  `9afa848e3dcc667c0f207fe98e2efa6e571d0998`.
+- Exact-head focused CLI flow: 14 passed in 2.32s; adjacent
+  Matter/navigation/formal CLI suite: 195 passed in 47.94s.
+- Exact-head full Python 3.13 pytest: 2109 passed, 1 skipped in 372.33s.
+- Exact-head Ruff, mypy `src`, mypy `--platform win32 src`, compileall, and
+  `git diff --check`: PASS. Both mypy runs checked 260 source files.
+- Exact-head source-tree documentation validation: PASS; 50 documents,
+  errors=0, warnings=145.

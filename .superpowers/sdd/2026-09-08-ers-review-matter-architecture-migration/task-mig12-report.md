@@ -80,6 +80,31 @@ The first documentation invocation selected an unrelated installed checkout and
 returned `SOURCE_MISMATCH`; the source-tree invocation with this worktree's
 `src` on `PYTHONPATH` passed and is the recorded gate result.
 
+## Fix round 2
+
+Sol-high review identified two further service-boundary gaps. `create` validated
+the Matter identity only after opening the create-capable store, and `add-issue`
+validated dependencies against a synthetic Matter containing only the candidate
+issue. The fix validates all create inputs before store creation, rejects
+self-dependency, and validates the candidate with the actual current Matter so
+existing dependency IDs and source/formal lineage remain intact.
+
+Fix-round-2 RED: 3 failed and 11 passed in 3.68s. GREEN: 14 passed in 3.22s.
+The exact code candidate was
+`9afa848e3dcc667c0f207fe98e2efa6e571d0998`; focused verification passed 14 in
+2.32s and adjacent Matter/navigation/formal verification passed 195 in 47.94s.
+
+Exact Python 3.13 verification at `9afa848e3dcc667c0f207fe98e2efa6e571d0998`:
+
+- Full pytest: 2109 passed, 1 skipped in 372.33s.
+- Ruff: PASS.
+- mypy `src`: PASS, 260 source files.
+- mypy `--platform win32 src`: PASS, 260 source files.
+- compileall (`src scripts web_runtime tests`): PASS.
+- Source-tree documentation validation: PASS, 50 documents, 0 errors, 145
+  warnings.
+- `git diff --check`: PASS.
+
 ## Not run
 
 - Browser/manual acceptance: `NOT_RUN`.
