@@ -44,6 +44,13 @@
 - Review confirmed the prior RUN authentication, separate-root pointer path, and ordinary extra-index tests, but found three remaining blockers: incomplete snapshot request/provenance comparison, request tamper not checked during pointer resolve, and partial unique indexes accepted by schema validation.
 - Ruling: resume the same terra implementer for round 2; no push/PR until all three fail-closed regressions and exact-head gates pass.
 
+## Fix round 2 result — round 3 required
+
+- Candidate commit: `73d9652821e2ed5c82a0026f3eb4659d692d3e5c`.
+- Review confirmed complete snapshot-derived request authentication, request tamper detection, and partial-index detection for a new signature.
+- Remaining blocker: unique-index validation still discards partial semantics and multiplicity, allowing a partial replacement or redundant partial index matching an allowed signature.
+- Ruling: fix exact unique-index semantics and add replacement/duplicate partial-index restart regressions; no push/PR until final sol-high review passes.
+
 ## Round-1 takeover result — 2026-09-10 (superseded)
 
 - The first takeover implementation addressed the initial three review findings,
@@ -51,7 +58,7 @@
   schema check excluded partial indexes. The final review correctly kept this
   candidate open for another fix round.
 
-## Fix-round-2 result — 2026-09-10
+## Fix-round-2 result — 2026-09-10 (superseded)
 
 - `bind_formal_run()` now compares the complete canonical request reconstructed
   from the persisted `FormalizationSnapshot`, review scope, selected evidence,
@@ -62,12 +69,30 @@
   verifier in addition to final-packet verification. The pointer remains
   limited to exact `run_id` and packet SHA, and separate repository/workspace
   roots remain supported.
-- MatterStore rejects every unexpected unique formal-run-binding index,
-  including partial unique indexes, after persisted restart; the required v3
-  schema remains accepted.
+- MatterStore rejected unexpected column signatures, including a new partial
+  signature, but still discarded partial semantics and multiplicity. The final
+  review kept the candidate open for fix round 3.
 - TDD RED reproduced all three blockers; GREEN passed the three regressions in
   1.44s. Focused/adjacent pytest passed 62 tests; exact full Python 3.13
   pytest passed 2,056 with 1 skipped in 410.89s. Ruff, mypy POSIX/Win32,
+  compileall, source-tree documentation validation, and final diff check passed.
+- Source-tree documentation validation reported 50 documents, 0 errors, and
+  145 warnings. The installed documentation executable remains
+  `SOURCE_MISMATCH` because it points to `F:\2026-PJ\evidence-review-system`.
+  Browser/manual acceptance remains `NOT_RUN`; GitHub Actions remains
+  `ACTIONS_NOT_RUN`.
+
+## Fix-round-3 result — 2026-09-10
+
+- MatterStore now validates the exact required unique-index descriptors for
+  `formal_run_bindings`: uniqueness, origin (`pk`/`u`), non-partial status,
+  ordered columns, and exact multiplicity. Partial replacements and redundant
+  partial duplicates now fail closed after restart; normal v3 and v2-to-v3
+  migration remain accepted.
+- TDD RED reproduced both remaining blockers: partial replacement and redundant
+  partial duplicate were accepted. GREEN passed five schema/migration checks in
+  0.61s. Focused/adjacent pytest passed 64 tests; exact full Python 3.13
+  pytest passed 2,058 with 1 skipped in 370.95s. Ruff, mypy POSIX/Win32,
   compileall, source-tree documentation validation, and final diff check passed.
 - Source-tree documentation validation reported 50 documents, 0 errors, and
   145 warnings. The installed documentation executable remains

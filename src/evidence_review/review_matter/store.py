@@ -261,19 +261,27 @@ class MatterStore:
         )
         if columns != _FORMAL_RUN_BINDING_COLUMNS:
             raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
-        unique_indexes = {
-            tuple(
+        unique_indexes: list[tuple[int, str, int, tuple[str, ...]]] = []
+        for index in self.connection.execute(
+            'PRAGMA index_list("formal_run_bindings")'
+        ).fetchall():
+            if int(index[2]) != 1:
+                continue
+            index_name = str(index[1]).replace(chr(34), chr(34) * 2)
+            index_columns = tuple(
                 str(column[2])
                 for column in self.connection.execute(
-                    f'PRAGMA index_info("{str(index[1]).replace(chr(34), chr(34) * 2)}")'
+                    f'PRAGMA index_info("{index_name}")'
                 ).fetchall()
             )
-            for index in self.connection.execute(
-                'PRAGMA index_list("formal_run_bindings")'
-            ).fetchall()
-            if int(index[2]) == 1
-        }
-        if unique_indexes != {("matter_id", "snapshot_id"), ("run_id",)}:
+            unique_indexes.append(
+                (int(index[2]), str(index[3]), int(index[4]), index_columns)
+            )
+        expected_unique_indexes = (
+            (1, "pk", 0, ("matter_id", "snapshot_id")),
+            (1, "u", 0, ("run_id",)),
+        )
+        if tuple(sorted(unique_indexes)) != tuple(sorted(expected_unique_indexes)):
             raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
         foreign_keys = {
             (str(row[2]), str(row[3]), str(row[4]), str(row[6]).upper())

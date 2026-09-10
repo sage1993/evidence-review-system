@@ -1,4 +1,4 @@
-# Issue #181 / MIG-11 fix-round-2 report
+# Issue #181 / MIG-11 fix-round-3 report
 
 ## Scope
 
@@ -26,8 +26,9 @@ No drawing, visual, viewer, service, or UI path changed.
   verify the run-local request's canonical bytes and derived RUN ID in addition
   to the manifest-bound final packet.
 - MatterStore requires the exact two unique constraints for
-  `formal_run_bindings`; any extra unique index, including partial indexes and
-  `UNIQUE(matter_id)`, fails closed after restart.
+  `formal_run_bindings`; validation preserves uniqueness, origin, partial
+  status, ordered columns, and multiplicity. Any unexpected, duplicate,
+  partial, or replacement unique index fails closed after restart.
 
 ## TDD evidence
 
@@ -51,13 +52,19 @@ index were each accepted by the pre-fix candidate. After the changes, the same
 three tests passed in 1.44s. The focused and adjacent candidate suite passed 62
 tests.
 
+The round-3 RED command demonstrated that the prior column-set comparison
+accepted both a partial replacement of the global `run_id` constraint and a
+redundant partial `run_id` index. The new exact-index validation rejects both.
+The five schema checks covering those cases, the existing extra-index cases,
+and v2-to-v3 migration passed in 0.61s.
+
 ## Verification
 
 | Gate | Result |
 | --- | --- |
-| Round-2 regression pytest | PASS — 3 passed in 1.44s |
-| Focused/adjacent Matter/current-review/formalization/store pytest | PASS — 62 passed in 20.13s |
-| Full Python 3.13 pytest | PASS — 2,056 passed, 1 skipped in 410.89s |
+| Round-3 schema regression pytest | PASS — 5 passed in 0.61s |
+| Focused/adjacent Matter/current-review/formalization/store pytest | PASS — 64 passed in 20.64s |
+| Full Python 3.13 pytest | PASS — 2,058 passed, 1 skipped in 370.95s |
 | Ruff `src tests web_runtime` | PASS — all checks passed |
 | mypy `src` | PASS — 258 source files |
 | mypy `--platform win32 src` | PASS — 258 source files |
@@ -73,10 +80,10 @@ installed `evidence-review.exe` imports a different checkout at
 therefore rerun against this candidate's `src` tree, with output created under
 the ignored `.acceptance/` directory; it passed as recorded above.
 
-The previous round's report described the three copied request identity fields
-and non-partial extra-index check as sufficient. That description is superseded
-by this round: full snapshot-derived request equality and rejection of partial
-unique indexes are now covered and verified.
+The previous round's report described partial-index rejection without recording
+the remaining replacement/multiplicity gap. This round supersedes that wording:
+exact unique-index semantics, including origin and multiplicity, are now covered
+and verified.
 
 ## Not run / unresolved
 

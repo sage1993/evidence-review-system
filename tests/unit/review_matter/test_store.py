@@ -269,3 +269,49 @@ def test_reopened_store_rejects_partial_extra_unique_matter_run_constraint(tmp_p
 
     with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
         MatterStore(database)
+
+
+def test_reopened_store_rejects_partial_replacement_of_global_run_constraint(tmp_path) -> None:
+    """A partial run-id index cannot replace the required global uniqueness."""
+    database = tmp_path / "partial-replacement-run-id.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formal_run_bindings")
+        connection.execute(
+            """
+            CREATE TABLE formal_run_bindings (
+                matter_id TEXT NOT NULL,
+                matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                snapshot_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                packet_sha256 TEXT NOT NULL CHECK (length(packet_sha256) = 64),
+                PRIMARY KEY (matter_id, snapshot_id),
+                FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT,
+                FOREIGN KEY (snapshot_id) REFERENCES formalization_snapshots(snapshot_id)
+                    ON DELETE RESTRICT
+            )
+            """
+        )
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_partial_run_id "
+            "ON formal_run_bindings(run_id) WHERE matter_revision = 1"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
+
+
+def test_reopened_store_rejects_redundant_partial_allowed_unique_signature(tmp_path) -> None:
+    """A partial duplicate of the required run-id index is still invalid."""
+    database = tmp_path / "duplicate-partial-run-id.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_duplicate_partial_run_id "
+            "ON formal_run_bindings(run_id) WHERE matter_revision >= 1"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
