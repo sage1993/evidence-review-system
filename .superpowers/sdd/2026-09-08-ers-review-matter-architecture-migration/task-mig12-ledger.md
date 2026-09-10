@@ -64,5 +64,14 @@
   authority `RuntimeError` is converted to the canonical CLI exit code 2 with
   its stable reason.
 - Adjacent Matter/navigation/formal CLI suite: 192 passed in 45.15s.
-- Final exact-head pytest, static, documentation, and diff gates remain to be
-  rerun after the fix-round implementation/report commit.
+- Fix-round exact-head implementation commit:
+  `2f6af66e2353a68a63d988abf8f8c265a750b0ba`.
+- Exact-head focused CLI flow: 11 passed in 2.02s; adjacent
+  Matter/navigation/formal CLI suite: 192 passed in 45.80s.
+- Exact-head full Python 3.13 pytest: 2106 passed, 1 skipped in 377.81s.
+- Exact-head Ruff, mypy `src`, mypy `--platform win32 src`, compileall, and
+  `git diff --check`: PASS. Both mypy runs checked 260 source files.
+- Exact-head source-tree documentation validation: PASS; 50 documents,
+  errors=0, warnings=145. The initial invocation against an unrelated
+  installed checkout returned `SOURCE_MISMATCH`; the corrected source-tree
+  invocation with this worktree's `src` on `PYTHONPATH` passed.

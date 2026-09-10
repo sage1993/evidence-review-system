@@ -60,8 +60,25 @@ stable CLI failure path.
 
 Fix-round RED: 8 failed and 2 passed in 2.22s. Fix-round GREEN: 11 passed in
 3.04s. Adjacent Matter/navigation/formal CLI regressions: 192 passed in
-45.15s. Final exact-head gates will be recorded after the implementation and
-this report/ledger update are committed.
+45.15s.
+
+Fix-round exact-head verification at implementation commit
+`2f6af66e2353a68a63d988abf8f8c265a750b0ba`:
+
+- Focused CLI flow: 11 passed in 2.02s.
+- Adjacent Matter/navigation/formal CLI regressions: 192 passed in 45.80s.
+- Full Python 3.13 pytest: 2106 passed, 1 skipped in 377.81s.
+- Ruff: PASS.
+- mypy `src`: PASS, 260 source files.
+- mypy `--platform win32 src`: PASS, 260 source files.
+- compileall (`src scripts web_runtime tests`): PASS.
+- Source-tree documentation validation: PASS, 50 documents, 0 errors, 145
+  warnings.
+- `git diff --check`: PASS.
+
+The first documentation invocation selected an unrelated installed checkout and
+returned `SOURCE_MISMATCH`; the source-tree invocation with this worktree's
+`src` on `PYTHONPATH` passed and is the recorded gate result.
 
 ## Not run
 
