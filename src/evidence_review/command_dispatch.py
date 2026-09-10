@@ -269,6 +269,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.review_stage == "import-decision":
                 return _review_import_decision(args)
             raise RuntimeError("unreachable review command state")
+    if arguments and arguments[0] == "review-matter":
+        return runtime_handlers.dispatch(arguments)
     if len(arguments) < 2 or arguments[0] != "rules":
         return runtime_handlers.dispatch(arguments)
     if arguments[1] not in {"build-active-manifest", "select"}:
