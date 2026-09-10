@@ -60,17 +60,8 @@ def _issue(
             for index, item in enumerate(depends_on)
         ),
     )
-    decode_review_matter(
-        review_matter_document(
-            ReviewMatter(
-                matter_id="MATTER-VALIDATION",
-                title="Matter validation",
-                revision=1,
-                issues=(issue,),
-                source_bindings=(),
-            )
-        )
-    )
+    if issue.issue_id in issue.depends_on:
+        raise ValueError("issue cannot depend on itself")
     return issue
 
 
@@ -138,9 +129,11 @@ class ReviewMatterService:
 
     def create(self, *, matter_id: str, title: str) -> ReviewMatter:
         """Create one distinct mutable Matter at the explicitly supplied workspace."""
+        validated_matter_id = self._validated_matter_id(matter_id)
+        validated_title = expect_string(title, "title")
         with self._create_store() as store:
             return store.create(
-                matter_id=self._validated_matter_id(matter_id), title=title
+                matter_id=validated_matter_id, title=validated_title
             )
 
     def status(self, *, matter_id: str) -> ReviewMatter:
@@ -168,6 +161,18 @@ class ReviewMatterService:
             depends_on=depends_on,
         )
         with self._existing_store() as store:
+            matter = store.load(validated_matter_id)
+            decode_review_matter(
+                review_matter_document(
+                    ReviewMatter(
+                        matter_id=matter.matter_id,
+                        title=matter.title,
+                        revision=matter.revision,
+                        issues=(*matter.issues, issue),
+                        source_bindings=matter.source_bindings,
+                    )
+                )
+            )
             projection = append_matter_event(
                 store,
                 validated_matter_id,

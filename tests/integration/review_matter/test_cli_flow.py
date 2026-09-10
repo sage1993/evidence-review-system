@@ -163,6 +163,119 @@ def test_review_matter_cli_rejects_stale_revision_without_partial_mutation(
     assert matter.issues == ()
 
 
+def test_invalid_create_id_does_not_create_matter_store(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    code, _result, error = _run(
+        [
+            "review-matter",
+            "create",
+            "--workspace",
+            str(workspace),
+            "--matter-id",
+            "bad/id",
+            "--title",
+            "Review",
+        ],
+        capsys,
+    )
+
+    assert code == 2
+    assert "matter_id" in error
+    assert not (workspace / "matter.sqlite").exists()
+    assert tuple(workspace.iterdir()) == ()
+
+
+def test_add_issue_accepts_dependency_on_existing_issue(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    common = ["--workspace", str(workspace), "--matter-id", "MATTER-001"]
+
+    code, _result, error = _run(
+        ["review-matter", "create", *common, "--title", "Review"], capsys
+    )
+    assert code == 0, error
+
+    code, _result, error = _run(
+        [
+            "review-matter",
+            "add-issue",
+            *common,
+            "--expected-revision",
+            "1",
+            "--issue-id",
+            "ISSUE-001",
+            "--question",
+            "Check width",
+        ],
+        capsys,
+    )
+    assert code == 0, error
+
+    code, result, error = _run(
+        [
+            "review-matter",
+            "add-issue",
+            *common,
+            "--expected-revision",
+            "2",
+            "--issue-id",
+            "ISSUE-002",
+            "--question",
+            "Check height after width",
+            "--depends-on",
+            "ISSUE-001",
+        ],
+        capsys,
+    )
+
+    assert code == 0, error
+    assert result["matter"]["revision"] == 3
+    assert result["matter"]["issues"][1]["depends_on"] == ["ISSUE-001"]
+
+
+def test_add_issue_rejects_self_dependency_without_mutation(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    common = ["--workspace", str(workspace), "--matter-id", "MATTER-001"]
+
+    code, _result, error = _run(
+        ["review-matter", "create", *common, "--title", "Review"], capsys
+    )
+    assert code == 0, error
+
+    code, _result, error = _run(
+        [
+            "review-matter",
+            "add-issue",
+            *common,
+            "--expected-revision",
+            "1",
+            "--issue-id",
+            "ISSUE-001",
+            "--question",
+            "Self-dependent issue",
+            "--depends-on",
+            "ISSUE-001",
+        ],
+        capsys,
+    )
+
+    assert code == 2
+    assert "issue cannot depend on itself" in error
+    with MatterStore(workspace / "matter.sqlite") as store:
+        matter = store.load("MATTER-001")
+    assert matter.revision == 1
+    assert matter.issues == ()
+
+
 @pytest.mark.parametrize("stage", [
     "status",
     "add-issue",
