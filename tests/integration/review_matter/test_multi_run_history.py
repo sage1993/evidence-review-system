@@ -9,6 +9,10 @@ import pytest
 from evidence_review.abstention.finalizer import finalize_run
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.current_review_binding import (
+    bind_current_review,
+    resolve_current_review,
+)
 from evidence_review.review_matter.formal_run_binding import (
     bind_formal_run,
     list_formal_runs,
@@ -157,6 +161,35 @@ def test_one_matter_binds_two_verified_formal_runs_in_revision_order(
     ) == (first_binding, second_binding)
     assert (workspace / "runs" / first_run_id / "final-review-packet.json").is_file()
     assert (workspace / "runs" / second_run_id / "final-review-packet.json").is_file()
+
+
+def test_current_review_accepts_a_correctly_bound_formal_run_from_separate_roots(
+    tmp_path: Path,
+) -> None:
+    workspace, store, first = _matter_with_first_snapshot(tmp_path)
+    run_id, packet_sha256 = _finalized_formal_run(workspace, first)
+    bind_formal_run(
+        store,
+        "MATTER-SNAP-1",
+        first.snapshot_id,
+        run_id,
+        packet_sha256,
+        workspace_root=workspace,
+    )
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+
+    binding = bind_current_review(
+        repository_root,
+        run_id,
+        packet_sha256,
+        workspace_root=workspace,
+    )
+    resolved = resolve_current_review(repository_root, workspace_root=workspace)
+
+    assert binding.run_id == run_id
+    assert resolved.run_id == run_id
+    assert resolved.packet_sha256 == packet_sha256
 
 
 def test_formal_run_lineage_rejects_nonexistent_direct_wrong_snapshot_missing_and_hash_mismatch(

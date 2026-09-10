@@ -298,6 +298,9 @@ class MatterStore:
         if (
             "CHECK (MATTER_REVISION >= 1)" not in normalized_sql
             or "CHECK (LENGTH(PACKET_SHA256) = 64)" not in normalized_sql
+            or "PRIMARY KEY (MATTER_ID, SNAPSHOT_ID)" not in normalized_sql
+            or "UNIQUE (RUN_ID)" not in normalized_sql
+            or " ON CONFLICT " in f" {normalized_sql} "
         ):
             raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
 

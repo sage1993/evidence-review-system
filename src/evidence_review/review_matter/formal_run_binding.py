@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.review import ReviewPacket
 from evidence_review.contracts.run_context import compute_run_id_from_request
-from evidence_review.contracts.validation import expect_sha256
+from evidence_review.contracts.validation import expect_int, expect_mapping, expect_sha256
 from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
@@ -28,7 +29,7 @@ from evidence_review.review_matter.snapshot import (
     FormalizationSnapshot,
     load_formalization_snapshot,
 )
-from evidence_review.review_matter.store import MatterStore
+from evidence_review.review_matter.store import MatterStore, MatterStoreError
 from evidence_review.review_run import _decode_request
 
 _RUN_ID = re.compile(r"^RUN-[0-9A-F]{20}$")
@@ -87,10 +88,84 @@ def _verify_formal_run(
 ) -> None:
     """Authenticate one finalized Formal Run and its exact Matter request lineage."""
     try:
+        verify_formal_run_authority(
+            workspace_root,
+            run_id=run_id,
+            packet_sha256=packet_sha256,
+            expected_snapshot=snapshot,
+        )
+    except ValueError as error:
+        raise ValueError("FORMAL_RUN_BINDING_RUN_INVALID") from error
+
+
+def _request_snapshot(
+    workspace: Path,
+    normalized_request: Mapping[str, object],
+    *,
+    require_matter_lineage: bool,
+) -> FormalizationSnapshot | None:
+    inputs = expect_mapping(normalized_request.get("inputs"), "review request inputs")
+    lineage_fields = {
+        "formalization_snapshot_id",
+        "matter_id",
+        "matter_revision",
+    }
+    present_fields = lineage_fields.intersection(inputs)
+    if not present_fields:
+        if require_matter_lineage:
+            raise ValueError("FORMAL_RUN_MATTER_LINEAGE_MISSING")
+        return None
+    if present_fields != lineage_fields:
+        raise ValueError("FORMAL_RUN_MATTER_LINEAGE_INCOMPLETE")
+
+    matter_id = validate_identifier(inputs["matter_id"], "matter_id")
+    snapshot_id = validate_identifier(
+        inputs["formalization_snapshot_id"], "formalization_snapshot_id"
+    )
+    matter_revision = expect_int(inputs["matter_revision"], "matter_revision")
+    if matter_revision < 1:
+        raise ValueError("FORMAL_RUN_MATTER_REVISION_INVALID")
+    matter_path = verified_regular_file_below(
+        workspace,
+        ("matter.sqlite",),
+        field="formal run Matter store",
+    )
+    with MatterStore(matter_path) as store:
+        matter = store.load(matter_id)
+        snapshot = load_formalization_snapshot(store, snapshot_id)
+    if (
+        matter.matter_id,
+        snapshot.matter_id,
+        snapshot.matter_revision,
+    ) != (matter_id, matter_id, matter_revision) or matter.revision < matter_revision:
+        raise ValueError("FORMAL_RUN_MATTER_LINEAGE_MISMATCH")
+    return snapshot
+
+
+def verify_formal_run_authority(
+    workspace_root: Path,
+    *,
+    run_id: str,
+    packet_sha256: str,
+    expected_snapshot: FormalizationSnapshot | None = None,
+    require_matter_lineage: bool = False,
+) -> tuple[Path, ReviewPacket, dict[str, object]]:
+    """Verify final artifacts and any persisted Matter lineage they declare.
+
+    Direct finalized runs without Matter identity remain valid for the lower-level
+    current-review selector. If a request declares Matter lineage, every field is
+    loaded from the workspace Matter store and the complete request is rebuilt from
+    that persisted snapshot; copied request fields are never used as authority.
+    """
+    try:
+        checked_run_id = validate_identifier(run_id, "run_id")
+        if not _RUN_ID.fullmatch(checked_run_id):
+            raise ValueError("run_id must be a Formal Run identifier")
+        checked_packet_sha256 = expect_sha256(packet_sha256, "packet_sha256")
         workspace = verified_regular_directory(workspace_root, field="formal run workspace")
         runs = verified_regular_directory(workspace / "runs", field="formal run runs")
         run_directory = verified_regular_directory(
-            runs / run_id,
+            runs / checked_run_id,
             field="formal run directory",
         )
         packet_path = verified_regular_file_below(
@@ -99,17 +174,36 @@ def _verify_formal_run(
             field="formal run packet",
         )
         packet, normalized_request = verify_finalized_run_artifacts(run_directory)
-        expected_request = _expected_formal_request(workspace, snapshot)
+        snapshot = expected_snapshot or _request_snapshot(
+            workspace,
+            normalized_request,
+            require_matter_lineage=require_matter_lineage,
+        )
+        expected_request = (
+            None if snapshot is None else _expected_formal_request(workspace, snapshot)
+        )
+        packet_bytes = packet_path.read_bytes()
         if (
-            compute_run_id_from_request(normalized_request) != run_id
-            or packet.run_id != run_id
-            or packet_path.read_bytes() != dump_bytes(review_packet_document(packet))
-            or hashlib.sha256(packet_path.read_bytes()).hexdigest() != packet_sha256
-            or dump_bytes(normalized_request) != dump_bytes(expected_request)
+            compute_run_id_from_request(normalized_request) != checked_run_id
+            or packet.run_id != checked_run_id
+            or packet_bytes != dump_bytes(review_packet_document(packet))
+            or hashlib.sha256(packet_bytes).hexdigest() != checked_packet_sha256
+            or (
+                expected_request is not None
+                and dump_bytes(normalized_request) != dump_bytes(expected_request)
+            )
         ):
             raise ValueError("formal run identity does not match finalized artifacts")
-    except (FileNotFoundError, OSError, TypeError, ValueError) as error:
-        raise ValueError("FORMAL_RUN_BINDING_RUN_INVALID") from error
+        return run_directory, packet, normalized_request
+    except (
+        FileNotFoundError,
+        OSError,
+        TypeError,
+        ValueError,
+        MatterStoreError,
+        sqlite3.Error,
+    ) as error:
+        raise ValueError("FORMAL_RUN_AUTHORITY_INVALID") from error
 
 
 def verify_finalized_run_artifacts(
@@ -298,6 +392,7 @@ __all__ = [
     "FormalRunBinding",
     "bind_formal_run",
     "list_formal_runs",
+    "verify_formal_run_authority",
     "verify_finalized_run_artifacts",
     "verify_finalized_run_request",
 ]

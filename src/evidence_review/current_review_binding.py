@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -10,7 +9,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from evidence_review.abstention.finalizer import review_packet_document
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.review import ReviewPacket
@@ -19,9 +17,7 @@ from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
 )
-from evidence_review.review_matter.formal_run_binding import (
-    verify_finalized_run_artifacts,
-)
+from evidence_review.review_matter.formal_run_binding import verify_formal_run_authority
 
 CURRENT_REVIEW_BINDING_FORMAT = "evidence-review/current-review-binding"
 CURRENT_REVIEW_BINDING_VERSION = 1
@@ -152,23 +148,14 @@ def _resolve_binding(
             ("final-review-packet.json",),
             field="current review packet",
         )
-        request_path = verified_regular_file_below(
-            run_directory,
-            ("review-request.json",),
-            field="current review request",
-        )
         before = packet_path.read_bytes()
-        request_before = request_path.read_bytes()
-        packet, _normalized_request = verify_finalized_run_artifacts(run_directory)
+        _verified_run_directory, packet, _normalized_request = verify_formal_run_authority(
+            workspace_root,
+            run_id=binding.run_id,
+            packet_sha256=binding.packet_sha256,
+        )
         after = packet_path.read_bytes()
-        request_after = request_path.read_bytes()
-        if (
-            before != after
-            or request_before != request_after
-            or after != dump_bytes(review_packet_document(packet))
-            or packet.run_id != binding.run_id
-            or hashlib.sha256(after).hexdigest() != binding.packet_sha256
-        ):
+        if before != after or packet.run_id != binding.run_id:
             raise ValueError("current review packet identity changed")
     except (FileNotFoundError, OSError, ValueError) as error:
         raise ValueError("CURRENT_REVIEW_STALE") from error

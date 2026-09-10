@@ -37,9 +37,15 @@ def _request() -> dict[str, object]:
     }
 
 
-def _finalized_run(repository_root: Path, *, question: str) -> tuple[str, str, Path]:
+def _finalized_run(
+    repository_root: Path,
+    *,
+    question: str,
+    inputs: dict[str, object] | None = None,
+) -> tuple[str, str, Path]:
     request = _request()
     request["question"] = question
+    request["inputs"] = {} if inputs is None else inputs
     request_path = repository_root / f"{question}.json"
     request_path.write_bytes(dump_bytes(request))
     prepared = prepare_review_run(repository_root, request_path)
@@ -145,6 +151,46 @@ def test_current_review_resolves_a_workspace_scoped_run_from_a_separate_reposito
 
     assert binding.run_id == run_id
     assert resolved.run_directory.parent.parent == workspace_root
+
+
+def test_current_review_rejects_an_unbound_invented_matter_lineage(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    workspace_root = tmp_path / "workspace"
+    repository_root.mkdir()
+    workspace_root.mkdir()
+    run_id, packet_sha256, _run_directory = _finalized_run(
+        workspace_root,
+        question="Invented Matter lineage review",
+        inputs={
+            "formalization_snapshot_id": "SNAP-INVENTED",
+            "matter_id": "MATTER-INVENTED",
+            "matter_revision": 1,
+        },
+    )
+    state_directory = repository_root / ".ers"
+    state_directory.mkdir()
+    (state_directory / "current-review.json").write_bytes(
+        dump_bytes(
+            {
+                "format": "evidence-review/current-review-binding",
+                "version": 1,
+                "run_id": run_id,
+                "packet_sha256": packet_sha256,
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
+        bind_current_review(
+            repository_root,
+            run_id,
+            packet_sha256,
+            workspace_root=workspace_root,
+        )
+    with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
+        resolve_current_review(repository_root, workspace_root=workspace_root)
 
 
 def test_current_review_resolution_rejects_tampered_canonical_request(

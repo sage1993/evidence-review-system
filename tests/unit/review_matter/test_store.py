@@ -315,3 +315,37 @@ def test_reopened_store_rejects_redundant_partial_allowed_unique_signature(tmp_p
 
     with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
         MatterStore(database)
+
+
+@pytest.mark.parametrize("constraint", ["PRIMARY KEY", "UNIQUE"])
+@pytest.mark.parametrize("policy", ["IGNORE", "REPLACE", "FAIL", "ROLLBACK"])
+def test_reopened_store_rejects_non_abort_formal_run_constraint_policy(
+    tmp_path, constraint, policy
+) -> None:
+    """Lineage constraints must retain SQLite's default ABORT policy."""
+    database = tmp_path / f"{constraint.lower().replace(' ', '-')}-{policy.lower()}.sqlite"
+    store = MatterStore(database)
+    store.close()
+    primary_policy = f" ON CONFLICT {policy}" if constraint == "PRIMARY KEY" else ""
+    unique_policy = f" ON CONFLICT {policy}" if constraint == "UNIQUE" else ""
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formal_run_bindings")
+        connection.execute(
+            f"""
+            CREATE TABLE formal_run_bindings (
+                matter_id TEXT NOT NULL,
+                matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                snapshot_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                packet_sha256 TEXT NOT NULL CHECK (length(packet_sha256) = 64),
+                PRIMARY KEY (matter_id, snapshot_id){primary_policy},
+                UNIQUE (run_id){unique_policy},
+                FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT,
+                FOREIGN KEY (snapshot_id) REFERENCES formalization_snapshots(snapshot_id)
+                    ON DELETE RESTRICT
+            )
+            """
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
