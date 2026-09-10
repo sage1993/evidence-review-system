@@ -177,6 +177,8 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> tuple[str, byte
             "tile manifest",
         )
         records = _sequence(manifest.get("tiles", []), "tile manifest.tiles")
+    except PermissionError:
+        return "ASSET_PERMISSION_DENIED", None
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
         return "ASSET_INVALID", None
     for index, raw_record in enumerate(records):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import subprocess
 from pathlib import Path
 
 from evidence_review.review_packet import case_visual_asset_server
@@ -97,6 +99,84 @@ def test_issue_156_protected_projection_declares_file_launcher_fallback(
     assert 'window.location.protocol === "file:"' in html
 
 
+def test_issue_156_file_opened_protected_viewer_does_not_load_protected_rasters() -> None:
+    repository_root = Path(__file__).parents[3]
+    controller = (
+        repository_root / "src" / "evidence_review" / "review_packet" / "assets" / "review.js"
+    ).read_text(encoding="utf-8")
+    harness = r'''
+function image(source) {
+  return {
+    dataset: {pageSrc: source},
+    attributes: {},
+    getAttribute(name) { return this.attributes[name] || null; },
+    setAttribute(name, value) { this.attributes[name] = value; }
+  };
+}
+function page(sourceId, source) {
+  const pageImage = image(source);
+  return {
+    dataset: {sourceId},
+    querySelector(selector) {
+      return selector === "img[data-page-image-source]" ? pageImage : null;
+    },
+    pageImage
+  };
+}
+const protectedPresentation = {};
+const guidance = {hidden: true};
+const pages = [
+  page("REV-156", "./page-images/REV-156/1/hash"),
+  page("REV-156", "./page-images/REV-156/2/hash"),
+  page("REV-156", "./page-images/REV-156/3/hash")
+];
+global.window = {
+  location: {protocol: "file:"},
+  addEventListener() {},
+  print() {},
+  prompt() { return ""; }
+};
+global.fetch = async () => { throw new Error("offline"); };
+global.document = {
+  head: {appendChild() {}},
+  createElement() { return {}; },
+  getElementById() { return null; },
+  querySelector(selector) {
+    if (selector === '[data-protected-presentation="true"]') return protectedPresentation;
+    if (selector === "[data-protected-file-guidance]") return guidance;
+    return null;
+  },
+  querySelectorAll(selector) {
+    if (selector === '.evidence-page[data-source-id="REV-156"]') return pages;
+    return [];
+  }
+};
+eval(controller);
+if (guidance.hidden) throw new Error("file launcher warning was not shown");
+window.ensurePageImageLoaded(pages[0]);
+window.prefetchAdjacentPages(pages[1]);
+if (pages.some((page) => page.pageImage.getAttribute("src"))) {
+  throw new Error("file-opened protected viewer loaded a raster");
+}
+window.location.protocol = "http:";
+window.ensurePageImageLoaded(pages[0]);
+window.prefetchAdjacentPages(pages[1]);
+if (pages.some((page) => !page.pageImage.getAttribute("src"))) {
+  throw new Error("HTTP protected viewer did not load active and adjacent rasters");
+}
+'''
+
+    completed = subprocess.run(
+        ["node", "-"],
+        input=f"const controller = {json.dumps(controller)};\n{harness}",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_issue_156_case_asset_distinguishes_cold_cache_from_readable_cache(
     tmp_path: Path,
 ) -> None:
@@ -144,5 +224,39 @@ def test_issue_156_case_asset_reports_elevated_created_cache_denial(
     monkeypatch.setattr(Path, "read_bytes", deny_read)
 
     denied = case_visual_asset_server._page_asset(tmp_path, route)
+
+    assert denied == ("ASSET_PERMISSION_DENIED", None)
+
+
+def test_issue_156_tile_manifest_read_permission_denial_is_not_invalid(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manifest_path = (
+        tmp_path
+        / "case-page-tiles-v1"
+        / "ATT-156"
+        / "page-0001"
+        / "manifest.json"
+    )
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text('{"tiles": []}', encoding="utf-8")
+    route = case_visual_asset_server._CaseAssetRoute(
+        run_id=RUN_ID,
+        token="a" * 43,
+        kind="tile",
+        attachment_id="ATT-156",
+        page_number=1,
+        image_sha256=ASSET_HASH,
+        tile_x=0,
+        tile_y=0,
+    )
+
+    def deny_manifest_read(_path: Path, *, encoding: str) -> str:
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(Path, "read_text", deny_manifest_read)
+
+    denied = case_visual_asset_server._tile_asset(tmp_path, route)
 
     assert denied == ("ASSET_PERMISSION_DENIED", None)
