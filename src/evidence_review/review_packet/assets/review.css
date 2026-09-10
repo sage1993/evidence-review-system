@@ -948,6 +948,81 @@ pre {
 #packet-global-review {
   border-radius: 9px;
 }
+
+/* Unified review shell: the landmarks remain stable across reference and drawing modes. */
+.review-workspace[data-review-shell="unified"] {
+  grid-template-areas: none;
+}
+.review-shell-region {
+  min-width: 0;
+}
+.review-shell-region[data-review-shell-region="status-question"],
+.review-shell-region[data-review-shell-region="detail-issue-results"],
+.review-shell-region[data-review-shell-region="human-decision"],
+.review-shell-region[data-review-shell-region="audit"] {
+  grid-column: 1 / -1;
+}
+.review-shell-region[data-review-shell-region="evidence-workspace"] {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+}
+.review-shell-region[data-review-shell-region="evidence-workspace"] #review-items,
+.review-shell-region[data-review-shell-region="evidence-workspace"] #evidence-viewer {
+  grid-area: auto;
+}
+.review-shell-region[data-review-shell-region="evidence-workspace"] #case-visual-review {
+  grid-column: 1 / -1;
+  height: min(72vh, 820px);
+  min-height: 560px;
+}
+.review-shell-region[data-review-shell-region="human-decision"] #decision-form {
+  max-width: 720px;
+}
+/* CASE_DRAWING keeps Human Decision in an accessible off-canvas panel. */
+body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
+  position: fixed;
+  right: 12px;
+  top: 50%;
+  z-index: 30;
+  width: min(380px, calc(100vw - 48px));
+  max-height: 86vh;
+  overflow: auto;
+  transform: translate(calc(100% + 28px), -50%) !important;
+  transition: none;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+  background: #fff;
+  pointer-events: none !important;
+  visibility: hidden;
+  opacity: 0;
+}
+body[data-visual-decision-open="true"]:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
+  transform: translate(0, -50%) !important;
+  pointer-events: auto !important;
+  visibility: visible;
+  opacity: 1;
+}
+body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form .visual-decision-close {
+  display: block;
+  margin: 8px 8px 0 auto;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  font-size: 11px;
+}
+@media (max-width: 720px) {
+  .review-shell-region[data-review-shell-region="evidence-workspace"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-shell-region[data-review-shell-region="evidence-workspace"] #case-visual-review {
+    min-height: 500px;
+  }
+}
 @media (min-width: 1101px) {
   #review-items {
     display: flex;
@@ -1035,6 +1110,23 @@ pre {
 
   #decision-form {
     position: static;
+  }
+
+  body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    transform: none !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    opacity: 1;
+    box-shadow: none;
   }
 
   .evidence-page {

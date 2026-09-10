@@ -12,7 +12,6 @@ from evidence_review.review_packet.presentation import (
     localized_status,
 )
 from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
-from evidence_review.review_packet.render_issue_results import render_issue_results
 
 # ruff: noqa: E501
 
@@ -121,8 +120,6 @@ def _visual_grid_span(visual_review: str) -> str:
 
 
 def render_status_band(model: Mapping[str, object]) -> str:
-    if _visual_workspace(model):
-        return ""
     raw_status = str(model.get("display_status", model.get("status", "")))
     return "".join(
         (
@@ -142,8 +139,6 @@ def render_status_band(model: Mapping[str, object]) -> str:
 
 
 def render_summary(model: Mapping[str, object]) -> str:
-    if _visual_workspace(model):
-        return ""
     summary = _mapping(model.get("summary"))
     citation_count = summary.get("citation_count", 0)
     missing = summary.get("missing_input_count", 0)
@@ -183,7 +178,6 @@ def render_summary(model: Mapping[str, object]) -> str:
             _text(localized_status(model.get("display_status", model.get("status")))),
             "</span>",
             "</section>",
-            render_issue_results(model),
         )
     )
 

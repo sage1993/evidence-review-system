@@ -19,7 +19,14 @@ def _inline_controller(html: str) -> str:
 
 def _run_node_harness(controller: str, harness: str) -> subprocess.CompletedProcess[str]:
     source = f"const controller = {json.dumps(controller)};\n{harness}"
-    return subprocess.run(["node", "-"], input=source, text=True, capture_output=True, check=False)
+    return subprocess.run(
+        ["node", "-"],
+        input=source,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+    )
 
 
 def test_decision_form_exposes_only_decision_and_notes_as_human_inputs(tmp_path: Path) -> None:
@@ -505,6 +512,204 @@ if (directTransform.style.transform !== "translate(0px,0px) scale(1)") throw new
 card2.listeners.click();
 if (!relatedOnlyItem.classList.contains("is-active")) throw new Error("related reference fallback was not activated");
 if (!relatedOnlyDetails.open) throw new Error("related reference details remained closed");
+"""
+    completed = _run_node_harness(controller, harness)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_issue_152_fit_modes_keep_portrait_width_and_landscape_native_page_centered() -> None:
+    """Fit modes must translate the centered SVG page as well as scale it."""
+    controller = _inline_controller(render_case_visual_review(_typed_reference_model()))
+    harness = r"""
+function classList() { return { toggle() {}, add() {}, remove() {} }; }
+function control() { return { listeners: {}, addEventListener(type, handler) { this.listeners[type] = handler; } }; }
+function stage(width, height) {
+  const transform = { style: {} };
+  return {
+    transform, classList: classList(),
+    getBoundingClientRect() { return {left: 0, top: 0, width, height}; },
+    querySelector(selector) { return selector === "[data-case-transform]" ? transform : null; },
+    querySelectorAll() { return []; }, addEventListener() {}, setPointerCapture() {}, releasePointerCapture() {}
+  };
+}
+function page(key, width, height, viewportWidth, viewportHeight) {
+  const pageStage = stage(viewportWidth, viewportHeight);
+    return {
+      dataset: {casePage: key, pageWidth: String(width), pageHeight: String(height)},
+      classList: classList(), hidden: false, pageStage,
+      contains(node) { return node === pageStage; },
+      querySelector(selector) { return selector === "[data-case-stage]" ? pageStage : null; },
+      querySelectorAll() { return []; }
+  };
+}
+const portrait = page("portrait", 100, 120, 900, 600);
+const landscape = page("landscape", 120, 100, 600, 900);
+const next = control(), fitScreen = control(), fitWidth = control(), original = control();
+const root = {
+  dataset: {},
+  querySelectorAll(selector) {
+    if (selector === "[data-case-page]") return [portrait, landscape];
+    return [];
+  },
+  querySelector(selector) {
+    if (selector === "[data-case-next]") return next;
+    if (selector === "[data-case-fit-screen]") return fitScreen;
+    if (selector === "[data-case-fit-width]") return fitWidth;
+    if (selector === "[data-case-original-size]") return original;
+    return null;
+  }
+};
+global.window = { addEventListener() {}, prompt() { return ""; } };
+global.document = { body: {dataset: {}}, addEventListener() {},
+  getElementById(id) { return id === "case-visual-review" ? root : null; } };
+global.requestAnimationFrame = (callback) => { callback(); return 1; };
+eval(controller);
+if (portrait.pageStage.transform.style.transform !== "translate(-360px,-240px) scale(1.8)") {
+  throw new Error("portrait fit-width did not retain the full page width");
+}
+fitScreen.listeners.click();
+if (portrait.pageStage.transform.style.transform !== "translate(0px,0px) scale(1)") {
+  throw new Error("portrait fit-screen did not restore the centered screen transform");
+}
+fitWidth.listeners.click();
+if (portrait.pageStage.transform.style.transform !== "translate(-360px,-240px) scale(1.8)") {
+  throw new Error("portrait fit-width control did not restore the centered width transform");
+}
+next.listeners.click();
+original.listeners.click();
+if (landscape.pageStage.transform.style.transform !== "translate(240px,360px) scale(0.2)") {
+  throw new Error("landscape original-size did not center the native page");
+}
+"""
+    completed = _run_node_harness(controller, harness)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_issue_152_drawing_print_cascade_returns_human_decision_to_document_flow() -> None:
+    """Drawing-only drawer placement must not survive the print cascade."""
+    css = (
+        Path(__file__).parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.css"
+    ).read_text(encoding="utf-8")
+    print_css = css[css.index("@media print {") :]
+
+    assert re.search(
+        r'body:has\(.review-workspace\[data-review-workspace-mode="reference-subject"\]\)\s*'
+        r'#decision-form\s*\{'
+        r'(?=[^}]*position:\s*static)'
+        r'(?=[^}]*top:\s*auto)'
+        r'(?=[^}]*right:\s*auto)'
+        r'(?=[^}]*bottom:\s*auto)'
+        r'(?=[^}]*left:\s*auto)'
+        r'(?=[^}]*width:\s*auto)'
+        r'(?=[^}]*max-width:\s*none)'
+        r'(?=[^}]*max-height:\s*none)'
+        r'(?=[^}]*overflow:\s*visible)'
+        r'(?=[^}]*transform:\s*none\s*!important)'
+        r'(?=[^}]*visibility:\s*visible\s*!important)'
+        r'(?=[^}]*opacity:\s*1)'
+        r'(?=[^}]*pointer-events:\s*auto\s*!important)'
+        r'(?=[^}]*box-shadow:\s*none)',
+        print_css,
+    )
+
+
+def test_issue_152_unified_drawing_decision_respects_full_render_parser_order() -> None:
+    """The full drawing document marks the later decision form hidden before the opener runs."""
+    model = _typed_reference_model()
+    model.update(
+        {
+            "run_id": "RUN-152-DECISION",
+            "status": "READY_FOR_HUMAN_REVIEW",
+            "display_status": "READY_FOR_HUMAN_REVIEW",
+            "question": "도면 검토 질문",
+            "review_items": [],
+            "calculations": [],
+            "rules": [],
+            "summary": {},
+            "audit": {},
+            "claims": [],
+        }
+    )
+    html = render_review_html(model, Path("."))
+    controller = next(
+        script
+        for script in re.findall(r"<script(?: [^>]*)?>(.*?)</script>", html, re.DOTALL)
+        if "data-case-decision-open" in script
+    )
+    decision_markup = '<section id="decision-form" aria-hidden="true" aria-labelledby="decision-heading">'
+    assert html.index("<script>" + controller + "</script>") < html.index(decision_markup)
+
+    assert re.search(
+        r'body:has\(.review-workspace\[data-review-workspace-mode="reference-subject"\]\)\s*'
+        r'#decision-form\s*\{\s*position:\s*fixed',
+        html,
+    )
+    assert re.search(
+        r'#case-visual-review\s+\.viewer-controls button\s*\{\s*'
+        r'width:\s*40px;\s*height:\s*40px;\s*min-height:\s*0',
+        html,
+    )
+    assert re.search(
+        r'#case-visual-review\s+\.finding-filter\s*\{\s*'
+        r'height:\s*32px;\s*min-height:\s*0',
+        html,
+    )
+    assert html.index("button,\ninput:not([type=\"radio\"]),\ntextarea {\n  min-height: 44px;") < html.index(
+        "#case-visual-review .viewer-controls button{width:40px;height:40px;min-height:0"
+    )
+
+    harness = r"""
+function control() { return {dataset: {}, listeners: {}, focusCount: 0, addEventListener(type, handler) { this.listeners[type] = handler; }, focus() { this.focusCount++; }}; }
+const opener = control(), backdrop = control(), focusTarget = control(), close = control();
+const form = {
+  attributes: {"aria-hidden": "true"}, close: null,
+  setAttribute(name, value) { this.attributes[name] = String(value); },
+  getAttribute(name) { return this.attributes[name] || null; },
+  querySelector(selector) {
+    if (selector === "[data-visual-decision-close]") return this.close;
+    return focusTarget;
+  },
+  prepend(node) { this.close = node; }
+};
+const root = { dataset: {},
+  querySelectorAll() { return []; },
+  querySelector(selector) {
+    if (selector === "[data-case-decision-open]") return opener;
+    if (selector === "[data-case-decision-backdrop]") return backdrop;
+    return null;
+  }
+};
+const documentListeners = {};
+let decisionForm = null;
+global.window = { addEventListener() {}, prompt() { return ""; } };
+global.document = {
+  body: {dataset: {}},
+  createElement() { return close; },
+  addEventListener(type, handler) { documentListeners[type] = handler; },
+  querySelector() { return null; },
+  querySelectorAll() { return []; },
+  getElementById(id) { if (id === "case-visual-review") return root; if (id === "decision-form") return decisionForm; return null; }
+};
+global.requestAnimationFrame = (callback) => { callback(); return 1; };
+eval(controller);
+if (decisionForm !== null) throw new Error("the decision form existed before its full-render parser position");
+decisionForm = form;
+if (form.getAttribute("aria-hidden") !== "true") throw new Error("full-render decision markup was not initially hidden from assistive technology");
+opener.listeners.click({currentTarget: opener});
+if (form.getAttribute("aria-hidden") !== "false" || focusTarget.focusCount !== 1) throw new Error("drawer did not open and focus its first control");
+documentListeners.keydown({key: "Escape"});
+if (form.getAttribute("aria-hidden") !== "true" || opener.focusCount !== 1) throw new Error("Escape did not close the drawer and restore focus");
+opener.listeners.click({currentTarget: opener});
+backdrop.listeners.click();
+if (form.getAttribute("aria-hidden") !== "true" || opener.focusCount !== 2) throw new Error("backdrop did not close the drawer and restore focus");
+opener.listeners.click({currentTarget: opener});
+form.close.listeners.click();
+if (form.getAttribute("aria-hidden") !== "true" || opener.focusCount !== 3) throw new Error("close button did not restore focus");
 """
     completed = _run_node_harness(controller, harness)
     assert completed.returncode == 0, completed.stderr

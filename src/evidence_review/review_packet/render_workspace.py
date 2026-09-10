@@ -11,12 +11,31 @@ def workspace_mode(model: Mapping[str, object]) -> str:
     return "reference-subject" if model.get("case_visual_review") is not None else "reference-only"
 
 
-def render_workspace(model: Mapping[str, object], content: str) -> str:
-    """Wrap one review projection in the shared workspace shell."""
+def render_workspace(
+    model: Mapping[str, object],
+    *,
+    status_question: str,
+    evidence_workspace: str,
+    detail_issue_results: str,
+    human_decision: str,
+    audit: str,
+) -> str:
+    """Render the common reviewer landmarks for every review presentation."""
     mode = escape(workspace_mode(model), quote=True)
     return (
         '<main class="review-workspace" data-review-workspace="unified" '
-        f'data-review-workspace-mode="{mode}">{content}</main>'
+        f'data-review-workspace-mode="{mode}" data-review-shell="unified">'
+        '<section class="review-shell-region" data-review-shell-region="status-question">'
+        f"{status_question}</section>"
+        '<section class="review-shell-region" data-review-shell-region="evidence-workspace">'
+        f"{evidence_workspace}</section>"
+        '<section class="review-shell-region" data-review-shell-region="detail-issue-results">'
+        f"{detail_issue_results}</section>"
+        '<section class="review-shell-region" data-review-shell-region="human-decision">'
+        f"{human_decision}</section>"
+        '<section class="review-shell-region" data-review-shell-region="audit">'
+        f"{audit}</section>"
+        "</main>"
     )
 
 

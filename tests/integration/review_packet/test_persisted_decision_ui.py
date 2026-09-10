@@ -23,6 +23,8 @@ def _model() -> dict[str, object]:
 def test_decision_panel_has_readonly_persisted_state_and_explicit_append_action() -> None:
     html = render_decision_form(_model())
 
+    assert '<section id="decision-form" aria-labelledby="decision-heading">' in html
+    assert '<section id="decision-form" aria-hidden="true"' not in html
     assert 'data-persisted-decision' in html
     assert 'data-persisted-reviewer' in html
     assert 'data-persisted-reviewed-at' in html
@@ -31,6 +33,15 @@ def test_decision_panel_has_readonly_persisted_state_and_explicit_append_action(
     assert 'data-add-decision' in html
     assert "추가 결정 기록" in html
     assert 'data-decision-editor' in html
+
+
+def test_drawing_decision_panel_can_start_hidden_without_changing_default_markup() -> None:
+    html = render_decision_form(_model(), initially_hidden=True)
+
+    assert (
+        '<section id="decision-form" aria-hidden="true" aria-labelledby="decision-heading">'
+        in html
+    )
 
 
 def test_review_script_hydrates_persisted_decision_and_refreshes_conflict() -> None:

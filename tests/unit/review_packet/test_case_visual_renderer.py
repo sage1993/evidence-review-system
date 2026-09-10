@@ -1,5 +1,7 @@
 import re
+from pathlib import Path
 
+from evidence_review.review_packet.html_renderer import render_review_html
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
 from evidence_review.review_packet.render_case_visual_lazy import (
     render_case_visual_review as render_lazy_case_visual_review,
@@ -220,6 +222,101 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert "https://" not in html
 
 
+def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None:
+    """A future ambiguous reset control must not replace the three view modes."""
+    html = render_case_visual_review(_model())
+
+    for control, label in (
+        ("data-case-fit-screen", "화면 맞춤"),
+        ("data-case-fit-width", "폭 맞춤"),
+        ("data-case-original-size", "원본 100%"),
+    ):
+        assert control in html
+        assert f'aria-label="{label}"' in html
+        assert f'title="{label}"' in html
+    affordances = [
+        re.search(rf'<button[^>]*{control}[^>]*>(.*?)</button>', html, re.DOTALL).group(1)
+        for control in ("data-case-fit-screen", "data-case-fit-width", "data-case-original-size")
+    ]
+    assert len(set(affordances)) == 3
+    assert "function fitScreen(stage)" in html
+    assert "function fitWidth(stage)" in html
+    assert "function originalSize(stage)" in html
+    assert "fitWidth(pages[0]?.querySelector('[data-case-stage]'))" in html
+    assert (
+        "#case-visual-review .viewer-controls button{width:40px;height:40px;"
+        "min-height:0;display:inline-flex;"
+        "align-items:center;justify-content:center;padding:0;line-height:0}"
+    ) in html
+    assert "#case-visual-review .finding-filter{height:32px;min-height:0" in html
+    assert ".case-visual-help{margin:0;padding:8px 12px" in html
+
+
+def test_issue_152_no_direct_reference_uses_subject_workspace_without_empty_pane() -> None:
+    """An unavailable direct comparison must not consume half of the drawing workspace."""
+    model = _model()
+    visual = model["case_visual_review"]
+    assert isinstance(visual, dict)
+    finding = visual["findings"][0]
+    assert isinstance(finding, dict)
+    finding["direct_claim_ids"] = []
+
+    html = render_case_visual_review(model)
+
+    assert 'data-reference-available="false"' in html
+    assert 'class="reference-unavailable"' in html
+    assert 'class="reference-viewer"' not in html
+    assert re.search(r'<button[^>]+data-case-divider', html) is None
+    assert (
+        '#case-visual-review[data-reference-available="false"] '
+        ".comparison-workspace{grid-template-columns:minmax(0,1fr)}"
+    ) in html
+
+
+def test_issue_152_full_renderers_share_named_review_shell_regions() -> None:
+    """Visual mode must retain the same reviewer landmarks as reference-only mode."""
+    drawing_model = _model()
+    drawing_model.update(
+        {
+            "run_id": "RUN-152",
+            "status": "READY_FOR_HUMAN_REVIEW",
+            "display_status": "READY_FOR_HUMAN_REVIEW",
+            "question": "도면 검토 질문",
+            "review_items": [],
+            "calculations": [],
+            "rules": [],
+            "summary": {},
+            "audit": {},
+            "claims": [],
+        }
+    )
+    reference_model = dict(drawing_model)
+    reference_model.pop("case_visual_review")
+
+    drawing_html = render_review_html(drawing_model, Path("."))
+    reference_html = render_review_html(reference_model, Path("."))
+
+    expected_regions = (
+        "status-question",
+        "evidence-workspace",
+        "detail-issue-results",
+        "human-decision",
+        "audit",
+    )
+    for html in (drawing_html, reference_html):
+        assert 'data-review-shell="unified"' in html
+        assert [
+            match.group(1)
+            for match in re.finditer(
+                r'<section[^>]+data-review-shell-region="([^"]+)"', html
+            )
+        ] == list(expected_regions)
+        assert 'id="review-status"' in html
+        assert 'id="review-summary"' in html
+        assert 'id="decision-form"' in html
+        assert 'id="packet-global-review"' in html
+
+
 def test_multi_page_renderer_removes_hidden_pages_from_layout_and_pointer_events() -> None:
     model = _model()
     visual = model["case_visual_review"]
@@ -365,11 +462,11 @@ def test_renderer_consumes_case_raster_payload_before_review_model_serialization
     assert "data_uri" not in pages[0]
 
 
-def test_visual_workspace_hides_legacy_header_and_summary() -> None:
+def test_issue_152_visual_workspace_keeps_shared_status_and_question_regions() -> None:
     model = _model()
 
-    assert render_status_band(model) == ""
-    assert render_summary(model) == ""
+    assert 'id="review-status"' in render_status_band(model)
+    assert 'id="review-summary"' in render_summary(model)
 
 
 def test_renderer_returns_empty_for_non_visual_model() -> None:
