@@ -153,6 +153,7 @@ def _resolve_binding(
             workspace_root,
             run_id=binding.run_id,
             packet_sha256=binding.packet_sha256,
+            require_persisted_binding=True,
         )
         after = packet_path.read_bytes()
         if before != after or packet.run_id != binding.run_id:

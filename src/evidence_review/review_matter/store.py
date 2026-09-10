@@ -60,6 +60,52 @@ _FORMAL_RUN_BINDING_COLUMNS = (
 )
 
 
+def _normalize_schema_sql(sql: object) -> str:
+    """Remove SQL comments before comparing persisted schema tokens."""
+    text = str(sql)
+    output: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(text):
+        character = text[index]
+        if quote is not None:
+            output.append(character)
+            if character == quote:
+                if index + 1 < len(text) and text[index + 1] == quote:
+                    output.append(text[index + 1])
+                    index += 2
+                    continue
+                quote = None
+            index += 1
+            continue
+        if character in {"'", '"', "`"}:
+            quote = character
+            output.append(character)
+            index += 1
+            continue
+        if character == "[":
+            quote = "]"
+            output.append(character)
+            index += 1
+            continue
+        if character == "/" and index + 1 < len(text) and text[index + 1] == "*":
+            index += 2
+            while index + 1 < len(text) and text[index : index + 2] != "*/":
+                index += 1
+            index = min(index + 2, len(text))
+            output.append(" ")
+            continue
+        if character == "-" and index + 1 < len(text) and text[index + 1] == "-":
+            index += 2
+            while index < len(text) and text[index] not in "\r\n":
+                index += 1
+            output.append(" ")
+            continue
+        output.append(character)
+        index += 1
+    return " ".join("".join(output).upper().split())
+
+
 class MatterStore:
     """Own one separate SQLite database for ReviewMatter work state."""
 
@@ -294,7 +340,7 @@ class MatterStore:
             ("formalization_snapshots", "snapshot_id", "snapshot_id", "RESTRICT"),
         }:
             raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")
-        normalized_sql = " ".join(str(table[1]).upper().split())
+        normalized_sql = _normalize_schema_sql(table[1])
         if (
             "CHECK (MATTER_REVISION >= 1)" not in normalized_sql
             or "CHECK (LENGTH(PACKET_SHA256) = 64)" not in normalized_sql

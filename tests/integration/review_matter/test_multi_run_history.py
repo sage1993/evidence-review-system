@@ -192,6 +192,49 @@ def test_current_review_accepts_a_correctly_bound_formal_run_from_separate_roots
     assert resolved.packet_sha256 == packet_sha256
 
 
+@pytest.mark.parametrize("operation", ["bind", "resolve"])
+def test_current_review_rejects_formal_run_without_persisted_lineage_row(
+    tmp_path: Path, operation: str
+) -> None:
+    workspace, store, first = _matter_with_first_snapshot(tmp_path)
+    run_id, packet_sha256 = _finalized_formal_run(workspace, first)
+    assert (
+        store.connection.execute(
+            """
+            SELECT 1 FROM formal_run_bindings
+            WHERE matter_id = ? AND snapshot_id = ? AND run_id = ?
+            """,
+            (first.matter_id, first.snapshot_id, run_id),
+        ).fetchone()
+        is None
+    )
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+    pointer_path = repository_root / ".ers" / "current-review.json"
+    pointer_path.parent.mkdir()
+    pointer_path.write_bytes(
+        dump_bytes(
+            {
+                "format": "evidence-review/current-review-binding",
+                "version": 1,
+                "run_id": run_id,
+                "packet_sha256": packet_sha256,
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
+        if operation == "bind":
+            bind_current_review(
+                repository_root,
+                run_id,
+                packet_sha256,
+                workspace_root=workspace,
+            )
+        else:
+            resolve_current_review(repository_root, workspace_root=workspace)
+
+
 def test_formal_run_lineage_rejects_nonexistent_direct_wrong_snapshot_missing_and_hash_mismatch(
     tmp_path: Path,
 ) -> None:

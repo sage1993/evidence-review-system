@@ -102,7 +102,10 @@ def _request_snapshot(
     workspace: Path,
     normalized_request: Mapping[str, object],
     *,
+    run_id: str,
+    packet_sha256: str,
     require_matter_lineage: bool,
+    require_persisted_binding: bool,
 ) -> FormalizationSnapshot | None:
     inputs = expect_mapping(normalized_request.get("inputs"), "review request inputs")
     lineage_fields = {
@@ -133,6 +136,30 @@ def _request_snapshot(
     with MatterStore(matter_path) as store:
         matter = store.load(matter_id)
         snapshot = load_formalization_snapshot(store, snapshot_id)
+        if require_persisted_binding:
+            binding = store.connection.execute(
+                """
+                SELECT matter_id, matter_revision, snapshot_id, run_id, packet_sha256
+                FROM formal_run_bindings
+                WHERE matter_id = ? AND snapshot_id = ? AND run_id = ?
+                      AND packet_sha256 = ?
+                """,
+                (matter_id, snapshot_id, run_id, packet_sha256),
+            ).fetchone()
+            if binding is None or (
+                str(binding["matter_id"]),
+                int(binding["matter_revision"]),
+                str(binding["snapshot_id"]),
+                str(binding["run_id"]),
+                str(binding["packet_sha256"]),
+            ) != (
+                matter_id,
+                matter_revision,
+                snapshot_id,
+                run_id,
+                packet_sha256,
+            ):
+                raise ValueError("FORMAL_RUN_MATTER_BINDING_MISSING")
     if (
         matter.matter_id,
         snapshot.matter_id,
@@ -149,6 +176,7 @@ def verify_formal_run_authority(
     packet_sha256: str,
     expected_snapshot: FormalizationSnapshot | None = None,
     require_matter_lineage: bool = False,
+    require_persisted_binding: bool = False,
 ) -> tuple[Path, ReviewPacket, dict[str, object]]:
     """Verify final artifacts and any persisted Matter lineage they declare.
 
@@ -177,7 +205,10 @@ def verify_formal_run_authority(
         snapshot = expected_snapshot or _request_snapshot(
             workspace,
             normalized_request,
+            run_id=checked_run_id,
+            packet_sha256=checked_packet_sha256,
             require_matter_lineage=require_matter_lineage,
+            require_persisted_binding=require_persisted_binding,
         )
         expected_request = (
             None if snapshot is None else _expected_formal_request(workspace, snapshot)
