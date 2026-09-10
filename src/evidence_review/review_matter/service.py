@@ -18,7 +18,6 @@ from evidence_review.navigation.models import NavigationResult
 from evidence_review.navigation.promotion import promote_navigation_hit
 from evidence_review.navigation.service import navigate_evidence
 from evidence_review.review_matter.contracts import (
-    _identifier as _validate_matter_id,
     MatterIssue,
     MatterIssueState,
     ReviewMatter,
@@ -26,6 +25,7 @@ from evidence_review.review_matter.contracts import (
     decode_review_matter,
     review_matter_document,
 )
+from evidence_review.review_matter.contracts import _identifier as _validate_matter_id
 from evidence_review.review_matter.events import MatterEvent, append_matter_event
 from evidence_review.review_matter.formalization import formalize_snapshot
 from evidence_review.review_matter.snapshot import (
