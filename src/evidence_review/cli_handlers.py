@@ -515,7 +515,11 @@ def _review_matter_dispatch(args: argparse.Namespace) -> int:
             )
             return 0
         if stage == "search":
-            navigation_result = service.search(query=args.query, limit=args.limit)
+            navigation_result = service.search(
+                matter_id=args.matter_id,
+                query=args.query,
+                limit=args.limit,
+            )
             _write_stdout(
                 {
                     "format": "evidence-review/review-matter-cli-status",
@@ -585,7 +589,14 @@ def _review_matter_dispatch(args: argparse.Namespace) -> int:
             )
             return 0
         raise RuntimeError("unreachable review-matter command state")
-    except (FileNotFoundError, OSError, sqlite3.Error, MatterStoreError, ValueError) as error:
+    except (
+        FileNotFoundError,
+        OSError,
+        RuntimeError,
+        sqlite3.Error,
+        MatterStoreError,
+        ValueError,
+    ) as error:
         print(str(error), file=sys.stderr)
         return 2
 

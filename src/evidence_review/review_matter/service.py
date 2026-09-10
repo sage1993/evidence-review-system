@@ -32,7 +32,7 @@ from evidence_review.review_matter.snapshot import (
     create_formalization_snapshot,
 )
 from evidence_review.review_matter.source_binding import bind_finalized_evidence
-from evidence_review.review_matter.store import MatterStore
+from evidence_review.review_matter.store import MatterNotFound, MatterStore
 from evidence_review.review_question import PreparedReviewQuestion
 
 
@@ -92,7 +92,17 @@ class ReviewMatterService:
     def open(cls, workspace: Path) -> ReviewMatterService:
         return cls(verified_regular_directory(Path(workspace), field="workspace root"))
 
-    def _matter_path(self) -> Path:
+    def _existing_matter_path(self) -> Path:
+        try:
+            return verified_regular_file_below(
+                self.workspace,
+                ("matter.sqlite",),
+                field="Matter store",
+            )
+        except FileNotFoundError as error:
+            raise MatterNotFound("MATTER_NOT_FOUND") from error
+
+    def _create_matter_path(self) -> Path:
         try:
             return verified_regular_file_below(
                 self.workspace,
@@ -114,19 +124,30 @@ class ReviewMatterService:
         )
 
     @contextmanager
-    def _store(self) -> Iterator[MatterStore]:
-        with MatterStore(self._matter_path()) as store:
+    def _existing_store(self) -> Iterator[MatterStore]:
+        with MatterStore(self._existing_matter_path()) as store:
             yield store
+
+    @contextmanager
+    def _create_store(self) -> Iterator[MatterStore]:
+        with MatterStore(self._create_matter_path()) as store:
+            yield store
+
+    def _validated_matter_id(self, matter_id: str) -> str:
+        return validate_identifier(matter_id, "matter_id")
 
     def create(self, *, matter_id: str, title: str) -> ReviewMatter:
         """Create one distinct mutable Matter at the explicitly supplied workspace."""
-        with self._store() as store:
-            return store.create(matter_id=matter_id, title=title)
+        with self._create_store() as store:
+            return store.create(
+                matter_id=self._validated_matter_id(matter_id), title=title
+            )
 
     def status(self, *, matter_id: str) -> ReviewMatter:
         """Return mutable Matter work state without promoting it to Formal Review."""
-        with self._store() as store:
-            return store.load(validate_identifier(matter_id, "matter_id"))
+        validated_matter_id = self._validated_matter_id(matter_id)
+        with self._existing_store() as store:
+            return store.load(validated_matter_id)
 
     def add_issue(
         self,
@@ -139,16 +160,17 @@ class ReviewMatterService:
         depends_on: Sequence[str] = (),
     ) -> ReviewMatter:
         """Append one revision-checked issue event and return its new projection."""
+        validated_matter_id = self._validated_matter_id(matter_id)
         issue = _issue(
             issue_id=issue_id,
             question=question,
             work_state=work_state,
             depends_on=depends_on,
         )
-        with self._store() as store:
+        with self._existing_store() as store:
             projection = append_matter_event(
                 store,
-                validate_identifier(matter_id, "matter_id"),
+                validated_matter_id,
                 _expected_revision(expected_revision),
                 MatterEvent(
                     kind="ISSUE_ADDED",
@@ -166,16 +188,21 @@ class ReviewMatterService:
         self, *, matter_id: str, expected_revision: int
     ) -> ReviewMatter:
         """Bind exact finalized evidence from the canonical workspace location."""
-        with self._store() as store:
+        validated_matter_id = self._validated_matter_id(matter_id)
+        with self._existing_store() as store:
+            store.load(validated_matter_id)
             return bind_finalized_evidence(
                 store,
-                matter_id=validate_identifier(matter_id, "matter_id"),
+                matter_id=validated_matter_id,
                 expected_revision=_expected_revision(expected_revision),
                 evidence_db=self._evidence_database(),
             )
 
-    def search(self, *, query: str, limit: int = 20) -> NavigationResult:
+    def search(
+        self, *, matter_id: str, query: str, limit: int = 20
+    ) -> NavigationResult:
         """Navigate only the exact finalized evidence currently at this workspace."""
+        self.status(matter_id=matter_id)
         return navigate_evidence(self._evidence_database(), query, limit=limit)
 
     def select_evidence(
@@ -188,11 +215,16 @@ class ReviewMatterService:
         limit: int = 20,
     ) -> ReviewMatter:
         """Re-run navigation and atomically promote one exact current hit."""
-        result = self.search(query=query, limit=limit)
-        with self._store() as store:
+        validated_matter_id = self._validated_matter_id(matter_id)
+        with self._existing_store() as store:
+            store.load(validated_matter_id)
+        result = self.search(
+            matter_id=validated_matter_id, query=query, limit=limit
+        )
+        with self._existing_store() as store:
             projection = promote_navigation_hit(
                 store,
-                matter_id=validate_identifier(matter_id, "matter_id"),
+                matter_id=validated_matter_id,
                 expected_revision=_expected_revision(expected_revision),
                 evidence_db=self._evidence_database(),
                 navigation_result=result,
@@ -204,10 +236,12 @@ class ReviewMatterService:
         self, *, matter_id: str, expected_revision: int
     ) -> FormalizedMatter:
         """Freeze one exact Matter revision, then prepare its immutable Formal Run."""
-        with self._store() as store:
+        validated_matter_id = self._validated_matter_id(matter_id)
+        with self._existing_store() as store:
+            store.load(validated_matter_id)
             snapshot = create_formalization_snapshot(
                 store,
-                validate_identifier(matter_id, "matter_id"),
+                validated_matter_id,
                 _expected_revision(expected_revision),
                 self._evidence_database(),
             )

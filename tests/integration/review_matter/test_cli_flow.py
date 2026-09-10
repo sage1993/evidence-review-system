@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from evidence_review.command_dispatch import main
 from evidence_review.review_matter.store import MatterStore
 from tests.unit.review_matter.test_formalization_snapshot import _evidence_database
@@ -159,3 +161,103 @@ def test_review_matter_cli_rejects_stale_revision_without_partial_mutation(
         matter = store.load("MATTER-001")
     assert matter.revision == 1
     assert matter.issues == ()
+
+
+@pytest.mark.parametrize("stage", [
+    "status",
+    "add-issue",
+    "bind-evidence",
+    "search",
+    "select-evidence",
+    "formalize",
+])
+def test_missing_matter_operations_do_not_create_matter_store(
+    tmp_path: Path, capsys, stage: str
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    common = ["--workspace", str(workspace), "--matter-id", "MATTER-MISSING"]
+    stage_arguments = {
+        "status": [],
+        "add-issue": [
+            "--expected-revision", "1", "--issue-id", "ISSUE-001",
+            "--question", "Check width",
+        ],
+        "bind-evidence": ["--expected-revision", "1"],
+        "search": ["--query", "reference"],
+        "select-evidence": [
+            "--expected-revision", "1", "--evidence-id", "EVID-001",
+            "--query", "reference",
+        ],
+        "formalize": ["--expected-revision", "1"],
+    }
+
+    code, _result, error = _run(
+        ["review-matter", stage, *common, *stage_arguments[stage]], capsys
+    )
+
+    assert code == 2
+    assert "MATTER_NOT_FOUND" in error
+    assert not (workspace / "matter.sqlite").exists()
+    assert tuple(workspace.iterdir()) == ()
+
+
+def test_invalid_matter_id_does_not_create_matter_store(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    code, _result, error = _run(
+        [
+            "review-matter",
+            "add-issue",
+            "--workspace",
+            str(workspace),
+            "--matter-id",
+            "bad/id",
+            "--expected-revision",
+            "1",
+            "--issue-id",
+            "ISSUE-001",
+            "--question",
+            "Check width",
+        ],
+        capsys,
+    )
+
+    assert code == 2
+    assert "matter_id" in error
+    assert not (workspace / "matter.sqlite").exists()
+    assert tuple(workspace.iterdir()) == ()
+
+
+@pytest.mark.parametrize("stage", ["search", "select-evidence"])
+def test_navigation_sidecar_failure_is_a_stable_cli_error(
+    tmp_path: Path, capsys, stage: str
+) -> None:
+    workspace = _workspace_with_finalized_evidence(tmp_path)
+    common = ["--workspace", str(workspace), "--matter-id", "MATTER-001"]
+    code, _created, error = _run(
+        ["review-matter", "create", *common, "--title", "Review"], capsys
+    )
+    assert code == 0, error
+
+    sidecar = workspace / "evidence" / "evidence.sqlite-wal"
+    sidecar.write_bytes(b"sidecar")
+    arguments = [*common, "--query", "exact reference"]
+    if stage == "select-evidence":
+        arguments.extend(
+            [
+                "--expected-revision",
+                "1",
+                "--evidence-id",
+                "EVID-SNAP-1",
+            ]
+        )
+    code, _result, error = _run(
+        ["review-matter", stage, *arguments], capsys
+    )
+
+    assert code == 2
+    assert "EVIDENCE_DATABASE_SIDECAR_PRESENT" in error

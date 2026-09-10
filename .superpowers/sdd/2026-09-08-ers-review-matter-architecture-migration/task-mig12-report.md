@@ -48,6 +48,21 @@ Ruff, mypy (`src`), mypy (`--platform win32 src`), compileall, source-tree
 documentation validation (50 documents, 0 errors, 145 warnings), and
 `git diff --check` passed at that candidate.
 
+## Fix round
+
+The RED fix-round tests reproduced two independent blockers: every
+existing-Matter operation could fall through to MatterStore's create-on-open
+behavior, and navigation sidecar trust raised `RuntimeError` beyond the
+ReviewMatter CLI handler. The implementation now separates create-only from
+existing-file-only store resolution, validates Matter existence before
+evidence/navigation work, and maps navigation authority `RuntimeError` to the
+stable CLI failure path.
+
+Fix-round RED: 8 failed and 2 passed in 2.22s. Fix-round GREEN: 11 passed in
+3.04s. Adjacent Matter/navigation/formal CLI regressions: 192 passed in
+45.15s. Final exact-head gates will be recorded after the implementation and
+this report/ledger update are committed.
+
 ## Not run
 
 - Browser/manual acceptance: `NOT_RUN`.

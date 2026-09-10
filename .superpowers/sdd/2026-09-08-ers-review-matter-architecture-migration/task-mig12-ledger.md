@@ -52,3 +52,17 @@
 - Browser/manual acceptance: `NOT_RUN`. GitHub Actions: `ACTIONS_NOT_RUN`.
 - Independent gpt-5.6-sol-high review, push, remote SHA parity, PR, merge, and
   Issue #182 closure: `NOT_RUN` (outside this implementer authorization).
+
+## Fix-round execution record
+
+- Review blockers reproduced with focused RED tests (Python 3.13.14, fresh
+  elevated Windows temp base): 8 failed, 2 passed in 2.22s. Missing-Matter
+  operations created `matter.sqlite`, and a sidecar trust `RuntimeError`
+  escaped the CLI.
+- GREEN: 11 focused tests passed in 3.04s. Existing-Matter operations now use
+  an existing-file-only store path and preflight Matter existence; navigation
+  authority `RuntimeError` is converted to the canonical CLI exit code 2 with
+  its stable reason.
+- Adjacent Matter/navigation/formal CLI suite: 192 passed in 45.15s.
+- Final exact-head pytest, static, documentation, and diff gates remain to be
+  rerun after the fix-round implementation/report commit.
