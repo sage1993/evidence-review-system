@@ -76,9 +76,19 @@ def test_attachment_requires_original_storage_root() -> None:
         )
 
 
-def test_attachment_round_trips() -> None:
+def test_legacy_visual_attachment_without_case_identity_round_trips() -> None:
     attachments = _attachments()
     payload = _attachment()
+
+    attachment = attachments.decode_immutable_attachment(payload)
+
+    assert attachment.case_id is None
+    assert attachments.immutable_attachment_document(attachment) == payload
+
+
+def test_attachment_round_trips() -> None:
+    attachments = _attachments()
+    payload = _attachment(role="REFERENCE_DOCUMENT")
     attachment = attachments.decode_immutable_attachment(payload)
     assert attachments.immutable_attachment_document(attachment) == payload
 

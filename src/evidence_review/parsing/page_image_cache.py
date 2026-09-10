@@ -7,9 +7,9 @@ import json
 import os
 import shutil
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from math import ceil, floor, isfinite
 from pathlib import Path
@@ -46,6 +46,7 @@ class PageImageSource:
     source_path: Path
     revision_id: str
     source_hash: str
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
 
 def _render_scale(value: float) -> float:
@@ -78,6 +79,10 @@ def _metadata(
     }
     if render_scale != _RENDER_SCALE:
         document["render_scale"] = render_scale
+    for key, value in source.metadata.items():
+        if key in document:
+            raise ValueError("page image cache metadata field conflicts with core identity")
+        document[key] = value
     return document
 
 
@@ -308,10 +313,18 @@ def cache_pdf_page_images(
     source_hash: str,
     *,
     render_scale: float = _RENDER_SCALE,
+    metadata: Mapping[str, object] | None = None,
 ) -> None:
     """Convenience boundary for one immutable source revision."""
     cache_page_images(
         root,
-        (PageImageSource(source_path, revision_id, source_hash),),
+        (
+            PageImageSource(
+                source_path,
+                revision_id,
+                source_hash,
+                metadata or {},
+            ),
+        ),
         render_scale=render_scale,
     )

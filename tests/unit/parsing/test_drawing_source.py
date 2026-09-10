@@ -69,7 +69,8 @@ def test_ingest_copies_source_bytes_and_never_overwrites(tmp_path: Path) -> None
     )
     stored = case_dir / "sources" / "drawings" / "ATT-001.png"
     assert stored.read_bytes() == payload
-    assert attachment.stored_path == "inputs/original/ATT-001.png"
+    assert attachment.stored_path == "cases/case/sources/drawings/ATT-001.png"
+    assert attachment.case_id == "case"
 
     source.write_bytes(payload)
     with pytest.raises(FileExistsError):
@@ -89,7 +90,8 @@ def test_ingest_accepts_extension_alias_and_normalizes_path(tmp_path: Path) -> N
         DrawingIntakePolicy(),
     )
     assert attachment.mime == "image/jpeg"
-    assert attachment.stored_path == "inputs/original/ATT-002.jpg"
+    assert attachment.stored_path == "cases/case/sources/drawings/ATT-002.jpg"
+    assert attachment.case_id == "case"
 
 
 def test_verify_attachment_reports_size_and_hash_tampering(tmp_path: Path) -> None:
@@ -104,6 +106,26 @@ def test_verify_attachment_reports_size_and_hash_tampering(tmp_path: Path) -> No
     assert verify_immutable_attachment(case_dir, attachment) == (
         "SOURCE_SIZE_MISMATCH",
         "SOURCE_HASH_MISMATCH",
+    )
+
+
+def test_verify_attachment_rejects_case_directory_identity_mismatch(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "drawing.png"
+    payload = b"\x89PNG\r\n\x1a\nfixture"
+    source.write_bytes(payload)
+    case_dir = tmp_path / "CASE-A"
+    attachment = ingest_drawing_source(
+        source, case_dir, "ATT-001", "CASE_DRAWING", DrawingIntakePolicy()
+    )
+    wrong_case_dir = tmp_path / "CASE-B"
+    wrong_stored = wrong_case_dir / "sources" / "drawings" / "ATT-001.png"
+    wrong_stored.parent.mkdir(parents=True)
+    wrong_stored.write_bytes(payload)
+
+    assert verify_immutable_attachment(wrong_case_dir, attachment) == (
+        "SOURCE_CASE_MISMATCH",
     )
 
 

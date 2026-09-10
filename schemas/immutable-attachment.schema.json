@@ -15,10 +15,11 @@
   ],
   "properties": {
     "attachment_id": {"type": "string", "minLength": 1},
+    "case_id": {"type": "string", "minLength": 1},
     "original_name": {"type": "string", "minLength": 1},
     "stored_path": {
       "type": "string",
-      "pattern": "^inputs/original/[^/]+$"
+      "pattern": "^(inputs/original/[^/]+|cases/[^/]+/sources/drawings/[^/]+)$"
     },
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "byte_size": {"type": "integer", "minimum": 1},
@@ -31,5 +32,30 @@
         "SUPPORTING_IMAGE"
       ]
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stored_path": {
+            "pattern": "^cases/"
+          }
+        },
+        "required": ["stored_path"]
+      },
+      "then": {
+        "required": ["case_id"],
+        "properties": {
+          "role": {
+            "enum": ["CASE_DRAWING", "SUPPORTING_IMAGE"]
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": ["case_id"]
+        }
+      }
+    }
+  ]
 }
