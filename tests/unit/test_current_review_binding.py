@@ -77,6 +77,24 @@ def _finalized_run(repository_root: Path, *, question: str) -> tuple[str, str, P
     return prepared.run_id, hashlib.sha256(packet_path.read_bytes()).hexdigest(), run_directory
 
 
+def _rewrite_finalized_artifact(
+    run_directory: Path, artifact_name: str, document: dict[str, object]
+) -> str:
+    artifact_path = run_directory / artifact_name
+    artifact_path.write_bytes(dump_bytes(document))
+    manifest_path = run_directory / "run-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"][artifact_name] = hashlib.sha256(
+        artifact_path.read_bytes()
+    ).hexdigest()
+    manifest_path.write_bytes(dump_bytes(manifest))
+    (run_directory / "final-review-packet.json").unlink()
+    finalize_run(run_directory)
+    return hashlib.sha256(
+        (run_directory / "final-review-packet.json").read_bytes()
+    ).hexdigest()
+
+
 def test_current_review_pointer_is_canonical_and_resolves_its_exact_packet(
     tmp_path: Path,
 ) -> None:
@@ -152,6 +170,39 @@ def test_current_review_resolution_rejects_tampered_canonical_request(
         )
     with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
         resolve_current_review(repository_root, workspace_root=repository_root)
+
+
+def test_current_review_rejects_track_a_bundle_not_derived_from_request(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    workspace_root = tmp_path / "workspace"
+    repository_root.mkdir()
+    workspace_root.mkdir()
+    run_id, packet_sha256, run_directory = _finalized_run(
+        workspace_root, question="Track A derivation review"
+    )
+    bind_current_review(
+        repository_root, run_id, packet_sha256, workspace_root=workspace_root
+    )
+
+    bundle = json.loads(
+        (run_directory / "track-a-bundle.json").read_text(encoding="utf-8")
+    )
+    bundle["inputs"]["packet_irrelevant_tamper"] = "not-from-request"
+    refreshed_packet_sha256 = _rewrite_finalized_artifact(
+        run_directory, "track-a-bundle.json", bundle
+    )
+
+    with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
+        bind_current_review(
+            repository_root,
+            run_id,
+            refreshed_packet_sha256,
+            workspace_root=workspace_root,
+        )
+    with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
+        resolve_current_review(repository_root, workspace_root=workspace_root)
 
 
 def test_current_review_resolution_fails_closed_for_missing_stale_malformed_and_mismatched_pointer(

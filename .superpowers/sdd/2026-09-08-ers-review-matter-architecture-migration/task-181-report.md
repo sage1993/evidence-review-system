@@ -1,10 +1,11 @@
-# Issue #181 / MIG-11 fix-round-3 report
+# Issue #181 / MIG-11 fix-round-4 report
 
 ## Scope
 
-The recorded `SCOPE_EXPANSION_REQUIRED = YES` remains limited to
-`review_matter/store.py`, its schema regression coverage, and this SDD record.
-No drawing, visual, viewer, service, or UI path changed.
+The recorded `SCOPE_EXPANSION_REQUIRED = YES` remains limited to the already
+approved MatterStore schema change and its regression coverage. This round also
+updates the existing formal-run/current-review authority validators and their
+regressions; no drawing, visual, viewer, service, or UI path changed.
 
 ## Implemented authority fixes
 
@@ -23,8 +24,9 @@ No drawing, visual, viewer, service, or UI path changed.
   repository-local pointer remains canonical control state containing only the
   versioned format, exact `run_id`, and exact packet SHA-256; it stores no
   workspace path and does not recreate a global packet. Both bind and resolve
-  verify the run-local request's canonical bytes and derived RUN ID in addition
-  to the manifest-bound final packet.
+  now use the same request-derived cross-artifact validator: canonical request
+  bytes and derived RUN ID, complete Track A bundle bytes, complete confidence
+  input bytes, and the manifest-bound final packet must all agree.
 - MatterStore requires the exact two unique constraints for
   `formal_run_bindings`; validation preserves uniqueness, origin, partial
   status, ordered columns, and multiplicity. Any unexpected, duplicate,
@@ -58,13 +60,19 @@ redundant partial `run_id` index. The new exact-index validation rejects both.
 The five schema checks covering those cases, the existing extra-index cases,
 and v2-to-v3 migration passed in 0.61s.
 
+The round-4 RED command demonstrated that a finalized run with a refreshed
+manifest/packet accepted a changed confidence-input artifact, and that current
+review accepted a refreshed manifest/packet whose Track A bundle contained an
+extra packet-irrelevant input. After the shared validator was added, both
+regressions failed closed; the focused/adjacent suite passed 53 tests.
+
 ## Verification
 
 | Gate | Result |
 | --- | --- |
-| Round-3 schema regression pytest | PASS — 5 passed in 0.61s |
-| Focused/adjacent Matter/current-review/formalization/store pytest | PASS — 64 passed in 20.64s |
-| Full Python 3.13 pytest | PASS — 2,058 passed, 1 skipped in 370.95s |
+| Round-4 regression pytest | PASS — 2 passed in 1.15s |
+| Focused/adjacent Matter/current-review/formalization/finalizer pytest | PASS — 53 passed in 18.65s |
+| Full Python 3.13 pytest | PASS — 2,060 passed, 1 skipped in 370.60s |
 | Ruff `src tests web_runtime` | PASS — all checks passed |
 | mypy `src` | PASS — 258 source files |
 | mypy `--platform win32 src` | PASS — 258 source files |
@@ -80,10 +88,11 @@ installed `evidence-review.exe` imports a different checkout at
 therefore rerun against this candidate's `src` tree, with output created under
 the ignored `.acceptance/` directory; it passed as recorded above.
 
-The previous round's report described partial-index rejection without recording
-the remaining replacement/multiplicity gap. This round supersedes that wording:
-exact unique-index semantics, including origin and multiplicity, are now covered
-and verified.
+The previous round's report described request/Track A and partial-index
+authority without recording the remaining confidence-input and full
+cross-artifact derivation gaps. This round supersedes that wording: formal and
+current-review verification now share exact request-derived Track A and
+confidence-input comparisons.
 
 ## Not run / unresolved
 

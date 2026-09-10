@@ -10,7 +10,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from evidence_review.abstention.finalizer import review_packet_document, verify_finalized_run
+from evidence_review.abstention.finalizer import review_packet_document
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.review import ReviewPacket
@@ -20,7 +20,7 @@ from evidence_review.filesystem_trust import (
     verified_regular_file_below,
 )
 from evidence_review.review_matter.formal_run_binding import (
-    verify_finalized_run_request,
+    verify_finalized_run_artifacts,
 )
 
 CURRENT_REVIEW_BINDING_FORMAT = "evidence-review/current-review-binding"
@@ -159,8 +159,7 @@ def _resolve_binding(
         )
         before = packet_path.read_bytes()
         request_before = request_path.read_bytes()
-        packet = verify_finalized_run(run_directory)
-        verify_finalized_run_request(run_directory)
+        packet, _normalized_request = verify_finalized_run_artifacts(run_directory)
         after = packet_path.read_bytes()
         request_after = request_path.read_bytes()
         if (

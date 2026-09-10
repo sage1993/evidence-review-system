@@ -11,6 +11,7 @@ from pathlib import Path
 from evidence_review.abstention.finalizer import review_packet_document, verify_finalized_run
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.contracts.review import ReviewPacket
 from evidence_review.contracts.run_context import compute_run_id_from_request
 from evidence_review.contracts.validation import expect_sha256
 from evidence_review.filesystem_trust import (
@@ -97,21 +98,47 @@ def _verify_formal_run(
             ("final-review-packet.json",),
             field="formal run packet",
         )
-        request_path = verified_regular_file_below(
-            run_directory,
-            ("review-request.json",),
-            field="formal run request",
+        packet, normalized_request = verify_finalized_run_artifacts(run_directory)
+        expected_request = _expected_formal_request(workspace, snapshot)
+        if (
+            compute_run_id_from_request(normalized_request) != run_id
+            or packet.run_id != run_id
+            or packet_path.read_bytes() != dump_bytes(review_packet_document(packet))
+            or hashlib.sha256(packet_path.read_bytes()).hexdigest() != packet_sha256
+            or dump_bytes(normalized_request) != dump_bytes(expected_request)
+        ):
+            raise ValueError("formal run identity does not match finalized artifacts")
+    except (FileNotFoundError, OSError, TypeError, ValueError) as error:
+        raise ValueError("FORMAL_RUN_BINDING_RUN_INVALID") from error
+
+
+def verify_finalized_run_artifacts(
+    run_directory: Path,
+) -> tuple[ReviewPacket, dict[str, object]]:
+    """Verify the canonical request-derived cross-artifact run authority."""
+    try:
+        trusted_run = verified_regular_directory(
+            run_directory, field="finalized run directory"
         )
-        bundle_path = verified_regular_file_below(
-            run_directory,
-            ("track-a-bundle.json",),
-            field="formal run Track A bundle",
+        paths = tuple(
+            verified_regular_file_below(
+                trusted_run,
+                (name,),
+                field=f"finalized run {name}",
+            )
+            for name in (
+                "run-manifest.json",
+                "review-request.json",
+                "track-a-bundle.json",
+                "track-a-output.json",
+                "track-b-output.json",
+                "confidence-input.json",
+                "final-review-packet.json",
+            )
         )
-        before = tuple(path.read_bytes() for path in (packet_path, request_path, bundle_path))
-        packet = verify_finalized_run(run_directory)
-        after = tuple(path.read_bytes() for path in (packet_path, request_path, bundle_path))
-        if before != after:
-            raise ValueError("formal run artifacts changed during verification")
+        before = tuple(path.read_bytes() for path in paths)
+        packet = verify_finalized_run(trusted_run)
+        normalized_request = verify_finalized_run_request(trusted_run)
         (
             question,
             inputs,
@@ -119,13 +146,12 @@ def _verify_formal_run(
             calculations,
             rules,
             approved,
-            _confidence,
-            normalized_request,
-        ) = _decode_request(request_path)
-        expected_request = _expected_formal_request(workspace, snapshot)
+            confidence,
+            _request,
+        ) = _decode_request(paths[1])
         expected_bundle = track_a_bundle_document(
             build_track_a_bundle(
-                run_id=run_id,
+                run_id=trusted_run.name,
                 question=question,
                 inputs=inputs,
                 evidence=evidence,
@@ -134,19 +160,20 @@ def _verify_formal_run(
                 approved_rule_result_ids=approved,
             )
         )
+        after = tuple(path.read_bytes() for path in paths)
         if (
-            before[0] != dump_bytes(review_packet_document(packet))
-            or before[1] != dump_bytes(normalized_request)
-            or before[1] != dump_bytes(expected_request)
-            or before[2] != dump_bytes(expected_bundle)
-            or compute_run_id_from_request(normalized_request) != run_id
-            or packet.run_id != run_id
-            or packet_path.read_bytes() != before[0]
-            or hashlib.sha256(before[0]).hexdigest() != packet_sha256
+            before != after
+            or paths[1].read_bytes() != dump_bytes(normalized_request)
+            or paths[2].read_bytes() != dump_bytes(expected_bundle)
+            or paths[5].read_bytes() != dump_bytes(confidence)
+            or paths[6].read_bytes() != dump_bytes(review_packet_document(packet))
+            or compute_run_id_from_request(normalized_request) != trusted_run.name
+            or packet.run_id != trusted_run.name
         ):
-            raise ValueError("formal run identity does not match finalized artifacts")
+            raise ValueError("finalized run cross-artifact identity changed")
+        return packet, normalized_request
     except (FileNotFoundError, OSError, TypeError, ValueError) as error:
-        raise ValueError("FORMAL_RUN_BINDING_RUN_INVALID") from error
+        raise ValueError("FINALIZED_RUN_CROSS_ARTIFACT_INVALID") from error
 
 
 def _expected_formal_request(
@@ -271,5 +298,6 @@ __all__ = [
     "FormalRunBinding",
     "bind_formal_run",
     "list_formal_runs",
+    "verify_finalized_run_artifacts",
     "verify_finalized_run_request",
 ]

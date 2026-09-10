@@ -76,6 +76,24 @@ def _write_finalized_artifacts(run_directory: Path) -> tuple[str, str]:
     return packet.run_id, hashlib.sha256(packet_path.read_bytes()).hexdigest()
 
 
+def _rewrite_finalized_artifact(
+    run_directory: Path, artifact_name: str, document: dict[str, object]
+) -> str:
+    artifact_path = run_directory / artifact_name
+    artifact_path.write_bytes(dump_bytes(document))
+    manifest_path = run_directory / "run-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"][artifact_name] = hashlib.sha256(
+        artifact_path.read_bytes()
+    ).hexdigest()
+    manifest_path.write_bytes(dump_bytes(manifest))
+    (run_directory / "final-review-packet.json").unlink()
+    finalize_run(run_directory)
+    return hashlib.sha256(
+        (run_directory / "final-review-packet.json").read_bytes()
+    ).hexdigest()
+
+
 def _finalized_formal_run(workspace: Path, snapshot: object) -> tuple[str, str]:
     prepared = formalize_snapshot(workspace, snapshot)
     return _write_finalized_artifacts(workspace / "runs" / prepared.run_id)
@@ -210,5 +228,30 @@ def test_formal_run_lineage_rejects_duplicate_append_attempts(tmp_path: Path) ->
             first.snapshot_id,
             run_id,
             packet_sha256,
+            workspace_root=workspace,
+        )
+
+
+def test_formal_run_lineage_rejects_tampered_confidence_input_with_refreshed_packet(
+    tmp_path: Path,
+) -> None:
+    workspace, store, first = _matter_with_first_snapshot(tmp_path)
+    run_id, _packet_sha256 = _finalized_formal_run(workspace, first)
+    run_directory = workspace / "runs" / run_id
+    confidence = json.loads(
+        (run_directory / "confidence-input.json").read_text(encoding="utf-8")
+    )
+    confidence["factors"]["source completeness"]["source"] = "reviewer:tamper"
+    refreshed_packet_sha256 = _rewrite_finalized_artifact(
+        run_directory, "confidence-input.json", confidence
+    )
+
+    with pytest.raises(ValueError, match="FORMAL_RUN_BINDING_RUN_INVALID"):
+        bind_formal_run(
+            store,
+            "MATTER-SNAP-1",
+            first.snapshot_id,
+            run_id,
+            refreshed_packet_sha256,
             workspace_root=workspace,
         )

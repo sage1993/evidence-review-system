@@ -51,6 +51,35 @@
 - Remaining blocker: unique-index validation still discards partial semantics and multiplicity, allowing a partial replacement or redundant partial index matching an allowed signature.
 - Ruling: fix exact unique-index semantics and add replacement/duplicate partial-index restart regressions; no push/PR until final sol-high review passes.
 
+## Fix round 3 result — round 4 required
+
+- Candidate commit: `5949ce55e5da3d25ca62ef1b5a9bfd5dfae69c71`.
+- Review confirmed exact unique-index semantics and partial replacement/duplicate regressions, and prior lineage/pointer blockers appeared fixed.
+- Remaining blockers: confidence-input is not compared to the request-derived deterministic value, and Track A bundle derivation is not cross-checked against the request; both can be tampered while updating manifest/packet hashes.
+- Ruling: resume the same terra implementer for round 4; no push/PR until shared cross-artifact validation and regressions pass final review.
+
+## Fix round 4 result — 2026-09-10
+
+- The shared finalized-run validator now verifies the canonical request and
+  derived RUN ID, rebuilds and byte-compares the complete request-derived Track
+  A bundle, and byte-compares the complete request-derived confidence input.
+  Formal binding adds the complete persisted Matter-snapshot request
+  comparison; current-review bind and resolve use the same shared validator.
+- TDD RED reproduced both review blockers: refreshed manifest/packet bytes could
+  carry a changed confidence input, and current review accepted a packet-
+  irrelevant Track A bundle input. GREEN passed both regressions in 1.15s.
+- Focused/adjacent pytest passed 53 tests in 18.65s. Exact full Python 3.13
+  pytest passed 2,060 tests with 1 skipped in 370.60s. Ruff, mypy POSIX/Win32,
+  compileall, source-tree documentation validation, and diff check passed.
+- Source-tree documentation validation reported 50 documents, 0 errors, and
+  145 warnings. The installed documentation executable remains
+  `SOURCE_MISMATCH` because it points to `F:\2026-PJ\evidence-review-system`.
+  Browser/manual acceptance remains `NOT_RUN`; GitHub Actions remains
+  `ACTIONS_NOT_RUN`.
+- This round does not alter the pointer shape, append-only lineage, MatterStore
+  schema validation, finalizer authority, or any drawing/visual/viewer/service/
+  UI path.
+
 ## Round-1 takeover result — 2026-09-10 (superseded)
 
 - The first takeover implementation addressed the initial three review findings,
