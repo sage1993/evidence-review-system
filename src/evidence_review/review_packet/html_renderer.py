@@ -716,6 +716,41 @@ def _render_process_footer(model: Mapping[str, object]) -> str:
     )
 
 
+def _render_presentation_guidance(
+    model: Mapping[str, object],
+    *,
+    protected: bool,
+) -> str:
+    run_id = _text(model.get("run_id"))
+    serve_command = (
+        "evidence-review review-run serve --workspace &lt;workspace&gt; --run-id "
+        f"{run_id}"
+    )
+    if protected:
+        return "".join(
+            (
+                '<aside class="presentation-guidance protected-file-guidance" '
+                'data-protected-file-guidance hidden>',
+                "<h2>보호된 검토기는 파일로 열 수 없습니다</h2>",
+                "<p>보호된 도면은 파일 경로가 아니라 로컬 보호 서버에서만 표시됩니다. ",
+                "아래 명령으로 검토기를 실행하십시오.</p>",
+                f"<code>{serve_command}</code>",
+                "</aside>",
+            )
+        )
+    return "".join(
+        (
+            '<aside class="presentation-guidance archival-guidance" '
+            'data-archival-static-mode="true">',
+            "<h2>보관용 정적 HTML</h2>",
+            "<p>이 파일은 보관·인쇄용 정적 검토 화면입니다. 결정은 이 HTML에 저장되지 않으며, ",
+            "보호된 검토기에서 기록해야 합니다.</p>",
+            f"<p>보호된 검토기 실행: <code>{serve_command}</code></p>",
+            "</aside>",
+        )
+    )
+
+
 def _render_review_html(
     view_model: Mapping[str, object],
     page_image_root: Path,
@@ -764,11 +799,14 @@ def _render_review_html(
         (
             '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
+            '<link rel="icon" href="data:,">',
             f"<title>근거 검토 · {_text(model.get('question'))}</title><style>{css_bundle}</style>",
             '</head><body><div class="app-shell" data-viewer-mode="compare"',
             ' data-protected-presentation="true"' if protected else "",
+            ' data-archival-static-mode="true"' if not protected else "",
             '>',
             render_status_band(model),
+            _render_presentation_guidance(model, protected=protected),
             render_workspace(
                 model,
                 "".join(

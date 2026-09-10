@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.review_packet import local_server
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,63 +109,85 @@ def _case_asset_route(path: str) -> _CaseAssetRoute | None:
     return None
 
 
-def _trusted_file(workspace_root: Path, *parts: str) -> Path | None:
+def _trusted_file(workspace_root: Path, *parts: str) -> tuple[str, Path | None]:
     try:
-        return verified_regular_file_below(
-            workspace_root,
-            parts,
-            field="case visual asset",
+        return (
+            "AVAILABLE",
+            verified_regular_file_below(
+                workspace_root,
+                parts,
+                field="case visual asset",
+            ),
         )
-    except (FileNotFoundError, OSError, ValueError):
-        return None
+    except FileNotFoundError:
+        return "ASSET_MISSING", None
+    except (PermissionError, OSError):
+        return "ASSET_PERMISSION_DENIED", None
+    except ValueError:
+        return "ASSET_MISSING", None
 
 
-def _page_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
+def _page_asset(workspace_root: Path, route: _CaseAssetRoute) -> tuple[str, bytes | None]:
     filename = f"page-{route.page_number:04d}.png"
+    permission_denied = False
+    hash_mismatch = False
     for cache_name in ("case-page-images-hq-v1", "case-page-images"):
-        path = _trusted_file(
+        trust_status, path = _trusted_file(
             workspace_root,
             cache_name,
             route.attachment_id,
             filename,
         )
         if path is None:
+            permission_denied = permission_denied or trust_status == "ASSET_PERMISSION_DENIED"
             continue
         try:
             body = path.read_bytes()
-        except OSError:
+        except (PermissionError, OSError):
+            permission_denied = True
             continue
         if hashlib.sha256(body).hexdigest() == route.image_sha256:
-            return body
-    return None
+            return "AVAILABLE", body
+        hash_mismatch = True
+    if permission_denied:
+        return "ASSET_PERMISSION_DENIED", None
+    if hash_mismatch:
+        return "ASSET_HASH_MISMATCH", None
+    return "ASSET_MISSING", None
 
 
-def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
+def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> tuple[str, bytes | None]:
     if route.tile_x is None or route.tile_y is None:
-        return None
+        return "ASSET_MISSING", None
     directory_parts = (
         "case-page-tiles-v1",
         route.attachment_id,
         f"page-{route.page_number:04d}",
     )
-    manifest_path = _trusted_file(workspace_root, *directory_parts, "manifest.json")
+    manifest_status, manifest_path = _trusted_file(
+        workspace_root,
+        *directory_parts,
+        "manifest.json",
+    )
     if manifest_path is None:
-        return None
+        return manifest_status, None
     try:
         manifest = _mapping(
             json.loads(manifest_path.read_text(encoding="utf-8")),
             "tile manifest",
         )
         records = _sequence(manifest.get("tiles", []), "tile manifest.tiles")
+    except PermissionError:
+        return "ASSET_PERMISSION_DENIED", None
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
-        return None
+        return "ASSET_INVALID", None
     for index, raw_record in enumerate(records):
         try:
             record = _mapping(raw_record, f"tile manifest.tiles[{index}]")
             x = _integer(record.get("x"), "tile.x")
             y = _integer(record.get("y"), "tile.y")
         except ValueError:
-            return None
+            return "ASSET_INVALID", None
         if x != route.tile_x or y != route.tile_y:
             continue
         filename = record.get("filename")
@@ -173,16 +197,20 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> bytes | None:
             or Path(filename).name != filename
             or image_sha256 != route.image_sha256
         ):
-            return None
-        path = _trusted_file(workspace_root, *directory_parts, filename)
+            return "ASSET_HASH_MISMATCH", None
+        trust_status, path = _trusted_file(workspace_root, *directory_parts, filename)
         if path is None:
-            return None
+            return trust_status, None
         try:
             body = path.read_bytes()
-        except OSError:
-            return None
-        return body if hashlib.sha256(body).hexdigest() == route.image_sha256 else None
-    return None
+        except (PermissionError, OSError):
+            return "ASSET_PERMISSION_DENIED", None
+        return (
+            ("AVAILABLE", body)
+            if hashlib.sha256(body).hexdigest() == route.image_sha256
+            else ("ASSET_HASH_MISMATCH", None)
+        )
+    return "ASSET_MISSING", None
 
 
 class CaseVisualReviewHandler(local_server._ReviewHandler):
@@ -213,12 +241,21 @@ class CaseVisualReviewHandler(local_server._ReviewHandler):
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
         self.state.mark_activity()
-        body = (
+        diagnostic, body = (
             _page_asset(self.state.workspace_root, case_route)
             if case_route.kind == "page"
             else _tile_asset(self.state.workspace_root, case_route)
         )
         if body is None:
+            _LOGGER.info(
+                "protected case asset unavailable: diagnostic=%s run_id=%s "
+                "kind=%s attachment_id=%s page=%s",
+                diagnostic,
+                case_route.run_id,
+                case_route.kind,
+                case_route.attachment_id,
+                case_route.page_number,
+            )
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
         self._send_bytes(HTTPStatus.OK, body, "image/png")

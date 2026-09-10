@@ -270,8 +270,22 @@
     return Boolean(document.querySelector('[data-protected-presentation="true"]'));
   }
 
+  function isProtectedFilePresentation() {
+    return isProtectedPresentation() && window.location.protocol === "file:";
+  }
+
+  function applyFileProtocolGuidance() {
+    const guidance = document.querySelector("[data-protected-file-guidance]");
+    if (!guidance) return;
+    const fileOpened = isProtectedFilePresentation();
+    guidance.hidden = !fileOpened;
+    if (fileOpened) {
+      formStatus("보호된 검토기는 파일로 열 수 없습니다. 안내된 로컬 서버 명령을 실행하십시오.");
+    }
+  }
+
   function ensurePageImageLoaded(page) {
-    if (!isProtectedPresentation() || !page) return;
+    if (!isProtectedPresentation() || isProtectedFilePresentation() || !page) return;
     const image = page.querySelector("img[data-page-image-source]");
     if (!image || image.getAttribute("src")) return;
     const source = image.dataset.pageSrc || "";
@@ -613,6 +627,7 @@
   window.addEventListener("beforeprint", revealPrintPanels);
   window.addEventListener("afterprint", restorePrintPanels);
   enhanceReviewerSurface();
+  applyFileProtocolGuidance();
   updateTabControls(selectedDetailPanel());
   updateReviewerSession();
   const initial = document.querySelector(".evidence-page.is-active");

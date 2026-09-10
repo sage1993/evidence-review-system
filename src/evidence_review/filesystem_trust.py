@@ -12,6 +12,8 @@ REPARSE_POINT_ATTRIBUTE = 0x400
 def _status(path: Path, *, field: str) -> os.stat_result:
     try:
         return path.lstat()
+    except PermissionError:
+        raise
     except OSError as error:
         raise FileNotFoundError(f"{field} not found: {path}") from error
 
@@ -61,6 +63,8 @@ def verified_regular_directory(path: Path, *, field: str) -> Path:
 
     try:
         resolved = path.resolve(strict=True)
+    except PermissionError:
+        raise
     except OSError as error:
         raise FileNotFoundError(f"{field} not found: {path}") from error
     if not resolved.is_dir():
@@ -85,6 +89,8 @@ def verified_regular_file(path: Path, *, field: str) -> Path:
             raise ValueError(f"{field} must be a regular file: {component}")
     try:
         resolved = path.resolve(strict=True)
+    except PermissionError:
+        raise
     except OSError as error:
         raise FileNotFoundError(f"{field} not found: {path}") from error
     if not resolved.is_file():
@@ -134,6 +140,8 @@ def verified_regular_file_below(
 
     try:
         resolved = current.resolve(strict=True)
+    except PermissionError:
+        raise
     except OSError as error:
         raise FileNotFoundError(f"{field} not found: {current}") from error
     try:
@@ -167,6 +175,8 @@ def verified_create_target_below(
             status = current.lstat()
         except FileNotFoundError:
             return current.joinpath(*parts[index + 1 :])
+        except PermissionError:
+            raise
         except OSError as error:
             raise FileNotFoundError(f"{field} not found: {current}") from error
         _reject_link_or_reparse(current, status, field=field)

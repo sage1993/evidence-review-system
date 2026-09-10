@@ -109,6 +109,15 @@ The write is create-only. The machine packet and HTML remain unchanged, includin
 
 A retained `review.html` opened with `file:` has no protected local server and therefore cannot persist a decision through POST.
 
+The archival page is an explicit static presentation. A protected-only projection opened with `file:` shows a launcher warning instead of silently attempting to load protected raster routes. Start the protected viewer with:
+
+```powershell
+evidence-review review-run serve `
+  --workspace <workspace> `
+  --run-id <RUN-ID> `
+  --reviewer-id <REVIEWER-ID>
+```
+
 Use **결정 JSON 다운로드** only after decision and notes are complete. If reviewer ID is not already known, the archival page asks for it once. The downloaded envelope contains exactly:
 
 ```json
