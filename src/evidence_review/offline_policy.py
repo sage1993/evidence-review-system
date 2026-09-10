@@ -68,6 +68,7 @@ def default_offline_policy() -> OfflinePolicy:
         allowed_subprocess_paths=frozenset(
             {
                 "evidence_review/review_packet/browser_launcher.py",
+                "evidence_review/workbench/local_server.py",
                 "evidence_review/diagnostics.py",
             }
         ),

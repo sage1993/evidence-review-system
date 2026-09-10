@@ -53,13 +53,16 @@ def test_scanner_detects_forbidden_capabilities(
     )
 
 
-def test_protected_server_launcher_is_the_only_subprocess_exception(tmp_path: Path) -> None:
+def test_protected_loopback_server_launchers_are_the_only_subprocess_exceptions(
+    tmp_path: Path,
+) -> None:
     source = "import subprocess\nsubprocess.Popen(['python'])\n"
     write_source(
         tmp_path,
         "evidence_review/review_packet/browser_launcher.py",
         source,
     )
+    write_source(tmp_path, "evidence_review/workbench/local_server.py", source)
     write_source(tmp_path, "evidence_review/other_launcher.py", source)
 
     findings = scan_source_tree(tmp_path)
