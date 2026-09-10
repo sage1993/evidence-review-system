@@ -23,7 +23,9 @@ from evidence_review.review_packet.render_audit import (
     render_citation_audit,
     render_item_audit,
 )
+from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
 from evidence_review.review_packet.render_decision import render_decision_form
+from evidence_review.review_packet.render_issue_results import render_issue_results
 from evidence_review.review_packet.render_summary import (
     render_additional_review,
     render_status_band,
@@ -795,6 +797,30 @@ def _render_review_html(
     items = _review_items(model, claims)
     calculations = _sequence(model.get("calculations", []), "calculations")
     rules = _sequence(model.get("rules", []), "rules")
+    visual_review = render_case_visual_review(model)
+    evidence_workspace = (
+        visual_review
+        if visual_review
+        else "".join(
+            (
+                _render_evidence_list(items, claim_mappings, citations),
+                _render_evidence_viewer(documents, overlays),
+            )
+        )
+    )
+    detail_issue_results = "".join(
+        (
+            "" if visual_review else render_additional_review(model),
+            render_issue_results(model),
+            _render_detail_tabs(
+                items=items,
+                claims=claim_mappings,
+                citations=citations,
+                calculations=calculations,
+                rules=rules,
+            ),
+        )
+    )
     return "".join(
         (
             '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
@@ -805,27 +831,19 @@ def _render_review_html(
             ' data-protected-presentation="true"' if protected else "",
             ' data-archival-static-mode="true"' if not protected else "",
             '>',
-            render_status_band(model),
-            _render_presentation_guidance(model, protected=protected),
             render_workspace(
                 model,
-                "".join(
+                status_question="".join(
                     (
+                        render_status_band(model),
+                        _render_presentation_guidance(model, protected=protected),
                         render_summary(model),
-                        render_additional_review(model),
-                        _render_evidence_list(items, claim_mappings, citations),
-                        _render_evidence_viewer(documents, overlays),
-                        _render_detail_tabs(
-                            items=items,
-                            claims=claim_mappings,
-                            citations=citations,
-                            calculations=calculations,
-                            rules=rules,
-                        ),
-                        render_decision_form(model),
-                        render_audit_details(model),
                     )
                 ),
+                evidence_workspace=evidence_workspace,
+                detail_issue_results=detail_issue_results,
+                human_decision=render_decision_form(model),
+                audit=render_audit_details(model),
             ),
             _render_process_footer(model),
             "</div>",

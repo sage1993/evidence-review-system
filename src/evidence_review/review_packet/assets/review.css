@@ -948,6 +948,47 @@ pre {
 #packet-global-review {
   border-radius: 9px;
 }
+
+/* Unified review shell: the landmarks remain stable across reference and drawing modes. */
+.review-workspace[data-review-shell="unified"] {
+  grid-template-areas: none;
+}
+.review-shell-region {
+  min-width: 0;
+}
+.review-shell-region[data-review-shell-region="status-question"],
+.review-shell-region[data-review-shell-region="detail-issue-results"],
+.review-shell-region[data-review-shell-region="human-decision"],
+.review-shell-region[data-review-shell-region="audit"] {
+  grid-column: 1 / -1;
+}
+.review-shell-region[data-review-shell-region="evidence-workspace"] {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+}
+.review-shell-region[data-review-shell-region="evidence-workspace"] #review-items,
+.review-shell-region[data-review-shell-region="evidence-workspace"] #evidence-viewer {
+  grid-area: auto;
+}
+.review-shell-region[data-review-shell-region="evidence-workspace"] #case-visual-review {
+  grid-column: 1 / -1;
+  height: min(72vh, 820px);
+  min-height: 560px;
+}
+.review-shell-region[data-review-shell-region="human-decision"] #decision-form {
+  max-width: 720px;
+}
+@media (max-width: 720px) {
+  .review-shell-region[data-review-shell-region="evidence-workspace"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-shell-region[data-review-shell-region="evidence-workspace"] #case-visual-review {
+    min-height: 500px;
+  }
+}
 @media (min-width: 1101px) {
   #review-items {
     display: flex;

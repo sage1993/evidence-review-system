@@ -257,11 +257,12 @@ def test_renderer_never_emits_opaque_unstyled_svg_helper_rect() -> None:
     assert 'fill="none"' in html
 
 
-def test_renderer_has_direct_reference_empty_state_and_related_reference_disclosure() -> None:
+def test_issue_152_renderer_collapses_reference_pane_without_direct_comparison() -> None:
     html = render_case_visual_review(_render_model(direct=False))
 
-    assert "직접 대조 가능한 기준을 찾지 못했습니다." in html
-    assert "관련 근거" in html
+    assert "직접 기준 근거가 없어 기준 비교 창을 숨겼습니다." in html
+    assert 'data-reference-available="false"' in html
+    assert re.search(r'<section class="reference-viewer"', html) is None
     assert "직접 비교 가능한 기준 없음" in html
 
 
