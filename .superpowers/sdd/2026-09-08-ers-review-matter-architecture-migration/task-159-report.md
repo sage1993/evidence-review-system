@@ -11,6 +11,7 @@ authority.
 Base/current `origin/main`: `ad57418122f432363b5fd03469737456141b376f`.
 Branch: `fix/issue-159-shared-http-transport`.
 Python: `3.13.14` on Windows.
+Code candidate: `4e1d4438de2465c99b76b88b4fef9af8fbbdbb35`.
 
 ## Implementation
 
@@ -50,8 +51,24 @@ All required socket gates passed in one focused run: 4 passed in 4.44s.
 
 ## Final acceptance
 
-The exact-candidate full pytest, repository Ruff, default/win32 mypy,
-compileall, source-tree documentation validation, and final diff check are
-recorded after the candidate commit is created. Browser/manual acceptance is
-`NOT_RUN`; GitHub Actions is `ACTIONS_NOT_RUN`. Push, PR creation, merge, and
-issue closure are `NOT_RUN` by request.
+| Gate | Status |
+| --- | --- |
+| Focused GREEN | PASS — 8 passed in 4.59s |
+| Adjacent local-server regression | PASS — 53 passed in 26.04s |
+| Windows full-body stress | PASS — 500 alternating `/actions` and `/calibration` requests |
+| Windows header-only stress | PASS — 100 alternating requests |
+| Partial/slow sender | PASS — bounded completion for each route |
+| Ruff `src tests web_runtime` | PASS |
+| mypy `src` | PASS — 259 source files |
+| mypy `--platform win32 src` | PASS — 259 source files |
+| compileall | PASS |
+| Source-tree documentation validation | PASS — 50 documents, errors=0, warnings=145 |
+| Installed documentation command | `SOURCE_MISMATCH` — installed executable resolves another checkout |
+| Full Python 3.13 pytest | `NOT_RUN` for the documentation-correction candidate; the prior background run was stopped before a summary |
+| Final `git diff --check` | `NOT_RUN` for the documentation-correction candidate |
+| Browser/manual | `NOT_RUN` |
+| GitHub Actions | `ACTIONS_NOT_RUN` |
+
+Controller review and the GitHub workflow are pending. Remote SHA verification,
+pull request creation, merge, issue closure, and post-merge ancestry are not
+claimed or performed.
