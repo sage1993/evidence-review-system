@@ -58,6 +58,13 @@
 - Remaining blockers: confidence-input is not compared to the request-derived deterministic value, and Track A bundle derivation is not cross-checked against the request; both can be tampered while updating manifest/packet hashes.
 - Ruling: resume the same terra implementer for round 4; no push/PR until shared cross-artifact validation and regressions pass final review.
 
+## Fix round 4 result — round 5 required
+
+- Candidate commit: `d621d326edd04b4d221e4c83f921817d77fdb1eb`.
+- Review confirmed request/Track A/confidence/packet cross-artifact tamper checks, but found two remaining authority blockers: current-review resolution still does not authenticate the request against MatterStore/FormalizationSnapshot lineage, and schema validation still accepts altered SQLite `ON CONFLICT` policies.
+- The review also found that exact-head gate claims need to be regenerated/recorded after the final code commit rather than relying on earlier artifacts.
+- Ruling: fix current-review Matter lineage authentication and exact schema conflict-policy validation in round 5; rerun and record final gates after the final candidate is committed.
+
 ## Fix round 4 result — 2026-09-10
 
 - The shared finalized-run validator now verifies the canonical request and
@@ -128,3 +135,28 @@
   `SOURCE_MISMATCH` because it points to `F:\2026-PJ\evidence-review-system`.
   Browser/manual acceptance remains `NOT_RUN`; GitHub Actions remains
   `ACTIONS_NOT_RUN`.
+
+## Fix-round-5 result — 2026-09-10
+
+- `f03f07c` adds one shared formal-run authority validator for formal binding
+  and current-review bind/resolve. Declared Matter identity is now resolved
+  from the workspace `matter.sqlite` and persisted `FormalizationSnapshot`,
+  then the complete snapshot-derived request is compared; copied or invented
+  request identity cannot authenticate a RUN. Direct runs with no Matter claim
+  retain the existing lower-level current-review selector behavior.
+- MatterStore now validates the canonical table SQL constraint syntax and
+  rejects every explicit non-default SQLite conflict policy (`IGNORE`,
+  `REPLACE`, `FAIL`, and `ROLLBACK`) on either required lineage constraint,
+  while retaining exact unique-index semantics and v2-to-v3 migration support.
+- TDD RED reproduced the invented Matter declaration and all eight altered
+  conflict-policy cases; GREEN passed 9 regressions in 1.28s. A positive
+  correctly-bound formal current-review regression passed with separate roots;
+  focused/adjacent pytest passed 76 tests in 20.23s.
+- Exact full Python 3.13 pytest was rerun after `f03f07c`: 2,070 passed, 1
+  skipped, 2,071 collected, in 364.54s. Ruff, mypy POSIX/Win32, and compileall
+  passed at the same SHA. Source-tree documentation validation passed with 50
+  documents, 0 errors, and 145 warnings. The installed documentation
+  executable remains `SOURCE_MISMATCH` because it points to
+  `F:\2026-PJ\evidence-review-system`.
+- Browser/manual acceptance remains `NOT_RUN`; GitHub Actions remains
+  `ACTIONS_NOT_RUN`. No drawing, visual, viewer, service, or UI path changed.

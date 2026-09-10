@@ -1,4 +1,4 @@
-# Issue #181 / MIG-11 fix-round-4 report
+# Issue #181 / MIG-11 fix-round-5 report
 
 ## Scope
 
@@ -24,13 +24,20 @@ regressions; no drawing, visual, viewer, service, or UI path changed.
   repository-local pointer remains canonical control state containing only the
   versioned format, exact `run_id`, and exact packet SHA-256; it stores no
   workspace path and does not recreate a global packet. Both bind and resolve
-  now use the same request-derived cross-artifact validator: canonical request
-  bytes and derived RUN ID, complete Track A bundle bytes, complete confidence
-  input bytes, and the manifest-bound final packet must all agree.
+  now use the same full formal-run authority validator: canonical request bytes
+  and derived RUN ID, complete Track A bundle bytes, complete confidence input
+  bytes, and the manifest-bound final packet must all agree. When a request
+  declares Matter lineage, the validator opens the supplied workspace's
+  `matter.sqlite`, loads the declared persisted snapshot, and compares the
+  complete request reconstructed from that snapshot. Invented, incomplete, or
+  copied identity fields therefore fail closed; lower-level direct runs with no
+  Matter claim retain their existing selector behavior.
 - MatterStore requires the exact two unique constraints for
   `formal_run_bindings`; validation preserves uniqueness, origin, partial
   status, ordered columns, and multiplicity. Any unexpected, duplicate,
-  partial, or replacement unique index fails closed after restart.
+  partial, or replacement unique index fails closed after restart. The table
+  SQL must also retain the canonical default SQLite `ABORT` conflict policy;
+  explicit `IGNORE`, `REPLACE`, `FAIL`, or `ROLLBACK` policies are rejected.
 
 ## TDD evidence
 
@@ -66,13 +73,26 @@ review accepted a refreshed manifest/packet whose Track A bundle contained an
 extra packet-irrelevant input. After the shared validator was added, both
 regressions failed closed; the focused/adjacent suite passed 53 tests.
 
+The round-5 RED command demonstrated that current review accepted a
+self-consistent finalized RUN declaring invented Matter lineage, and that all
+eight persisted schema variants with a non-default conflict policy were
+accepted. GREEN passed the nine new checks in 1.28s. A positive regression for
+a correctly bound formal RUN also passed, including separate repository and
+workspace roots; the current-review regression set passed 9 tests in 1.59s.
+
+## Fix-round-5 verification
+
+The implementation and regression commit was `f03f07c`
+(`fix(mig-11): authenticate Matter lineage and schema policy`). The exact full
+suite and all static gates below were rerun after that code commit.
+
 ## Verification
 
 | Gate | Result |
 | --- | --- |
-| Round-4 regression pytest | PASS — 2 passed in 1.15s |
-| Focused/adjacent Matter/current-review/formalization/finalizer pytest | PASS — 53 passed in 18.65s |
-| Full Python 3.13 pytest | PASS — 2,060 passed, 1 skipped in 370.60s |
+| Round-5 regression pytest | PASS — 9 passed in 1.28s |
+| Focused/adjacent Matter/current-review/formalization/finalizer pytest | PASS — 76 passed in 20.23s |
+| Full Python 3.13 pytest at `f03f07c` | PASS — 2,070 passed, 1 skipped in 364.54s |
 | Ruff `src tests web_runtime` | PASS — all checks passed |
 | mypy `src` | PASS — 258 source files |
 | mypy `--platform win32 src` | PASS — 258 source files |
@@ -88,11 +108,12 @@ installed `evidence-review.exe` imports a different checkout at
 therefore rerun against this candidate's `src` tree, with output created under
 the ignored `.acceptance/` directory; it passed as recorded above.
 
-The previous round's report described request/Track A and partial-index
-authority without recording the remaining confidence-input and full
-cross-artifact derivation gaps. This round supersedes that wording: formal and
-current-review verification now share exact request-derived Track A and
-confidence-input comparisons.
+This round supersedes the earlier claim that current-review validation stopped
+at request/Track A/confidence/packet consistency: it now authenticates declared
+Matter lineage from the workspace-persisted snapshot and uses the same full
+validator as formal binding. It also supersedes the earlier schema claim by
+recording canonical conflict-policy validation in addition to exact unique
+index semantics.
 
 ## Not run / unresolved
 
