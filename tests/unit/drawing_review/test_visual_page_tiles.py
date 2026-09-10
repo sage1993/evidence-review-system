@@ -12,6 +12,7 @@ def _large_page(tmp_path: Path) -> visual_pages.VisualPageAsset:
     Image.new("RGB", (5000, 4200), "white").save(image_path, format="PNG")
     image_sha256 = hashlib.sha256(image_path.read_bytes()).hexdigest()
     return visual_pages.VisualPageAsset(
+        case_id="CASE-1",
         attachment_id="ATT-VISUAL-1",
         source_sha256="a" * 64,
         page=1,
@@ -30,7 +31,11 @@ def test_large_visual_page_loader_does_not_materialize_missing_cache(
     tile_directory = (
         tmp_path
         / "case-page-tiles-v1"
-        / page.attachment_id
+        / visual_pages.visual_cache_identity(
+            page.case_id,
+            page.attachment_id,
+            page.source_sha256,
+        )
         / "page-0001"
     )
 
@@ -54,7 +59,11 @@ def test_large_visual_page_builds_verified_tile_manifest(tmp_path: Path) -> None
     manifest = (
         tmp_path
         / "case-page-tiles-v1"
-        / page.attachment_id
+        / visual_pages.visual_cache_identity(
+            page.case_id,
+            page.attachment_id,
+            page.source_sha256,
+        )
         / "page-0001"
         / "manifest.json"
     )
@@ -72,6 +81,7 @@ def test_small_visual_page_does_not_tile(tmp_path: Path) -> None:
     Image.new("RGB", (1200, 900), "white").save(image_path, format="PNG")
     image_sha256 = hashlib.sha256(image_path.read_bytes()).hexdigest()
     page = visual_pages.VisualPageAsset(
+        case_id="CASE-1",
         attachment_id="ATT-VISUAL-2",
         source_sha256="b" * 64,
         page=1,

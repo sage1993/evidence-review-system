@@ -40,6 +40,7 @@ _TILE_TRIGGER_DIMENSION = 4096
 class VisualPageAsset:
     """One verified raster page presented to the external visual analyzer."""
 
+    case_id: str
     attachment_id: str
     source_sha256: str
     page: int
@@ -48,6 +49,15 @@ class VisualPageAsset:
     coordinate_system: CoordinateSystem
     image_path: Path
     image_sha256: str
+
+
+def visual_cache_identity(
+    case_id: str,
+    attachment_id: str,
+    source_sha256: str,
+) -> str:
+    """Return the cache key for one immutable case-local visual source."""
+    return f"{case_id}--{attachment_id}--{source_sha256}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,15 +101,25 @@ def _pdf_assets(
     # CASE_DRAWING PDFs need materially more raster detail than the normal reference
     # document viewer because reviewers zoom into dimensions, notes, and linework.
     # Keep this cache isolated so reference/legal-document rendering remains unchanged.
+    cache_identity = visual_cache_identity(
+        attachment.case_id or "",
+        attachment.attachment_id,
+        attachment.sha256,
+    )
     root = workspace / _CASE_PDF_CACHE_DIR
     cache_pdf_page_images(
         root,
         source,
-        attachment.attachment_id,
+        cache_identity,
         attachment.sha256,
         render_scale=_CASE_PDF_RENDER_SCALE,
+        metadata={
+            "case_id": attachment.case_id,
+            "attachment_id": attachment.attachment_id,
+            "stored_path": attachment.stored_path,
+        },
     )
-    directory = root / attachment.attachment_id
+    directory = root / cache_identity
     images = sorted(directory.glob("page-*.png"))
     if not images:
         raise ValueError("VISUAL_SOURCE_RENDER_FAILED")
@@ -112,6 +132,7 @@ def _pdf_assets(
         width, height = _image_size(image_path)
         assets.append(
             VisualPageAsset(
+                case_id=attachment.case_id or "",
                 attachment_id=attachment.attachment_id,
                 source_sha256=attachment.sha256,
                 page=page,
@@ -135,7 +156,9 @@ def _image_metadata(
     return {
         "format": _VISUAL_PAGE_FORMAT,
         "version": 1,
+        "case_id": attachment.case_id,
         "attachment_id": attachment.attachment_id,
+        "stored_path": attachment.stored_path,
         "source_sha256": attachment.sha256,
         "page": 1,
         "width": width,
@@ -150,7 +173,11 @@ def _normalized_image_asset(
     attachment: ImmutableAttachment,
     source: Path,
 ) -> VisualPageAsset:
-    directory = workspace / "case-page-images" / attachment.attachment_id
+    directory = workspace / "case-page-images" / visual_cache_identity(
+        attachment.case_id or "",
+        attachment.attachment_id,
+        attachment.sha256,
+    )
     image_path = directory / "page-0001.png"
     metadata_path = directory / "page-0001.json"
     if image_path.exists() or metadata_path.exists():
@@ -204,6 +231,7 @@ def _normalized_image_asset(
                 pass
             raise
     return VisualPageAsset(
+        case_id=attachment.case_id or "",
         attachment_id=attachment.attachment_id,
         source_sha256=attachment.sha256,
         page=1,
@@ -219,7 +247,11 @@ def _tile_directory(workspace: Path, page: VisualPageAsset) -> Path:
     return (
         workspace
         / _TILE_CACHE_DIR
-        / page.attachment_id
+        / visual_cache_identity(
+            page.case_id,
+            page.attachment_id,
+            page.source_sha256,
+        )
         / f"page-{page.page:04d}"
     )
 
@@ -237,6 +269,7 @@ def _tile_manifest_header(page: VisualPageAsset) -> dict[str, object]:
     return {
         "format": _VISUAL_TILE_FORMAT,
         "version": 1,
+        "case_id": page.case_id,
         "attachment_id": page.attachment_id,
         "source_sha256": page.source_sha256,
         "page": page.page,
@@ -419,7 +452,7 @@ def prepare_visual_page_assets(
             assets.append(_normalized_image_asset(workspace, attachment, source))
         else:
             raise ValueError(f"unsupported case visual MIME: {attachment.mime}")
-    assets.sort(key=lambda item: (item.attachment_id, item.page))
+    assets.sort(key=lambda item: (item.case_id, item.attachment_id, item.page))
     return tuple(assets)
 
 
@@ -429,4 +462,5 @@ __all__ = [
     "ensure_visual_page_tiles",
     "load_visual_page_tiles",
     "prepare_visual_page_assets",
+    "visual_cache_identity",
 ]

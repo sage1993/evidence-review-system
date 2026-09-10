@@ -21,6 +21,7 @@ from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
     load_visual_page_tiles,
+    visual_cache_identity,
 )
 from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.review_packet.reference_pages import build_reference_projection
@@ -232,19 +233,26 @@ def _verify_geometry_bounds(
 
 def _resolve_visual_raster_path(
     workspace_root: Path,
-    attachment_id: str,
+    attachment: ImmutableAttachment,
     page_number: int,
     expected_sha256: str,
 ) -> Path:
     """Resolve an exact regular raster below one of the trusted CASE cache roots."""
     filename = f"page-{page_number:04d}.png"
     found_regular = False
+    if attachment.case_id is None:
+        raise ValueError("case visual attachment identity requires case_id")
+    cache_identity = visual_cache_identity(
+        attachment.case_id,
+        attachment.attachment_id,
+        attachment.sha256,
+    )
     for cache_name in (_CASE_PDF_CACHE_DIR, _CASE_IMAGE_CACHE_DIR):
         cache_root = workspace_root / cache_name
         try:
             path = verified_regular_file_below(
                 cache_root,
-                (attachment_id, filename),
+                (cache_identity, filename),
                 field="case visual raster",
             )
         except FileNotFoundError:
@@ -257,7 +265,7 @@ def _resolve_visual_raster_path(
     raise FileNotFoundError(
         workspace_root
         / _CASE_PDF_CACHE_DIR
-        / attachment_id
+        / cache_identity
         / filename
     )
 
@@ -530,11 +538,12 @@ def build_case_visual_projection(
             raise ValueError("case visual page identity is ambiguous")
         image_path = _resolve_visual_raster_path(
             workspace_root,
-            attachment_id,
+            page_attachment,
             page_number,
             image_sha256,
         )
         asset = VisualPageAsset(
+            case_id=page_attachment.case_id or "",
             attachment_id=attachment_id,
             source_sha256=source_sha256,
             page=page_number,

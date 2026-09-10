@@ -76,9 +76,15 @@ def test_attachment_requires_original_storage_root() -> None:
         )
 
 
+def test_visual_attachment_requires_case_local_identity() -> None:
+    attachments = _attachments()
+    with pytest.raises(ValueError, match="case_id"):
+        attachments.decode_immutable_attachment(_attachment())
+
+
 def test_attachment_round_trips() -> None:
     attachments = _attachments()
-    payload = _attachment()
+    payload = _attachment(role="REFERENCE_DOCUMENT")
     attachment = attachments.decode_immutable_attachment(payload)
     assert attachments.immutable_attachment_document(attachment) == payload
 

@@ -109,6 +109,26 @@ def test_verify_attachment_reports_size_and_hash_tampering(tmp_path: Path) -> No
     )
 
 
+def test_verify_attachment_rejects_case_directory_identity_mismatch(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "drawing.png"
+    payload = b"\x89PNG\r\n\x1a\nfixture"
+    source.write_bytes(payload)
+    case_dir = tmp_path / "CASE-A"
+    attachment = ingest_drawing_source(
+        source, case_dir, "ATT-001", "CASE_DRAWING", DrawingIntakePolicy()
+    )
+    wrong_case_dir = tmp_path / "CASE-B"
+    wrong_stored = wrong_case_dir / "sources" / "drawings" / "ATT-001.png"
+    wrong_stored.parent.mkdir(parents=True)
+    wrong_stored.write_bytes(payload)
+
+    assert verify_immutable_attachment(wrong_case_dir, attachment) == (
+        "SOURCE_CASE_MISMATCH",
+    )
+
+
 def test_symlink_source_is_rejected(tmp_path: Path) -> None:
     source = tmp_path / "real.png"
     source.write_bytes(b"\x89PNG\r\n\x1a\nfixture")

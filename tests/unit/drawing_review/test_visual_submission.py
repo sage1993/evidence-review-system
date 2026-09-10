@@ -53,6 +53,7 @@ def _attachment() -> ImmutableAttachment:
 
 def _page() -> VisualPageAsset:
     return VisualPageAsset(
+        case_id="CASE-1",
         attachment_id="ATT-DRAWING-1",
         source_sha256="a" * 64,
         page=1,

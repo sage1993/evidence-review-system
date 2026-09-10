@@ -215,6 +215,8 @@ def verify_immutable_attachment(
     attachment: ImmutableAttachment,
 ) -> tuple[str, ...]:
     """Return deterministic integrity errors for one case-local source."""
+    if attachment.case_id is not None and case_dir.name != attachment.case_id:
+        return ("SOURCE_CASE_MISMATCH",)
     try:
         path = verified_regular_file_below(
             case_dir,

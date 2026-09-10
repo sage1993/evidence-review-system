@@ -20,6 +20,7 @@ def test_tiled_projection_reuses_verified_metadata_without_tile_payload_read(
         image_sha256="b" * 64,
     )
     asset = VisualPageAsset(
+        case_id="CASE-1",
         attachment_id="ATT-1",
         source_sha256="a" * 64,
         page=1,

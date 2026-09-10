@@ -32,5 +32,43 @@
         "SUPPORTING_IMAGE"
       ]
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stored_path": {
+            "pattern": "^cases/"
+          }
+        },
+        "required": ["stored_path"]
+      },
+      "then": {
+        "required": ["case_id"],
+        "properties": {
+          "role": {
+            "enum": ["CASE_DRAWING", "SUPPORTING_IMAGE"]
+          }
+        }
+      },
+      "else": {
+        "allOf": [
+          {
+            "not": {
+              "required": ["case_id"]
+            }
+          },
+          {
+            "properties": {
+              "role": {
+                "not": {
+                  "enum": ["CASE_DRAWING", "SUPPORTING_IMAGE"]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
 }

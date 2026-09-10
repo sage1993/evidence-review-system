@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import sys
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from PIL import Image
+from pypdf import PdfWriter
 
 from evidence_review.contracts.attachments import ImmutableAttachment
 from evidence_review.drawing_review.visual_pages import prepare_visual_page_assets
@@ -64,6 +67,67 @@ def test_visual_source_resolves_same_plan_basename_in_its_own_case(
 
     assert first_page[0].source_sha256 == hashlib.sha256(first_payload).hexdigest()
     assert second_page[0].source_sha256 == hashlib.sha256(second_payload).hexdigest()
+
+
+def test_visual_image_cache_identity_includes_case_id_for_same_attachment_id(
+    tmp_path: Path,
+) -> None:
+    fixture = tmp_path / "plan.png"
+    payload = _png_bytes(fixture)
+    first = _attachment("CASE-ALPHA", "ATT-SAME", payload)
+    second = _attachment("CASE-BETA", "ATT-SAME", payload)
+    _store(tmp_path, first, payload)
+    _store(tmp_path, second, payload)
+
+    pages = prepare_visual_page_assets(tmp_path, (first, second))
+
+    assert [page.case_id for page in pages] == ["CASE-ALPHA", "CASE-BETA"]
+    assert pages[0].image_path != pages[1].image_path
+    for page in pages:
+        metadata_path = page.image_path.with_suffix(".json")
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        assert metadata["case_id"] == page.case_id
+
+
+def test_visual_pdf_cache_identity_includes_case_id_for_same_attachment_id(
+    tmp_path: Path,
+) -> None:
+    output = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.write(output)
+    payload = output.getvalue()
+    first = ImmutableAttachment(
+        case_id="CASE-ALPHA",
+        attachment_id="ATT-SAME",
+        original_name="plan.pdf",
+        stored_path="cases/CASE-ALPHA/sources/drawings/ATT-SAME.pdf",
+        sha256=hashlib.sha256(payload).hexdigest(),
+        byte_size=len(payload),
+        mime="application/pdf",
+        role="CASE_DRAWING",
+    )
+    second = ImmutableAttachment(
+        case_id="CASE-BETA",
+        attachment_id="ATT-SAME",
+        original_name="plan.pdf",
+        stored_path="cases/CASE-BETA/sources/drawings/ATT-SAME.pdf",
+        sha256=first.sha256,
+        byte_size=first.byte_size,
+        mime="application/pdf",
+        role="CASE_DRAWING",
+    )
+    _store(tmp_path, first, payload)
+    _store(tmp_path, second, payload)
+
+    pages = prepare_visual_page_assets(tmp_path, (first, second))
+
+    assert [page.case_id for page in pages] == ["CASE-ALPHA", "CASE-BETA"]
+    assert pages[0].image_path != pages[1].image_path
+    for page in pages:
+        metadata_path = page.image_path.with_suffix(".json")
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        assert metadata["case_id"] == page.case_id
 
 
 @pytest.mark.parametrize(
