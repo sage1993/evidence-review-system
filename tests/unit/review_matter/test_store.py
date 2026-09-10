@@ -88,7 +88,7 @@ def test_invalid_v1_metadata_migration_rolls_back_without_schema_changes(
         )
 
 
-@pytest.mark.parametrize("database_version", [1, 2])
+@pytest.mark.parametrize("database_version", [1, 3])
 def test_malformed_snapshot_table_rejects_without_partial_schema_change(
     tmp_path, database_version
 ) -> None:
@@ -107,7 +107,7 @@ def test_malformed_snapshot_table_rejects_without_partial_schema_change(
         store.close()
 
     with sqlite3.connect(database) as connection:
-        if database_version == 2:
+        if database_version == 3:
             connection.execute("DROP TABLE formalization_snapshots")
         connection.execute(
             """
@@ -201,10 +201,191 @@ def test_partial_snapshot_identity_index_rejects_without_schema_change(tmp_path)
             ).fetchone()[0]
             == index_sql
         )
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert (
             connection.execute(
                 "SELECT value FROM matter_meta WHERE key = 'schema_version'"
             ).fetchone()[0]
-            == "2"
+            == "3"
         )
+
+
+def test_v2_store_migrates_append_only_formal_run_history_schema(tmp_path) -> None:
+    database = tmp_path / "v2-store.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formal_run_bindings")
+        connection.execute("PRAGMA user_version = 2")
+        connection.execute(
+            "UPDATE matter_meta SET value = '2' WHERE key = 'schema_version'"
+        )
+
+    upgraded = MatterStore(database)
+    upgraded.close()
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert (
+            connection.execute(
+                "SELECT value FROM matter_meta WHERE key = 'schema_version'"
+            ).fetchone()[0]
+            == "3"
+        )
+        assert (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'formal_run_bindings'"
+            ).fetchone()
+            is not None
+        )
+
+
+def test_reopened_store_rejects_extra_unique_matter_run_constraint(tmp_path) -> None:
+    """A Matter must retain its ability to append more than one formal run."""
+    database = tmp_path / "extra-unique-matter-run.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_one_run_per_matter "
+            "ON formal_run_bindings(matter_id)"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
+
+
+def test_reopened_store_rejects_partial_extra_unique_matter_run_constraint(tmp_path) -> None:
+    """A partial unique index must not narrow append-only formal-run lineage."""
+    database = tmp_path / "partial-extra-unique-matter-run.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_one_nonnull_matter "
+            "ON formal_run_bindings(matter_id) WHERE matter_id IS NOT NULL"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
+
+
+def test_reopened_store_rejects_partial_replacement_of_global_run_constraint(tmp_path) -> None:
+    """A partial run-id index cannot replace the required global uniqueness."""
+    database = tmp_path / "partial-replacement-run-id.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formal_run_bindings")
+        connection.execute(
+            """
+            CREATE TABLE formal_run_bindings (
+                matter_id TEXT NOT NULL,
+                matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                snapshot_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                packet_sha256 TEXT NOT NULL CHECK (length(packet_sha256) = 64),
+                PRIMARY KEY (matter_id, snapshot_id),
+                FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT,
+                FOREIGN KEY (snapshot_id) REFERENCES formalization_snapshots(snapshot_id)
+                    ON DELETE RESTRICT
+            )
+            """
+        )
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_partial_run_id "
+            "ON formal_run_bindings(run_id) WHERE matter_revision = 1"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
+
+
+def test_reopened_store_rejects_redundant_partial_allowed_unique_signature(tmp_path) -> None:
+    """A partial duplicate of the required run-id index is still invalid."""
+    database = tmp_path / "duplicate-partial-run-id.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_duplicate_partial_run_id "
+            "ON formal_run_bindings(run_id) WHERE matter_revision >= 1"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
+
+
+@pytest.mark.parametrize("constraint", ["PRIMARY KEY", "UNIQUE"])
+@pytest.mark.parametrize("policy", ["IGNORE", "REPLACE", "FAIL", "ROLLBACK"])
+def test_reopened_store_rejects_non_abort_formal_run_constraint_policy(
+    tmp_path, constraint, policy
+) -> None:
+    """Lineage constraints must retain SQLite's default ABORT policy."""
+    database = tmp_path / f"{constraint.lower().replace(' ', '-')}-{policy.lower()}.sqlite"
+    store = MatterStore(database)
+    store.close()
+    primary_policy = f" ON CONFLICT {policy}" if constraint == "PRIMARY KEY" else ""
+    unique_policy = f" ON CONFLICT {policy}" if constraint == "UNIQUE" else ""
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formal_run_bindings")
+        connection.execute(
+            f"""
+            CREATE TABLE formal_run_bindings (
+                matter_id TEXT NOT NULL,
+                matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                snapshot_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                packet_sha256 TEXT NOT NULL CHECK (length(packet_sha256) = 64),
+                PRIMARY KEY (matter_id, snapshot_id){primary_policy},
+                UNIQUE (run_id){unique_policy},
+                FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT,
+                FOREIGN KEY (snapshot_id) REFERENCES formalization_snapshots(snapshot_id)
+                    ON DELETE RESTRICT
+            )
+            """
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
+
+
+@pytest.mark.parametrize("constraint", ["PRIMARY KEY", "UNIQUE"])
+@pytest.mark.parametrize("policy", ["IGNORE", "REPLACE", "FAIL", "ROLLBACK"])
+def test_reopened_store_rejects_comment_obfuscated_non_abort_policy(
+    tmp_path, constraint, policy
+) -> None:
+    """SQL comments must not hide a non-default lineage conflict policy."""
+    database = tmp_path / (
+        f"comment-{constraint.lower().replace(' ', '-')}-{policy.lower()}.sqlite"
+    )
+    store = MatterStore(database)
+    store.close()
+    primary_policy = (
+        f" ON/*persisted*/CONFLICT {policy}" if constraint == "PRIMARY KEY" else ""
+    )
+    unique_policy = (
+        f" ON/*persisted*/CONFLICT {policy}" if constraint == "UNIQUE" else ""
+    )
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE formal_run_bindings")
+        connection.execute(
+            f"""
+            CREATE TABLE formal_run_bindings (
+                matter_id TEXT NOT NULL,
+                matter_revision INTEGER NOT NULL CHECK (matter_revision >= 1),
+                snapshot_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                packet_sha256 TEXT NOT NULL CHECK (length(packet_sha256) = 64),
+                PRIMARY KEY (matter_id, snapshot_id){primary_policy},
+                UNIQUE (run_id){unique_policy},
+                FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE RESTRICT,
+                FOREIGN KEY (snapshot_id) REFERENCES formalization_snapshots(snapshot_id)
+                    ON DELETE RESTRICT
+            )
+            """
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)
