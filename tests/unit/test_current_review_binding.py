@@ -129,6 +129,31 @@ def test_current_review_resolves_a_workspace_scoped_run_from_a_separate_reposito
     assert resolved.run_directory.parent.parent == workspace_root
 
 
+def test_current_review_resolution_rejects_tampered_canonical_request(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+    run_id, packet_sha256, run_directory = _finalized_run(
+        repository_root, question="Request integrity review"
+    )
+    bind_current_review(
+        repository_root, run_id, packet_sha256, workspace_root=repository_root
+    )
+
+    request_path = run_directory / "review-request.json"
+    request = json.loads(request_path.read_text(encoding="utf-8"))
+    request["question"] = "Tampered request question"
+    request_path.write_bytes(dump_bytes(request))
+
+    with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
+        bind_current_review(
+            repository_root, run_id, packet_sha256, workspace_root=repository_root
+        )
+    with pytest.raises(ValueError, match="CURRENT_REVIEW_STALE"):
+        resolve_current_review(repository_root, workspace_root=repository_root)
+
+
 def test_current_review_resolution_fails_closed_for_missing_stale_malformed_and_mismatched_pointer(
     tmp_path: Path,
 ) -> None:

@@ -81,12 +81,17 @@ def _finalized_formal_run(workspace: Path, snapshot: object) -> tuple[str, str]:
     return _write_finalized_artifacts(workspace / "runs" / prepared.run_id)
 
 
-def _finalized_direct_run(workspace: Path) -> tuple[str, str]:
+def _finalized_direct_run(workspace: Path, snapshot: object) -> tuple[str, str]:
     request = {
         "format": "evidence-review/review-run-request",
         "version": 1,
         "question": "Unrelated direct review",
-        "inputs": {},
+        "inputs": {
+            "formalization_snapshot_id": snapshot.snapshot_id,
+            "matter_id": snapshot.matter_id,
+            "matter_revision": snapshot.matter_revision,
+            "evidence_snapshot_provenance": {},
+        },
         "evidence": [],
         "calculations": [],
         "rules": [],
@@ -141,7 +146,7 @@ def test_formal_run_lineage_rejects_nonexistent_direct_wrong_snapshot_missing_an
 ) -> None:
     workspace, store, first = _matter_with_first_snapshot(tmp_path)
     first_run_id, first_packet_sha256 = _finalized_formal_run(workspace, first)
-    direct_run_id, direct_packet_sha256 = _finalized_direct_run(workspace)
+    direct_run_id, direct_packet_sha256 = _finalized_direct_run(workspace, first)
     second = _second_snapshot(workspace, store)
     second_run_id, second_packet_sha256 = _finalized_formal_run(workspace, second)
 

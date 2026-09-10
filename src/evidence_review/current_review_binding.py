@@ -19,6 +19,9 @@ from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
 )
+from evidence_review.review_matter.formal_run_binding import (
+    verify_finalized_run_request,
+)
 
 CURRENT_REVIEW_BINDING_FORMAT = "evidence-review/current-review-binding"
 CURRENT_REVIEW_BINDING_VERSION = 1
@@ -149,11 +152,20 @@ def _resolve_binding(
             ("final-review-packet.json",),
             field="current review packet",
         )
+        request_path = verified_regular_file_below(
+            run_directory,
+            ("review-request.json",),
+            field="current review request",
+        )
         before = packet_path.read_bytes()
+        request_before = request_path.read_bytes()
         packet = verify_finalized_run(run_directory)
+        verify_finalized_run_request(run_directory)
         after = packet_path.read_bytes()
+        request_after = request_path.read_bytes()
         if (
             before != after
+            or request_before != request_after
             or after != dump_bytes(review_packet_document(packet))
             or packet.run_id != binding.run_id
             or hashlib.sha256(after).hexdigest() != binding.packet_sha256

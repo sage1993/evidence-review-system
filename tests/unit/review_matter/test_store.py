@@ -254,3 +254,18 @@ def test_reopened_store_rejects_extra_unique_matter_run_constraint(tmp_path) -> 
 
     with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
         MatterStore(database)
+
+
+def test_reopened_store_rejects_partial_extra_unique_matter_run_constraint(tmp_path) -> None:
+    """A partial unique index must not narrow append-only formal-run lineage."""
+    database = tmp_path / "partial-extra-unique-matter-run.sqlite"
+    store = MatterStore(database)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE UNIQUE INDEX formal_run_bindings_one_nonnull_matter "
+            "ON formal_run_bindings(matter_id) WHERE matter_id IS NOT NULL"
+        )
+
+    with pytest.raises(MatterSchemaError, match="MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID"):
+        MatterStore(database)

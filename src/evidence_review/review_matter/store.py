@@ -271,7 +271,7 @@ class MatterStore:
             for index in self.connection.execute(
                 'PRAGMA index_list("formal_run_bindings")'
             ).fetchall()
-            if int(index[2]) == 1 and int(index[4]) == 0
+            if int(index[2]) == 1
         }
         if unique_indexes != {("matter_id", "snapshot_id"), ("run_id",)}:
             raise MatterSchemaError("MATTER_FORMAL_RUN_BINDING_SCHEMA_INVALID")

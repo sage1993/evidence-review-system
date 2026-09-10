@@ -18,7 +18,15 @@ from evidence_review.filesystem_trust import (
     verified_regular_file_below,
 )
 from evidence_review.llm_layer.track_a import build_track_a_bundle, track_a_bundle_document
-from evidence_review.review_matter.snapshot import load_formalization_snapshot
+from evidence_review.review_matter.formalization import (
+    _request_document,
+    _validated_evidence_provenance,
+)
+from evidence_review.review_matter.scope import review_scope_document
+from evidence_review.review_matter.snapshot import (
+    FormalizationSnapshot,
+    load_formalization_snapshot,
+)
 from evidence_review.review_matter.store import MatterStore
 from evidence_review.review_run import _decode_request
 
@@ -58,9 +66,7 @@ def _binding(
         workspace_root,
         run_id=checked_run_id,
         packet_sha256=checked_packet_sha256,
-        matter_id=checked_matter_id,
-        snapshot_id=checked_snapshot_id,
-        matter_revision=snapshot.matter_revision,
+        snapshot=snapshot,
     )
     return FormalRunBinding(
         matter_id=checked_matter_id,
@@ -76,9 +82,7 @@ def _verify_formal_run(
     *,
     run_id: str,
     packet_sha256: str,
-    matter_id: str,
-    snapshot_id: str,
-    matter_revision: int,
+    snapshot: FormalizationSnapshot,
 ) -> None:
     """Authenticate one finalized Formal Run and its exact Matter request lineage."""
     try:
@@ -118,6 +122,7 @@ def _verify_formal_run(
             _confidence,
             normalized_request,
         ) = _decode_request(request_path)
+        expected_request = _expected_formal_request(workspace, snapshot)
         expected_bundle = track_a_bundle_document(
             build_track_a_bundle(
                 run_id=run_id,
@@ -132,6 +137,7 @@ def _verify_formal_run(
         if (
             before[0] != dump_bytes(review_packet_document(packet))
             or before[1] != dump_bytes(normalized_request)
+            or before[1] != dump_bytes(expected_request)
             or before[2] != dump_bytes(expected_bundle)
             or compute_run_id_from_request(normalized_request) != run_id
             or packet.run_id != run_id
@@ -139,14 +145,49 @@ def _verify_formal_run(
             or hashlib.sha256(before[0]).hexdigest() != packet_sha256
         ):
             raise ValueError("formal run identity does not match finalized artifacts")
-        if (
-            inputs.get("formalization_snapshot_id") != snapshot_id
-            or inputs.get("matter_id") != matter_id
-            or inputs.get("matter_revision") != matter_revision
-        ):
-            raise ValueError("formal run request does not match Matter snapshot")
     except (FileNotFoundError, OSError, TypeError, ValueError) as error:
         raise ValueError("FORMAL_RUN_BINDING_RUN_INVALID") from error
+
+
+def _expected_formal_request(
+    workspace: Path, snapshot: FormalizationSnapshot
+) -> dict[str, object]:
+    evidence_db = verified_regular_file_below(
+        workspace,
+        ("evidence", "evidence.sqlite"),
+        field="formal run evidence database",
+    )
+    provenance = _validated_evidence_provenance(evidence_db, snapshot)
+    return _request_document(
+        snapshot,
+        provenance,
+        review_scope_document(snapshot.review_scope),
+    )
+
+
+def verify_finalized_run_request(run_directory: Path) -> dict[str, object]:
+    """Verify one run-local request's canonical bytes and derived RUN identity."""
+    try:
+        trusted_run = verified_regular_directory(
+            run_directory, field="finalized run directory"
+        )
+        request_path = verified_regular_file_below(
+            trusted_run,
+            ("review-request.json",),
+            field="finalized run request",
+        )
+        before = request_path.read_bytes()
+        normalized_request = _decode_request(request_path)[-1]
+        after = request_path.read_bytes()
+        if (
+            before != after
+            or before != dump_bytes(normalized_request)
+            or compute_run_id_from_request(normalized_request) != trusted_run.name
+        ):
+            raise ValueError("finalized run request identity changed")
+        return normalized_request
+    except (FileNotFoundError, OSError, TypeError, ValueError) as error:
+        raise ValueError("FINALIZED_RUN_REQUEST_INVALID") from error
 
 
 def bind_formal_run(
@@ -226,4 +267,9 @@ def list_formal_runs(
     return bindings
 
 
-__all__ = ["FormalRunBinding", "bind_formal_run", "list_formal_runs"]
+__all__ = [
+    "FormalRunBinding",
+    "bind_formal_run",
+    "list_formal_runs",
+    "verify_finalized_run_request",
+]

@@ -38,24 +38,39 @@
 - Important: MatterStore schema validation accepts extra unique indexes such as `UNIQUE(matter_id)`, which can block the required second run.
 - Ruling: do not push/PR. Fix all three authority/migration defects and add realistic finalized-run, separate-root, and malformed-constraint regression tests. Full gates must be rerun at the final candidate.
 
-## Round-1 takeover result — 2026-09-10
+## Fix round 1 result — round 2 required
 
-- `bind_formal_run()` now requires a workspace root, verifies the run-local
-  finalized packet through `verify_finalized_run()`, validates canonical
-  request/RUN and Track-A-bundle identity, and proves the request's snapshot,
-  Matter ID, and Matter revision before appending lineage.
-- Current review now resolves workspace-scoped runs through an explicit
-  workspace root while the repository pointer remains restricted to its
-  canonical run ID and packet SHA fields.
-- MatterStore now rejects any extra unique formal-run-binding index after a
-  persisted restart; required v3 constraints remain accepted.
-- TDD RED: nonexistent/invented RUN was accepted, an extra
-  `UNIQUE(matter_id)` index was accepted, and current-review lacked the
-  separate-workspace API. GREEN: focused suite PASS (19), adjacent suite PASS
-  (145), full Python 3.13 pytest PASS (2,054 passed, 1 skipped), Ruff PASS,
-  mypy POSIX/Win32 PASS, compileall PASS, and source-tree documentation
-  integrity PASS (0 errors, 145 warnings).
-- Standard documentation CLI invocation is `SOURCE_MISMATCH` because the
-  installed executable points to `F:\2026-PJ\evidence-review-system`; source
-  validation of this worktree passed. Browser/manual acceptance remains
-  `NOT_RUN`; GitHub Actions remains `ACTIONS_NOT_RUN`.
+- Candidate commit: `5daf7e8db3cfb323d4faa5466e942df99029646e`.
+- Review confirmed the prior RUN authentication, separate-root pointer path, and ordinary extra-index tests, but found three remaining blockers: incomplete snapshot request/provenance comparison, request tamper not checked during pointer resolve, and partial unique indexes accepted by schema validation.
+- Ruling: resume the same terra implementer for round 2; no push/PR until all three fail-closed regressions and exact-head gates pass.
+
+## Round-1 takeover result — 2026-09-10 (superseded)
+
+- The first takeover implementation addressed the initial three review findings,
+  but its snapshot authentication compared only three request fields and its
+  schema check excluded partial indexes. The final review correctly kept this
+  candidate open for another fix round.
+
+## Fix-round-2 result — 2026-09-10
+
+- `bind_formal_run()` now compares the complete canonical request reconstructed
+  from the persisted `FormalizationSnapshot`, review scope, selected evidence,
+  and finalized evidence provenance. A realistic finalized direct run that
+  copies `formalization_snapshot_id`, `matter_id`, and `matter_revision` while
+  changing question/evidence/provenance fails closed.
+- Current-review bind and resolve share the canonical run-local request/RUN
+  verifier in addition to final-packet verification. The pointer remains
+  limited to exact `run_id` and packet SHA, and separate repository/workspace
+  roots remain supported.
+- MatterStore rejects every unexpected unique formal-run-binding index,
+  including partial unique indexes, after persisted restart; the required v3
+  schema remains accepted.
+- TDD RED reproduced all three blockers; GREEN passed the three regressions in
+  1.44s. Focused/adjacent pytest passed 62 tests; exact full Python 3.13
+  pytest passed 2,056 with 1 skipped in 410.89s. Ruff, mypy POSIX/Win32,
+  compileall, source-tree documentation validation, and final diff check passed.
+- Source-tree documentation validation reported 50 documents, 0 errors, and
+  145 warnings. The installed documentation executable remains
+  `SOURCE_MISMATCH` because it points to `F:\2026-PJ\evidence-review-system`.
+  Browser/manual acceptance remains `NOT_RUN`; GitHub Actions remains
+  `ACTIONS_NOT_RUN`.
