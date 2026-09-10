@@ -24,6 +24,13 @@ Follow-up commit: `fix(issue-152): preserve drawing print and initialization`.
 - The full renderer now requests drawing-only initial `aria-hidden="true"` decision markup. The inline drawing script can still bind before the later Human Decision element parses; its opener then retrieves, reveals, focuses, and closes that form after it exists.
 - Preserved reference-only decision markup through the renderer default. Packet hashing/provenance, protected routes, and append-only decision storage remain untouched.
 
+## Final visual-review follow-up
+
+Follow-up commit: `fix(issue-152): distinguish drawing fit controls`.
+
+- Replaced the shared fit glyph with three persistent SVG affordances: corner brackets for 화면 맞춤, horizontal arrows/bounds for 폭 맞춤, and a `1:1` native-size mark for 원본 100%. Each retains its Korean accessible label/title and the existing 40px centered control layout.
+- Expanded the controller behavior harness to click 화면 맞춤, 폭 맞춤, and 원본 100%, asserting the centered `preserveAspectRatio="meet"` transforms for each relevant viewport/page geometry.
+
 ## Changed files
 
 - `src/evidence_review/review_packet/html_renderer.py`
@@ -57,6 +64,9 @@ Follow-up commit: `fix(issue-152): preserve drawing print and initialization`.
 - Re-review GREEN: the same command — `3 passed, 12 deselected`; contracts cover the print cascade and the actual script-before-form parser order, then opener focus plus Escape, backdrop, and close-button focus restoration.
 - `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/integration/review_packet/test_review_workspace_ui.py -k 'finding_click or issue_152'` — `4 passed, 11 deselected`.
 - `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/integration/review_packet/test_persisted_decision_ui.py tests/unit/review_packet/test_case_visual_renderer.py tests/unit/review_packet/test_issue_119_visual_hardening.py -k 'not projection_separates_direct_and_related_references and not projection_groups_ocr_fragments_into_semantic_finding'` — `29 passed, 2 deselected`.
+- Final visual-review RED: `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/unit/review_packet/test_case_visual_renderer.py -k issue_152` — `1 failed, 3 passed, 15 deselected`; the failure showed all three fit buttons emitted the same SVG affordance.
+- Final visual-review GREEN: the same command — `4 passed, 15 deselected`.
+- `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/integration/review_packet/test_review_workspace_ui.py -k 'fit_modes_keep_portrait_width'` — `1 passed, 14 deselected`; the behavior harness clicks and validates all three fit controls.
 
 ## NOT_RUN
 

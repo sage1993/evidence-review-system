@@ -631,12 +631,19 @@ def _status_meta(status: str) -> tuple[str, str]:
 
 
 def _icon(name: str) -> str:
+    if name == "original-size":
+        return (
+            '<svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">'
+            '<text x="12" y="15" text-anchor="middle" fill="currentColor" '
+            'font-family="ui-monospace,monospace" font-size="9" font-weight="700">1:1</text></svg>'
+        )
     paths = {
         "prev": '<path d="M15 18l-6-6 6-6"/>',
         "next": '<path d="M9 18l6-6-6-6"/>',
         "plus": '<path d="M12 5v14M5 12h14"/>',
         "minus": '<path d="M5 12h14"/>',
-        "fit": '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
+        "fit-screen": '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
+        "fit-width": '<path d="M4 7v10M20 7v10M7 12h10M7 12l3-3M7 12l3 3M17 12l-3-3M17 12l-3 3"/>',
         "decision": '<path d="M5 4h14v12H8l-3 3V4z"/><path d="M8 8h8M8 12h5"/>',
     }
     return (
@@ -919,9 +926,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             f'<button type="button" data-case-zoom-out aria-label="축소">{_icon("minus")}</button>',
             '<span data-case-zoom>100%</span>',
             f'<button type="button" data-case-zoom-in aria-label="확대">{_icon("plus")}</button>',
-            f'<button type="button" data-case-fit-screen aria-label="화면 맞춤" title="화면 맞춤">{_icon("fit")}</button>',
-            f'<button type="button" data-case-fit-width aria-label="폭 맞춤" title="폭 맞춤">{_icon("fit")}</button>',
-            f'<button type="button" data-case-original-size aria-label="원본 100%" title="원본 100%">{_icon("fit")}</button>',
+            f'<button type="button" data-case-fit-screen aria-label="화면 맞춤" title="화면 맞춤">{_icon("fit-screen")}</button>',
+            f'<button type="button" data-case-fit-width aria-label="폭 맞춤" title="폭 맞춤">{_icon("fit-width")}</button>',
+            f'<button type="button" data-case-original-size aria-label="원본 100%" title="원본 100%">{_icon("original-size")}</button>',
             '</div></header><div class="subject-body">',
             "".join(page_html),
             "</div></section></div>",

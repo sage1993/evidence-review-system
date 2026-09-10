@@ -233,6 +233,12 @@ def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None
     ):
         assert control in html
         assert f'aria-label="{label}"' in html
+        assert f'title="{label}"' in html
+    affordances = [
+        re.search(rf'<button[^>]*{control}[^>]*>(.*?)</button>', html, re.DOTALL).group(1)
+        for control in ("data-case-fit-screen", "data-case-fit-width", "data-case-original-size")
+    ]
+    assert len(set(affordances)) == 3
     assert "function fitScreen(stage)" in html
     assert "function fitWidth(stage)" in html
     assert "function originalSize(stage)" in html

@@ -544,7 +544,7 @@ function page(key, width, height, viewportWidth, viewportHeight) {
 }
 const portrait = page("portrait", 100, 120, 900, 600);
 const landscape = page("landscape", 120, 100, 600, 900);
-const next = control(), original = control();
+const next = control(), fitScreen = control(), fitWidth = control(), original = control();
 const root = {
   dataset: {},
   querySelectorAll(selector) {
@@ -553,6 +553,8 @@ const root = {
   },
   querySelector(selector) {
     if (selector === "[data-case-next]") return next;
+    if (selector === "[data-case-fit-screen]") return fitScreen;
+    if (selector === "[data-case-fit-width]") return fitWidth;
     if (selector === "[data-case-original-size]") return original;
     return null;
   }
@@ -564,6 +566,14 @@ global.requestAnimationFrame = (callback) => { callback(); return 1; };
 eval(controller);
 if (portrait.pageStage.transform.style.transform !== "translate(-360px,-240px) scale(1.8)") {
   throw new Error("portrait fit-width did not retain the full page width");
+}
+fitScreen.listeners.click();
+if (portrait.pageStage.transform.style.transform !== "translate(0px,0px) scale(1)") {
+  throw new Error("portrait fit-screen did not restore the centered screen transform");
+}
+fitWidth.listeners.click();
+if (portrait.pageStage.transform.style.transform !== "translate(-360px,-240px) scale(1.8)") {
+  throw new Error("portrait fit-width control did not restore the centered width transform");
 }
 next.listeners.click();
 original.listeners.click();
