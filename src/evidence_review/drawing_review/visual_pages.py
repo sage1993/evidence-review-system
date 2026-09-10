@@ -35,6 +35,11 @@ _TILE_CACHE_DIR = "case-page-tiles-v1"
 _TILE_SIZE = 2048
 _TILE_TRIGGER_PIXELS = 16_000_000
 _TILE_TRIGGER_DIMENSION = 4096
+_PILLOW_FORMAT_BY_MIME = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+    "image/tiff": "TIFF",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +180,7 @@ def _normalized_image_asset(
     workspace: Path,
     attachment: ImmutableAttachment,
     source: Path,
+    decoder_mime: str,
 ) -> VisualPageAsset:
     directory = workspace / "case-page-images" / visual_cache_identity(
         attachment.case_id,
@@ -203,13 +209,21 @@ def _normalized_image_asset(
     else:
         directory.mkdir(parents=True, exist_ok=True)
         try:
-            with Image.open(source) as opened:
-                normalized = ImageOps.exif_transpose(opened).convert("RGB")
-                width, height = normalized.size
-                if width < 1 or height < 1 or width * height > _MAX_IMAGE_PIXELS:
-                    raise ValueError("CASE_VISUAL_IMAGE_SIZE_INVALID")
-                output = BytesIO()
-                normalized.save(output, format="PNG", compress_level=6)
+            expected_format = _PILLOW_FORMAT_BY_MIME[decoder_mime]
+            try:
+                with Image.open(source) as opened:
+                    if opened.format != expected_format:
+                        raise ValueError("CASE_VISUAL_IMAGE_DECODER_INVALID")
+                    normalized = ImageOps.exif_transpose(opened).convert("RGB")
+                    width, height = normalized.size
+                    if width < 1 or height < 1 or width * height > _MAX_IMAGE_PIXELS:
+                        raise ValueError("CASE_VISUAL_IMAGE_SIZE_INVALID")
+                    output = BytesIO()
+                    normalized.save(output, format="PNG", compress_level=6)
+            except ValueError:
+                raise
+            except Exception as error:
+                raise ValueError("CASE_VISUAL_IMAGE_DECODER_INVALID") from error
             image_bytes = output.getvalue()
             image_sha256 = hashlib.sha256(image_bytes).hexdigest()
             with image_path.open("xb") as stream:
@@ -453,7 +467,14 @@ def prepare_visual_page_assets(
         if decoder_mime == "application/pdf":
             assets.extend(_pdf_assets(workspace, attachment, source))
         elif decoder_mime in {"image/png", "image/jpeg", "image/tiff"}:
-            assets.append(_normalized_image_asset(workspace, attachment, source))
+            assets.append(
+                _normalized_image_asset(
+                    workspace,
+                    attachment,
+                    source,
+                    decoder_mime,
+                )
+            )
         else:
             raise ValueError(f"unsupported case visual MIME: {decoder_mime}")
     assets.sort(key=lambda item: (item.case_id, item.attachment_id, item.page))

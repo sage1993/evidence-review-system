@@ -136,6 +136,61 @@ def test_visual_source_rejects_unrecognized_content_before_decoder(
         prepare_visual_page_assets(tmp_path, (attachment,))
 
 
+@pytest.mark.parametrize(
+    ("payload", "mime", "extension"),
+    [
+        (b"\x89PNG\r\n\x1a\nbroken", "image/png", ".png"),
+        (b"\xff\xd8\xffbroken", "image/jpeg", ".jpg"),
+        (b"II*\x00broken", "image/tiff", ".tif"),
+    ],
+)
+def test_visual_source_rejects_magic_valid_malformed_image_before_normalization(
+    tmp_path: Path,
+    payload: bytes,
+    mime: str,
+    extension: str,
+) -> None:
+    attachment = _visual_attachment(
+        "CASE-ALPHA",
+        "ATT-SOURCE",
+        payload,
+        mime,
+        extension,
+    )
+    _store(tmp_path, attachment, payload)
+
+    with pytest.raises(ValueError, match="CASE_VISUAL_IMAGE_DECODER_INVALID"):
+        prepare_visual_page_assets(tmp_path, (attachment,))
+
+
+@pytest.mark.parametrize("reported_format", [None, "JPEG"])
+def test_visual_source_rejects_decoder_format_that_does_not_match_validated_mime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reported_format: str | None,
+) -> None:
+    payload = _image_payload("PNG", ".png")
+    attachment = _visual_attachment(
+        "CASE-ALPHA",
+        "ATT-SOURCE",
+        payload,
+        "image/png",
+        ".png",
+    )
+    _store(tmp_path, attachment, payload)
+    original_open = Image.open
+
+    def open_with_reported_format(path: Path) -> Image.Image:
+        opened = original_open(path)
+        opened.format = reported_format
+        return opened
+
+    monkeypatch.setattr(visual_pages_module.Image, "open", open_with_reported_format)
+
+    with pytest.raises(ValueError, match="CASE_VISUAL_IMAGE_DECODER_INVALID"):
+        prepare_visual_page_assets(tmp_path, (attachment,))
+
+
 def test_visual_source_keeps_pillow_pixel_limit_after_format_binding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
