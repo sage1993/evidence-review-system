@@ -16,16 +16,26 @@ Follow-up commit: `fix(issue-152): correct unified review interactions`.
 - Restored the drawing Human Decision presentation in the unified shell as an off-canvas, state-controlled region. It starts hidden, focuses its first control when opened, returns focus to its trigger on close or Escape, and remains visible in print.
 - Scoped the 40px viewer controls and 32px filter controls below the global 44px minimum with `min-height: 0`; the full-render contract verifies the later, more-specific cascade.
 
+## Independent re-review follow-up
+
+Follow-up commit: `fix(issue-152): preserve drawing print and initialization`.
+
+- Added a drawing-specific print override with matching selector specificity. It resets the off-canvas drawer to normal document flow: static positioning, placement, dimensions, overflow, transform, visibility, pointer interaction, and shadow.
+- The full renderer now requests drawing-only initial `aria-hidden="true"` decision markup. The inline drawing script can still bind before the later Human Decision element parses; its opener then retrieves, reveals, focuses, and closes that form after it exists.
+- Preserved reference-only decision markup through the renderer default. Packet hashing/provenance, protected routes, and append-only decision storage remain untouched.
+
 ## Changed files
 
 - `src/evidence_review/review_packet/html_renderer.py`
 - `src/evidence_review/review_packet/render_workspace.py`
 - `src/evidence_review/review_packet/render_summary.py`
 - `src/evidence_review/review_packet/render_case_visual.py`
+- `src/evidence_review/review_packet/render_decision.py`
 - `src/evidence_review/review_packet/assets/review.css`
 - `tests/unit/review_packet/test_case_visual_renderer.py`
 - `tests/unit/review_packet/test_issue_119_visual_hardening.py`
 - `tests/integration/review_packet/test_review_workspace_ui.py`
+- `tests/integration/review_packet/test_persisted_decision_ui.py`
 
 ## Verification
 
@@ -43,12 +53,17 @@ Follow-up commit: `fix(issue-152): correct unified review interactions`.
 - `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/integration/review_packet/test_review_workspace_ui.py -k 'finding_click or issue_152'` — `3 passed, 11 deselected`.
 - `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/unit/review_packet/test_case_visual_renderer.py tests/unit/review_packet/test_issue_119_visual_hardening.py -k 'not projection_separates_direct_and_related_references and not projection_groups_ocr_fragments_into_semantic_finding'` — `26 passed, 2 deselected`.
 - `py -3.13 -m ruff check src tests`; `py -3.13 -m mypy src`; `py -3.13 -m compileall -q src scripts web_runtime tests`; and `git diff --check` — passed after the follow-up.
+- Re-review RED: `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/integration/review_packet/test_review_workspace_ui.py -k issue_152` — `1 passed, 2 failed`: the print cascade lacked the required reset rule and the full-render decision markup had no initial `aria-hidden` state.
+- Re-review GREEN: the same command — `3 passed, 12 deselected`; contracts cover the print cascade and the actual script-before-form parser order, then opener focus plus Escape, backdrop, and close-button focus restoration.
+- `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/integration/review_packet/test_review_workspace_ui.py -k 'finding_click or issue_152'` — `4 passed, 11 deselected`.
+- `PYTHONPATH="$PWD\src" py -3.13 -m pytest -q -p no:cacheprovider tests/integration/review_packet/test_persisted_decision_ui.py tests/unit/review_packet/test_case_visual_renderer.py tests/unit/review_packet/test_issue_119_visual_hardening.py -k 'not projection_separates_direct_and_related_references and not projection_groups_ocr_fragments_into_semantic_finding'` — `29 passed, 2 deselected`.
 
 ## NOT_RUN
 
 - Fixture-dependent renderer/protected-viewer suites and the full pytest suite: pytest fails during `tmp_path` setup with `PermissionError: [WinError 5]` while reading its own temporary directory. This happened with both the default temp root and an explicitly redirected scratch root, before affected test bodies ran.
+- The reference-only unified workspace suite was retried in this re-review and remained `NOT_RUN`: four tests were blocked before their bodies by `OSError: could not create numbered dir with prefix pytest-` under the Windows pytest temp root.
 - Manual browser QA at supported desktop/mobile viewport matrix, keyboard traversal, print preview, and protected-server lifecycle matrix.
-- Real-browser computed-style QA: `NOT_RUN`. The Browser plugin is unavailable and no local Playwright module is installed; no dependency or network call was added. The emitted full-render regression test verifies the scoped, later, higher-specificity `min-height: 0` override against the global 44px minimum.
+- Real-browser computed-style and print QA: `NOT_RUN`. The Browser plugin is unavailable and no local Playwright module is installed; no dependency or network call was added. The emitted full-render regression test verifies the scoped, later, higher-specificity `min-height: 0` override against the global 44px minimum, and the new print contract verifies the equally specific document-flow reset.
 - Documentation integrity and the full test suite.
 - GitHub Actions: `ACTIONS_NOT_RUN`.
 

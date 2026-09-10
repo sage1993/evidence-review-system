@@ -575,8 +575,41 @@ if (landscape.pageStage.transform.style.transform !== "translate(240px,360px) sc
     assert completed.returncode == 0, completed.stderr
 
 
-def test_issue_152_unified_drawing_decision_drawer_restores_keyboard_focus() -> None:
-    """Closing or escaping the unified drawing drawer must hide it and restore its trigger."""
+def test_issue_152_drawing_print_cascade_returns_human_decision_to_document_flow() -> None:
+    """Drawing-only drawer placement must not survive the print cascade."""
+    css = (
+        Path(__file__).parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.css"
+    ).read_text(encoding="utf-8")
+    print_css = css[css.index("@media print {") :]
+
+    assert re.search(
+        r'body:has\(.review-workspace\[data-review-workspace-mode="reference-subject"\]\)\s*'
+        r'#decision-form\s*\{'
+        r'(?=[^}]*position:\s*static)'
+        r'(?=[^}]*top:\s*auto)'
+        r'(?=[^}]*right:\s*auto)'
+        r'(?=[^}]*bottom:\s*auto)'
+        r'(?=[^}]*left:\s*auto)'
+        r'(?=[^}]*width:\s*auto)'
+        r'(?=[^}]*max-width:\s*none)'
+        r'(?=[^}]*max-height:\s*none)'
+        r'(?=[^}]*overflow:\s*visible)'
+        r'(?=[^}]*transform:\s*none\s*!important)'
+        r'(?=[^}]*visibility:\s*visible\s*!important)'
+        r'(?=[^}]*opacity:\s*1)'
+        r'(?=[^}]*pointer-events:\s*auto\s*!important)'
+        r'(?=[^}]*box-shadow:\s*none)',
+        print_css,
+    )
+
+
+def test_issue_152_unified_drawing_decision_respects_full_render_parser_order() -> None:
+    """The full drawing document marks the later decision form hidden before the opener runs."""
     model = _typed_reference_model()
     model.update(
         {
@@ -598,6 +631,8 @@ def test_issue_152_unified_drawing_decision_drawer_restores_keyboard_focus() -> 
         for script in re.findall(r"<script(?: [^>]*)?>(.*?)</script>", html, re.DOTALL)
         if "data-case-decision-open" in script
     )
+    decision_markup = '<section id="decision-form" aria-hidden="true" aria-labelledby="decision-heading">'
+    assert html.index("<script>" + controller + "</script>") < html.index(decision_markup)
 
     assert re.search(
         r'body:has\(.review-workspace\[data-review-workspace-mode="reference-subject"\]\)\s*'
@@ -622,7 +657,7 @@ def test_issue_152_unified_drawing_decision_drawer_restores_keyboard_focus() -> 
 function control() { return {dataset: {}, listeners: {}, focusCount: 0, addEventListener(type, handler) { this.listeners[type] = handler; }, focus() { this.focusCount++; }}; }
 const opener = control(), backdrop = control(), focusTarget = control(), close = control();
 const form = {
-  attributes: {}, close: null,
+  attributes: {"aria-hidden": "true"}, close: null,
   setAttribute(name, value) { this.attributes[name] = String(value); },
   getAttribute(name) { return this.attributes[name] || null; },
   querySelector(selector) {
@@ -640,6 +675,7 @@ const root = { dataset: {},
   }
 };
 const documentListeners = {};
+let decisionForm = null;
 global.window = { addEventListener() {}, prompt() { return ""; } };
 global.document = {
   body: {dataset: {}},
@@ -647,18 +683,23 @@ global.document = {
   addEventListener(type, handler) { documentListeners[type] = handler; },
   querySelector() { return null; },
   querySelectorAll() { return []; },
-  getElementById(id) { if (id === "case-visual-review") return root; if (id === "decision-form") return form; return null; }
+  getElementById(id) { if (id === "case-visual-review") return root; if (id === "decision-form") return decisionForm; return null; }
 };
 global.requestAnimationFrame = (callback) => { callback(); return 1; };
 eval(controller);
-if (form.getAttribute("aria-hidden") !== "true") throw new Error("drawer was not initially hidden from assistive technology");
+if (decisionForm !== null) throw new Error("the decision form existed before its full-render parser position");
+decisionForm = form;
+if (form.getAttribute("aria-hidden") !== "true") throw new Error("full-render decision markup was not initially hidden from assistive technology");
 opener.listeners.click({currentTarget: opener});
 if (form.getAttribute("aria-hidden") !== "false" || focusTarget.focusCount !== 1) throw new Error("drawer did not open and focus its first control");
 documentListeners.keydown({key: "Escape"});
 if (form.getAttribute("aria-hidden") !== "true" || opener.focusCount !== 1) throw new Error("Escape did not close the drawer and restore focus");
 opener.listeners.click({currentTarget: opener});
+backdrop.listeners.click();
+if (form.getAttribute("aria-hidden") !== "true" || opener.focusCount !== 2) throw new Error("backdrop did not close the drawer and restore focus");
+opener.listeners.click({currentTarget: opener});
 form.close.listeners.click();
-if (form.getAttribute("aria-hidden") !== "true" || opener.focusCount !== 2) throw new Error("close button did not restore focus");
+if (form.getAttribute("aria-hidden") !== "true" || opener.focusCount !== 3) throw new Error("close button did not restore focus");
 """
     completed = _run_node_harness(controller, harness)
     assert completed.returncode == 0, completed.stderr

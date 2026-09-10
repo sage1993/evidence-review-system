@@ -842,7 +842,7 @@ def _render_review_html(
                 ),
                 evidence_workspace=evidence_workspace,
                 detail_issue_results=detail_issue_results,
-                human_decision=render_decision_form(model),
+                human_decision=render_decision_form(model, initially_hidden=bool(visual_review)),
                 audit=render_audit_details(model),
             ),
             _render_process_footer(model),

@@ -24,7 +24,7 @@ def _sequence(value: object, field: str) -> Sequence[object]:
     return cast(Sequence[object], value)
 
 
-def render_decision_form(model: Mapping[str, object]) -> str:
+def render_decision_form(model: Mapping[str, object], *, initially_hidden: bool = False) -> str:
     decision = _mapping(model.get("decision", {}), "decision")
     options = _sequence(decision.get("allowed_values", []), "decision.allowed_values")
     labels = {
@@ -42,7 +42,9 @@ def render_decision_form(model: Mapping[str, object]) -> str:
     packet_hash = _text(decision.get("packet_sha256"))
     return "".join(
         (
-            '<section id="decision-form" aria-labelledby="decision-heading">',
+            '<section id="decision-form"',
+            ' aria-hidden="true"' if initially_hidden else "",
+            ' aria-labelledby="decision-heading">',
             '<p data-protected-only hidden>검토 결과를 선택하고 필요한 의견을 입력하십시오.</p>',
             '<p data-archive-only>검토 결과를 선택하고 필요한 의견을 입력하십시오.</p>',
             '<span class="visually-hidden">최종 결정</span>',

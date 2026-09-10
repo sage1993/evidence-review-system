@@ -1113,11 +1113,20 @@ body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #dec
   }
 
   body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    max-width: none;
     max-height: none;
+    overflow: visible;
     transform: none !important;
     pointer-events: auto !important;
     visibility: visible !important;
     opacity: 1;
+    box-shadow: none;
   }
 
   .evidence-page {
