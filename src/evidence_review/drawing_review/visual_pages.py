@@ -22,6 +22,7 @@ from evidence_review.contracts.attachments import (
 )
 from evidence_review.contracts.drawing import CoordinateSystem
 from evidence_review.filesystem_trust import verified_regular_file_below
+from evidence_review.parsing.drawing_source import verify_visual_source_decoder_binding
 from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 from evidence_review.parsing.source_manifest import sha256_file
 
@@ -448,12 +449,13 @@ def prepare_visual_page_assets(
             raise ValueError("case visual source binding is ambiguous")
         identities.add(identity)
         source = _source_path(workspace, attachment)
-        if attachment.mime == "application/pdf":
+        decoder_mime = verify_visual_source_decoder_binding(source, attachment.mime)
+        if decoder_mime == "application/pdf":
             assets.extend(_pdf_assets(workspace, attachment, source))
-        elif attachment.mime in {"image/png", "image/jpeg", "image/tiff"}:
+        elif decoder_mime in {"image/png", "image/jpeg", "image/tiff"}:
             assets.append(_normalized_image_asset(workspace, attachment, source))
         else:
-            raise ValueError(f"unsupported case visual MIME: {attachment.mime}")
+            raise ValueError(f"unsupported case visual MIME: {decoder_mime}")
     assets.sort(key=lambda item: (item.case_id, item.attachment_id, item.page))
     return tuple(assets)
 
