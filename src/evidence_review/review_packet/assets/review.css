@@ -981,6 +981,40 @@ pre {
 .review-shell-region[data-review-shell-region="human-decision"] #decision-form {
   max-width: 720px;
 }
+/* CASE_DRAWING keeps Human Decision in an accessible off-canvas panel. */
+body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
+  position: fixed;
+  right: 12px;
+  top: 50%;
+  z-index: 30;
+  width: min(380px, calc(100vw - 48px));
+  max-height: 86vh;
+  overflow: auto;
+  transform: translate(calc(100% + 28px), -50%) !important;
+  transition: none;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+  background: #fff;
+  pointer-events: none !important;
+  visibility: hidden;
+  opacity: 0;
+}
+body[data-visual-decision-open="true"]:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
+  transform: translate(0, -50%) !important;
+  pointer-events: auto !important;
+  visibility: visible;
+  opacity: 1;
+}
+body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form .visual-decision-close {
+  display: block;
+  margin: 8px 8px 0 auto;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  font-size: 11px;
+}
 @media (max-width: 720px) {
   .review-shell-region[data-review-shell-region="evidence-workspace"] {
     grid-template-columns: minmax(0, 1fr);
@@ -1076,6 +1110,14 @@ pre {
 
   #decision-form {
     position: static;
+  }
+
+  body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
+    max-height: none;
+    transform: none !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    opacity: 1;
   }
 
   .evidence-page {

@@ -238,10 +238,11 @@ def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None
     assert "function originalSize(stage)" in html
     assert "fitWidth(pages[0]?.querySelector('[data-case-stage]'))" in html
     assert (
-        ".viewer-controls button{width:40px;height:40px;display:inline-flex;"
+        "#case-visual-review .viewer-controls button{width:40px;height:40px;"
+        "min-height:0;display:inline-flex;"
         "align-items:center;justify-content:center;padding:0;line-height:0}"
     ) in html
-    assert ".finding-filter{height:32px" in html
+    assert "#case-visual-review .finding-filter{height:32px;min-height:0" in html
     assert ".case-visual-help{margin:0;padding:8px 12px" in html
 
 
