@@ -22,6 +22,7 @@ from evidence_review.contracts.attachments import (
 )
 from evidence_review.contracts.drawing import CoordinateSystem
 from evidence_review.filesystem_trust import verified_regular_file_below
+from evidence_review.parsing.drawing_source import verify_visual_source_decoder_binding
 from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 from evidence_review.parsing.source_manifest import sha256_file
 
@@ -34,6 +35,11 @@ _TILE_CACHE_DIR = "case-page-tiles-v1"
 _TILE_SIZE = 2048
 _TILE_TRIGGER_PIXELS = 16_000_000
 _TILE_TRIGGER_DIMENSION = 4096
+_PILLOW_FORMAT_BY_MIME = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+    "image/tiff": "TIFF",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +180,7 @@ def _normalized_image_asset(
     workspace: Path,
     attachment: ImmutableAttachment,
     source: Path,
+    decoder_mime: str,
 ) -> VisualPageAsset:
     directory = workspace / "case-page-images" / visual_cache_identity(
         attachment.case_id,
@@ -202,13 +209,23 @@ def _normalized_image_asset(
     else:
         directory.mkdir(parents=True, exist_ok=True)
         try:
-            with Image.open(source) as opened:
-                normalized = ImageOps.exif_transpose(opened).convert("RGB")
-                width, height = normalized.size
-                if width < 1 or height < 1 or width * height > _MAX_IMAGE_PIXELS:
-                    raise ValueError("CASE_VISUAL_IMAGE_SIZE_INVALID")
-                output = BytesIO()
-                normalized.save(output, format="PNG", compress_level=6)
+            expected_format = _PILLOW_FORMAT_BY_MIME[decoder_mime]
+            try:
+                with Image.open(source) as opened:
+                    if opened.format != expected_format:
+                        raise ValueError("CASE_VISUAL_IMAGE_DECODER_INVALID")
+                    normalized = ImageOps.exif_transpose(opened).convert("RGB")
+                    width, height = normalized.size
+                    if width < 1 or height < 1 or width * height > _MAX_IMAGE_PIXELS:
+                        raise ValueError("CASE_VISUAL_IMAGE_SIZE_INVALID")
+                    output = BytesIO()
+                    normalized.save(output, format="PNG", compress_level=6)
+            except ValueError:
+                raise
+            except OSError:
+                raise
+            except Exception as error:
+                raise ValueError("CASE_VISUAL_IMAGE_DECODER_INVALID") from error
             image_bytes = output.getvalue()
             image_sha256 = hashlib.sha256(image_bytes).hexdigest()
             with image_path.open("xb") as stream:
@@ -448,12 +465,20 @@ def prepare_visual_page_assets(
             raise ValueError("case visual source binding is ambiguous")
         identities.add(identity)
         source = _source_path(workspace, attachment)
-        if attachment.mime == "application/pdf":
+        decoder_mime = verify_visual_source_decoder_binding(source, attachment.mime)
+        if decoder_mime == "application/pdf":
             assets.extend(_pdf_assets(workspace, attachment, source))
-        elif attachment.mime in {"image/png", "image/jpeg", "image/tiff"}:
-            assets.append(_normalized_image_asset(workspace, attachment, source))
+        elif decoder_mime in {"image/png", "image/jpeg", "image/tiff"}:
+            assets.append(
+                _normalized_image_asset(
+                    workspace,
+                    attachment,
+                    source,
+                    decoder_mime,
+                )
+            )
         else:
-            raise ValueError(f"unsupported case visual MIME: {attachment.mime}")
+            raise ValueError(f"unsupported case visual MIME: {decoder_mime}")
     assets.sort(key=lambda item: (item.case_id, item.attachment_id, item.page))
     return tuple(assets)
 

@@ -12,6 +12,7 @@ from PIL import Image
 from pypdf import PdfWriter
 
 from evidence_review.contracts.attachments import ImmutableAttachment
+from evidence_review.drawing_review import visual_pages as visual_pages_module
 from evidence_review.drawing_review.visual_pages import prepare_visual_page_assets
 
 
@@ -43,11 +44,170 @@ def _attachment(
     )
 
 
+def _visual_attachment(
+    case_id: str,
+    attachment_id: str,
+    payload: bytes,
+    mime: str,
+    extension: str,
+) -> ImmutableAttachment:
+    return ImmutableAttachment(
+        case_id=case_id,
+        attachment_id=attachment_id,
+        original_name=f"plan{extension}",
+        stored_path=(
+            f"cases/{case_id}/sources/drawings/{attachment_id}{extension}"
+        ),
+        sha256=hashlib.sha256(payload).hexdigest(),
+        byte_size=len(payload),
+        mime=mime,
+        role="CASE_DRAWING",
+    )
+
+
 def _store(workspace: Path, attachment: ImmutableAttachment, payload: bytes) -> Path:
     destination = workspace.joinpath(*Path(attachment.stored_path).parts)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(payload)
     return destination
+
+
+def _image_payload(image_format: str, suffix: str) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (8, 6), "white").save(output, format=image_format)
+    return output.getvalue()
+
+
+def _pdf_payload() -> bytes:
+    output = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.write(output)
+    return output.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("content_format", "declared_mime", "stored_extension"),
+    [
+        ("PDF", "image/png", ".png"),
+        ("PNG", "image/jpeg", ".jpg"),
+        ("JPEG", "image/tiff", ".tif"),
+        ("TIFF", "application/pdf", ".pdf"),
+    ],
+)
+def test_visual_source_rejects_declared_mime_that_differs_from_content(
+    tmp_path: Path,
+    content_format: str,
+    declared_mime: str,
+    stored_extension: str,
+) -> None:
+    payload = (
+        _pdf_payload()
+        if content_format == "PDF"
+        else _image_payload(content_format, stored_extension)
+    )
+    attachment = _visual_attachment(
+        "CASE-ALPHA",
+        "ATT-SOURCE",
+        payload,
+        declared_mime,
+        stored_extension,
+    )
+    _store(tmp_path, attachment, payload)
+
+    with pytest.raises(ValueError, match="MIME/content binding mismatch"):
+        prepare_visual_page_assets(tmp_path, (attachment,))
+
+
+def test_visual_source_rejects_unrecognized_content_before_decoder(
+    tmp_path: Path,
+) -> None:
+    payload = b"not a supported visual source"
+    attachment = _visual_attachment(
+        "CASE-ALPHA",
+        "ATT-SOURCE",
+        payload,
+        "image/png",
+        ".png",
+    )
+    _store(tmp_path, attachment, payload)
+
+    with pytest.raises(ValueError, match="unsupported drawing signature"):
+        prepare_visual_page_assets(tmp_path, (attachment,))
+
+
+@pytest.mark.parametrize(
+    ("payload", "mime", "extension"),
+    [
+        (b"\x89PNG\r\n\x1a\nbroken", "image/png", ".png"),
+        (b"\xff\xd8\xffbroken", "image/jpeg", ".jpg"),
+        (b"II*\x00broken", "image/tiff", ".tif"),
+    ],
+)
+def test_visual_source_preserves_decoder_oserror_for_magic_valid_malformed_image(
+    tmp_path: Path,
+    payload: bytes,
+    mime: str,
+    extension: str,
+) -> None:
+    attachment = _visual_attachment(
+        "CASE-ALPHA",
+        "ATT-SOURCE",
+        payload,
+        mime,
+        extension,
+    )
+    _store(tmp_path, attachment, payload)
+
+    with pytest.raises(OSError):
+        prepare_visual_page_assets(tmp_path, (attachment,))
+
+
+@pytest.mark.parametrize("reported_format", [None, "JPEG"])
+def test_visual_source_rejects_decoder_format_that_does_not_match_validated_mime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reported_format: str | None,
+) -> None:
+    payload = _image_payload("PNG", ".png")
+    attachment = _visual_attachment(
+        "CASE-ALPHA",
+        "ATT-SOURCE",
+        payload,
+        "image/png",
+        ".png",
+    )
+    _store(tmp_path, attachment, payload)
+    original_open = Image.open
+
+    def open_with_reported_format(path: Path) -> Image.Image:
+        opened = original_open(path)
+        opened.format = reported_format
+        return opened
+
+    monkeypatch.setattr(visual_pages_module.Image, "open", open_with_reported_format)
+
+    with pytest.raises(ValueError, match="CASE_VISUAL_IMAGE_DECODER_INVALID"):
+        prepare_visual_page_assets(tmp_path, (attachment,))
+
+
+def test_visual_source_keeps_pillow_pixel_limit_after_format_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _image_payload("PNG", ".png")
+    attachment = _visual_attachment(
+        "CASE-ALPHA",
+        "ATT-SOURCE",
+        payload,
+        "image/png",
+        ".png",
+    )
+    _store(tmp_path, attachment, payload)
+    monkeypatch.setattr(visual_pages_module, "_MAX_IMAGE_PIXELS", 47)
+
+    with pytest.raises(ValueError, match="CASE_VISUAL_IMAGE_SIZE_INVALID"):
+        prepare_visual_page_assets(tmp_path, (attachment,))
 
 
 def test_visual_source_resolves_same_plan_basename_in_its_own_case(

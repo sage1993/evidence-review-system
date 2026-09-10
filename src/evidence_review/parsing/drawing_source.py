@@ -66,6 +66,18 @@ def sniff_drawing_mime(header: bytes) -> tuple[str, str]:
     raise ValueError("unsupported drawing signature")
 
 
+def verify_visual_source_decoder_binding(
+    source_path: Path,
+    declared_mime: str,
+) -> str:
+    """Require the declared MIME to match the source magic before decoding."""
+    with source_path.open("rb") as stream:
+        detected_mime, _ = sniff_drawing_mime(stream.read(16))
+    if declared_mime != detected_mime:
+        raise ValueError("case visual source MIME/content binding mismatch")
+    return detected_mime
+
+
 def validate_source_path(path: Path) -> None:
     """Reject directories, links, and Windows reparse points before opening."""
     verified_regular_file(path, field="source")
