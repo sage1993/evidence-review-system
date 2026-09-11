@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import ctypes
 import hashlib
 import json
@@ -43,6 +44,7 @@ from evidence_review.review_packet.server_runtime import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
     validate_idle_timeout,
 )
+from evidence_review.workbench.html_renderer import render_workbench_html
 from evidence_review.workbench.routes import (
     ROUTE_CONTRACTS,
     RouteContract,
@@ -53,12 +55,19 @@ from evidence_review.workbench.routes import (
     parse_workbench_route,
     workbench_path,
 )
+from evidence_review.workbench.view_model import build_workbench_view_model
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _READY_TIMEOUT_SECONDS = 2.0
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _STILL_ACTIVE = 259
 _CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+
+
+def _html_csp(nonce: str) -> str:
+    return (
+        f"{_CSP}; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'"
+    )
 
 
 def _validated_token(token: object) -> str:
@@ -186,6 +195,15 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
             allow=allow,
         )
 
+    def _send_html(self, body: str, *, nonce: str) -> None:
+        send_protected_response(
+            self,
+            HTTPStatus.OK,
+            body.encode("utf-8"),
+            "text/html; charset=utf-8",
+            content_security_policy=_html_csp(nonce),
+        )
+
     def _reject(
         self,
         status: HTTPStatus,
@@ -238,7 +256,16 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
         if contract is None:
             return
         try:
-            if route.endpoint == "state":
+            if route.endpoint == "view":
+                matter = self.state.service.status(matter_id=self.state.matter_id)
+                nonce = base64.b64encode(secrets.token_bytes(18)).decode("ascii")
+                self._send_html(
+                    render_workbench_html(
+                        build_workbench_view_model(matter), nonce=nonce
+                    ),
+                    nonce=nonce,
+                )
+            elif route.endpoint == "state":
                 self._send_json(
                     HTTPStatus.OK,
                     self._response(self.state.service.status(matter_id=self.state.matter_id)),

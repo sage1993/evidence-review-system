@@ -43,6 +43,7 @@ def _contract(method: str, *fields: str) -> RouteContract:
 
 
 ROUTE_CONTRACTS: dict[str, RouteContract] = {
+    "view": RouteContract(method="GET"),
     "state": RouteContract(method="GET"),
     "issues": _contract(
         "POST",
@@ -59,7 +60,7 @@ ROUTE_CONTRACTS: dict[str, RouteContract] = {
 }
 
 
-def workbench_path(matter_id: str, token: str, endpoint: str = "state") -> str:
+def workbench_path(matter_id: str, token: str, endpoint: str = "view") -> str:
     """Return an exact tokenized Workbench route from validated identities."""
     validate_identifier(matter_id, "matter_id")
     if endpoint not in ROUTE_CONTRACTS:

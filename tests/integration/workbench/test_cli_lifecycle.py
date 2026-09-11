@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from http.client import HTTPConnection
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from evidence_review.command_dispatch import main
 from evidence_review.review_matter.service import ReviewMatterService
@@ -60,6 +62,16 @@ def test_workbench_cli_serves_and_manages_only_the_bound_matter(
     }
     assert f"/workbench/{MATTER_ID}/" in served["url"]
     assert "/runs/" not in served["url"]
+
+    parsed = urlsplit(str(served["url"]))
+    connection = HTTPConnection(parsed.hostname, parsed.port, timeout=2)
+    connection.request("GET", parsed.path, headers={"Host": parsed.netloc})
+    response = connection.getresponse()
+    html = response.read().decode("utf-8")
+    connection.close()
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "text/html; charset=utf-8"
+    assert 'data-surface="workbench"' in html
 
     try:
         code, status, error = _run(["review-matter", "workbench", "serve-status", *common], capsys)

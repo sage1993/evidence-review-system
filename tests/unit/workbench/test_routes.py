@@ -30,8 +30,9 @@ def test_workbench_routes_are_tokenized_and_separate_from_formal_review(
         reviewer_id=REVIEWER_ID,
     )
     try:
-        assert server.path == f"/workbench/{MATTER_ID}/{TOKEN}/state"
+        assert server.path == f"/workbench/{MATTER_ID}/{TOKEN}/view"
         assert server.routes == {
+            "view": "GET",
             "state": "GET",
             "issues": "POST",
             "evidence/bind": "POST",

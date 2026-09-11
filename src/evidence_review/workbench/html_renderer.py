@@ -39,8 +39,12 @@ def _render_issues(issues: Sequence[Mapping[str, object]]) -> str:
     return "".join(
         "".join(
             (
-                '<article class="workbench-issue">',
+                '<article class="workbench-issue" ',
+                f'data-issue-id="{_text(issue.get("issue_id"))}">',
                 f"<h2>{_text(issue.get('question'))}</h2>",
+                '<p class="issue-identifier">MatterIssue ',
+                _text(issue.get("issue_id")),
+                "</p>",
                 '<p class="work-state">',
                 _text(issue.get("work_state_label")),
                 "</p>",
@@ -98,26 +102,47 @@ def _render_navigation(navigation: Mapping[str, object] | None) -> str:
     if navigation is None:
         return '<p class="empty-state">탐색 결과가 없습니다.</p>'
     hits = _items(navigation.get("hits", ()), "navigation.hits")
-    cards = "".join(
-        "".join(
-            (
-                '<article class="navigation-hit">',
-                f"<h3>{_text(hit.get('title'))}</h3>",
-                f"<p>{_text(hit.get('text'))}</p>",
-                '<p class="citation-location">',
-                f"{_text(hit.get('document_id'))} · {_text(hit.get('revision_id'))} · ",
-                f"p. {_text(hit.get('page_number'))}</p></article>",
+    cards: list[str] = []
+    for hit in hits:
+        citation_id = _text(hit.get("citation_id"))
+        evidence_id = _text(hit.get("evidence_id"))
+        target_id = f"navigation-provenance-{citation_id}"
+        bbox_values = hit.get("bbox", ())
+        if isinstance(bbox_values, (str, bytes, bytearray)) or not isinstance(
+            bbox_values, Sequence
+        ):
+            raise ValueError("Workbench model navigation.bbox must be a sequence")
+        bbox = ", ".join(str(value) for value in bbox_values)
+        cards.append(
+            "".join(
+                (
+                    '<article class="navigation-hit">',
+                    f"<h3>{_text(hit.get('title'))}</h3>",
+                    f"<p>{_text(hit.get('text'))}</p>",
+                    '<p class="citation-location">',
+                    f"{_text(hit.get('document_id'))} · {_text(hit.get('revision_id'))} · ",
+                    f"p. {_text(hit.get('page_number'))}</p>",
+                    '<button type="button" class="evidence-reference" ',
+                    f'data-evidence-reference data-navigation-evidence-id="{evidence_id}" ',
+                    f'aria-controls="{target_id}">정확한 출처 보기</button>',
+                    f'<details id="{target_id}" tabindex="-1"><summary>정확한 출처</summary>',
+                    f"<p>Evidence: {evidence_id}</p>",
+                    f"<p>Bounding box: {_text(bbox)}</p>",
+                    f"<p>Source hash: {_text(hit.get('source_hash'))}</p>",
+                    f"<p>Evidence snapshot: {_text(navigation.get('evidence_snapshot_hash'))}</p>",
+                    f"<p>Evidence DB: {_text(navigation.get('evidence_db_sha256'))}</p>",
+                    "</details></article>",
+                )
             )
         )
-        for hit in hits
-    ) or '<p class="empty-state">일치하는 탐색 결과가 없습니다.</p>'
+    rendered_cards = "".join(cards) or '<p class="empty-state">일치하는 탐색 결과가 없습니다.</p>'
     return "".join(
         (
             f"<p>{_text(navigation.get('promotion_label'))}</p>",
             '<p class="recheck-marker">재확인 필요</p>'
             if navigation.get("recheck_required") is True
             else "",
-            cards,
+            rendered_cards,
         )
     )
 
@@ -126,8 +151,12 @@ def _render_drafts(observations: Sequence[Mapping[str, object]]) -> str:
     return "".join(
         "".join(
             (
-                '<article class="draft-observation">',
+                '<article class="draft-observation" ',
+                f'data-issue-id="{_text(observation.get("issue_id"))}">',
                 f"<p class=\"draft-label\">{_text(observation.get('draft_label'))}</p>",
+                '<p class="draft-issue-identifier">MatterIssue ',
+                _text(observation.get("issue_id")),
+                "</p>",
                 f"<p>{_text(observation.get('text'))}</p>",
                 f"<p>{_text(observation.get('verification_label'))}</p>",
                 "</article>",
@@ -179,7 +208,7 @@ def _render_formalize(formalize: Mapping[str, object]) -> str:
     )
 
 
-def render_workbench_html(model: Mapping[str, object]) -> str:
+def render_workbench_html(model: Mapping[str, object], *, nonce: str | None = None) -> str:
     """Render a mutable-work surface with no Formal Review decision controls."""
     if model.get("surface") != "workbench":
         raise ValueError("Workbench model surface is required")
@@ -192,11 +221,13 @@ def render_workbench_html(model: Mapping[str, object]) -> str:
     formalize = _object(model.get("formalize"), "formalize")
     css = _asset("workbench.css")
     javascript = _asset("workbench.js")
+    nonce_attribute = "" if nonce is None else f' nonce="{_text(nonce)}"'
     return "".join(
         (
             "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\">",
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
-            f"<title>검토 작업 · {_text(model.get('title'))}</title><style>{css}</style></head>",
+            f"<title>검토 작업 · {_text(model.get('title'))}</title>",
+            f"<style{nonce_attribute}>{css}</style></head>",
             '<body><main class="workbench-shell" data-surface="workbench">',
             '<header><p class="eyebrow">Mutable ReviewMatter work</p>',
             f"<h1>{_text(model.get('title'))}</h1>",
@@ -226,7 +257,9 @@ def render_workbench_html(model: Mapping[str, object]) -> str:
             "</ul></section>",
             _render_formalize(formalize),
             "</main>",
-            f'<script id="workbench-model" type="application/json">{_model_json(model)}</script>',
-            f"<script>{javascript}</script></body></html>",
+            f'<script id="workbench-model" type="application/json"{nonce_attribute}>',
+            _model_json(model),
+            "</script>",
+            f"<script{nonce_attribute}>{javascript}</script></body></html>",
         )
     )

@@ -73,6 +73,46 @@ def _request(
     return response.status, payload, response_headers
 
 
+def _html_request(
+    server: object, path: str
+) -> tuple[int, str, dict[str, str]]:
+    host, port = server.server_address
+    connection = http.client.HTTPConnection(host, port, timeout=2)
+    connection.request("GET", path, headers={"Host": f"{host}:{port}"})
+    response = connection.getresponse()
+    body = response.read().decode("utf-8")
+    headers = dict(response.getheaders())
+    connection.close()
+    return response.status, body, headers
+
+
+def test_workbench_default_route_serves_protected_html_and_retains_json_state(
+    tmp_path: Path,
+) -> None:
+    server, thread = _start(_workspace(tmp_path))
+    try:
+        status, html, headers = _html_request(server, server.path)
+
+        assert status == 200
+        assert headers["Content-Type"] == "text/html; charset=utf-8"
+        assert 'data-surface="workbench"' in html
+        assert "script-src 'nonce-" in headers["Content-Security-Policy"]
+        assert "'unsafe-inline'" not in headers["Content-Security-Policy"]
+
+        status, state, headers = _request(
+            server,
+            "GET",
+            server.path.replace("/view", "/state"),
+        )
+        assert status == 200
+        assert headers["Content-Type"] == "application/json; charset=utf-8"
+        assert state["surface"] == "WORKBENCH"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_workbench_rejects_duplicate_host_and_origin_headers(tmp_path: Path) -> None:
     server, thread = _start(_workspace(tmp_path))
     try:
@@ -87,7 +127,7 @@ def test_workbench_rejects_duplicate_host_and_origin_headers(tmp_path: Path) -> 
 
         payload = b'{"expected_revision":1}'
         connection = http.client.HTTPConnection(host, port, timeout=2)
-        connection.putrequest("POST", server.path.replace("/state", "/formalize"), skip_host=True)
+        connection.putrequest("POST", server.path.replace("/view", "/formalize"), skip_host=True)
         connection.putheader("Host", f"{host}:{port}")
         connection.putheader("Origin", f"http://{host}:{port}")
         connection.putheader("Origin", "http://localhost")
@@ -119,7 +159,7 @@ def test_workbench_rejects_wrong_token_and_origin_and_sets_shared_security_heade
         status, payload, _ = _request(
             server,
             "POST",
-            server.path.replace("/state", "/formalize"),
+            server.path.replace("/view", "/formalize"),
             body=b'{"expected_revision":1}',
             origin="http://localhost",
         )
@@ -133,7 +173,7 @@ def test_workbench_rejects_wrong_token_and_origin_and_sets_shared_security_heade
 def test_workbench_rejects_oversized_header_only_full_and_partial_senders(tmp_path: Path) -> None:
     server, thread = _start(_workspace(tmp_path), max_body_bytes=32)
     try:
-        endpoint = server.path.replace("/state", "/formalize")
+        endpoint = server.path.replace("/view", "/formalize")
         status, payload, _ = _request(
             server,
             "POST",
@@ -168,7 +208,7 @@ def test_workbench_rejects_oversized_header_only_full_and_partial_senders(tmp_pa
 def test_workbench_rejects_stale_revision_and_reviewer_override(tmp_path: Path) -> None:
     server, thread = _start(_workspace(tmp_path))
     try:
-        endpoint = server.path.replace("/state", "/issues")
+        endpoint = server.path.replace("/view", "/issues")
         request = {
             "expected_revision": 1,
             "issue_id": "ISSUE-001",

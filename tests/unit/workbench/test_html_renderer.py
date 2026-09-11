@@ -107,3 +107,105 @@ def test_workbench_renderer_exposes_provenance_focus_and_disabled_exact_revision
     assert "@media (max-width: 700px)" in html
     assert "workbench:formalize" in html
     assert "human-decision" not in html
+
+
+def test_workbench_renderer_discloses_exact_navigation_hit_provenance() -> None:
+    html = render_workbench_html(
+        {
+            "surface": "workbench",
+            "matter_id": "MATTER-001",
+            "title": "Navigation evidence review",
+            "revision": 3,
+            "issues": [],
+            "evidence": [],
+            "navigation": {
+                "query": "width",
+                "evidence_snapshot_hash": "a" * 64,
+                "evidence_db_sha256": "b" * 64,
+                "promotion_label": "탐색 결과",
+                "recheck_required": True,
+                "hits": [
+                    {
+                        "citation_id": "CIT-EVID-002",
+                        "evidence_id": "EVID-002",
+                        "document_id": "DOC-002",
+                        "revision_id": "REV-002",
+                        "page_number": 5,
+                        "bbox": [1.0, 2.0, 3.0, 4.0],
+                        "source_hash": "c" * 64,
+                        "title": "<unsafe navigation title>",
+                        "text": "900 mm",
+                    },
+                ],
+            },
+            "draft_observations": [],
+            "formal_run_history": [],
+            "formalize": {
+                "expected_revision": 3,
+                "enabled": False,
+                "blockers": [{"issue_id": "", "label": "선택 근거 없음"}],
+                "confirmation_label": "현재 Matter revision 3을(를) 정식화",
+            },
+        }
+    )
+
+    assert 'data-navigation-evidence-id="EVID-002"' in html
+    assert 'id="navigation-provenance-CIT-EVID-002" tabindex="-1"' in html
+    assert "&lt;unsafe navigation title&gt;" in html
+    assert "Bounding box: 1.0, 2.0, 3.0, 4.0" in html
+    assert f"Source hash: {'c' * 64}" in html
+    assert f"Evidence snapshot: {'a' * 64}" in html
+    assert f"Evidence DB: {'b' * 64}" in html
+
+
+def test_workbench_renderer_labels_issue_and_draft_identity_for_multi_issue_work() -> None:
+    html = render_workbench_html(
+        {
+            "surface": "workbench",
+            "matter_id": "MATTER-001",
+            "title": "Multi-issue review",
+            "revision": 3,
+            "issues": [
+                {
+                    "issue_id": "ISSUE-001",
+                    "question": "Confirm the width.",
+                    "work_state_label": "검토 초안",
+                    "recheck_required": False,
+                },
+                {
+                    "issue_id": "ISSUE-002",
+                    "question": "Confirm the width.",
+                    "work_state_label": "검토 중",
+                    "recheck_required": False,
+                },
+            ],
+            "evidence": [],
+            "navigation": None,
+            "draft_observations": [
+                {
+                    "issue_id": "ISSUE-001",
+                    "text": "First draft.",
+                    "verification_label": "미확인",
+                    "draft_label": "검토 초안",
+                },
+                {
+                    "issue_id": "ISSUE-002",
+                    "text": "Second draft.",
+                    "verification_label": "확인 필요",
+                    "draft_label": "검토 초안",
+                },
+            ],
+            "formal_run_history": [],
+            "formalize": {
+                "expected_revision": 3,
+                "enabled": False,
+                "blockers": [{"issue_id": "ISSUE-001", "label": "검토 초안"}],
+                "confirmation_label": "현재 Matter revision 3을(를) 정식화",
+            },
+        }
+    )
+
+    assert '<p class="issue-identifier">MatterIssue ISSUE-001</p>' in html
+    assert '<p class="issue-identifier">MatterIssue ISSUE-002</p>' in html
+    assert '<p class="draft-issue-identifier">MatterIssue ISSUE-001</p>' in html
+    assert '<p class="draft-issue-identifier">MatterIssue ISSUE-002</p>' in html
