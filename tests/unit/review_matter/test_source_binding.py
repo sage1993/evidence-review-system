@@ -58,7 +58,7 @@ def test_repeated_binding_still_rejects_a_stale_expected_revision(
         )
 
 
-def test_changed_source_stales_issues_with_unmodelled_impact(tmp_path) -> None:
+def test_changed_source_retains_issue_with_explicitly_separate_dependency(tmp_path) -> None:
     store = MatterStore(tmp_path / "review-matters.sqlite")
     store.create(
         matter_id="MATTER-001",
@@ -103,7 +103,10 @@ def test_changed_source_stales_issues_with_unmodelled_impact(tmp_path) -> None:
         "b" * 64,
     )
 
-    assert [issue.work_state for issue in invalidated.issues] == ["STALE", "STALE"]
+    assert [issue.work_state for issue in invalidated.issues] == [
+        "STALE",
+        "READY_TO_FORMALIZE",
+    ]
 
 
 def test_unchanged_source_identity_and_hash_is_a_no_op(tmp_path) -> None:
