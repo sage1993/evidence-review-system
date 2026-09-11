@@ -1,6 +1,10 @@
 import tomllib
-from importlib.resources import files
+from importlib.resources import as_file, files
 from pathlib import Path
+from shutil import which
+from subprocess import run
+
+import pytest
 
 
 def test_runtime_templates_styles_and_scripts_are_declared_as_package_data() -> None:
@@ -30,3 +34,26 @@ def test_canonical_namespace_can_read_runtime_package_data() -> None:
     assert assets.is_dir()
     assert any(item.name.endswith(".css") for item in assets.iterdir())
     assert assets.joinpath("review.js").is_file()
+
+
+def test_packaged_workbench_script_matches_source_and_parses_in_node() -> None:
+    node = which("node")
+    if node is None:
+        pytest.skip("node is unavailable for Workbench asset syntax validation")
+
+    root = Path(__file__).parents[3]
+    source = root / "src" / "evidence_review" / "workbench" / "assets" / "workbench.js"
+    packaged = files("evidence_review.workbench").joinpath("assets", "workbench.js")
+
+    assert packaged.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+    for script in (source,):
+        result = run([node, "--check", str(script)], check=False, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+    with as_file(packaged) as packaged_script:
+        result = run(
+            [node, "--check", str(packaged_script)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr

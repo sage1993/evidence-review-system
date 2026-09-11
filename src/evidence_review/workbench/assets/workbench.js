@@ -159,4 +159,4 @@
   });
   const formalize = document.querySelector("[data-workbench-formalize]");
   if (formalize) formalize.addEventListener("click", () => requestFormalization(formalize));
-}());
+})();
