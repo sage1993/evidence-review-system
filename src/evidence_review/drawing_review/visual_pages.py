@@ -483,11 +483,27 @@ def prepare_visual_page_assets(
     return tuple(assets)
 
 
+def validate_visual_page_assets(
+    attachments: tuple[ImmutableAttachment, ...],
+    pages: tuple[VisualPageAsset, ...],
+) -> None:
+    """Require every generated page to retain its exact attachment/source lineage."""
+    expected = {
+        (item.case_id, item.attachment_id): item.sha256 for item in attachments
+    }
+    if not pages:
+        raise ValueError("VISUAL_SOURCE_RENDER_FAILED")
+    for page in pages:
+        if expected.get((page.case_id, page.attachment_id)) != page.source_sha256:
+            raise ValueError("VISUAL_SOURCE_BINDING_MISMATCH")
+
+
 __all__ = [
     "VisualPageAsset",
     "VisualPageTile",
     "ensure_visual_page_tiles",
     "load_visual_page_tiles",
     "prepare_visual_page_assets",
+    "validate_visual_page_assets",
     "visual_cache_identity",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -10,6 +11,7 @@ from evidence_review.canonical_json import sha256_json
 from evidence_review.contracts.attachments import (
     AttachmentRole,
     ImmutableAttachment,
+    decode_immutable_attachment,
     immutable_attachment_document,
 )
 from evidence_review.contracts.drawing import DrawingCandidate, drawing_candidate_document
@@ -36,6 +38,14 @@ _CANONICAL_EXTENSION: dict[str, str] = {
     "image/tiff": ".tif",
     "image/jpeg": ".jpg",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class VisualCase:
+    """One exact drawing case; its identity remains separate from a Matter."""
+
+    case_id: str
+    attachments: tuple[ImmutableAttachment, ...]
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -111,6 +121,28 @@ def _reconstructed_attachment(
         role=cast(AttachmentRole, descriptor["role"]),
         case_id=case_id,
     )
+
+
+def visual_case_from_attachments(
+    attachments: Sequence[ImmutableAttachment],
+) -> VisualCase:
+    """Build one exact visual case without resolving attachments by filename."""
+    validated = tuple(
+        decode_immutable_attachment(immutable_attachment_document(item))
+        for item in attachments
+    )
+    if not validated:
+        raise ValueError("visual case requires at least one attachment")
+    case_ids = {item.case_id for item in validated}
+    if len(case_ids) != 1 or None in case_ids:
+        raise ValueError("visual case attachments must share one case_id")
+    if len({item.attachment_id for item in validated}) != len(validated):
+        raise ValueError("visual case attachment_id values must be unique")
+    ordered = tuple(sorted(validated, key=lambda item: item.attachment_id))
+    case_id = ordered[0].case_id
+    if case_id is None:
+        raise ValueError("visual case attachments must share one case_id")
+    return VisualCase(case_id=case_id, attachments=ordered)
 
 
 def prepare_case_visual_sources(
@@ -317,6 +349,8 @@ def bind_case_visual_context_to_review_request(
 
 
 __all__ = [
+    "VisualCase",
     "bind_case_visual_context_to_review_request",
     "prepare_case_visual_sources",
+    "visual_case_from_attachments",
 ]

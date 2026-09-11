@@ -117,6 +117,7 @@ def candidate_from_raw_element(
         extractor=extractor,
         extractor_version=extractor_version,
         annotation_id=None,
+        case_id=case_id,
     )
     return _validated(candidate)
 
@@ -147,6 +148,7 @@ def create_manual_candidate(
         extractor=None,
         extractor_version=None,
         annotation_id=annotation_id,
+        case_id=case_id,
     )
     return _validated(candidate)
 
