@@ -165,60 +165,84 @@ def _page_asset(
     return "ASSET_MISSING", None
 
 
-def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> tuple[str, bytes | None]:
+def _tile_asset(
+    workspace_root: Path,
+    route: _CaseAssetRoute,
+    *,
+    cache_identity: str | None = None,
+) -> tuple[str, bytes | None]:
     if route.tile_x is None or route.tile_y is None:
         return "ASSET_MISSING", None
-    directory_parts = (
-        "case-page-tiles-v1",
-        route.attachment_id,
-        f"page-{route.page_number:04d}",
-    )
-    manifest_status, manifest_path = _trusted_file(
-        workspace_root,
-        *directory_parts,
-        "manifest.json",
-    )
-    if manifest_path is None:
-        return manifest_status, None
-    try:
-        manifest = _mapping(
-            json.loads(manifest_path.read_text(encoding="utf-8")),
-            "tile manifest",
-        )
-        records = _sequence(manifest.get("tiles", []), "tile manifest.tiles")
-    except PermissionError:
-        return "ASSET_PERMISSION_DENIED", None
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
-        return "ASSET_INVALID", None
-    for index, raw_record in enumerate(records):
-        try:
-            record = _mapping(raw_record, f"tile manifest.tiles[{index}]")
-            x = _integer(record.get("x"), "tile.x")
-            y = _integer(record.get("y"), "tile.y")
-        except ValueError:
-            return "ASSET_INVALID", None
-        if x != route.tile_x or y != route.tile_y:
+    permission_denied = False
+    invalid = False
+    hash_mismatch = False
+    identities = (cache_identity, route.attachment_id)
+    for identity in identities:
+        if identity is None:
             continue
-        filename = record.get("filename")
-        image_sha256 = record.get("image_sha256")
-        if (
-            not isinstance(filename, str)
-            or Path(filename).name != filename
-            or image_sha256 != route.image_sha256
-        ):
-            return "ASSET_HASH_MISMATCH", None
-        trust_status, path = _trusted_file(workspace_root, *directory_parts, filename)
-        if path is None:
-            return trust_status, None
-        try:
-            body = path.read_bytes()
-        except (PermissionError, OSError):
-            return "ASSET_PERMISSION_DENIED", None
-        return (
-            ("AVAILABLE", body)
-            if hashlib.sha256(body).hexdigest() == route.image_sha256
-            else ("ASSET_HASH_MISMATCH", None)
+        directory_parts = (
+            "case-page-tiles-v1",
+            identity,
+            f"page-{route.page_number:04d}",
         )
+        manifest_status, manifest_path = _trusted_file(
+            workspace_root,
+            *directory_parts,
+            "manifest.json",
+        )
+        if manifest_path is None:
+            permission_denied = permission_denied or manifest_status == "ASSET_PERMISSION_DENIED"
+            continue
+        try:
+            manifest = _mapping(
+                json.loads(manifest_path.read_text(encoding="utf-8")),
+                "tile manifest",
+            )
+            records = _sequence(manifest.get("tiles", []), "tile manifest.tiles")
+        except PermissionError:
+            permission_denied = True
+            continue
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            invalid = True
+            continue
+        for index, raw_record in enumerate(records):
+            try:
+                record = _mapping(raw_record, f"tile manifest.tiles[{index}]")
+                x = _integer(record.get("x"), "tile.x")
+                y = _integer(record.get("y"), "tile.y")
+            except ValueError:
+                invalid = True
+                continue
+            if x != route.tile_x or y != route.tile_y:
+                continue
+            filename = record.get("filename")
+            image_sha256 = record.get("image_sha256")
+            if (
+                not isinstance(filename, str)
+                or Path(filename).name != filename
+                or image_sha256 != route.image_sha256
+            ):
+                hash_mismatch = True
+                break
+            trust_status, path = _trusted_file(workspace_root, *directory_parts, filename)
+            if path is None:
+                permission_denied = permission_denied or trust_status == "ASSET_PERMISSION_DENIED"
+                continue
+            try:
+                body = path.read_bytes()
+            except (PermissionError, OSError):
+                permission_denied = True
+                continue
+            if hashlib.sha256(body).hexdigest() == route.image_sha256:
+                return "AVAILABLE", body
+            hash_mismatch = True
+            break
+    if permission_denied:
+        return "ASSET_PERMISSION_DENIED", None
+    if hash_mismatch:
+        return "ASSET_HASH_MISMATCH", None
+    if invalid:
+        return "ASSET_INVALID", None
     return "ASSET_MISSING", None
 
 
@@ -239,9 +263,23 @@ class CaseVisualReviewHandler(local_server._ReviewHandler):
             if (
                 raw_page.get("attachment_id") != route.attachment_id
                 or raw_page.get("page") != route.page_number
-                or raw_page.get("image_sha256") != route.image_sha256
             ):
                 continue
+            if route.kind == "page":
+                if raw_page.get("image_sha256") != route.image_sha256:
+                    continue
+            else:
+                tiles = raw_page.get("tiles")
+                if not isinstance(tiles, Sequence) or isinstance(tiles, (str, bytes, bytearray)):
+                    continue
+                if not any(
+                    isinstance(raw_tile, Mapping)
+                    and raw_tile.get("x") == route.tile_x
+                    and raw_tile.get("y") == route.tile_y
+                    and raw_tile.get("image_sha256") == route.image_sha256
+                    for raw_tile in tiles
+                ):
+                    continue
             case_id = raw_page.get("case_id")
             source_sha256 = raw_page.get("source_sha256")
             if (
@@ -287,7 +325,11 @@ class CaseVisualReviewHandler(local_server._ReviewHandler):
                 cache_identity=self._case_cache_identity(case_route),
             )
             if case_route.kind == "page"
-            else _tile_asset(self.state.workspace_root, case_route)
+            else _tile_asset(
+                self.state.workspace_root,
+                case_route,
+                cache_identity=self._case_cache_identity(case_route),
+            )
         )
         if body is None:
             _LOGGER.info(
