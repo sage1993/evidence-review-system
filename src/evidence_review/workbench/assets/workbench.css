@@ -1,11 +1,15 @@
 :root {
   color-scheme: light;
-  font-family: system-ui, sans-serif;
+  font-family: var(--ers-font-family);
   color: #172033;
   background: #f6f8fc;
 }
 
-body { margin: 0; }
+body {
+  margin: 0;
+  font-size: var(--ers-font-size);
+  line-height: var(--ers-line-height);
+}
 
 .workbench-shell {
   max-width: 1100px;
@@ -32,11 +36,16 @@ section, .workbench-issue, .evidence-card, .navigation-hit, .draft-observation {
 .recheck-marker { color: #a12a16; font-weight: 700; }
 .empty-state { color: #536176; }
 .navigation-hit details { margin-top: 0.75rem; }
-button { cursor: pointer; padding: 0.5rem 0.75rem; }
+button {
+  min-height: var(--ers-control-height);
+  border-radius: var(--ers-control-radius);
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+}
 button:disabled { cursor: not-allowed; opacity: 0.6; }
 
 button:focus-visible, summary:focus-visible {
-  outline: 3px solid #0b63ce;
+  outline: var(--ers-focus-outline) solid #0b63ce;
   outline-offset: 3px;
 }
 

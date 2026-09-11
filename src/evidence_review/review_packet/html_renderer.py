@@ -17,7 +17,11 @@ from evidence_review.review_packet.page_image_verifier import (
     VerifiedPageImage,
     verify_review_page_images,
 )
-from evidence_review.review_packet.presentation import evidence_type_label, localized_status
+from evidence_review.review_packet.presentation import (
+    evidence_type_label,
+    localized_status,
+    review_presentation_css,
+)
 from evidence_review.review_packet.render_audit import (
     render_audit_details,
     render_citation_audit,
@@ -764,7 +768,13 @@ def _render_review_html(
     assets_path = Path(__file__).with_name("assets")
     css = (assets_path / "review.css").read_text(encoding="utf-8")
     responsive_css = (assets_path / "review_responsive.css").read_text(encoding="utf-8")
-    css_bundle = css + "\n/* review_responsive.css */\n" + responsive_css
+    css_bundle = (
+        css
+        + "\n/* review_responsive.css */\n"
+        + responsive_css
+        + "\n/* shared presentation tokens */\n"
+        + review_presentation_css()
+    )
     script = (assets_path / "review.js").read_text(encoding="utf-8")
     claims = _sequence(model.get("claims", []), "claims")
     verified_pages = verify_review_page_images(model, page_image_root)
@@ -827,7 +837,8 @@ def _render_review_html(
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
             '<link rel="icon" href="data:,">',
             f"<title>근거 검토 · {_text(model.get('question'))}</title><style>{css_bundle}</style>",
-            '</head><body><div class="app-shell" data-viewer-mode="compare"',
+            '</head><body><div class="app-shell" data-surface="formal-review" '
+            'data-viewer-mode="compare"',
             ' data-protected-presentation="true"' if protected else "",
             ' data-archival-static-mode="true"' if not protected else "",
             '>',
