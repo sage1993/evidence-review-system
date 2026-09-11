@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 
 from evidence_review.presentation.tokens import presentation_tokens
@@ -17,6 +18,61 @@ class _CssDeclaration:
     important: bool
     specificity: tuple[int, int, int]
     source_order: int
+
+
+@dataclass(frozen=True)
+class _RenderedNode:
+    tag: str
+    attributes: tuple[tuple[str, str | None], ...]
+    parent: int | None
+
+
+class _RenderedDomParser(HTMLParser):
+    _VOID_TAGS = frozenset(
+        {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "source",
+            "wbr",
+        }
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.nodes: list[_RenderedNode] = []
+        self._open_nodes: list[int] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        node_index = len(self.nodes)
+        parent = self._open_nodes[-1] if self._open_nodes else None
+        self.nodes.append(_RenderedNode(tag, tuple(attrs), parent))
+        if tag not in self._VOID_TAGS:
+            self._open_nodes.append(node_index)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        parent = self._open_nodes[-1] if self._open_nodes else None
+        self.nodes.append(_RenderedNode(tag, tuple(attrs), parent))
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self._open_nodes) - 1, -1, -1):
+            if self.nodes[self._open_nodes[index]].tag == tag:
+                del self._open_nodes[index:]
+                return
+
+
+def _rendered_nodes(rendered_html: str) -> list[_RenderedNode]:
+    parser = _RenderedDomParser()
+    parser.feed(rendered_html)
+    parser.close()
+    return parser.nodes
 
 
 def _inline_css(rendered_html: str) -> str:
@@ -144,23 +200,205 @@ def _iter_applicable_rules(
     return rules
 
 
-def _normalized_selector(selector: str) -> str:
-    return " ".join(selector.split())
+def _node_attribute(node: _RenderedNode, name: str) -> str | None:
+    return next((value for attribute, value in node.attributes if attribute == name), None)
+
+
+def _node_matches_simple_selector(node: _RenderedNode, selector: str) -> bool:
+    simple_selector = selector.strip()
+    if not simple_selector or re.search(r"[\[\]:+~]", simple_selector):
+        return False
+
+    tag_match = re.match(r"(?:[A-Za-z_][\w-]*|\*)", simple_selector)
+    if tag_match is not None:
+        tag = tag_match.group(0)
+        if tag != "*" and node.tag != tag:
+            return False
+        simple_selector = simple_selector[tag_match.end() :]
+
+    identifiers = re.findall(r"#[A-Za-z_][\w-]*", simple_selector)
+    classes = re.findall(r"\.[A-Za-z_][\w-]*", simple_selector)
+    remainder = re.sub(r"(?:#[A-Za-z_][\w-]*|\.[A-Za-z_][\w-]*)", "", simple_selector)
+    if remainder:
+        return False
+    if any(_node_attribute(node, "id") != identifier[1:] for identifier in identifiers):
+        return False
+
+    node_classes = set((_node_attribute(node, "class") or "").split())
+    return all(css_class[1:] in node_classes for css_class in classes)
+
+
+def _selector_chain(selector: str) -> tuple[list[str], list[str]] | None:
+    if re.search(r"[+~]", selector):
+        return None
+    tokens = re.sub(r"\s*>\s*", " > ", selector.strip()).split()
+    if not tokens or tokens[0] == ">" or tokens[-1] == ">":
+        return None
+
+    selectors = [tokens[0]]
+    combinators: list[str] = []
+    pending_combinator = " "
+    for token in tokens[1:]:
+        if token == ">":
+            if pending_combinator == ">":
+                return None
+            pending_combinator = ">"
+            continue
+        combinators.append(pending_combinator)
+        selectors.append(token)
+        pending_combinator = " "
+    return selectors, combinators
+
+
+def _selector_matches_node(selector: str, node_index: int, nodes: list[_RenderedNode]) -> bool:
+    chain = _selector_chain(selector)
+    if chain is None:
+        return False
+    selectors, combinators = chain
+    if not _node_matches_simple_selector(nodes[node_index], selectors[-1]):
+        return False
+
+    current_index = node_index
+    for expected_selector, combinator in reversed(
+        list(zip(selectors[:-1], combinators, strict=True))
+    ):
+        parent_index = nodes[current_index].parent
+        if combinator == ">":
+            if parent_index is None or not _node_matches_simple_selector(
+                nodes[parent_index], expected_selector
+            ):
+                return False
+            current_index = parent_index
+            continue
+        while parent_index is not None and not _node_matches_simple_selector(
+            nodes[parent_index], expected_selector
+        ):
+            parent_index = nodes[parent_index].parent
+        if parent_index is None:
+            return False
+        current_index = parent_index
+    return True
+
+
+def _selector_matches_rendered_target(
+    selector: str,
+    *,
+    target_selector: str,
+    nodes: list[_RenderedNode],
+) -> bool:
+    return any(
+        _node_matches_simple_selector(node, target_selector)
+        and _selector_matches_node(selector, index, nodes)
+        for index, node in enumerate(nodes)
+    )
+
+
+def _balanced_delimited_content(
+    value: str,
+    opening_position: int,
+    *,
+    opening_character: str,
+    closing_character: str,
+) -> tuple[str, int]:
+    depth = 1
+    position = opening_position + 1
+    quote: str | None = None
+    while position < len(value) and depth:
+        character = value[position]
+        if quote is not None:
+            if character == "\\" and position + 1 < len(value):
+                position += 2
+                continue
+            if character == quote:
+                quote = None
+        elif character in {"'", '"'}:
+            quote = character
+        elif character == opening_character:
+            depth += 1
+        elif character == closing_character:
+            depth -= 1
+        position += 1
+    assert depth == 0
+    return value[opening_position + 1 : position - 1], position
+
+
+def _balanced_function_content(value: str, opening_parenthesis: int) -> tuple[str, int]:
+    return _balanced_delimited_content(
+        value,
+        opening_parenthesis,
+        opening_character="(",
+        closing_character=")",
+    )
 
 
 def _specificity(selector: str) -> tuple[int, int, int]:
-    return (
-        len(re.findall(r"#[A-Za-z_][\w-]*", selector)),
-        len(re.findall(r"\.[A-Za-z_][\w-]*", selector))
-        + len(re.findall(r"\[[^]]+\]", selector))
-        + len(re.findall(r"(?<!:):(?!:)[A-Za-z-]+", selector)),
-        len(
-            re.findall(
-                r"(?<![#.:\w-])[A-Za-z][\w-]*(?![\w-])",
-                re.sub(r"\[[^]]+\]", "", selector),
+    id_count = 0
+    class_count = 0
+    type_count = 0
+    position = 0
+
+    while position < len(selector):
+        character = selector[position]
+        identifier_match = re.match(r"[A-Za-z_][\w-]*", selector[position + 1 :])
+        if character == "#" and identifier_match is not None:
+            id_count += 1
+            position += identifier_match.end() + 1
+        elif character == "." and identifier_match is not None:
+            class_count += 1
+            position += identifier_match.end() + 1
+        elif character == "[":
+            _attribute, position = _balanced_delimited_content(
+                selector,
+                position,
+                opening_character="[",
+                closing_character="]",
             )
-        ),
-    )
+            class_count += 1
+        elif character == ":":
+            pseudo_element = position + 1 < len(selector) and selector[position + 1] == ":"
+            name_start = position + 2 if pseudo_element else position + 1
+            name_match = re.match(r"[A-Za-z-]+", selector[name_start:])
+            if name_match is None:
+                position += 1
+                continue
+            name = name_match.group(0).lower()
+            position = name_start + name_match.end()
+            if position < len(selector) and selector[position] == "(":
+                arguments, position = _balanced_function_content(selector, position)
+                if name in {"is", "not", "has"}:
+                    argument_specificities = [
+                        _specificity(argument.strip())
+                        for argument in _split_css_list(arguments, ",")
+                        if argument.strip()
+                    ]
+                    if argument_specificities:
+                        maximum = max(argument_specificities)
+                        id_count += maximum[0]
+                        class_count += maximum[1]
+                        type_count += maximum[2]
+                elif name != "where":
+                    if pseudo_element:
+                        type_count += 1
+                    else:
+                        class_count += 1
+            elif pseudo_element or name in {
+                "after",
+                "before",
+                "first-letter",
+                "first-line",
+                "marker",
+                "placeholder",
+                "selection",
+            }:
+                type_count += 1
+            else:
+                class_count += 1
+        elif identifier_match is not None:
+            type_count += 1
+            position += identifier_match.end() + 1
+        else:
+            position += 1
+    return id_count, class_count, type_count
 
 
 def _winning_inline_css_declaration(
@@ -171,10 +409,10 @@ def _winning_inline_css_declaration(
     medium: str,
     screen_width: int | None = None,
 ) -> _CssDeclaration | None:
-    """Resolve a property for one exact selector-list member in rendered inline CSS."""
+    """Resolve a property for selectors that match the rendered target element."""
     winner: _CssDeclaration | None = None
     source_order = 0
-    normalized_target = _normalized_selector(target_selector)
+    nodes = _rendered_nodes(rendered_html)
 
     for selectors, body in _iter_applicable_rules(
         _inline_css(rendered_html), medium=medium, screen_width=screen_width
@@ -182,7 +420,11 @@ def _winning_inline_css_declaration(
         matching_selectors = [
             selector.strip()
             for selector in _split_css_list(selectors, ",")
-            if _normalized_selector(selector) == normalized_target
+            if _selector_matches_rendered_target(
+                selector,
+                target_selector=target_selector,
+                nodes=nodes,
+            )
         ]
         for declaration in _split_css_list(body, ";"):
             name, separator, raw_value = declaration.partition(":")
@@ -394,3 +636,51 @@ def test_presentation_cascade_helper_rejects_later_same_specificity_conflicts() 
 
 def test_presentation_cascade_helper_counts_id_class_and_element_specificity() -> None:
     assert _specificity("article#record.notice") == (1, 1, 1)
+    assert _specificity("article::before") == (0, 0, 2)
+    assert _specificity(":where(#ignored.notice) article") == (0, 0, 1)
+    assert _specificity(":is(.notice, #record)") == (1, 0, 0)
+    assert _specificity(":not(.notice, article#record)") == (1, 0, 1)
+    assert _specificity("section:has(.notice, #record)") == (1, 0, 1)
+
+
+def test_presentation_cascade_helper_honors_matching_scoped_selectors() -> None:
+    formal = _with_inline_css_suffix(
+        render_review_html(_formal_model(), page_image_root=Path(".")),
+        """
+        .app-shell .header-actions { flex-wrap: nowrap; }
+        .app-shell .result-facts { grid-column: span 2; }
+        .app-shell .viewer-toolbar { display: flex !important; }
+        """,
+    )
+
+    flex_wrap = _winning_inline_css_declaration(
+        formal,
+        target_selector=".header-actions",
+        property_name="flex-wrap",
+        medium="screen",
+        screen_width=390,
+    )
+    grid_column = _winning_inline_css_declaration(
+        formal,
+        target_selector=".result-facts",
+        property_name="grid-column",
+        medium="screen",
+        screen_width=390,
+    )
+    display = _winning_inline_css_declaration(
+        formal,
+        target_selector=".viewer-toolbar",
+        property_name="display",
+        medium="print",
+    )
+
+    assert flex_wrap is not None
+    assert flex_wrap.value == "nowrap"
+    assert flex_wrap.specificity == (0, 2, 0)
+    assert grid_column is not None
+    assert grid_column.value == "span 2"
+    assert grid_column.specificity == (0, 2, 0)
+    assert display is not None
+    assert display.value == "flex"
+    assert display.important is True
+    assert display.specificity == (0, 2, 0)
