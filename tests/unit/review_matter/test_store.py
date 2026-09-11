@@ -88,7 +88,7 @@ def test_invalid_v1_metadata_migration_rolls_back_without_schema_changes(
         )
 
 
-@pytest.mark.parametrize("database_version", [1, 3])
+@pytest.mark.parametrize("database_version", [1, 4])
 def test_malformed_snapshot_table_rejects_without_partial_schema_change(
     tmp_path, database_version
 ) -> None:
@@ -107,7 +107,7 @@ def test_malformed_snapshot_table_rejects_without_partial_schema_change(
         store.close()
 
     with sqlite3.connect(database) as connection:
-        if database_version == 3:
+        if database_version == 4:
             connection.execute("DROP TABLE formalization_snapshots")
         connection.execute(
             """
@@ -201,12 +201,12 @@ def test_partial_snapshot_identity_index_rejects_without_schema_change(tmp_path)
             ).fetchone()[0]
             == index_sql
         )
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
         assert (
             connection.execute(
                 "SELECT value FROM matter_meta WHERE key = 'schema_version'"
             ).fetchone()[0]
-            == "3"
+            == "4"
         )
 
 
@@ -225,12 +225,12 @@ def test_v2_store_migrates_append_only_formal_run_history_schema(tmp_path) -> No
     upgraded.close()
 
     with sqlite3.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
         assert (
             connection.execute(
                 "SELECT value FROM matter_meta WHERE key = 'schema_version'"
             ).fetchone()[0]
-            == "3"
+            == "4"
         )
         assert (
             connection.execute(

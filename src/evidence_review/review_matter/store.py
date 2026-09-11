@@ -109,7 +109,7 @@ def _normalize_schema_sql(sql: object) -> str:
 class MatterStore:
     """Own one separate SQLite database for ReviewMatter work state."""
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -168,7 +168,8 @@ class MatterStore:
                 if metadata_update.rowcount != 1:
                     raise MatterSchemaError("MATTER_SCHEMA_VERSION_UPDATE_FAILED")
                 self.connection.execute("PRAGMA user_version = 3")
-        elif version == 2:
+            version = 3
+        if version == 2:
             with self.transaction():
                 metadata_rows = self.connection.execute(
                     """
@@ -189,8 +190,58 @@ class MatterStore:
                 if metadata_update.rowcount != 1:
                     raise MatterSchemaError("MATTER_SCHEMA_VERSION_UPDATE_FAILED")
                 self.connection.execute("PRAGMA user_version = 3")
+            version = 3
+        if version == 3:
+            with self.transaction():
+                metadata_rows = self.connection.execute(
+                    "SELECT value FROM matter_meta WHERE key = 'schema_version'"
+                ).fetchall()
+                if len(metadata_rows) != 1 or metadata_rows[0]["value"] != "3":
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_INVALID")
+                self._ensure_source_dependency_revision_schema()
+                metadata_update = self.connection.execute(
+                    """
+                    UPDATE matter_meta SET value = '4'
+                    WHERE key = 'schema_version' AND value = '3'
+                    """
+                )
+                if metadata_update.rowcount != 1:
+                    raise MatterSchemaError("MATTER_SCHEMA_VERSION_UPDATE_FAILED")
+                self.connection.execute("PRAGMA user_version = 4")
         elif version != self.SCHEMA_VERSION:
             raise MatterSchemaError(f"MATTER_SCHEMA_UNSUPPORTED: {version}")
+
+    def _ensure_source_dependency_revision_schema(self) -> None:
+        columns = tuple(
+            str(row[1])
+            for row in self.connection.execute(
+                'PRAGMA table_info("matter_source_dependencies")'
+            ).fetchall()
+        )
+        legacy_columns = ("matter_id", "issue_id", "source_key", "source_hash")
+        current_columns = (*legacy_columns, "source_revision_id")
+        if columns == legacy_columns:
+            self.connection.execute(
+                "ALTER TABLE matter_source_dependencies ADD COLUMN source_revision_id TEXT"
+            )
+        elif columns != current_columns:
+            raise MatterSchemaError("MATTER_SOURCE_DEPENDENCY_SCHEMA_INVALID")
+
+    def _require_source_dependency_revision_schema(self) -> None:
+        columns = tuple(
+            str(row[1])
+            for row in self.connection.execute(
+                'PRAGMA table_info("matter_source_dependencies")'
+            ).fetchall()
+        )
+        if columns != (
+            "matter_id",
+            "issue_id",
+            "source_key",
+            "source_hash",
+            "source_revision_id",
+        ):
+            raise MatterSchemaError("MATTER_SOURCE_DEPENDENCY_SCHEMA_INVALID")
 
     def _ensure_formalization_snapshot_schema(self) -> None:
         table = self.connection.execute(
@@ -361,6 +412,7 @@ class MatterStore:
             raise MatterSchemaError("MATTER_SCHEMA_VERSION_MISSING")
         self._require_formalization_snapshot_schema()
         self._require_formal_run_binding_schema()
+        self._require_source_dependency_revision_schema()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -511,16 +563,18 @@ class MatterStore:
             self.connection.execute(
                 """
                 INSERT INTO matter_source_dependencies(
-                    matter_id, issue_id, source_key, source_hash
-                ) VALUES (?, ?, ?, ?)
+                    matter_id, issue_id, source_key, source_hash, source_revision_id
+                ) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(matter_id, issue_id, source_key) DO UPDATE SET
-                    source_hash = excluded.source_hash
+                    source_hash = excluded.source_hash,
+                    source_revision_id = excluded.source_revision_id
                 """,
                 (
                     matter_id,
                     payload["issue_id"],
                     payload["source_key"],
                     payload["source_hash"],
+                    payload.get("source_revision_id"),
                 ),
             )
         elif kind == "ISSUES_INVALIDATED":
@@ -530,11 +584,12 @@ class MatterStore:
                     self.connection.execute(
                         """
                         UPDATE matter_source_dependencies
-                        SET source_hash = ?
+                        SET source_hash = ?, source_revision_id = ?
                         WHERE matter_id = ? AND issue_id = ? AND source_key = ?
                         """,
                         (
                             payload["new_source_hash"],
+                            payload.get("new_source_revision_id"),
                             matter_id,
                             issue_id,
                             source_key,
@@ -649,11 +704,11 @@ class MatterStore:
             for _, _, _, document in self.list_formalization_snapshot_records()
         )
 
-    def list_source_dependencies(self, matter_id: str) -> tuple[dict[str, str], ...]:
-        """Return exact Matter source dependencies in stable order."""
+    def list_source_dependencies(self, matter_id: str) -> tuple[dict[str, object], ...]:
+        """Return raw persisted source dependencies for fail-closed validation."""
         rows = self.connection.execute(
             """
-            SELECT issue_id, source_key, source_hash
+            SELECT issue_id, source_key, source_hash, source_revision_id
             FROM matter_source_dependencies
             WHERE matter_id = ?
             ORDER BY issue_id, source_key
@@ -662,9 +717,10 @@ class MatterStore:
         ).fetchall()
         return tuple(
             {
-                "issue_id": str(row["issue_id"]),
-                "source_key": str(row["source_key"]),
-                "source_hash": str(row["source_hash"]),
+                "issue_id": row["issue_id"],
+                "source_key": row["source_key"],
+                "source_hash": row["source_hash"],
+                "source_revision_id": row["source_revision_id"],
             }
             for row in rows
         )

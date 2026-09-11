@@ -181,6 +181,7 @@ def test_rebinding_changed_evidence_stales_dependent_issue(tmp_path) -> None:
         "ISSUE-001",
         "DOC-1",
         "a" * 64,
+        "REV-1",
     )
     rebound = bind_finalized_evidence(
         store,

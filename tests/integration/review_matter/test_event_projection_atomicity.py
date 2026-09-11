@@ -78,6 +78,7 @@ def test_projection_rebuild_restores_event_owned_metadata(tmp_path) -> None:
         "ISSUE-001",
         "SOURCE-001",
         "c" * 64,
+        "REV-1",
     )
     invalidate_source_dependents(
         store,
@@ -85,6 +86,7 @@ def test_projection_rebuild_restores_event_owned_metadata(tmp_path) -> None:
         registered.revision,
         "SOURCE-001",
         "d" * 64,
+        "REV-2",
     )
 
     with store.transaction():
@@ -110,6 +112,7 @@ def test_projection_rebuild_restores_event_owned_metadata(tmp_path) -> None:
             "issue_id": "ISSUE-001",
             "source_key": "SOURCE-001",
             "source_hash": "d" * 64,
+            "source_revision_id": "REV-2",
         },
     )
 
@@ -134,6 +137,7 @@ def test_direct_source_dependency_event_is_validated_before_append(tmp_path) -> 
             "issue_id": "ISSUE-001",
             "source_key": "SOURCE-001",
             "source_hash": "not-a-sha256",
+            "source_revision_id": "REV-1",
         },
     )
 
@@ -164,6 +168,7 @@ def test_rebuild_rejects_malformed_invalidation_before_side_effects(tmp_path) ->
             "issue_ids": ["ISSUE-001"],
             "source_key": "SOURCE-001",
             "new_source_hash": "not-a-sha256",
+            "new_source_revision_id": "REV-2",
         },
     )
     with store.transaction():

@@ -85,6 +85,7 @@ def test_changed_source_retains_issue_with_explicitly_separate_dependency(tmp_pa
         "ISSUE-001",
         "SOURCE-001",
         "a" * 64,
+        "REV-1",
     )
     registered = register_issue_source_dependency(
         store,
@@ -93,6 +94,7 @@ def test_changed_source_retains_issue_with_explicitly_separate_dependency(tmp_pa
         "ISSUE-002",
         "SOURCE-002",
         "c" * 64,
+        "REV-1",
     )
 
     invalidated = invalidate_source_dependents(
@@ -101,6 +103,7 @@ def test_changed_source_retains_issue_with_explicitly_separate_dependency(tmp_pa
         registered.revision,
         "SOURCE-001",
         "b" * 64,
+        "REV-2",
     )
 
     assert [issue.work_state for issue in invalidated.issues] == [
@@ -130,12 +133,14 @@ def test_unchanged_source_identity_and_hash_is_a_no_op(tmp_path) -> None:
         "ISSUE-001",
         "SOURCE-001",
         "a" * 64,
+        "REV-1",
     )
     assert store.list_source_dependencies("MATTER-001") == (
         {
             "issue_id": "ISSUE-001",
             "source_key": "SOURCE-001",
             "source_hash": "a" * 64,
+            "source_revision_id": "REV-1",
         },
     )
 
@@ -145,6 +150,7 @@ def test_unchanged_source_identity_and_hash_is_a_no_op(tmp_path) -> None:
         registered.revision,
         "SOURCE-001",
         "a" * 64,
+        "REV-1",
     )
 
     assert unchanged.revision == registered.revision
@@ -172,6 +178,7 @@ def test_invalidation_rejects_a_stale_expected_revision(tmp_path) -> None:
         "ISSUE-001",
         "SOURCE-001",
         "a" * 64,
+        "REV-1",
     )
 
     with pytest.raises(MatterRevisionConflict, match="MATTER_REVISION_CONFLICT"):
@@ -181,5 +188,6 @@ def test_invalidation_rejects_a_stale_expected_revision(tmp_path) -> None:
             1,
             "SOURCE-001",
             "b" * 64,
+            "REV-2",
         )
     assert store.load("MATTER-001").revision == 2
