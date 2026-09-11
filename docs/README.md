@@ -6,6 +6,15 @@ and implementation plans preserve what was verified or decided at a specific
 point in history; they are not replacements for the current workflow or
 release policy.
 
+## ReviewMatter authority modes
+
+**Evidence Navigation** is non-authoritative use of finalized evidence and
+does not itself create a Planner handoff, conclusion, packet, or decision. The
+Workbench stores **mutable ReviewMatter work state** separately from evidence.
+**Formalization** is the only promotion boundary into **Formal Review**;
+Formal Review keeps the validated Planner, deterministic engines, Track A/B,
+immutable packet, and append-only Human Decision authority.
+
 ## Current authority
 
 - [Manual Acceptance and Main-Merge Policy](MANUAL_ACCEPTANCE_POLICY.md) — current release and merge acceptance authority.

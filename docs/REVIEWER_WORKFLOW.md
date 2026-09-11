@@ -1,5 +1,13 @@
 # Reviewer Workflow
 
+## ReviewMatter authority modes
+
+Use **Evidence Navigation** to explore finalized evidence without creating a
+conclusion or decision. The Workbench records **mutable ReviewMatter work
+state**, not evidence or Formal Review output. **Formalization** is the only
+promotion into **Formal Review**; the latter alone produces immutable packets
+and accepts a packet-bound, append-only Human Decision.
+
 The machine packet is evidence for review, not a decision. The reviewer confirms the visible conclusion against source evidence, page/bbox, deterministic calculation/rule results, and any additional-review items. The human decision is always stored separately as an append-only record.
 
 ## 1. Confirm source identity

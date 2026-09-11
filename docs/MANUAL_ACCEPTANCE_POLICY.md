@@ -1,5 +1,14 @@
 # Manual Acceptance and Main-Merge Policy
 
+## ReviewMatter authority modes
+
+Release acceptance distinguishes **Evidence Navigation**, which is
+non-authoritative exploration, from the Workbench's **mutable ReviewMatter
+work state**. **Formalization** is the exclusive promotion of a bound Matter
+revision and finalized evidence snapshot into **Formal Review**. Only Formal
+Review retains the deterministic Track/final-packet boundary and the separate
+packet-bound Human Decision; user Matter data is not a release artifact.
+
 ## Default acceptance path
 
 GitHub Actions is not an acceptance dependency for this repository. Issue and

@@ -43,3 +43,15 @@ def iter_bundle_source_files(source_root: Path) -> tuple[Path, ...]:
         for path in sorted(source_root.rglob("*"))
         if is_bundle_source_file(path, source_root)
     )
+
+
+def missing_bundle_source_files(
+    source_root: Path,
+    required_paths: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Return required bundle paths omitted by stable source selection."""
+    selected = {
+        path.relative_to(source_root).as_posix()
+        for path in iter_bundle_source_files(source_root)
+    }
+    return tuple(path for path in required_paths if path not in selected)

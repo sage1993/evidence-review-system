@@ -5,9 +5,28 @@ description: Use when a user invokes $ERS_REVIEW or asks Codex Desktop to answer
 
 # ERS Review
 
+## Authority modes
+
+`$ERS_REVIEW` is the Formal Review handoff, not the entrypoint for every
+natural-language interaction. Keep these boundaries distinct:
+
+- **Evidence Navigation** searches and opens finalized evidence without a
+  conclusion, Planner, Track output, packet, or Human Decision.
+- **ReviewMatter workbench** holds mutable ReviewMatter work state, including
+  selected evidence and drafts; it is never evidence or Formal Review output.
+- **Formalization** is the only promotion from an exact Matter revision and
+  finalized evidence snapshot into Formal Review inputs.
+- **Formal Review** preserves the validated Question Planner, Track A, Track B,
+  final packet, and packet-bound Human Decision authority described below.
+
+명시적으로 finalized evidence를 탐색하거나 Workbench draft를 작성·수정하는
+요청은 각각 Navigation/Workbench 작업으로 처리하며, 자연어 검토 질문에 대한
+답변이 아니다. 검토 결과·적합성·법적 판단을 묻는 모든 자연어 검토 질문은
+아래 `$ERS_REVIEW` Formal Review 흐름과 Question Planner를 거친다.
+
 ## 목적
 
-`$ERS_REVIEW <질문>`은 **모든 질문을 정식 검토(formal review)** 로 처리한다. 빠른 조회 모드는 없다. 사용자는 QuestionPlan, query JSON, review-run request, Track A/B 중간 JSON을 직접 작성하지 않는다.
+`$ERS_REVIEW <질문>`은 **자연어 검토 질문을 정식 검토(formal review)** 로 처리한다. 빠른 조회 모드는 없다. 사용자는 QuestionPlan, query JSON, review-run request, Track A/B 중간 JSON을 직접 작성하지 않는다.
 
 프로젝트 Python runtime은 모델을 호출하지 않는다. Codex가 외부 AI 역할로 **QuestionPlan → 필요한 경우 Visual Analysis → Track A → Track B** handoff를 작성하고, runtime은 각 결과를 검증·고정한다. Question Planner와 Visual Analysis는 결론을 만들지 않는다.
 
@@ -62,7 +81,8 @@ evidence-review workspace active `
 
 ## 1. Question Planner handoff
 
-모든 자연어 질문은 retrieval 전에 Question Planner를 거친다.
+모든 자연어 검토 질문은 retrieval 전에 Question Planner를 거친다. Evidence
+Navigation 또는 Workbench 작업 요청은 이 handoff 대상이 아니다.
 
 ```powershell
 evidence-review review-question prepare-plan `
