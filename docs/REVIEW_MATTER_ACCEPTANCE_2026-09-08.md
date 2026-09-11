@@ -85,7 +85,7 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 | Native mypy | `PASS` | `Success: no issues found in 270 source files` |
 | `win32` mypy | `PASS` | `Success: no issues found in 270 source files` |
 | compileall | `PASS` | exit code 0; no output |
-| Wheel/runtime smoke | `PASS` | `evidence_review_system-0.2.0-py3-none-any.whl`; SHA-256 `70f4cac4b33e59d72b9ac3273d3eb922ca80df8b446abdb86f4eefbf3a0b841d`; installed target resource and CLI probe passed |
+| Wheel/runtime smoke | `PASS` | `evidence_review_system-0.2.0-py3-none-any.whl`; SHA-256 `5f7c371216915f54b639e0156d2d4500b5e7b0f4fd6b495f7dea6d1acfdc9eee`; installed target resource and CLI probe passed |
 
 The documentation command initially resolved an unrelated global checkout and
 correctly returned `SOURCE_MISMATCH`; the passing run explicitly bound
