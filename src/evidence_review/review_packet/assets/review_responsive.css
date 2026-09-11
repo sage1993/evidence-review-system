@@ -176,6 +176,10 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .result-facts {
+    grid-column: auto;
+  }
+
   .result-facts div {
     border-left: 0;
     border-top: 1px solid var(--border);
