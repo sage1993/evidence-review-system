@@ -150,13 +150,13 @@ def _normalized_selector(selector: str) -> str:
 
 def _specificity(selector: str) -> tuple[int, int, int]:
     return (
-        len(re.findall(r"#[A-Za-z_][\\w-]*", selector)),
-        len(re.findall(r"\.[A-Za-z_][\\w-]*", selector))
+        len(re.findall(r"#[A-Za-z_][\w-]*", selector)),
+        len(re.findall(r"\.[A-Za-z_][\w-]*", selector))
         + len(re.findall(r"\[[^]]+\]", selector))
         + len(re.findall(r"(?<!:):(?!:)[A-Za-z-]+", selector)),
         len(
             re.findall(
-                r"(?<![#.:\\w-])[A-Za-z][\\w-]*(?![\\w-])",
+                r"(?<![#.:\w-])[A-Za-z][\w-]*(?![\w-])",
                 re.sub(r"\[[^]]+\]", "", selector),
             )
         ),
@@ -390,3 +390,7 @@ def test_presentation_cascade_helper_rejects_later_same_specificity_conflicts() 
     assert display is not None
     assert display.value == "flex"
     assert display.important is True
+
+
+def test_presentation_cascade_helper_counts_id_class_and_element_specificity() -> None:
+    assert _specificity("article#record.notice") == (1, 1, 1)
