@@ -28,8 +28,10 @@ section, .workbench-issue, .evidence-card, .navigation-hit, .draft-observation {
 .workbench-issue, .evidence-card, .navigation-hit, .draft-observation { margin-block: 0.75rem; }
 .eyebrow, .draft-label, .work-state { font-weight: 700; }
 .draft-label { color: #54460a; }
+.draft-source, .navigation-current { color: #536176; }
 .recheck-marker { color: #a12a16; font-weight: 700; }
 .empty-state { color: #536176; }
+.navigation-hit details { margin-top: 0.75rem; }
 button { cursor: pointer; padding: 0.5rem 0.75rem; }
 button:disabled { cursor: not-allowed; opacity: 0.6; }
 

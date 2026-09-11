@@ -8,6 +8,7 @@ from typing import Literal
 
 from evidence_review.navigation.models import NavigationResult
 from evidence_review.review_matter.contracts import MatterIssue, ReviewMatter
+from evidence_review.review_matter.formal_run_binding import FormalRunBinding
 
 WorkbenchVerificationState = Literal["UNVERIFIED", "NEEDS_CONFIRMATION"]
 
@@ -33,6 +34,8 @@ class DraftObservation:
     issue_id: str
     text: str
     verification_state: WorkbenchVerificationState
+    draft_label: str = "검토 초안"
+    source_label: str = "검토자 초안 메모"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +46,36 @@ class FormalRunHistory:
     snapshot_id: str
     matter_revision: int
     stage_label: str
+
+
+def draft_observations_from_matter(matter: ReviewMatter) -> tuple[DraftObservation, ...]:
+    """Project persisted DRAFT issue questions as explicitly generated draft work."""
+    return tuple(
+        DraftObservation(
+            issue_id=issue.issue_id,
+            text=issue.question,
+            verification_state="UNVERIFIED",
+            draft_label="생성된 초안 작업 항목",
+            source_label="MatterIssue 질문에서 결정론적으로 생성됨",
+        )
+        for issue in matter.issues
+        if issue.work_state == "DRAFT"
+    )
+
+
+def formal_run_history_from_bindings(
+    bindings: Sequence[FormalRunBinding],
+) -> tuple[FormalRunHistory, ...]:
+    """Project only exact, already-validated Formal Run bindings for display."""
+    return tuple(
+        FormalRunHistory(
+            run_id=binding.run_id,
+            snapshot_id=binding.snapshot_id,
+            matter_revision=binding.matter_revision,
+            stage_label="검증된 정식 검토 이력",
+        )
+        for binding in bindings
+    )
 
 
 def _issue_document(issue: MatterIssue) -> dict[str, object]:
@@ -128,7 +161,8 @@ def _draft_documents(
                 "verification_label": _VERIFICATION_LABELS[
                     observation.verification_state
                 ],
-                "draft_label": "검토 초안",
+                "draft_label": observation.draft_label,
+                "source_label": observation.source_label,
             }
         )
     return documents

@@ -157,6 +157,7 @@ def _render_drafts(observations: Sequence[Mapping[str, object]]) -> str:
                 '<p class="draft-issue-identifier">MatterIssue ',
                 _text(observation.get("issue_id")),
                 "</p>",
+                f'<p class="draft-source">{_text(observation.get("source_label"))}</p>',
                 f"<p>{_text(observation.get('text'))}</p>",
                 f"<p>{_text(observation.get('verification_label'))}</p>",
                 "</article>",
@@ -174,6 +175,8 @@ def _render_formal_history(history: Sequence[Mapping[str, object]]) -> str:
                 _text(entry.get("run_id")),
                 "</strong> · Matter revision ",
                 _text(entry.get("matter_revision")),
+                " · snapshot ",
+                _text(entry.get("snapshot_id")),
                 " · ",
                 _text(entry.get("stage_label")),
                 "</li>",
@@ -204,6 +207,20 @@ def _render_formalize(formalize: Mapping[str, object]) -> str:
             '<ul id="formalize-blockers">',
             blocker_html,
             "</ul><p data-formalize-status aria-live=\"polite\"></p></section>",
+        )
+    )
+
+
+def _render_navigation_search() -> str:
+    return "".join(
+        (
+            '<form data-workbench-navigation-form>',
+            '<label for="workbench-navigation-query">탐색어</label>',
+            '<input id="workbench-navigation-query" name="query" type="search" '
+            'required maxlength="240" autocomplete="off">',
+            '<button type="submit">근거 탐색</button>',
+            '</form><p data-workbench-navigation-status aria-live="polite"></p>',
+            '<div data-workbench-navigation-results></div>',
         )
     )
 
@@ -246,6 +263,7 @@ def render_workbench_html(model: Mapping[str, object], *, nonce: str | None = No
             "</section>",
             '<section aria-labelledby="navigation-heading">',
             '<h2 id="navigation-heading">근거 탐색</h2>',
+            _render_navigation_search(),
             _render_navigation(navigation),
             "</section>",
             '<section aria-labelledby="draft-heading"><h2 id="draft-heading">검토 초안</h2>',

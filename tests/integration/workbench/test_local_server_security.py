@@ -30,10 +30,42 @@ def _workspace(tmp_path: Path) -> Path:
     return workspace
 
 
-def _start(workspace: Path, *, max_body_bytes: int = 65536) -> tuple[object, Thread]:
+def _workspace_with_reachable_view_states(tmp_path: Path) -> tuple[Path, object]:
+    from evidence_review.review_matter.formal_run_binding import bind_formal_run
+    from tests.integration.review_matter.test_multi_run_history import (
+        _finalized_formal_run,
+        _matter_with_first_snapshot,
+    )
+
+    workspace, store, snapshot = _matter_with_first_snapshot(tmp_path)
+    run_id, packet_sha256 = _finalized_formal_run(workspace, snapshot)
+    binding = bind_formal_run(
+        store,
+        snapshot.matter_id,
+        snapshot.snapshot_id,
+        run_id,
+        packet_sha256,
+        workspace_root=workspace,
+    )
+    ReviewMatterService.open(workspace).add_issue(
+        matter_id=snapshot.matter_id,
+        expected_revision=2,
+        issue_id="ISSUE-DRAFT-001",
+        question="Confirm the exact source before formal review.",
+        work_state="DRAFT",
+    )
+    return workspace, binding
+
+
+def _start(
+    workspace: Path,
+    *,
+    matter_id: str = MATTER_ID,
+    max_body_bytes: int = 65536,
+) -> tuple[object, Thread]:
     server = create_workbench_server(
         workspace,
-        matter_id=MATTER_ID,
+        matter_id=matter_id,
         token=TOKEN,
         reviewer_id=REVIEWER_ID,
         max_body_bytes=max_body_bytes,
@@ -109,6 +141,58 @@ def test_workbench_default_route_serves_protected_html_and_retains_json_state(
         assert status == 200
         assert headers["Content-Type"] == "application/json; charset=utf-8"
         assert state["surface"] == "WORKBENCH"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_protected_view_reaches_persisted_draft_history_and_bounded_navigation(
+    tmp_path: Path,
+) -> None:
+    workspace, binding = _workspace_with_reachable_view_states(tmp_path)
+    server, thread = _start(workspace, matter_id=binding.matter_id)
+    try:
+        status, html, _ = _html_request(server, server.path)
+
+        assert status == 200
+        assert '<form data-workbench-navigation-form' in html
+        assert 'name="query"' in html
+        assert 'maxlength="240"' in html
+        assert 'data-workbench-navigation-results' in html
+        assert "evidence/search" in html
+        assert "innerHTML" not in html
+        assert "ISSUE-DRAFT-001" in html
+        assert "생성된 초안 작업 항목" in html
+        assert "미확인" in html
+        assert binding.run_id in html
+        assert binding.snapshot_id in html
+        assert "검증된 정식 검토 이력" in html
+        assert binding.packet_sha256 not in html
+
+        status, navigation, _ = _request(
+            server,
+            "GET",
+            server.path.replace(
+                "/view", "/evidence/search?query=Exact%20reference&limit=1"
+            ),
+        )
+        assert status == 200
+        assert navigation["hits"] == [
+            {
+                "evidence_id": "EVID-SNAP-1",
+                "document_id": "DOC-SNAP-1",
+                "revision_id": "REV-SNAP-1",
+                "page_number": 1,
+                "bbox": [10.0, 10.0, 500.0, 30.0],
+                "source_hash": "a" * 64,
+                "title": "Snapshot source",
+                "text": "Exact reference text",
+                "citation_id": "CIT-EVID-SNAP-1",
+            }
+        ]
+        assert len(str(navigation["evidence_snapshot_hash"])) == 64
+        assert len(str(navigation["evidence_db_sha256"])) == 64
     finally:
         server.shutdown()
         server.server_close()

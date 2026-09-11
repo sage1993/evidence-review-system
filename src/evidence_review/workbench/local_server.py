@@ -55,7 +55,11 @@ from evidence_review.workbench.routes import (
     parse_workbench_route,
     workbench_path,
 )
-from evidence_review.workbench.view_model import build_workbench_view_model
+from evidence_review.workbench.view_model import (
+    build_workbench_view_model,
+    draft_observations_from_matter,
+    formal_run_history_from_bindings,
+)
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _READY_TIMEOUT_SECONDS = 2.0
@@ -258,10 +262,20 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
         try:
             if route.endpoint == "view":
                 matter = self.state.service.status(matter_id=self.state.matter_id)
+                formal_runs = self.state.service.list_formal_runs(
+                    matter_id=self.state.matter_id
+                )
                 nonce = base64.b64encode(secrets.token_bytes(18)).decode("ascii")
                 self._send_html(
                     render_workbench_html(
-                        build_workbench_view_model(matter), nonce=nonce
+                        build_workbench_view_model(
+                            matter,
+                            draft_observations=draft_observations_from_matter(matter),
+                            formal_run_history=formal_run_history_from_bindings(
+                                formal_runs
+                            ),
+                        ),
+                        nonce=nonce,
                     ),
                     nonce=nonce,
                 )
