@@ -61,6 +61,11 @@ def _isolate_non_documentation_checks(
         "_manifest_checks",
         lambda path: {"status": "PASS", "checked": 0, "errors": []},
     )
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        validator,
+        "_governed_rule_checks",
+        lambda path: {"status": "ABSTAIN"},
+    )
 
     def build_zip(root: Path, output: Path) -> str:
         output.write_bytes(b"deterministic")
