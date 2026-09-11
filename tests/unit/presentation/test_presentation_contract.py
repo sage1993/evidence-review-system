@@ -117,3 +117,15 @@ def test_formal_review_narrow_result_summary_resets_fact_grid_span() -> None:
 
     assert match is not None
     assert ".result-facts {\n    grid-column: auto;\n  }" in match.group("body")
+
+
+def test_formal_review_print_hides_the_rendered_viewer_toolbar() -> None:
+    formal = render_review_html(_formal_model(), page_image_root=Path("."))
+    match = re.search(
+        r"@media print \{(?P<body>.*?)\n\}",
+        formal,
+        flags=re.DOTALL,
+    )
+
+    assert match is not None
+    assert ".viewer-toolbar" in match.group("body")
