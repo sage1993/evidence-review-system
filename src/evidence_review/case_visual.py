@@ -247,6 +247,7 @@ def bind_case_visual_context_to_review_request(
 
     attachment_ids: set[str] = set()
     source_hash_by_attachment: dict[str, str] = {}
+    case_id_by_attachment: dict[str, str | None] = {}
     source_hashes: set[str] = set()
     for attachment in attachment_items:
         _validate_visual_role(attachment.role)
@@ -254,6 +255,7 @@ def bind_case_visual_context_to_review_request(
             raise ValueError("case visual attachment_id values must be unique")
         attachment_ids.add(attachment.attachment_id)
         source_hash_by_attachment[attachment.attachment_id] = attachment.sha256
+        case_id_by_attachment[attachment.attachment_id] = attachment.case_id
         source_hashes.add(attachment.sha256)
 
     page_keys: set[tuple[str, int]] = set()
@@ -264,6 +266,8 @@ def bind_case_visual_context_to_review_request(
             )
         if page.source_sha256 != source_hash_by_attachment[page.attachment_id]:
             raise ValueError("visual page source hash does not match its attachment")
+        if page.case_id != case_id_by_attachment[page.attachment_id]:
+            raise ValueError("visual page case_id does not match its attachment")
         key = (page.attachment_id, page.page)
         if key in page_keys:
             raise ValueError("visual page identities must be unique")
@@ -274,6 +278,8 @@ def bind_case_visual_context_to_review_request(
         if candidate.candidate_id in candidate_ids:
             raise ValueError("drawing candidate IDs must be unique")
         candidate_ids.add(candidate.candidate_id)
+        if candidate.case_id is None:
+            raise ValueError("drawing candidate case is not bound to this review request")
         if candidate.source_sha256 not in source_hashes:
             raise ValueError(
                 "drawing candidate source is not bound to this review request"
@@ -281,8 +287,13 @@ def bind_case_visual_context_to_review_request(
         matching_attachment_ids = {
             attachment_id
             for attachment_id, source_hash in source_hash_by_attachment.items()
-            if source_hash == candidate.source_sha256
+            if (
+                source_hash == candidate.source_sha256
+                and case_id_by_attachment[attachment_id] == candidate.case_id
+            )
         }
+        if not matching_attachment_ids:
+            raise ValueError("drawing candidate case is not bound to this review request")
         if page_items and not any(
             (attachment_id, candidate.page) in page_keys
             for attachment_id in matching_attachment_ids

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from evidence_review.case_visual import VisualCase, visual_case_from_attachments
@@ -19,6 +20,7 @@ class VisualAttachmentBinding:
 
     attachment_id: str
     source_sha256: str
+    matter_source_binding_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +40,7 @@ def bind_visual_case_to_matter(
     matter_id: str,
     expected_revision: int,
     visual_case: VisualCase,
+    expected_source_binding_ids: Mapping[str, str],
     candidates: tuple[DrawingCandidate, ...] = (),
 ) -> VisualMatterBinding:
     """Validate an exact visual case for one unchanged Matter revision.
@@ -57,6 +60,26 @@ def bind_visual_case_to_matter(
         raise ValueError("VISUAL_SOURCE_BINDING_MISMATCH") from error
     if validated_case.case_id != visual_case.case_id:
         raise ValueError("VISUAL_SOURCE_BINDING_MISMATCH")
+
+    attachment_ids = {item.attachment_id for item in validated_case.attachments}
+    if (
+        not isinstance(expected_source_binding_ids, Mapping)
+        or set(expected_source_binding_ids) != attachment_ids
+        or not all(
+            isinstance(attachment_id, str) and isinstance(binding_id, str)
+            for attachment_id, binding_id in expected_source_binding_ids.items()
+        )
+    ):
+        raise ValueError("MATTER_VISUAL_SOURCE_BINDING_MISMATCH")
+    matter_bindings = {
+        item.binding_id: item.source_hash for item in matter.source_bindings
+    }
+    if any(
+        matter_bindings.get(expected_source_binding_ids[item.attachment_id])
+        != item.sha256
+        for item in validated_case.attachments
+    ):
+        raise ValueError("MATTER_VISUAL_SOURCE_BINDING_MISMATCH")
 
     source_hashes = {item.sha256 for item in validated_case.attachments}
     validated_candidates = tuple(
@@ -81,6 +104,7 @@ def bind_visual_case_to_matter(
             VisualAttachmentBinding(
                 attachment_id=item.attachment_id,
                 source_sha256=item.sha256,
+                matter_source_binding_id=expected_source_binding_ids[item.attachment_id],
             )
             for item in validated_case.attachments
         ),

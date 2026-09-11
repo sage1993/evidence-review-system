@@ -43,11 +43,12 @@ def _attachment() -> ImmutableAttachment:
     return ImmutableAttachment(
         attachment_id="ATT-DRAWING-1",
         original_name="drawing.png",
-        stored_path="inputs/original/ATT-DRAWING-1.png",
+        stored_path="cases/CASE-1/sources/drawings/ATT-DRAWING-1.png",
         sha256="a" * 64,
         byte_size=100,
         mime="image/png",
         role="CASE_DRAWING",
+        case_id="CASE-1",
     )
 
 
@@ -101,6 +102,7 @@ def test_visual_submission_creates_source_bound_unconfirmed_candidate() -> None:
     assert len(result.candidates) == 1
     candidate = result.candidates[0]
     assert candidate.source_sha256 == "a" * 64
+    assert candidate.case_id == "CASE-1"
     assert candidate.status == "UNCONFIRMED"
     assert candidate.origin == "EXTRACTOR"
     assert result.candidate_issue_ids[candidate.candidate_id] == ("ISSUE-1",)

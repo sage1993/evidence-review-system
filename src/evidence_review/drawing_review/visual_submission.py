@@ -65,6 +65,8 @@ def validate_visual_analysis_output(
         page = pages_by_key.get((observation.attachment_id, observation.page))
         if page is None:
             raise ValueError("visual observation references unknown page")
+        if attachment.case_id is None or attachment.case_id != page.case_id:
+            raise ValueError("visual observation case_id mismatch")
         if observation.geometry.coordinate_system != page.coordinate_system:
             raise ValueError("visual observation coordinate system mismatch")
 
@@ -72,7 +74,7 @@ def validate_visual_analysis_output(
         element_id = f"OBS-{sha256_json(observation_document)[:20].upper()}"
         candidate = DrawingCandidate(
             candidate_id=extractor_candidate_id(
-                expected_visual_analysis_id,
+                attachment.case_id,
                 observation.source_sha256,
                 observation.page,
                 _EXTRACTOR,
@@ -90,6 +92,7 @@ def validate_visual_analysis_output(
             extractor=_EXTRACTOR,
             extractor_version=_EXTRACTOR_VERSION,
             annotation_id=None,
+            case_id=attachment.case_id,
         )
         build_drawing_review_view_model(
             DrawingPage(

@@ -141,6 +141,7 @@ def extract_drawing_candidates(
             extractor=f"DRAWING_STAGE_{selected_stage}",
             extractor_version=extractor_version,
             annotation_id=None,
+            case_id=case_id,
         )
         candidates.append(candidate)
     return tuple(
