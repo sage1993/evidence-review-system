@@ -27,6 +27,10 @@ from evidence_review.review_matter.contracts import (
 )
 from evidence_review.review_matter.contracts import _identifier as _validate_matter_id
 from evidence_review.review_matter.events import MatterEvent, append_matter_event
+from evidence_review.review_matter.formal_run_binding import (
+    FormalRunBinding,
+    list_formal_runs,
+)
 from evidence_review.review_matter.formalization import formalize_snapshot
 from evidence_review.review_matter.snapshot import (
     FormalizationSnapshot,
@@ -142,6 +146,16 @@ class ReviewMatterService:
         validated_matter_id = self._validated_matter_id(matter_id)
         with self._existing_store() as store:
             return store.load(validated_matter_id)
+
+    def list_formal_runs(self, *, matter_id: str) -> tuple[FormalRunBinding, ...]:
+        """Return only persisted, fully validated Formal Run lineage for one Matter."""
+        validated_matter_id = self._validated_matter_id(matter_id)
+        with self._existing_store() as store:
+            return list_formal_runs(
+                store,
+                validated_matter_id,
+                workspace_root=self.workspace,
+            )
 
     def add_issue(
         self,
