@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from evidence_review.presentation.tokens import presentation_tokens
@@ -92,3 +93,27 @@ def test_formal_review_print_typography_overrides_shared_screen_font_size() -> N
 
     assert print_override > shared_projection
     assert "body {\n    font-size: 11pt;" in formal[print_override:]
+
+
+def test_formal_review_narrow_status_header_wraps_controls_without_vertical_text() -> None:
+    formal = render_review_html(_formal_model(), page_image_root=Path("."))
+    match = re.search(
+        r"@media \(max-width: 700px\) \{(?P<body>.*?)\n\}",
+        formal,
+        flags=re.DOTALL,
+    )
+
+    assert match is not None
+    assert ".header-actions {\n    flex-wrap: wrap;\n    min-width: 0;\n  }" in match.group("body")
+
+
+def test_formal_review_narrow_result_summary_resets_fact_grid_span() -> None:
+    formal = render_review_html(_formal_model(), page_image_root=Path("."))
+    match = re.search(
+        r"@media \(max-width: 700px\) \{(?P<body>.*?)\n\}",
+        formal,
+        flags=re.DOTALL,
+    )
+
+    assert match is not None
+    assert ".result-facts {\n    grid-column: auto;\n  }" in match.group("body")
