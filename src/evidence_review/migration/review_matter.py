@@ -104,19 +104,21 @@ def legacy_reference_from_run(run_directory: Path) -> LegacyFormalReviewReferenc
         packet_bytes = packet_path.read_bytes()
         packet_sha256 = hashlib.sha256(packet_bytes).hexdigest()
         workspace_root = trusted_run.parents[1]
-        _verified_run, packet, normalized_request = verify_formal_run_authority(
+        verified_run, packet, normalized_request = verify_formal_run_authority(
             workspace_root,
             run_id=trusted_run.name,
             packet_sha256=packet_sha256,
         )
+        if verified_run != trusted_run:
+            raise ValueError("legacy formal run directory is not canonical")
         inputs = normalized_request.get("inputs")
         if not isinstance(inputs, Mapping) or _MATTER_LINEAGE_FIELDS.intersection(inputs):
             raise ValueError("legacy formal review declares Matter lineage")
         if packet_bytes != dump_bytes(review_packet_document(packet)):
             raise ValueError("legacy formal review packet is not canonical")
         decisions = _decision_references(
-            trusted_run,
-            run_id=trusted_run.name,
+            verified_run,
+            run_id=verified_run.name,
             packet_sha256=packet_sha256,
         )
     except (

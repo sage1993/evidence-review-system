@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -205,3 +206,34 @@ def test_legacy_run_reference_rejects_linked_run_path_without_reading_target(
         legacy_reference_from_run(linked_run)
 
     assert packet_path.read_bytes() == packet_bytes
+
+
+def test_legacy_run_reference_rejects_noncanonical_same_id_run_directory(
+    tmp_path: Path,
+) -> None:
+    from evidence_review.migration.review_matter import legacy_reference_from_run
+
+    canonical_run = _finalized_legacy_run(tmp_path)
+    packet_path = canonical_run / "final-review-packet.json"
+    packet_sha256 = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+    decisions = canonical_run / "human-decisions"
+    decisions.mkdir()
+    (decisions / "20260911T090000000000+0000-reviewer-01.json").write_bytes(
+        dump_bytes(
+            {
+                "run_id": canonical_run.name,
+                "reviewer_id": "reviewer-01",
+                "reviewed_at": "2026-09-11T09:00:00+00:00",
+                "packet_hash": packet_sha256,
+                "decision": "SATISFIED",
+                "notes": "",
+            }
+        )
+    )
+
+    copied_run = canonical_run.parent.parent / "copied-runs" / canonical_run.name
+    shutil.copytree(canonical_run, copied_run)
+    shutil.rmtree(copied_run / "human-decisions")
+
+    with pytest.raises(ValueError, match="LEGACY_FORMAL_RUN_INVALID"):
+        legacy_reference_from_run(copied_run)
