@@ -15,11 +15,11 @@ the human decision is an append-only, packet-hash-bound record.
 | --- | --- |
 | Required base | `fa6e8a0098eb06c8afeaa7b306cce25ef412ae2f` (MIG-19 merge) |
 | Acceptance branch | `test/mig-20-review-matter-acceptance` |
-| Exact candidate commit | `TBD until the acceptance files are committed` |
+| Exact candidate commit | `acbd4c34de86df18b855d8085158c269b09d6ad0` (runtime/test candidate) |
 | Python | `3.13` |
 | Platform | Windows (`win32`) |
 | GitHub Actions | `ACTIONS_NOT_RUN` |
-| Overall status | `HOLD` until the exact-HEAD deterministic gates below are complete |
+| Overall status | `HOLD` until final-HEAD revalidation, Sol-high review, and merge are complete |
 
 ## Executable migration matrix
 
@@ -48,7 +48,7 @@ Run the focused matrix from the exact checkout:
 py -3.13 -m pytest -v tests/integration/review_matter/test_end_to_end_matrix.py
 ```
 
-Executed on the MIG-20 worktree with Python 3.13: `11 passed` in 23.34 seconds.
+Executed on the MIG-20 worktree with Python 3.13: `11 passed` in 14.63 seconds.
 
 The text/reference-only lane is exercised by the planner and restart scenarios. In
 addition to the generated fixture assertion, the prepared user workspace was run
@@ -78,13 +78,18 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 | Gate | Result | Evidence |
 | --- | --- | --- |
 | Focused MIG-20 matrix | `PASS` | `11 passed` |
-| Documentation integrity | `NOT_RUN` | fresh output directory and report |
-| Full pytest | `NOT_RUN` | exact command output |
-| Ruff | `NOT_RUN` | exact command output |
-| Native mypy | `NOT_RUN` | exact command output |
-| `win32` mypy | `NOT_RUN` | exact command output |
-| compileall | `NOT_RUN` | exact command output |
-| Wheel/runtime smoke | `PASS` | included in focused matrix; installed target resource probe passed |
+| Documentation integrity | `PASS` | `51 documents; current=23, historical=26, generated=2; errors=0, warnings=149` |
+| Full pytest | `PASS` | `2243 passed, 1 skipped, 1 warning in 525.43s` |
+| Ruff | `PASS` | `All checks passed!` |
+| Native mypy | `PASS` | `Success: no issues found in 270 source files` |
+| `win32` mypy | `PASS` | `Success: no issues found in 270 source files` |
+| compileall | `PASS` | exit code 0; no output |
+| Wheel/runtime smoke | `PASS` | `evidence_review_system-0.2.0-py3-none-any.whl`; SHA-256 `3439f0cdc9e54a0f54627c76e0fcf86bd9e75d4e4b0231f3809e654e0dbd3424`; installed target resource and CLI probe passed |
+
+The documentation command initially resolved an unrelated global checkout and
+correctly returned `SOURCE_MISMATCH`; the passing run explicitly bound
+`PYTHONPATH` to this clean worktree's `src` directory. The other gates and the
+full test run were executed with the same worktree source binding.
 
 The acceptance record must include the finalized evidence snapshot hash, exact
 `evidence.sqlite` SHA-256, run IDs, final packet SHA-256 values, and the absence of
