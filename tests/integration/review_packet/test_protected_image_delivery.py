@@ -21,6 +21,7 @@ TOKEN = "b" * 43
 SOURCE_HASH = "a" * 64
 REFERENCE_SOURCE_HASH = "c" * 64
 CASE_ATTACHMENT_ID = "ATT-1"
+CASE_ID = "CASE-CASESCOPED"
 
 
 def _model() -> dict[str, object]:
@@ -337,6 +338,120 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
         )
         assert status == 404
         assert tampered_bytes not in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_protected_case_tile_route_uses_case_scoped_cache_identity(
+    tmp_path: Path,
+) -> None:
+    page_bytes = VALID_MINIMAL_PNG
+    page_sha256 = hashlib.sha256(page_bytes).hexdigest()
+    tile_bytes = b"case-scoped-tile"
+    tile_sha256 = hashlib.sha256(tile_bytes).hexdigest()
+    cache_identity = f"{CASE_ID}--{CASE_ATTACHMENT_ID}--{SOURCE_HASH}"
+    tile_directory = (
+        tmp_path
+        / "case-page-tiles-v1"
+        / cache_identity
+        / "page-0001"
+    )
+    tile_directory.mkdir(parents=True)
+    tile_name = "tile-r000-c000.png"
+    (tile_directory / tile_name).write_bytes(tile_bytes)
+    (tile_directory / "manifest.json").write_text(
+        json.dumps(
+            {
+                "tiles": [
+                    {
+                        "x": 0,
+                        "y": 0,
+                        "filename": tile_name,
+                        "image_sha256": tile_sha256,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    run = tmp_path / "runs" / RUN_ID
+    run.mkdir(parents=True)
+    (run / "final-review-packet.json").write_bytes(b"{}")
+    model = {
+        "run_id": RUN_ID,
+        "status": "READY_FOR_HUMAN_REVIEW",
+        "display_status": "READY_FOR_HUMAN_REVIEW",
+        "question": "protected case tile",
+        "claims": [],
+        "review_items": [],
+        "calculations": [],
+        "rules": [],
+        "exceptions": [],
+        "conflicts": [],
+        "abstention_reasons": [],
+        "summary": {},
+        "audit": {},
+        "case_visual_review": {
+            "status": "VISUAL_ANALYSIS_VALIDATED",
+            "pages": [
+                {
+                    "asset_key": f"{CASE_ATTACHMENT_ID}-p1",
+                    "case_id": CASE_ID,
+                    "attachment_id": CASE_ATTACHMENT_ID,
+                    "page": 1,
+                    "width": 2048.0,
+                    "height": 2048.0,
+                    "document_name": "case.png",
+                    "source_sha256": SOURCE_HASH,
+                    "image_sha256": page_sha256,
+                    "data_uri": "data:image/png;base64,AAAA",
+                    "tiles": [
+                        {
+                            "x": 0,
+                            "y": 0,
+                            "width": 2048,
+                            "height": 2048,
+                            "image_sha256": tile_sha256,
+                            "data_uri": "data:image/png;base64,BBBB",
+                        }
+                    ],
+                    "candidates": [],
+                }
+            ],
+            "reference_pages": [],
+            "findings": [],
+            "related_references": [],
+        },
+    }
+    (run / "review.html").write_text(
+        '<div class="app-shell"></div>'
+        '<script id="review-model" type="application/json">'
+        + json.dumps(model, sort_keys=True, separators=(",", ":"))
+        + "</script>",
+        encoding="utf-8",
+    )
+
+    server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
+    configure_case_visual_server(server)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"/runs/{RUN_ID}/{TOKEN}"
+        status, _, protected = _get(server, base + "/review")
+        assert status == 200
+        assert b"data:image/png;base64," not in protected
+
+        status, headers, delivered = _get(
+            server,
+            base + f"/case-tiles/{CASE_ATTACHMENT_ID}/1/0/0/{tile_sha256}",
+        )
+        assert status == 200
+        assert headers["content-type"] == "image/png"
+        assert headers["cache-control"] == "no-store"
+        assert headers["x-content-type-options"] == "nosniff"
+        assert delivered == tile_bytes
     finally:
         server.shutdown()
         server.server_close()

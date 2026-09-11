@@ -23,6 +23,7 @@ from evidence_review.filesystem_trust import (
 )
 from evidence_review.local_http_transport import (
     ContentLengthError,
+    drain_rejected_body,
     loopback_request_is_authorized,
     reject_oversized_body,
     send_protected_response,
@@ -390,11 +391,24 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         self._send_bytes(status, body, "application/json; charset=utf-8")
 
-    def _reject(self, status: HTTPStatus, code: str) -> None:
+    def _reject(
+        self,
+        status: HTTPStatus,
+        code: str,
+        *,
+        drain_body: bool = True,
+    ) -> None:
         self._send_json(status, {"error": code})
+        if drain_body:
+            self.wfile.flush()
+            drain_rejected_body(self)
 
     def _reject_oversized_body(self, length: int) -> None:
-        reject_oversized_body(self, length, self._reject)
+        reject_oversized_body(
+            self,
+            length,
+            lambda status, code: self._reject(status, code, drain_body=False),
+        )
 
     def _route(self) -> _Route | None:
         route = _route_path(self.path)
