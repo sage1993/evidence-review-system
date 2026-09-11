@@ -15,7 +15,7 @@ the human decision is an append-only, packet-hash-bound record.
 | --- | --- |
 | Required base | `fa6e8a0098eb06c8afeaa7b306cce25ef412ae2f` (MIG-19 merge) |
 | Acceptance branch | `test/mig-20-review-matter-acceptance` |
-| Exact candidate commit | `acbd4c34de86df18b855d8085158c269b09d6ad0` (runtime/test candidate) |
+| Exact candidate commit | `32aa582722dc0d806470104c2b77ed6cf94f14f2` (runtime/test candidate) |
 | Python | `3.13` |
 | Platform | Windows (`win32`) |
 | GitHub Actions | `ACTIONS_NOT_RUN` |
@@ -49,7 +49,7 @@ Run the focused matrix from the exact checkout:
 py -3.13 -m pytest -v tests/integration/review_matter/test_end_to_end_matrix.py
 ```
 
-Executed on the MIG-20 worktree with Python 3.13: `11 passed` in 14.63 seconds.
+Executed on the MIG-20 worktree with Python 3.13: `12 passed` in 20.46 seconds.
 
 The text/reference-only lane is exercised by the planner and restart scenarios. In
 addition to the generated fixture assertion, the prepared user workspace was run
@@ -78,14 +78,14 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 
 | Gate | Result | Evidence |
 | --- | --- | --- |
-| Focused MIG-20 matrix | `PASS` | `11 passed` |
+| Focused MIG-20 matrix | `PASS` | `12 passed` in 20.46s |
 | Documentation integrity | `PASS` | `51 documents; current=23, historical=26, generated=2; errors=0, warnings=149` |
-| Full pytest | `PASS` | `2243 passed, 1 skipped, 1 warning in 525.43s` |
+| Full pytest | `PASS` | `2244 passed, 1 skipped, 1 warning in 590.32s` |
 | Ruff | `PASS` | `All checks passed!` |
 | Native mypy | `PASS` | `Success: no issues found in 270 source files` |
 | `win32` mypy | `PASS` | `Success: no issues found in 270 source files` |
 | compileall | `PASS` | exit code 0; no output |
-| Wheel/runtime smoke | `PASS` | `evidence_review_system-0.2.0-py3-none-any.whl`; SHA-256 `3439f0cdc9e54a0f54627c76e0fcf86bd9e75d4e4b0231f3809e654e0dbd3424`; installed target resource and CLI probe passed |
+| Wheel/runtime smoke | `PASS` | `evidence_review_system-0.2.0-py3-none-any.whl`; SHA-256 `70f4cac4b33e59d72b9ac3273d3eb922ca80df8b446abdb86f4eefbf3a0b841d`; installed target resource and CLI probe passed |
 
 The documentation command initially resolved an unrelated global checkout and
 correctly returned `SOURCE_MISMATCH`; the passing run explicitly bound
@@ -104,27 +104,33 @@ Review URL using the real local loopback server. At each supported viewport reco
 the URL, HTTP status, screenshot path, console errors, keyboard/focus result, print
 result, protected/archive behavior, and server lifecycle status:
 
-| Viewport | Workbench | Formal Review | Keyboard/focus | Print | Console errors |
-| --- | --- | --- | --- | --- | --- |
-| `1366×768` | `PASS` (`/workbench/MATTER-SNAP-1/<token>/view`, HTTP 200) | `PASS` (`/runs/<run>/<token>/review`, HTTP 200) | `PASS` | `PASS` | `PASS` |
-| `1920×1080` | `PASS` (same protected URL, HTTP 200) | `PASS` (same protected URL, HTTP 200) | `PASS` | `PASS` | `PASS` |
-| `3840×2160` | `PASS` (same protected URL, HTTP 200) | `PASS` (same protected URL, HTTP 200) | `PASS` | `PASS` | `PASS` |
+| Viewport | Workbench | Formal Review | Case Drawing | Keyboard/focus | Print | Console errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `1366×768` | `PASS` (protected URL, HTTP 200) | `PASS` (protected URL, HTTP 200) | `PASS` (p.1 and p.17/17, HTTP 200) | `PASS` | `PASS` | `PASS` |
+| `1920×1080` | `PASS` (same protected URL, HTTP 200) | `PASS` (same protected URL, HTTP 200) | `PASS` (p.1 and p.17/17, HTTP 200) | `PASS` | `PASS` | `PASS` |
+| `3840×2160` | `PASS` (same protected URL, HTTP 200) | `PASS` (same protected URL, HTTP 200) | `PASS` (p.1 and p.17/17, HTTP 200) | `PASS` | `PASS` | `PASS` |
 
 Browser evidence was captured with Playwright CLI against real tokenized loopback
-servers. Valid Workbench and Formal Review pages returned `200`, valid-page console
-output was zero errors/warnings, and keyboard `Tab` moved focus to a real button.
-The wrong Formal Review token returned `403 FORBIDDEN` as required; its browser
-console errors were the expected failed resource plus missing favicon, not a valid
-page failure. The print artifact was captured at
-`output/playwright/formal-review-print.pdf`. Screenshots are in
-`output/playwright/workbench-{1366x768,1920x1080,3840x2160}.png` and
-`output/playwright/formal-review-{1366x768,1920x1080,3840x2160}.png`.
-The detached Workbench lifecycle was started, observed as running, allowed to hit
-its idle timeout once, restarted, and stopped through its verified management path.
-The explicit lifecycle probe returned `running: true` with a bound PID/port and then
-`running: false` after `serve-stop`; no unrelated process was signalled. A direct
-Playwright `file:` navigation was blocked by the browser harness (`about:blank`),
-so the archival file path was not treated as a protected persistent decision route.
+servers at this exact candidate. The Formal Review page displayed seven real
+evidence citations and a verified reference page; selecting a second citation kept
+the page identity bound. The Case Drawing page used the prepared
+`ATT-C6367EE43EE223059644.pdf` source and navigated `1 / 17` → `2 / 17` → `17 / 17`.
+Valid Workbench, Formal Review, and Case Drawing pages returned `200`; valid-page
+console output was zero errors/warnings, and keyboard `Tab` moved focus to a real
+button. A wrong Case Drawing token returned `403 FORBIDDEN` as required. Print
+output was captured at `output/playwright/mig20-final-formal-print.pdf`; screenshots
+are in `output/playwright/mig20-final-{workbench,formal,drawing}-{1366x768,1920x1080,3840x2160}.png`.
+The detached Workbench lifecycle was started at a bound PID/port, observed as
+`running: true`, allowed to reach its configured idle timeout and report `STOPPED`,
+and completed with verified `serve-stop`; no unrelated process was signalled.
+
+The archival HTML was served over loopback because the browser harness blocked direct
+Playwright `file:` navigation (`about:blank`). Its decision download prompt produced
+a five-field envelope, matching import recorded the append-only decision, a
+packet-hash mismatch was rejected, and a repeated import was rejected by the
+create-only filename collision rule. The static archival page logged the expected
+`404` for its unavailable protected `decision/status` endpoint; this is not a valid
+protected-page console error and does not alter the archival download/import results.
 
 The exact prepared evidence workspace used for the source/hash check had
 `evidence.sqlite` SHA-256
