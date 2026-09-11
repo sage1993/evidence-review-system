@@ -65,6 +65,7 @@ SCENARIOS = (
     "packet_specific_human_decision",
     "restart_recovery",
     "installed_wheel_runtime",
+    "protected_case_visual_cache_identity",
 )
 
 
@@ -415,6 +416,104 @@ print("installed-wheel-runtime-ok")
     assert "review-matter" in cli.stdout
 
 
+def _protected_case_visual_cache_identity(root: Path) -> None:
+    """A case-scoped visual cache must be reachable through the protected route."""
+    import base64
+    import http.client
+
+    from evidence_review.review_packet.html_renderer import render_review_html
+    from tests.integration.review_packet.test_review_workspace_performance import (
+        VALID_MINIMAL_PNG,
+    )
+
+    run_id = "RUN-CASE-VISUAL-001"
+    token = "v" * 43
+    case_id = "CASE-VISUAL-001"
+    attachment_id = "ATT-CASE-VISUAL-001"
+    source_hash = "a" * 64
+    image_hash = hashlib.sha256(VALID_MINIMAL_PNG).hexdigest()
+    workspace = root / "workspace"
+    run_directory = workspace / "runs" / run_id
+    run_directory.mkdir(parents=True)
+    (run_directory / "final-review-packet.json").write_bytes(
+        b'{"human_decision":null,"run_id":"RUN-CASE-VISUAL-001"}'
+    )
+    model = {
+        "run_id": run_id,
+        "status": "READY_FOR_HUMAN_REVIEW",
+        "display_status": "READY_FOR_HUMAN_REVIEW",
+        "question": "case visual cache identity",
+        "claims": [],
+        "review_items": [],
+        "calculations": [],
+        "rules": [],
+        "exceptions": [],
+        "conflicts": [],
+        "abstention_reasons": [],
+        "summary": {},
+        "audit": {},
+        "case_visual_review": {
+            "status": "VISUAL_ANALYSIS_VALIDATED",
+            "pages": [
+                {
+                    "asset_key": f"{attachment_id}-p1",
+                    "attachment_id": attachment_id,
+                    "case_id": case_id,
+                    "document_name": "case-drawing.pdf",
+                    "source_sha256": source_hash,
+                    "page": 1,
+                    "width": 1.0,
+                    "height": 1.0,
+                    "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
+                    "image_sha256": image_hash,
+                    "data_uri": "data:image/png;base64,"
+                    + base64.b64encode(VALID_MINIMAL_PNG).decode("ascii"),
+                    "candidates": [],
+                }
+            ],
+            "reference_pages": [],
+            "findings": [],
+            "related_references": [],
+        },
+    }
+    cache_directory = (
+        workspace
+        / "case-page-images-hq-v1"
+        / f"{case_id}--{attachment_id}--{source_hash}"
+    )
+    cache_directory.mkdir(parents=True)
+    (cache_directory / "page-0001.png").write_bytes(VALID_MINIMAL_PNG)
+    (run_directory / "review.html").write_text(
+        render_review_html(model, workspace / "page-images"),
+        encoding="utf-8",
+    )
+
+    server = create_review_server(
+        workspace,
+        run_tokens={run_id: token},
+        reviewer_ids={run_id: "reviewer-01"},
+    )
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        connection = http.client.HTTPConnection(host, port, timeout=5)
+        connection.request(
+            "GET",
+            f"/runs/{run_id}/{token}/case-pages/{attachment_id}/1/{image_hash}",
+            headers={"Host": f"{host}:{port}"},
+        )
+        response = connection.getresponse()
+        body = response.read()
+        connection.close()
+        assert response.status == 200
+        assert body == VALID_MINIMAL_PNG
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 HANDLERS = {
     "navigation_only": _navigation_only,
     "planner_formal_review": _planner_formal_review,
@@ -426,6 +525,7 @@ HANDLERS = {
     "packet_specific_human_decision": _packet_specific_human_decision,
     "restart_recovery": _restart_recovery,
     "installed_wheel_runtime": _installed_wheel_runtime,
+    "protected_case_visual_cache_identity": _protected_case_visual_cache_identity,
 }
 
 

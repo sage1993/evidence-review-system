@@ -127,28 +127,37 @@ def _trusted_file(workspace_root: Path, *parts: str) -> tuple[str, Path | None]:
         return "ASSET_MISSING", None
 
 
-def _page_asset(workspace_root: Path, route: _CaseAssetRoute) -> tuple[str, bytes | None]:
+def _page_asset(
+    workspace_root: Path,
+    route: _CaseAssetRoute,
+    *,
+    cache_identity: str | None = None,
+) -> tuple[str, bytes | None]:
     filename = f"page-{route.page_number:04d}.png"
     permission_denied = False
     hash_mismatch = False
+    identities = (cache_identity, route.attachment_id)
     for cache_name in ("case-page-images-hq-v1", "case-page-images"):
-        trust_status, path = _trusted_file(
-            workspace_root,
-            cache_name,
-            route.attachment_id,
-            filename,
-        )
-        if path is None:
-            permission_denied = permission_denied or trust_status == "ASSET_PERMISSION_DENIED"
-            continue
-        try:
-            body = path.read_bytes()
-        except (PermissionError, OSError):
-            permission_denied = True
-            continue
-        if hashlib.sha256(body).hexdigest() == route.image_sha256:
-            return "AVAILABLE", body
-        hash_mismatch = True
+        for identity in identities:
+            if identity is None:
+                continue
+            trust_status, path = _trusted_file(
+                workspace_root,
+                cache_name,
+                identity,
+                filename,
+            )
+            if path is None:
+                permission_denied = permission_denied or trust_status == "ASSET_PERMISSION_DENIED"
+                continue
+            try:
+                body = path.read_bytes()
+            except (PermissionError, OSError):
+                permission_denied = True
+                continue
+            if hashlib.sha256(body).hexdigest() == route.image_sha256:
+                return "AVAILABLE", body
+            hash_mismatch = True
     if permission_denied:
         return "ASSET_PERMISSION_DENIED", None
     if hash_mismatch:
@@ -214,6 +223,36 @@ def _tile_asset(workspace_root: Path, route: _CaseAssetRoute) -> tuple[str, byte
 
 
 class CaseVisualReviewHandler(local_server._ReviewHandler):
+    def _case_cache_identity(self, route: _CaseAssetRoute) -> str | None:
+        projection = self.state.protected_projections.get(route.run_id)
+        if projection is None:
+            return None
+        visual = projection.model.get("case_visual_review")
+        if not isinstance(visual, Mapping):
+            return None
+        pages = visual.get("pages")
+        if not isinstance(pages, Sequence) or isinstance(pages, (str, bytes, bytearray)):
+            return None
+        for raw_page in pages:
+            if not isinstance(raw_page, Mapping):
+                continue
+            if (
+                raw_page.get("attachment_id") != route.attachment_id
+                or raw_page.get("page") != route.page_number
+                or raw_page.get("image_sha256") != route.image_sha256
+            ):
+                continue
+            case_id = raw_page.get("case_id")
+            source_sha256 = raw_page.get("source_sha256")
+            if (
+                isinstance(case_id, str)
+                and case_id
+                and isinstance(source_sha256, str)
+                and _SHA256_RE.fullmatch(source_sha256)
+            ):
+                return f"{case_id}--{route.attachment_id}--{source_sha256}"
+        return None
+
     def do_GET(self) -> None:  # noqa: N802
         case_route = _case_asset_route(self.path)
         if case_route is None:
@@ -242,7 +281,11 @@ class CaseVisualReviewHandler(local_server._ReviewHandler):
             return
         self.state.mark_activity()
         diagnostic, body = (
-            _page_asset(self.state.workspace_root, case_route)
+            _page_asset(
+                self.state.workspace_root,
+                case_route,
+                cache_identity=self._case_cache_identity(case_route),
+            )
             if case_route.kind == "page"
             else _tile_asset(self.state.workspace_root, case_route)
         )

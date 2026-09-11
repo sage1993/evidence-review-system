@@ -558,6 +558,7 @@ def build_case_visual_projection(
         page_record: dict[str, object] = {
             "asset_key": f"{attachment_id}-p{page_number}",
             "attachment_id": attachment_id,
+            "case_id": page_attachment.case_id,
             "document_name": page_attachment.original_name,
             "source_sha256": source_sha256,
             "page": page_number,

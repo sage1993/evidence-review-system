@@ -41,6 +41,7 @@ bytes as user evidence.
 | `packet_specific_human_decision` | protected decision binds one finalized packet hash; second run is untouched; machine packet stays null | `PASS` |
 | `restart_recovery` | receipt-bound restart; no duplicate ingestion; idempotent state/events | `PASS` |
 | `installed_wheel_runtime` | wheel build/install; ReviewMatter schema; Workbench assets; import from installed target | `PASS` |
+| `protected_case_visual_cache_identity` | protected case-page delivery resolves the exact case-scoped cache identity | `PASS` |
 
 Run the focused matrix from the exact checkout:
 
