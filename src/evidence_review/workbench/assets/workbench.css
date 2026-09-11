@@ -36,6 +36,10 @@ section, .workbench-issue, .evidence-card, .navigation-hit, .draft-observation {
 .recheck-marker { color: #a12a16; font-weight: 700; }
 .empty-state { color: #536176; }
 .navigation-hit details { margin-top: 0.75rem; }
+button,
+input {
+  font: inherit;
+}
 button {
   min-height: var(--ers-control-height);
   border-radius: var(--ers-control-radius);

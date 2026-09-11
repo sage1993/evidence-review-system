@@ -77,6 +77,7 @@ def test_shared_visual_tokens_do_not_collapse_surface_authority() -> None:
 
     assert f'--ers-control-height: {tokens["control_height_px"]}px;' in formal
     assert f'--ers-control-height: {tokens["control_height_px"]}px;' in workbench
+    assert "button,\ninput {\n  font: inherit;\n}" in workbench
     assert 'data-surface="formal-review"' in formal
     assert 'data-surface="workbench"' in workbench
     assert "human-decision" in formal
