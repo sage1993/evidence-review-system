@@ -1084,6 +1084,7 @@ body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #dec
   #review-status,
   #review-items,
   .viewer-controls,
+  .viewer-toolbar,
   .citation-audit,
   .item-audit,
   #packet-global-review,

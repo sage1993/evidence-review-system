@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import cast
 
+from evidence_review.presentation.tokens import presentation_css_variables
+
 _STATUS_LABELS = {
     "ABSTAIN": "추가 자료 필요",
     "READY_FOR_HUMAN_REVIEW": "검토 준비 완료",
@@ -138,6 +140,33 @@ def has_rules_or_calculations(model: Mapping[str, object]) -> bool:
     return bool(_sequence(model.get("rules")) or _sequence(model.get("calculations")))
 
 
+def review_presentation_css() -> str:
+    """Return shared typography/control tokens for the read-only review surface."""
+    return "\n".join(
+        (
+            presentation_css_variables(),
+            "body {",
+            "  font-family: var(--ers-font-family);",
+            "  font-size: var(--ers-font-size);",
+            "  line-height: var(--ers-line-height);",
+            "}",
+            "button, input:not([type=\"radio\"]), textarea {",
+            "  min-height: var(--ers-control-height);",
+            "}",
+            "button { border-radius: var(--ers-control-radius); }",
+            "button:focus-visible, input:focus-visible, textarea:focus-visible,",
+            "summary:focus-visible, .evidence-page:focus-visible {",
+            "  outline-width: var(--ers-focus-outline);",
+            "}",
+            "@media print {",
+            "  body {",
+            "    font-size: 11pt;",
+            "  }",
+            "}",
+        )
+    )
+
+
 __all__ = [
     "additional_review_items",
     "conclusion_text",
@@ -145,4 +174,5 @@ __all__ = [
     "has_rules_or_calculations",
     "issue_result_gap_items",
     "localized_status",
+    "review_presentation_css",
 ]

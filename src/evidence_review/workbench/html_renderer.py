@@ -8,6 +8,8 @@ from html import escape
 from pathlib import Path
 from typing import cast
 
+from evidence_review.presentation.tokens import presentation_css_variables
+
 
 def _text(value: object) -> str:
     return escape(str(value), quote=True)
@@ -236,7 +238,7 @@ def render_workbench_html(model: Mapping[str, object], *, nonce: str | None = No
     navigation_value = model.get("navigation")
     navigation = None if navigation_value is None else _object(navigation_value, "navigation")
     formalize = _object(model.get("formalize"), "formalize")
-    css = _asset("workbench.css")
+    css = presentation_css_variables() + "\n" + _asset("workbench.css")
     javascript = _asset("workbench.js")
     nonce_attribute = "" if nonce is None else f' nonce="{_text(nonce)}"'
     return "".join(

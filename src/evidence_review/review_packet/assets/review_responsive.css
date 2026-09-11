@@ -167,8 +167,17 @@
     justify-self: start;
   }
 
+  .header-actions {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
   .result-facts {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .result-facts {
+    grid-column: auto;
   }
 
   .result-facts div {
