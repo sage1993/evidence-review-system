@@ -158,6 +158,11 @@ def review_presentation_css() -> str:
             "summary:focus-visible, .evidence-page:focus-visible {",
             "  outline-width: var(--ers-focus-outline);",
             "}",
+            "@media print {",
+            "  body {",
+            "    font-size: 11pt;",
+            "  }",
+            "}",
         )
     )
 

@@ -82,3 +82,13 @@ def test_shared_visual_tokens_do_not_collapse_surface_authority() -> None:
     assert 'data-surface="workbench"' in workbench
     assert "human-decision" in formal
     assert "human-decision" not in workbench
+
+
+def test_formal_review_print_typography_overrides_shared_screen_font_size() -> None:
+    formal = render_review_html(_formal_model(), page_image_root=Path("."))
+
+    shared_projection = formal.index("/* shared presentation tokens */")
+    print_override = formal.index("@media print {", shared_projection)
+
+    assert print_override > shared_projection
+    assert "body {\n    font-size: 11pt;" in formal[print_override:]
