@@ -20,6 +20,9 @@ from evidence_review.review_packet.decision_record import validate_human_decisio
 _DECISION_FIELDS = frozenset(
     {"run_id", "reviewer_id", "reviewed_at", "packet_hash", "decision", "notes"}
 )
+_MATTER_LINEAGE_FIELDS = frozenset(
+    {"matter_id", "matter_revision", "formalization_snapshot_id"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,11 +104,14 @@ def legacy_reference_from_run(run_directory: Path) -> LegacyFormalReviewReferenc
         packet_bytes = packet_path.read_bytes()
         packet_sha256 = hashlib.sha256(packet_bytes).hexdigest()
         workspace_root = trusted_run.parents[1]
-        _verified_run, packet, _request = verify_formal_run_authority(
+        _verified_run, packet, normalized_request = verify_formal_run_authority(
             workspace_root,
             run_id=trusted_run.name,
             packet_sha256=packet_sha256,
         )
+        inputs = normalized_request.get("inputs")
+        if not isinstance(inputs, Mapping) or _MATTER_LINEAGE_FIELDS.intersection(inputs):
+            raise ValueError("legacy formal review declares Matter lineage")
         if packet_bytes != dump_bytes(review_packet_document(packet)):
             raise ValueError("legacy formal review packet is not canonical")
         decisions = _decision_references(
