@@ -132,9 +132,10 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         payload = expect_mapping(event.payload, "SOURCE_DEPENDENCY_REGISTERED.payload")
         required = {"issue_id", "source_key", "source_hash"}
         require_fields(payload, required, "SOURCE_DEPENDENCY_REGISTERED.payload")
+        allowed = {*required, "source_revision_id"}
         reject_unknown(
             payload,
-            required,
+            allowed,
             "SOURCE_DEPENDENCY_REGISTERED.payload",
         )
         issue_id = validate_identifier(
@@ -148,6 +149,11 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         expect_sha256(
             payload.get("source_hash"), "SOURCE_DEPENDENCY_REGISTERED.payload.source_hash"
         )
+        if "source_revision_id" in payload:
+            validate_identifier(
+                payload.get("source_revision_id"),
+                "SOURCE_DEPENDENCY_REGISTERED.payload.source_revision_id",
+            )
         updated = ReviewMatter(
             matter_id=matter.matter_id,
             title=matter.title,
@@ -247,9 +253,10 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         payload = expect_mapping(event.payload, "ISSUES_INVALIDATED.payload")
         required = {"issue_ids", "source_key", "new_source_hash"}
         require_fields(payload, required, "ISSUES_INVALIDATED.payload")
+        allowed = {*required, "new_source_revision_id"}
         reject_unknown(
             payload,
-            required,
+            allowed,
             "ISSUES_INVALIDATED.payload",
         )
         raw_issue_ids = expect_sequence(
@@ -274,6 +281,11 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         expect_sha256(
             payload.get("new_source_hash"), "ISSUES_INVALIDATED.payload.new_source_hash"
         )
+        if "new_source_revision_id" in payload:
+            validate_identifier(
+                payload.get("new_source_revision_id"),
+                "ISSUES_INVALIDATED.payload.new_source_revision_id",
+            )
         invalidated_issues = tuple(
             MatterIssue(
                 issue_id=issue.issue_id,

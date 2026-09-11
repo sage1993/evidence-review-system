@@ -32,6 +32,9 @@ from evidence_review.review_matter.formal_run_binding import (
     list_formal_runs,
 )
 from evidence_review.review_matter.formalization import formalize_snapshot
+from evidence_review.review_matter.invalidation import (
+    invalidate_source_dependents as _invalidate_source_dependents,
+)
 from evidence_review.review_matter.snapshot import (
     FormalizationSnapshot,
     create_formalization_snapshot,
@@ -269,6 +272,28 @@ class ReviewMatterService:
             snapshot=snapshot,
             prepared=formalize_snapshot(self.workspace, snapshot),
         )
+
+    def invalidate_source_dependents(
+        self,
+        *,
+        matter_id: str,
+        expected_revision: int,
+        source_key: str | None,
+        new_source_hash: str,
+        new_source_revision_id: str,
+    ) -> ReviewMatter:
+        """Apply one source revision through the existing Matter event authority."""
+        validated_matter_id = self._validated_matter_id(matter_id)
+        with self._existing_store() as store:
+            store.load(validated_matter_id)
+            return _invalidate_source_dependents(
+                store,
+                validated_matter_id,
+                _expected_revision(expected_revision),
+                source_key,
+                new_source_hash,
+                new_source_revision_id,
+            )
 
 
 __all__ = ["FormalizedMatter", "ReviewMatterService"]

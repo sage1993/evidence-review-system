@@ -1,5 +1,5 @@
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 
 CREATE TABLE IF NOT EXISTS matter_meta (
     key TEXT PRIMARY KEY,
@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS matter_meta (
 );
 
 INSERT OR REPLACE INTO matter_meta(key, value)
-VALUES ('schema_version', '3');
+VALUES ('schema_version', '4');
 
 CREATE TABLE IF NOT EXISTS matters (
     matter_id TEXT PRIMARY KEY,
@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS matter_source_dependencies (
     issue_id TEXT NOT NULL,
     source_key TEXT NOT NULL,
     source_hash TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
     PRIMARY KEY (matter_id, issue_id, source_key),
     FOREIGN KEY (matter_id) REFERENCES matters(matter_id) ON DELETE CASCADE
 );
