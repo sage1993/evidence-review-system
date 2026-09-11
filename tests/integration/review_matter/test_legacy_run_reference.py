@@ -10,8 +10,15 @@ import pytest
 from evidence_review.abstention.finalizer import finalize_run
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.evidence.finalization import finalize_evidence_database
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.snapshot import finalized_evidence_provenance
+from evidence_review.evidence.store import EvidenceStore
+from evidence_review.review_matter.contracts import MatterIssue, MatterSourceBinding
 from evidence_review.review_matter.formalization import formalize_snapshot
 from evidence_review.review_matter.snapshot import create_formalization_snapshot
+from evidence_review.review_matter.source_binding import bind_finalized_evidence
+from evidence_review.review_matter.store import MatterStore
 from evidence_review.review_packet.decision_record import write_human_decision
 from evidence_review.review_run import prepare_review_run
 
@@ -84,12 +91,87 @@ def _finalized_legacy_run(tmp_path: Path) -> Path:
     return _finalize_prepared_run(prepared.run_directory)
 
 
-def _finalized_matter_run(tmp_path: Path) -> Path:
-    from tests.unit.review_matter.test_formalization_snapshot import (
-        _evidence_database,
-        _matter_store,
-    )
+def _evidence_database(path: Path) -> dict[str, object]:
+    text = "Exact reference text"
+    with EvidenceStore(path, create=True) as store:
+        ingest_snapshot(
+            store,
+            EvidenceSnapshot(
+                documents=({"id": "DOC-SNAP-1", "title": "Snapshot source"},),
+                revisions=(
+                    {
+                        "id": "REV-SNAP-1",
+                        "document_id": "DOC-SNAP-1",
+                        "source_hash": "a" * 64,
+                        "byte_size": len(text.encode("utf-8")),
+                        "page_count": 1,
+                    },
+                ),
+                pages=(
+                    {
+                        "id": "PAGE-SNAP-1",
+                        "revision_id": "REV-SNAP-1",
+                        "page_number": 1,
+                        "width": 600.0,
+                        "height": 800.0,
+                    },
+                ),
+                elements=(
+                    {
+                        "id": "EVID-SNAP-1",
+                        "page_id": "PAGE-SNAP-1",
+                        "element_type": "paragraph",
+                        "raw_json": {"text": text},
+                        "raw_text": text,
+                        "normalized_text": text,
+                        "raw_payload_hash": "d" * 64,
+                        "bbox": [10.0, 10.0, 500.0, 30.0],
+                        "parser_order": 0,
+                    },
+                ),
+            ),
+        )
+        finalize_evidence_database(store)
+    return finalized_evidence_provenance(path)
 
+
+def _matter_store(path: Path, provenance: dict[str, object]) -> MatterStore:
+    store = MatterStore(path)
+    store.create(
+        matter_id="MATTER-SNAP-1",
+        title="Snapshot review",
+        issues=(
+            MatterIssue(
+                issue_id="ISSUE-SNAP-1",
+                question="Does the exact source support the review?",
+                work_state="READY_TO_FORMALIZE",
+                depends_on=(),
+            ),
+        ),
+        source_bindings=(
+            MatterSourceBinding(
+                binding_id="BIND-SNAP-1",
+                document_id="DOC-SNAP-1",
+                revision_id="REV-SNAP-1",
+                page_number=1,
+                evidence_id="EVID-SNAP-1",
+                bbox=(10.0, 10.0, 500.0, 30.0),
+                source_hash="a" * 64,
+                evidence_snapshot_hash=str(provenance["evidence_snapshot_hash"]),
+                evidence_db_sha256=str(provenance["evidence_db_sha256"]),
+            ),
+        ),
+    )
+    bind_finalized_evidence(
+        store,
+        matter_id="MATTER-SNAP-1",
+        expected_revision=1,
+        evidence_db=Path(provenance["database_path"]),
+    )
+    return store
+
+
+def _finalized_matter_run(tmp_path: Path) -> Path:
     workspace = tmp_path / "matter-workspace"
     evidence_db = workspace / "evidence" / "evidence.sqlite"
     evidence_db.parent.mkdir(parents=True)
