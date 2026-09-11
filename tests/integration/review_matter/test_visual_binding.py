@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
 from evidence_review.case_visual import (
+    VisualCase,
     bind_case_visual_context_to_review_request,
     prepare_case_visual_sources,
     visual_case_from_attachments,
 )
-from evidence_review.contracts.attachments import ImmutableAttachment
 from evidence_review.contracts.drawing import Geometry
 from evidence_review.contracts.question_plan import QuestionIssue, SearchRequest
 from evidence_review.drawing_review.visual_handoff import prepare_visual_analysis_handoff
@@ -60,7 +61,13 @@ def _scope():
     )
 
 
-def _candidate(case_id: str, source_sha256: str, annotation_id: str):
+def _candidate(
+    case_id: str,
+    source_sha256: str,
+    annotation_id: str,
+    *,
+    attachment_id: str | None = None,
+):
     return create_manual_candidate(
         case_id=case_id,
         source_sha256=source_sha256,
@@ -74,6 +81,7 @@ def _candidate(case_id: str, source_sha256: str, annotation_id: str):
         ),
         raw_value="entrance",
         normalized_candidate=None,
+        attachment_id=attachment_id,
     )
 
 
@@ -136,6 +144,7 @@ def test_visual_candidate_from_other_source_cannot_bind_to_matter(tmp_path: Path
                     other_case.case_id,
                     other_case.attachments[0].sha256,
                     "ANN-OTHER",
+                    attachment_id=other_case.attachments[0].attachment_id,
                 ),
             ),
         )
@@ -184,21 +193,9 @@ def test_visual_handoff_preserves_validated_review_scope_context(tmp_path: Path)
 
 def test_visual_candidate_from_other_case_with_same_source_cannot_bind(tmp_path: Path) -> None:
     source = _write_png(tmp_path / "plan.png", "white")
-    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
-    common = {
-        "attachment_id": "ATT-SHARED",
-        "original_name": "plan.png",
-        "sha256": source_sha256,
-        "byte_size": source.stat().st_size,
-        "mime": "image/png",
-        "role": "CASE_DRAWING",
-    }
-    case_a = ImmutableAttachment(
-        **common,
-        case_id="CASE-VIS-A",
-        stored_path="cases/CASE-VIS-A/sources/drawings/ATT-SHARED.png",
+    visual_case = visual_case_from_attachments(
+        prepare_case_visual_sources(tmp_path / "workspace", case_drawings=[source])
     )
-    visual_case = visual_case_from_attachments((case_a,))
     store, source_binding_ids = _store_for_visual_case(tmp_path, visual_case)
 
     with pytest.raises(ValueError, match="VISUAL_SOURCE_BINDING_MISMATCH"):
@@ -209,7 +206,12 @@ def test_visual_candidate_from_other_case_with_same_source_cannot_bind(tmp_path:
             visual_case=visual_case,
             expected_source_binding_ids=source_binding_ids,
             candidates=(
-                _candidate("CASE-VIS-B", source_sha256, "ANN-OTHER-CASE"),
+                _candidate(
+                    "CASE-VIS-B",
+                    visual_case.attachments[0].sha256,
+                    "ANN-OTHER-CASE",
+                    attachment_id=visual_case.attachments[0].attachment_id,
+                ),
             ),
         )
 
@@ -218,17 +220,9 @@ def test_visual_case_cannot_bind_to_matter_with_other_source_binding(
     tmp_path: Path,
 ) -> None:
     source = _write_png(tmp_path / "plan.png", "white")
-    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
-    attachment = ImmutableAttachment(
-        attachment_id="ATT-VISUAL-001",
-        original_name="plan.png",
-        stored_path="cases/CASE-VIS-A/sources/drawings/ATT-VISUAL-001.png",
-        sha256=source_sha256,
-        byte_size=source.stat().st_size,
-        mime="image/png",
-        role="CASE_DRAWING",
-        case_id="CASE-VIS-A",
-    )
+    attachment = prepare_case_visual_sources(
+        tmp_path / "workspace", case_drawings=[source]
+    )[0]
     visual_case = visual_case_from_attachments((attachment,))
     store = MatterStore(tmp_path / "review-matters.sqlite")
     store.create(
@@ -243,7 +237,7 @@ def test_visual_case_cannot_bind_to_matter_with_other_source_binding(
             matter_id="MATTER-OTHER",
             expected_revision=1,
             visual_case=visual_case,
-            expected_source_binding_ids={"ATT-VISUAL-001": "BINDING-OTHER"},
+            expected_source_binding_ids={attachment.attachment_id: "BINDING-OTHER"},
         )
 
 
@@ -251,22 +245,19 @@ def test_active_request_binding_rejects_candidate_from_other_case_with_same_sour
     tmp_path: Path,
 ) -> None:
     source = _write_png(tmp_path / "plan.png", "white")
-    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
-    attachment = ImmutableAttachment(
-        attachment_id="ATT-VISUAL-001",
-        original_name="plan.png",
-        stored_path="cases/CASE-VIS-A/sources/drawings/ATT-VISUAL-001.png",
-        sha256=source_sha256,
-        byte_size=source.stat().st_size,
-        mime="image/png",
-        role="CASE_DRAWING",
-        case_id="CASE-VIS-A",
-    )
-    candidate = _candidate("CASE-VIS-B", source_sha256, "ANN-OTHER-CASE")
-    page = VisualPageAsset(
-        case_id="CASE-VIS-A",
+    attachment = prepare_case_visual_sources(
+        tmp_path / "workspace", case_drawings=[source]
+    )[0]
+    candidate = _candidate(
+        "CASE-VIS-B",
+        attachment.sha256,
+        "ANN-OTHER-CASE",
         attachment_id=attachment.attachment_id,
-        source_sha256=source_sha256,
+    )
+    page = VisualPageAsset(
+        case_id=attachment.case_id,
+        attachment_id=attachment.attachment_id,
+        source_sha256=attachment.sha256,
         page=1,
         width=20.0,
         height=10.0,
@@ -275,7 +266,7 @@ def test_active_request_binding_rejects_candidate_from_other_case_with_same_sour
         image_sha256="f" * 64,
     )
 
-    with pytest.raises(ValueError, match="drawing candidate case is not bound"):
+    with pytest.raises(ValueError, match="drawing candidate attachment is not bound"):
         bind_case_visual_context_to_review_request(
             {"inputs": {}},
             (attachment,),
@@ -289,25 +280,12 @@ def test_active_request_binding_rejects_candidate_from_other_case_with_same_sour
 def test_visual_submission_binds_same_basename_by_case_and_attachment_identity(
     tmp_path: Path,
 ) -> None:
-    first = ImmutableAttachment(
-        attachment_id="ATT-VISUAL-A",
-        original_name="plan.png",
-        stored_path="cases/CASE-VIS-A/sources/drawings/ATT-VISUAL-A.png",
-        sha256="a" * 64,
-        byte_size=100,
-        mime="image/png",
-        role="CASE_DRAWING",
-        case_id="CASE-VIS-A",
-    )
-    second = ImmutableAttachment(
-        attachment_id="ATT-VISUAL-B",
-        original_name="plan.png",
-        stored_path="cases/CASE-VIS-B/sources/drawings/ATT-VISUAL-B.png",
-        sha256="b" * 64,
-        byte_size=100,
-        mime="image/png",
-        role="CASE_DRAWING",
-        case_id="CASE-VIS-B",
+    first_path = _write_png(tmp_path / "first" / "plan.png", "white")
+    second_path = _write_png(tmp_path / "second" / "plan.png", "black")
+    first, second = prepare_case_visual_sources(
+        tmp_path / "workspace",
+        case_drawings=[first_path],
+        supporting_images=[second_path],
     )
     first_page = VisualPageAsset(
         case_id=first.case_id,
@@ -371,8 +349,9 @@ def test_visual_submission_binds_same_basename_by_case_and_attachment_identity(
     )
 
     candidate_document = bound["inputs"]["case_visual_context"]["drawing_candidates"][0]
-    assert candidate_document["case_id"] == "CASE-VIS-A"
-    assert candidate_document["source_sha256"] == "a" * 64
+    assert candidate_document["case_id"] == first.case_id
+    assert candidate_document["attachment_id"] == first.attachment_id
+    assert candidate_document["source_sha256"] == first.sha256
 
 
 def test_visual_page_rejects_mime_mismatch_before_decoder(tmp_path: Path) -> None:
@@ -405,6 +384,7 @@ def test_visual_binding_does_not_promote_candidate_to_confirmed_input(tmp_path: 
         visual_case.case_id,
         visual_case.attachments[0].sha256,
         "ANN-001",
+        attachment_id=visual_case.attachments[0].attachment_id,
     )
 
     binding = bind_visual_case_to_matter(
@@ -419,3 +399,129 @@ def test_visual_binding_does_not_promote_candidate_to_confirmed_input(tmp_path: 
     assert binding.candidates == (candidate,)
     assert candidate.status == "CREATED"
     assert hashlib.sha256(source.read_bytes()).hexdigest() == candidate.source_sha256
+
+
+def test_same_sha_attachments_bind_to_exact_matter_source_and_request_identity(
+    tmp_path: Path,
+) -> None:
+    first = _write_png(tmp_path / "first" / "plan-a.png", "white")
+    second = tmp_path / "second" / "supporting-a.png"
+    second.parent.mkdir(parents=True, exist_ok=True)
+    second.write_bytes(first.read_bytes())
+    visual_case = visual_case_from_attachments(
+        prepare_case_visual_sources(
+            tmp_path / "workspace",
+            case_drawings=[first],
+            supporting_images=[second],
+        )
+    )
+    assert len({item.sha256 for item in visual_case.attachments}) == 1
+    assert len({item.attachment_id for item in visual_case.attachments}) == 2
+    store, source_binding_ids = _store_for_visual_case(tmp_path, visual_case)
+    selected = visual_case.attachments[0]
+    candidate = _candidate(
+        visual_case.case_id,
+        selected.sha256,
+        "ANN-EXACT-ATTACHMENT",
+        attachment_id=selected.attachment_id,
+    )
+
+    binding = bind_visual_case_to_matter(
+        store,
+        matter_id="MATTER-001",
+        expected_revision=1,
+        visual_case=visual_case,
+        expected_source_binding_ids=source_binding_ids,
+        candidates=(candidate,),
+    )
+    assert {item.matter_source_binding_id for item in binding.attachments} == set(
+        source_binding_ids.values()
+    )
+
+    pages = tuple(
+        VisualPageAsset(
+            case_id=item.case_id,
+            attachment_id=item.attachment_id,
+            source_sha256=item.sha256,
+            page=1,
+            width=20.0,
+            height=10.0,
+            coordinate_system="IMAGE_TOP_LEFT_PIXELS",
+            image_path=tmp_path / f"{item.attachment_id}.png",
+            image_sha256="f" * 64,
+        )
+        for item in visual_case.attachments
+    )
+    bound = bind_case_visual_context_to_review_request(
+        {"inputs": {}},
+        visual_case.attachments,
+        (candidate,),
+        candidate_issue_ids={candidate.candidate_id: ("ISSUE-001",)},
+        visual_page_assets=pages,
+        visual_analysis_completed=True,
+    )
+    document = bound["inputs"]["case_visual_context"]["drawing_candidates"][0]
+    assert document["attachment_id"] == selected.attachment_id
+
+    with pytest.raises(ValueError, match="VISUAL_SOURCE_BINDING_MISMATCH"):
+        bind_visual_case_to_matter(
+            store,
+            matter_id="MATTER-001",
+            expected_revision=1,
+            visual_case=visual_case,
+            expected_source_binding_ids=source_binding_ids,
+            candidates=(
+                _candidate(
+                    visual_case.case_id,
+                    selected.sha256,
+                    "ANN-LEGACY",
+                ),
+            ),
+        )
+
+
+def test_visual_case_rejects_forged_attachment_and_case_identities(tmp_path: Path) -> None:
+    source = _write_png(tmp_path / "plan.png", "white")
+    attachment = prepare_case_visual_sources(
+        tmp_path / "workspace", case_drawings=[source]
+    )[0]
+    forged_attachment = replace(
+        attachment,
+        attachment_id="ATT-FORGED",
+        stored_path=attachment.stored_path.replace(attachment.attachment_id, "ATT-FORGED"),
+    )
+    with pytest.raises(ValueError, match="attachment_id is not deterministic"):
+        visual_case_from_attachments((forged_attachment,))
+
+    forged_case = replace(
+        attachment,
+        case_id="CASE-VIS-FORGED",
+        stored_path=attachment.stored_path.replace(attachment.case_id, "CASE-VIS-FORGED"),
+    )
+    with pytest.raises(ValueError, match="case_id is not deterministic"):
+        visual_case_from_attachments((forged_case,))
+
+
+def test_visual_case_id_cannot_collide_with_matter_id(tmp_path: Path) -> None:
+    source = _write_png(tmp_path / "plan.png", "white")
+    attachment = prepare_case_visual_sources(
+        tmp_path / "workspace", case_drawings=[source]
+    )[0]
+    colliding = replace(
+        attachment,
+        case_id="MATTER-001",
+        stored_path=attachment.stored_path.replace(attachment.case_id, "MATTER-001"),
+    )
+    store, source_binding_ids = _store_for_visual_case(
+        tmp_path,
+        VisualCase(case_id="MATTER-001", attachments=(colliding,)),
+    )
+
+    with pytest.raises(ValueError, match="VISUAL_SOURCE_BINDING_MISMATCH"):
+        bind_visual_case_to_matter(
+            store,
+            matter_id="MATTER-001",
+            expected_revision=1,
+            visual_case=VisualCase(case_id="MATTER-001", attachments=(colliding,)),
+            expected_source_binding_ids=source_binding_ids,
+        )

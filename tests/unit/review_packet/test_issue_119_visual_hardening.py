@@ -43,6 +43,7 @@ def _projection_fixture(tmp_path: Path, *, with_rule: bool) -> tuple[dict[str, o
             "extractor": "codex-vision",
             "extractor_version": "1.0.0",
             "annotation_id": None,
+            "attachment_id": attachment_id,
         },
         {
             "candidate_id": "CAND-VISUAL-2",
@@ -61,6 +62,7 @@ def _projection_fixture(tmp_path: Path, *, with_rule: bool) -> tuple[dict[str, o
             "extractor": "codex-vision",
             "extractor_version": "1.0.0",
             "annotation_id": None,
+            "attachment_id": attachment_id,
         },
     ]
     context = {

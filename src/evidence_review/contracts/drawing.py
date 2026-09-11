@@ -107,6 +107,7 @@ class DrawingCandidate:
     extractor_version: str | None
     annotation_id: str | None
     case_id: str | None = None
+    attachment_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +243,7 @@ def decode_drawing_candidate(value: object) -> DrawingCandidate:
         "extractor_version",
         "annotation_id",
         "case_id",
+        "attachment_id",
     }
     reject_unknown(payload, allowed, "drawing_candidate")
     page = expect_int(payload.get("page"), "page")
@@ -257,6 +259,14 @@ def decode_drawing_candidate(value: object) -> DrawingCandidate:
         None
         if case_id_value is None
         else validate_identifier(expect_string(case_id_value, "case_id"), "case_id")
+    )
+    attachment_id_value = payload.get("attachment_id")
+    attachment_id = (
+        None
+        if attachment_id_value is None
+        else validate_identifier(
+            expect_string(attachment_id_value, "attachment_id"), "attachment_id"
+        )
     )
     if origin == "EXTRACTOR":
         if not extractor or not extractor_version:
@@ -284,6 +294,7 @@ def decode_drawing_candidate(value: object) -> DrawingCandidate:
         extractor_version=extractor_version,
         annotation_id=annotation_id,
         case_id=case_id,
+        attachment_id=attachment_id,
     )
 
 
@@ -305,6 +316,8 @@ def drawing_candidate_document(candidate: DrawingCandidate) -> dict[str, object]
     }
     if candidate.case_id is not None:
         document["case_id"] = candidate.case_id
+    if candidate.attachment_id is not None:
+        document["attachment_id"] = candidate.attachment_id
     return document
 
 

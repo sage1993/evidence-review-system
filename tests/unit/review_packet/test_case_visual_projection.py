@@ -71,6 +71,7 @@ def _fixture(
         "extractor": "codex-vision",
         "extractor_version": "1.0.0",
         "annotation_id": None,
+        "attachment_id": attachment_id,
     }
     context = {
         "attachments": [
@@ -209,6 +210,60 @@ def test_projection_keeps_ruleless_visual_observation_blue(tmp_path: Path) -> No
     candidate = result["pages"][0]["candidates"][0]
     assert candidate["review_statuses"] == []
     assert candidate["tone"] == "observation"
+
+
+def test_projection_keeps_same_sha_attachment_pages_distinct(tmp_path: Path) -> None:
+    view_model, workspace = _fixture(tmp_path)
+    bundle_path = workspace / "runs" / "RUN-1234567890ABCDEF1234" / "track-a-bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    context = bundle["inputs"]["case_visual_context"]
+    second_attachment_id = "ATT-VISUAL-2"
+    first_attachment = context["attachments"][0]
+    second_attachment = dict(first_attachment)
+    second_attachment.update(
+        {
+            "attachment_id": second_attachment_id,
+            "original_name": "same-bytes-supporting.png",
+            "stored_path": f"inputs/original/{second_attachment_id}.png",
+            "role": "SUPPORTING_IMAGE",
+        }
+    )
+    context["attachments"].append(second_attachment)
+    first_page = context["visual_pages"][0]
+    second_page = dict(first_page)
+    second_page["attachment_id"] = second_attachment_id
+    context["visual_pages"].append(second_page)
+    second_candidate = dict(context["drawing_candidates"][0])
+    second_candidate.update(
+        {
+            "candidate_id": "CAND-VISUAL-2",
+            "attachment_id": second_attachment_id,
+        }
+    )
+    context["drawing_candidates"].append(second_candidate)
+    context["candidate_lineage"].append(
+        {"candidate_id": "CAND-VISUAL-2", "issue_ids": ["I1"]}
+    )
+    first_raster = workspace / "case-page-images" / "ATT-VISUAL-1" / "page-0001.png"
+    second_raster = workspace / "case-page-images" / second_attachment_id / "page-0001.png"
+    second_raster.parent.mkdir(parents=True, exist_ok=True)
+    second_raster.write_bytes(first_raster.read_bytes())
+    _write_json(bundle_path, bundle)
+
+    result = build_case_visual_projection(view_model, workspace_root=workspace)
+
+    assert result is not None
+    assert len(result["pages"]) == 2
+    assert {page["attachment_id"] for page in result["pages"]} == {
+        "ATT-VISUAL-1",
+        second_attachment_id,
+    }
+    second_page_projection = next(
+        page for page in result["pages"] if page["attachment_id"] == second_attachment_id
+    )
+    assert [item["candidate_id"] for item in second_page_projection["candidates"]] == [
+        "CAND-VISUAL-2"
+    ]
 
 
 def test_projection_fails_closed_when_raster_hash_changes(

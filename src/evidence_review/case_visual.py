@@ -123,6 +123,17 @@ def _reconstructed_attachment(
     )
 
 
+def _attachment_descriptor(attachment: ImmutableAttachment) -> dict[str, object]:
+    _validate_visual_role(attachment.role)
+    return {
+        "original_name": attachment.original_name,
+        "sha256": attachment.sha256,
+        "byte_size": attachment.byte_size,
+        "mime": attachment.mime,
+        "role": attachment.role,
+    }
+
+
 def visual_case_from_attachments(
     attachments: Sequence[ImmutableAttachment],
 ) -> VisualCase:
@@ -142,6 +153,14 @@ def visual_case_from_attachments(
     case_id = ordered[0].case_id
     if case_id is None:
         raise ValueError("visual case attachments must share one case_id")
+    descriptors = [_attachment_descriptor(item) for item in ordered]
+    if any(
+        _attachment_id(descriptor) != attachment.attachment_id
+        for descriptor, attachment in zip(descriptors, ordered, strict=True)
+    ):
+        raise ValueError("visual case attachment_id is not deterministic")
+    if _case_id(descriptors) != case_id:
+        raise ValueError("visual case case_id is not deterministic")
     return VisualCase(case_id=case_id, attachments=ordered)
 
 
@@ -248,7 +267,6 @@ def bind_case_visual_context_to_review_request(
     attachment_ids: set[str] = set()
     source_hash_by_attachment: dict[str, str] = {}
     case_id_by_attachment: dict[str, str | None] = {}
-    source_hashes: set[str] = set()
     for attachment in attachment_items:
         _validate_visual_role(attachment.role)
         if attachment.attachment_id in attachment_ids:
@@ -256,7 +274,6 @@ def bind_case_visual_context_to_review_request(
         attachment_ids.add(attachment.attachment_id)
         source_hash_by_attachment[attachment.attachment_id] = attachment.sha256
         case_id_by_attachment[attachment.attachment_id] = attachment.case_id
-        source_hashes.add(attachment.sha256)
 
     page_keys: set[tuple[str, int]] = set()
     for page in page_items:
@@ -280,24 +297,17 @@ def bind_case_visual_context_to_review_request(
         candidate_ids.add(candidate.candidate_id)
         if candidate.case_id is None:
             raise ValueError("drawing candidate case is not bound to this review request")
-        if candidate.source_sha256 not in source_hashes:
-            raise ValueError(
-                "drawing candidate source is not bound to this review request"
-            )
-        matching_attachment_ids = {
-            attachment_id
-            for attachment_id, source_hash in source_hash_by_attachment.items()
-            if (
-                source_hash == candidate.source_sha256
-                and case_id_by_attachment[attachment_id] == candidate.case_id
-            )
-        }
-        if not matching_attachment_ids:
-            raise ValueError("drawing candidate case is not bound to this review request")
-        if page_items and not any(
-            (attachment_id, candidate.page) in page_keys
-            for attachment_id in matching_attachment_ids
+        if candidate.attachment_id is None:
+            raise ValueError("drawing candidate attachment is not bound to this review request")
+        attachment_id = candidate.attachment_id
+        if (
+            source_hash_by_attachment.get(attachment_id) != candidate.source_sha256
+            or case_id_by_attachment.get(attachment_id) != candidate.case_id
         ):
+            raise ValueError(
+                "drawing candidate attachment is not bound to this review request"
+            )
+        if page_items and (attachment_id, candidate.page) not in page_keys:
             raise ValueError(
                 "drawing candidate page is not bound to a visual page asset"
             )

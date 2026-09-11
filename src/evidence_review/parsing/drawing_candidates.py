@@ -81,6 +81,7 @@ def _validated(candidate: DrawingCandidate) -> DrawingCandidate:
 def candidate_from_raw_element(
     *,
     case_id: str,
+    attachment_id: str | None = None,
     source_sha256: str,
     raw: RawElement,
     extractor: str,
@@ -118,6 +119,7 @@ def candidate_from_raw_element(
         extractor_version=extractor_version,
         annotation_id=None,
         case_id=case_id,
+        attachment_id=attachment_id,
     )
     return _validated(candidate)
 
@@ -125,6 +127,7 @@ def candidate_from_raw_element(
 def create_manual_candidate(
     *,
     case_id: str,
+    attachment_id: str | None = None,
     source_sha256: str,
     page: int,
     annotation_id: str,
@@ -149,6 +152,7 @@ def create_manual_candidate(
         extractor_version=None,
         annotation_id=annotation_id,
         case_id=case_id,
+        attachment_id=attachment_id,
     )
     return _validated(candidate)
 

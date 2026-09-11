@@ -103,6 +103,7 @@ def test_visual_submission_creates_source_bound_unconfirmed_candidate() -> None:
     candidate = result.candidates[0]
     assert candidate.source_sha256 == "a" * 64
     assert candidate.case_id == "CASE-1"
+    assert candidate.attachment_id == "ATT-DRAWING-1"
     assert candidate.status == "UNCONFIRMED"
     assert candidate.origin == "EXTRACTOR"
     assert result.candidate_issue_ids[candidate.candidate_id] == ("ISSUE-1",)

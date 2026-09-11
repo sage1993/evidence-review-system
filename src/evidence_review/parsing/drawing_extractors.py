@@ -104,6 +104,7 @@ def _geometry(raw: RawElement) -> Geometry | None:
 def extract_drawing_candidates(
     *,
     case_id: str,
+    attachment_id: str | None = None,
     source_sha256: str,
     elements: Sequence[RawElement],
     stage: int,
@@ -142,6 +143,7 @@ def extract_drawing_candidates(
             extractor_version=extractor_version,
             annotation_id=None,
             case_id=case_id,
+            attachment_id=attachment_id,
         )
         candidates.append(candidate)
     return tuple(

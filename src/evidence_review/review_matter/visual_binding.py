@@ -54,6 +54,8 @@ def bind_visual_case_to_matter(
         raise MatterRevisionConflict("MATTER_REVISION_CONFLICT")
     if not isinstance(visual_case, VisualCase):
         raise ValueError("VISUAL_SOURCE_BINDING_MISMATCH")
+    if visual_case.case_id == matter.matter_id:
+        raise ValueError("VISUAL_SOURCE_BINDING_MISMATCH")
     try:
         validated_case = visual_case_from_attachments(visual_case.attachments)
     except (AttributeError, TypeError, ValueError) as error:
@@ -81,7 +83,9 @@ def bind_visual_case_to_matter(
     ):
         raise ValueError("MATTER_VISUAL_SOURCE_BINDING_MISMATCH")
 
-    source_hashes = {item.sha256 for item in validated_case.attachments}
+    attachment_by_id = {
+        item.attachment_id: item for item in validated_case.attachments
+    }
     validated_candidates = tuple(
         decode_drawing_candidate(drawing_candidate_document(item))
         for item in candidates
@@ -91,7 +95,9 @@ def bind_visual_case_to_matter(
         raise ValueError("VISUAL_SOURCE_BINDING_MISMATCH")
     if any(
         item.case_id != validated_case.case_id
-        or item.source_sha256 not in source_hashes
+        or item.attachment_id is None
+        or (attachment := attachment_by_id.get(item.attachment_id)) is None
+        or attachment.sha256 != item.source_sha256
         for item in validated_candidates
     ):
         raise ValueError("VISUAL_SOURCE_BINDING_MISMATCH")

@@ -93,6 +93,7 @@ def validate_visual_analysis_output(
             extractor_version=_EXTRACTOR_VERSION,
             annotation_id=None,
             case_id=attachment.case_id,
+            attachment_id=attachment.attachment_id,
         )
         build_drawing_review_view_model(
             DrawingPage(

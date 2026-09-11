@@ -93,6 +93,7 @@ def test_manual_id_uses_annotation_identity() -> None:
 def test_raw_text_element_becomes_neutral_extractor_candidate() -> None:
     candidate = candidate_from_raw_element(
         case_id="CASE-001",
+        attachment_id="ATT-001",
         source_sha256="a" * 64,
         raw=raw_text_element(),
         extractor="opendataloader",
@@ -105,6 +106,7 @@ def test_raw_text_element_becomes_neutral_extractor_candidate() -> None:
     assert candidate.geometry.type == "BBOX"
     assert candidate.raw_value == "8M"
     assert candidate.normalized_candidate is None
+    assert candidate.attachment_id == "ATT-001"
 
 
 def test_unknown_parser_type_is_not_given_domain_meaning() -> None:
