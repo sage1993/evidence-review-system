@@ -15,7 +15,7 @@ the human decision is an append-only, packet-hash-bound record.
 | --- | --- |
 | Required base | `fa6e8a0098eb06c8afeaa7b306cce25ef412ae2f` (MIG-19 merge) |
 | Acceptance branch | `test/mig-20-review-matter-acceptance` |
-| Exact candidate commit | `32aa582722dc0d806470104c2b77ed6cf94f14f2` (runtime/test candidate) |
+| Exact candidate commit | `da0fcad` (runtime/test candidate; this report-only update follows) |
 | Python | `3.13` |
 | Platform | Windows (`win32`) |
 | GitHub Actions | `ACTIONS_NOT_RUN` |
@@ -80,7 +80,7 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 | --- | --- | --- |
 | Focused MIG-20 matrix | `PASS` | `12 passed` in 20.46s |
 | Documentation integrity | `PASS` | `51 documents; current=23, historical=26, generated=2; errors=0, warnings=149` |
-| Full pytest | `PASS` | `2244 passed, 1 skipped, 1 warning in 590.32s` |
+| Full pytest | `PASS` | `2244 passed, 1 skipped, 1 warning in 629.30s` |
 | Ruff | `PASS` | `All checks passed!` |
 | Native mypy | `PASS` | `Success: no issues found in 270 source files` |
 | `win32` mypy | `PASS` | `Success: no issues found in 270 source files` |
