@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from helpers.rule_governance import build_valid_governance_tree
 
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.release.attestation import REQUIRED_CHECK_IDS
@@ -32,10 +33,7 @@ def _workspace(root: Path) -> str:
     connection.execute("CREATE TABLE evidence(id TEXT PRIMARY KEY)")
     connection.commit()
     connection.close()
-    (root / "rules/approved").mkdir(parents=True)
-    (root / "rules/approved/R1.json").write_text("{}", encoding="utf-8")
-    (root / "rules/manifests").mkdir()
-    (root / "rules/manifests/active.json").write_text("{}", encoding="utf-8")
+    build_valid_governance_tree(root)
     (root / "formulas").mkdir()
     (root / "formulas/manifest.json").write_text("{}", encoding="utf-8")
     (root / "examples").mkdir()

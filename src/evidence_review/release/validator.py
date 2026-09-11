@@ -40,6 +40,11 @@ from evidence_review.release.config import (
     resolve_evidence_database,
 )
 from evidence_review.release.offline_boundary import resolve_manifest_member
+from evidence_review.rule_engine.governance_contract import RuleSelectionContext
+from evidence_review.rule_engine.manifest import load_governed_active_rules
+from evidence_review.rule_engine.selection import rule_selection_result_bytes
+
+_ACTIVE_RULE_MANIFEST = Path("rules/manifests/active.json")
 
 
 @contextmanager
@@ -230,6 +235,23 @@ def _documentation_checks(workspace_root: Path) -> dict[str, object]:
     return report_document(report)
 
 
+def _governed_rule_checks(workspace_root: Path) -> dict[str, object]:
+    """Validate active-rule authority through the canonical runtime loader."""
+    loaded = load_governed_active_rules(
+        workspace_root,
+        _ACTIVE_RULE_MANIFEST,
+        RuleSelectionContext(),
+    )
+    document = json.loads(rule_selection_result_bytes(loaded.selection))
+    if not isinstance(document, dict):
+        raise RuntimeError("governed rule selection document must be an object")
+    document["manifest_path"] = _ACTIVE_RULE_MANIFEST.as_posix()
+    document["validator"] = (
+        "evidence_review.rule_engine.manifest.load_governed_active_rules"
+    )
+    return document
+
+
 def validate_release_workspace(
     workspace_root: Path,
     output_path: Path | None = None,
@@ -261,6 +283,7 @@ def validate_release_workspace(
     )
     manifests = _manifest_checks(workspace_root)
     documentation = _documentation_checks(workspace_root)
+    governed_rules = _governed_rule_checks(workspace_root)
     with tempfile.TemporaryDirectory(
         prefix="evidence-review-release-validation-"
     ) as temporary:
@@ -281,6 +304,8 @@ def validate_release_workspace(
         errors.append("MANIFEST_VALIDATION_FAILED")
     if documentation["status"] != "PASS":
         errors.append("DOCUMENTATION_INTEGRITY_FAILED")
+    if governed_rules["status"] == "BLOCKED":
+        errors.append("GOVERNED_RULE_VALIDATION_FAILED")
     if not reproducible:
         errors.append("NON_REPRODUCIBLE_WEB_ZIP")
     if final_packet["status"] != "PASS":
@@ -296,6 +321,7 @@ def validate_release_workspace(
         "sqlite": sqlite_result,
         "manifests": manifests,
         "documentation": documentation,
+        "governed_rules": governed_rules,
         "web_zip": {
             "first_hash": first_hash,
             "second_hash": second_hash,
