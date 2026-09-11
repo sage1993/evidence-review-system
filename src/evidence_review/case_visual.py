@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -10,6 +11,7 @@ from evidence_review.canonical_json import sha256_json
 from evidence_review.contracts.attachments import (
     AttachmentRole,
     ImmutableAttachment,
+    decode_immutable_attachment,
     immutable_attachment_document,
 )
 from evidence_review.contracts.drawing import DrawingCandidate, drawing_candidate_document
@@ -36,6 +38,14 @@ _CANONICAL_EXTENSION: dict[str, str] = {
     "image/tiff": ".tif",
     "image/jpeg": ".jpg",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class VisualCase:
+    """One exact drawing case; its identity remains separate from a Matter."""
+
+    case_id: str
+    attachments: tuple[ImmutableAttachment, ...]
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -111,6 +121,47 @@ def _reconstructed_attachment(
         role=cast(AttachmentRole, descriptor["role"]),
         case_id=case_id,
     )
+
+
+def _attachment_descriptor(attachment: ImmutableAttachment) -> dict[str, object]:
+    _validate_visual_role(attachment.role)
+    return {
+        "original_name": attachment.original_name,
+        "sha256": attachment.sha256,
+        "byte_size": attachment.byte_size,
+        "mime": attachment.mime,
+        "role": attachment.role,
+    }
+
+
+def visual_case_from_attachments(
+    attachments: Sequence[ImmutableAttachment],
+) -> VisualCase:
+    """Build one exact visual case without resolving attachments by filename."""
+    validated = tuple(
+        decode_immutable_attachment(immutable_attachment_document(item))
+        for item in attachments
+    )
+    if not validated:
+        raise ValueError("visual case requires at least one attachment")
+    case_ids = {item.case_id for item in validated}
+    if len(case_ids) != 1 or None in case_ids:
+        raise ValueError("visual case attachments must share one case_id")
+    if len({item.attachment_id for item in validated}) != len(validated):
+        raise ValueError("visual case attachment_id values must be unique")
+    ordered = tuple(sorted(validated, key=lambda item: item.attachment_id))
+    case_id = ordered[0].case_id
+    if case_id is None:
+        raise ValueError("visual case attachments must share one case_id")
+    descriptors = [_attachment_descriptor(item) for item in ordered]
+    if any(
+        _attachment_id(descriptor) != attachment.attachment_id
+        for descriptor, attachment in zip(descriptors, ordered, strict=True)
+    ):
+        raise ValueError("visual case attachment_id is not deterministic")
+    if _case_id(descriptors) != case_id:
+        raise ValueError("visual case case_id is not deterministic")
+    return VisualCase(case_id=case_id, attachments=ordered)
 
 
 def prepare_case_visual_sources(
@@ -215,14 +266,14 @@ def bind_case_visual_context_to_review_request(
 
     attachment_ids: set[str] = set()
     source_hash_by_attachment: dict[str, str] = {}
-    source_hashes: set[str] = set()
+    case_id_by_attachment: dict[str, str | None] = {}
     for attachment in attachment_items:
         _validate_visual_role(attachment.role)
         if attachment.attachment_id in attachment_ids:
             raise ValueError("case visual attachment_id values must be unique")
         attachment_ids.add(attachment.attachment_id)
         source_hash_by_attachment[attachment.attachment_id] = attachment.sha256
-        source_hashes.add(attachment.sha256)
+        case_id_by_attachment[attachment.attachment_id] = attachment.case_id
 
     page_keys: set[tuple[str, int]] = set()
     for page in page_items:
@@ -232,6 +283,8 @@ def bind_case_visual_context_to_review_request(
             )
         if page.source_sha256 != source_hash_by_attachment[page.attachment_id]:
             raise ValueError("visual page source hash does not match its attachment")
+        if page.case_id != case_id_by_attachment[page.attachment_id]:
+            raise ValueError("visual page case_id does not match its attachment")
         key = (page.attachment_id, page.page)
         if key in page_keys:
             raise ValueError("visual page identities must be unique")
@@ -242,19 +295,19 @@ def bind_case_visual_context_to_review_request(
         if candidate.candidate_id in candidate_ids:
             raise ValueError("drawing candidate IDs must be unique")
         candidate_ids.add(candidate.candidate_id)
-        if candidate.source_sha256 not in source_hashes:
-            raise ValueError(
-                "drawing candidate source is not bound to this review request"
-            )
-        matching_attachment_ids = {
-            attachment_id
-            for attachment_id, source_hash in source_hash_by_attachment.items()
-            if source_hash == candidate.source_sha256
-        }
-        if page_items and not any(
-            (attachment_id, candidate.page) in page_keys
-            for attachment_id in matching_attachment_ids
+        if candidate.case_id is None:
+            raise ValueError("drawing candidate case is not bound to this review request")
+        if candidate.attachment_id is None:
+            raise ValueError("drawing candidate attachment is not bound to this review request")
+        attachment_id = candidate.attachment_id
+        if (
+            source_hash_by_attachment.get(attachment_id) != candidate.source_sha256
+            or case_id_by_attachment.get(attachment_id) != candidate.case_id
         ):
+            raise ValueError(
+                "drawing candidate attachment is not bound to this review request"
+            )
+        if page_items and (attachment_id, candidate.page) not in page_keys:
             raise ValueError(
                 "drawing candidate page is not bound to a visual page asset"
             )
@@ -317,6 +370,8 @@ def bind_case_visual_context_to_review_request(
 
 
 __all__ = [
+    "VisualCase",
     "bind_case_visual_context_to_review_request",
     "prepare_case_visual_sources",
+    "visual_case_from_attachments",
 ]

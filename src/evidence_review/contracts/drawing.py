@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import PurePosixPath
 from typing import Literal, cast
 
+from evidence_review.contracts.identifiers import validate_identifier
 from evidence_review.contracts.validation import (
     expect_int,
     expect_literal,
@@ -105,6 +106,8 @@ class DrawingCandidate:
     extractor: str | None
     extractor_version: str | None
     annotation_id: str | None
+    case_id: str | None = None
+    attachment_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +242,8 @@ def decode_drawing_candidate(value: object) -> DrawingCandidate:
         "extractor",
         "extractor_version",
         "annotation_id",
+        "case_id",
+        "attachment_id",
     }
     reject_unknown(payload, allowed, "drawing_candidate")
     page = expect_int(payload.get("page"), "page")
@@ -249,6 +254,20 @@ def decode_drawing_candidate(value: object) -> DrawingCandidate:
     extractor = _optional_string(payload.get("extractor"), "extractor")
     extractor_version = _optional_string(payload.get("extractor_version"), "extractor_version")
     annotation_id = _optional_string(payload.get("annotation_id"), "annotation_id")
+    case_id_value = payload.get("case_id")
+    case_id = (
+        None
+        if case_id_value is None
+        else validate_identifier(expect_string(case_id_value, "case_id"), "case_id")
+    )
+    attachment_id_value = payload.get("attachment_id")
+    attachment_id = (
+        None
+        if attachment_id_value is None
+        else validate_identifier(
+            expect_string(attachment_id_value, "attachment_id"), "attachment_id"
+        )
+    )
     if origin == "EXTRACTOR":
         if not extractor or not extractor_version:
             raise ValueError("extractor candidates require extractor metadata")
@@ -274,12 +293,14 @@ def decode_drawing_candidate(value: object) -> DrawingCandidate:
         extractor=extractor,
         extractor_version=extractor_version,
         annotation_id=annotation_id,
+        case_id=case_id,
+        attachment_id=attachment_id,
     )
 
 
 def drawing_candidate_document(candidate: DrawingCandidate) -> dict[str, object]:
     """Return the explicit JSON representation of *candidate*."""
-    return {
+    document: dict[str, object] = {
         "candidate_id": candidate.candidate_id,
         "source_sha256": candidate.source_sha256,
         "page": candidate.page,
@@ -293,6 +314,11 @@ def drawing_candidate_document(candidate: DrawingCandidate) -> dict[str, object]
         "extractor_version": candidate.extractor_version,
         "annotation_id": candidate.annotation_id,
     }
+    if candidate.case_id is not None:
+        document["case_id"] = candidate.case_id
+    if candidate.attachment_id is not None:
+        document["attachment_id"] = candidate.attachment_id
+    return document
 
 
 def decode_drawing_quality(value: object) -> DrawingQualityAssessment:

@@ -513,7 +513,6 @@ def build_case_visual_projection(
         attachment_by_id[attachment_id] = attachment
 
     page_records: dict[tuple[str, int], dict[str, object]] = {}
-    page_by_source: dict[tuple[str, int], tuple[str, int]] = {}
     visual_pages = _sequence(
         context.get("visual_pages", []), "case_visual_context.visual_pages"
     )
@@ -536,8 +535,7 @@ def build_case_visual_projection(
         if coordinate_system != "IMAGE_TOP_LEFT_PIXELS":
             raise ValueError("visual page coordinate system is unsupported")
         key = (attachment_id, page_number)
-        source_key = (source_sha256, page_number)
-        if key in page_records or source_key in page_by_source:
+        if key in page_records:
             raise ValueError("case visual page identity is ambiguous")
         image_path = _resolve_visual_raster_path(
             workspace_root,
@@ -577,7 +575,6 @@ def build_case_visual_projection(
                 image_bytes
             ).decode("ascii")
         page_records[key] = page_record
-        page_by_source[source_key] = key
 
     lineage: dict[str, tuple[str, ...]] = {}
     lineage_values = _sequence(
@@ -608,15 +605,24 @@ def build_case_visual_projection(
         if candidate.candidate_id in seen_candidates:
             raise ValueError("duplicate case visual candidate id")
         seen_candidates.add(candidate.candidate_id)
-        page_key = page_by_source.get((candidate.source_sha256, candidate.page))
-        if page_key is None:
+        if candidate.attachment_id is None:
+            raise ValueError("case visual candidate attachment is not bound")
+        candidate_attachment = attachment_by_id.get(candidate.attachment_id)
+        if (
+            candidate_attachment is None
+            or candidate_attachment.sha256 != candidate.source_sha256
+            or candidate_attachment.case_id != candidate.case_id
+        ):
+            raise ValueError("case visual candidate attachment is not bound")
+        page_key = (candidate.attachment_id, candidate.page)
+        candidate_page = page_records.get(page_key)
+        if candidate_page is None:
             raise ValueError("case visual candidate has no verified raster page")
-        page = page_records[page_key]
         canonical = drawing_candidate_document(candidate)
         _verify_geometry_bounds(
             canonical,
-            cast(float, page["width"]),
-            cast(float, page["height"]),
+            cast(float, candidate_page["width"]),
+            cast(float, candidate_page["height"]),
         )
         candidate_issue_ids = lineage.get(candidate.candidate_id)
         if candidate_issue_ids is None:
@@ -652,7 +658,7 @@ def build_case_visual_projection(
                 ),
             }
         )
-        cast(list[object], page["candidates"]).append(projected)
+        cast(list[object], candidate_page["candidates"]).append(projected)
 
     if set(lineage) != seen_candidates:
         raise ValueError("case visual lineage does not match drawing candidates")

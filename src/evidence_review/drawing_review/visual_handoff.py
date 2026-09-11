@@ -16,8 +16,9 @@ from evidence_review.drawing_review.visual_pages import (
     VisualPageAsset,
     ensure_visual_page_tiles,
     prepare_visual_page_assets,
+    validate_visual_page_assets,
 )
-from evidence_review.review_matter.scope import ReviewScope
+from evidence_review.review_matter.scope import ReviewScope, review_scope_document
 from evidence_review.review_matter.scope_adapters import (
     normalize_review_scope,
     question_plan_from_review_scope,
@@ -85,13 +86,13 @@ def prepare_visual_analysis_handoff(
     scope = normalize_review_scope(question_plan)
     canonical_plan = question_plan_from_review_scope(scope)
     pages = prepare_visual_page_assets(workspace, attachments)
-    if not pages:
-        raise ValueError("VISUAL_SOURCE_RENDER_FAILED")
+    validate_visual_page_assets(attachments, pages)
     for page in pages:
         ensure_visual_page_tiles(workspace, page)
     template = _instruction_template_bytes()
     instruction_contract_sha256 = hashlib.sha256(template).hexdigest()
     identity = {
+        "review_scope": review_scope_document(scope),
         "question_plan": question_plan_document(canonical_plan),
         "attachments": [
             immutable_attachment_document(item)
@@ -111,6 +112,7 @@ def prepare_visual_analysis_handoff(
         "visual_analysis_id": visual_analysis_id,
         "instruction_contract_sha256": instruction_contract_sha256,
         "question": canonical_plan.original_question,
+        "review_scope": review_scope_document(scope),
         "issues": [
             {"id": item.id, "question": item.question}
             for item in canonical_plan.issues

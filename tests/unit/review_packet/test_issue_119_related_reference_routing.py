@@ -63,6 +63,7 @@ def _fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
         "extractor": "codex-vision",
         "extractor_version": "1.0.0",
         "annotation_id": None,
+        "attachment_id": attachment_id,
     }
     context = {
         "attachments": [

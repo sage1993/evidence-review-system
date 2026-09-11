@@ -44,6 +44,7 @@ def test_stage_one_extracts_only_explicit_metadata_as_unconfirmed_candidates() -
 
     candidates = extract_drawing_candidates(
         case_id="CASE-001",
+        attachment_id="ATT-001",
         source_sha256=SOURCE_HASH,
         elements=elements,
         stage=1,
@@ -61,8 +62,11 @@ def test_stage_one_extracts_only_explicit_metadata_as_unconfirmed_candidates() -
     ]
     assert all(item.status == "UNCONFIRMED" for item in candidates)
     assert all(item.origin == "EXTRACTOR" for item in candidates)
+    assert all(item.case_id == "CASE-001" for item in candidates)
+    assert all(item.attachment_id == "ATT-001" for item in candidates)
     assert extract_drawing_candidates(
         case_id="CASE-001",
+        attachment_id="ATT-001",
         source_sha256=SOURCE_HASH,
         elements=elements,
         stage=1,
