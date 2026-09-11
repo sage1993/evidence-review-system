@@ -32,6 +32,7 @@ from evidence_review.filesystem_trust import (
 )
 from evidence_review.local_http_transport import (
     ContentLengthError,
+    drain_rejected_body,
     loopback_request_is_authorized,
     reject_oversized_body,
     send_protected_response,
@@ -213,9 +214,13 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
         status: HTTPStatus,
         code: str,
         *,
+        drain_body: bool = True,
         allow: str | None = None,
     ) -> None:
         self._send_json(status, {"error": code}, allow=allow)
+        if drain_body:
+            self.wfile.flush()
+            drain_rejected_body(self)
 
     def _route(self) -> WorkbenchRoute | None:
         route = parse_workbench_route(self.path, matter_id=self.state.matter_id)
@@ -337,7 +342,11 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
             return validate_content_length(self.headers, self.state.max_body_bytes)
         except ContentLengthError as error:
             if error.length is not None:
-                reject_oversized_body(self, error.length, self._reject)
+                reject_oversized_body(
+                    self,
+                    error.length,
+                    lambda status, code: self._reject(status, code, drain_body=False),
+                )
                 return None
             self._reject(
                 HTTPStatus.LENGTH_REQUIRED
