@@ -27,6 +27,12 @@ A `QuestionPlan` or `ReviewScope` is control input. It is not evidence. Planner-
 
 ## 2. The three user-work modes
 
+The authority vocabulary is: **Evidence Navigation** for non-authoritative
+exploration, **mutable ReviewMatter work state** in Workbench, and
+**Formalization** as the only promotion into **Formal Review**. These terms do
+not authorize a Navigation or Workbench action to create Planner, Track,
+packet, conclusion, or Human Decision authority.
+
 ### 2.1 Evidence Navigation
 
 Evidence Navigation is non-authoritative exploration. It may search finalized evidence, open exact citations, inspect pages/regions, compare sources, and allow the user to select evidence for a Matter.

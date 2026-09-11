@@ -34,6 +34,11 @@ from evidence_review.filesystem_trust import (
 from evidence_review.network_guard import offline_guard_context
 from evidence_review.offline_policy import APPLICATION_OFFLINE_GUARD, POLICY_VERSION
 from evidence_review.offline_scanner import scan_source_tree
+from evidence_review.packaging.runtime_packages import (
+    REVIEW_MATTER_RUNTIME_PATHS,
+    RUNTIME_PACKAGE_NAMES,
+    missing_runtime_package_files,
+)
 from evidence_review.packaging.web_bundle import build_web_runtime_zip
 from evidence_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
@@ -252,6 +257,27 @@ def _governed_rule_checks(workspace_root: Path) -> dict[str, object]:
     return document
 
 
+def _runtime_package_checks(workspace_root: Path) -> dict[str, object]:
+    """Verify software runtime files without treating user Matter state as release data."""
+    source_root = workspace_root / "src"
+    if not source_root.is_dir():
+        missing: tuple[str, ...] = ("src",)
+    else:
+        missing = (
+            *missing_runtime_package_files(source_root),
+            *(
+                name
+                for name in RUNTIME_PACKAGE_NAMES
+                if not (source_root / name).is_dir()
+            ),
+        )
+    return {
+        "status": "PASS" if not missing else "FAIL",
+        "required": [*RUNTIME_PACKAGE_NAMES, *REVIEW_MATTER_RUNTIME_PATHS],
+        "missing": list(missing),
+    }
+
+
 def validate_release_workspace(
     workspace_root: Path,
     output_path: Path | None = None,
@@ -284,17 +310,22 @@ def validate_release_workspace(
     manifests = _manifest_checks(workspace_root)
     documentation = _documentation_checks(workspace_root)
     governed_rules = _governed_rule_checks(workspace_root)
-    with tempfile.TemporaryDirectory(
-        prefix="evidence-review-release-validation-"
-    ) as temporary:
-        first = Path(temporary) / "first.zip"
-        second = Path(temporary) / "second.zip"
-        with blocked_network():
-            first_hash = build_web_runtime_zip(workspace_root, first)
-            second_hash = build_web_runtime_zip(workspace_root, second)
-        reproducible = (
-            first_hash == second_hash and first.read_bytes() == second.read_bytes()
-        )
+    runtime_packages = _runtime_package_checks(workspace_root)
+    first_hash: str | None = None
+    second_hash: str | None = None
+    reproducible = False
+    if runtime_packages["status"] == "PASS":
+        with tempfile.TemporaryDirectory(
+            prefix="evidence-review-release-validation-"
+        ) as temporary:
+            first = Path(temporary) / "first.zip"
+            second = Path(temporary) / "second.zip"
+            with blocked_network():
+                first_hash = build_web_runtime_zip(workspace_root, first)
+                second_hash = build_web_runtime_zip(workspace_root, second)
+            reproducible = (
+                first_hash == second_hash and first.read_bytes() == second.read_bytes()
+            )
     errors: list[str] = []
     if forbidden:
         errors.append("FORBIDDEN_RUNTIME_CAPABILITY")
@@ -306,6 +337,8 @@ def validate_release_workspace(
         errors.append("DOCUMENTATION_INTEGRITY_FAILED")
     if governed_rules["status"] == "BLOCKED":
         errors.append("GOVERNED_RULE_VALIDATION_FAILED")
+    if runtime_packages["status"] != "PASS":
+        errors.append("RUNTIME_PACKAGE_VALIDATION_FAILED")
     if not reproducible:
         errors.append("NON_REPRODUCIBLE_WEB_ZIP")
     if final_packet["status"] != "PASS":
@@ -322,6 +355,7 @@ def validate_release_workspace(
         "manifests": manifests,
         "documentation": documentation,
         "governed_rules": governed_rules,
+        "runtime_packages": runtime_packages,
         "web_zip": {
             "first_hash": first_hash,
             "second_hash": second_hash,

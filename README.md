@@ -23,6 +23,17 @@ PDF 또는 이미지
 
 Python 런타임은 모델 API를 직접 호출하지 않습니다.
 
+## ReviewMatter authority modes
+
+ERS separates four authority-distinct modes. **Evidence Navigation** is
+non-authoritative exploration of finalized evidence and does not require a
+Planner or create a conclusion. The Workbench stores **mutable ReviewMatter
+work state** such as selected evidence and drafts; that state is not evidence
+or a decision. **Formalization** is the only promotion boundary from an exact
+Matter revision and finalized snapshot into **Formal Review**. Formal Review
+then retains the Question Planner, deterministic engines, Track A/Track B,
+immutable packet, and packet-bound Human Decision boundaries below.
+
 Codex가 명시적인 파일 handoff를 통해 다음 결과를 제공합니다.
 
 - Question Planner
@@ -117,7 +128,7 @@ $ERS_PDF 이 PDF를 검색 근거자료로 준비해줘
 
 ### 검토 실행
 
-Reference Evidence 준비와 Workspace Binding이 완료된 이후에는 모든 자연어 질문을 `$ERS_REVIEW`를 통해 실행합니다.
+Reference Evidence 준비와 Workspace Binding이 완료된 이후에는 검토 결과·적합성·법적 판단을 묻는 모든 자연어 검토 질문을 `$ERS_REVIEW`를 통해 실행합니다. 명시적인 Evidence Navigation 또는 Workbench 작업 요청은 해당 작업 모드로 처리하며 Formal Review 질문으로 간주하지 않습니다.
 
 예:
 

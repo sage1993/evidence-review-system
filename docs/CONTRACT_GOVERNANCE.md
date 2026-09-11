@@ -1,5 +1,14 @@
 # Contract Governance
 
+## ReviewMatter authority modes
+
+**Evidence Navigation** is non-authoritative and never creates a Planner
+output, conclusion, packet, or Human Decision. The Workbench keeps **mutable
+ReviewMatter work state** outside `evidence.sqlite`. **Formalization** is the
+only boundary that promotes that state into **Formal Review**, which retains
+the immutable evidence, deterministic engine, Track, packet, and decision
+contracts governed in this document.
+
 ## Purpose
 
 This document governs shared machine-readable contracts used by browser review, drawing evidence, and resumable Codex workflows.

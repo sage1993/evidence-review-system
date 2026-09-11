@@ -1,5 +1,13 @@
 # Codex Workflow
 
+## ReviewMatter authority modes
+
+**Evidence Navigation** may inspect finalized evidence without creating a
+Planner handoff or conclusion. The Workbench contains **mutable ReviewMatter
+work state** only. **Formalization** alone promotes an exact Matter revision
+and finalized snapshot to **Formal Review**, where the existing Planner,
+Track A/Track B, packet, and Human Decision contracts remain authoritative.
+
 Use local evidence only. Project Python code does not call a model or remote API. Codex supplies the external Question Planner, Track A, and Track B reasoning at deterministic file handoffs; runtime code validates those outputs before the workflow can advance.
 
 Shared status and contract governance is documented in `docs/CONTRACT_GOVERNANCE.md`. Question planning and its trust boundary are documented in `docs/question-planning.md`.
@@ -63,11 +71,14 @@ SHM, and journal sidecars, and never repair it.
 Re-prepare an old workspace through `$ERS_PDF` instead of adding a review-time
 repair step.
 
-## 2. One formal review for every question
+## 2. Formal Review for review questions
 
 The current user-facing workflow is `review-question`. Do not use a separate quick retrieval mode and do not ask the user to hand-author intermediate JSON.
 
-Every natural-language question follows this authority chain:
+Every natural-language review question follows this authority chain. Explicit
+Evidence Navigation and Workbench operations are workspace actions, not answers
+to a review question, and do not create a Planner handoff or Formal Review
+packet.
 
 ```text
 question
