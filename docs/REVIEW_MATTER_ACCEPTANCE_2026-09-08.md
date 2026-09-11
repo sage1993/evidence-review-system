@@ -15,7 +15,7 @@ the human decision is an append-only, packet-hash-bound record.
 | --- | --- |
 | Required base | `fa6e8a0098eb06c8afeaa7b306cce25ef412ae2f` (MIG-19 merge) |
 | Acceptance branch | `test/mig-20-review-matter-acceptance` |
-| Exact candidate commit | `da0fcad` (runtime/test candidate; this report-only update follows) |
+| Exact candidate commit | `806b9ecf8b5d24b980233d79a91418f8893e97c7` (runtime/test candidate; this report-only update follows) |
 | Python | `3.13` |
 | Platform | Windows (`win32`) |
 | GitHub Actions | `ACTIONS_NOT_RUN` |
@@ -49,7 +49,11 @@ Run the focused matrix from the exact checkout:
 py -3.13 -m pytest -v tests/integration/review_matter/test_end_to_end_matrix.py
 ```
 
-Executed on the MIG-20 worktree with Python 3.13: `12 passed` in 20.46 seconds.
+Executed on the MIG-20 worktree with Python 3.13: `12 passed` in 21.55 seconds.
+
+The supplemental protected asset regression suite also passed: `7 passed` in
+4.27 seconds, including a tokenized case-tile GET that resolves the
+`CASE-ID--ATTACHMENT-ID--SOURCE-SHA256` cache identity.
 
 The text/reference-only lane is exercised by the planner and restart scenarios. In
 addition to the generated fixture assertion, the prepared user workspace was run
@@ -78,14 +82,14 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 
 | Gate | Result | Evidence |
 | --- | --- | --- |
-| Focused MIG-20 matrix | `PASS` | `12 passed` in 20.46s |
+| Focused MIG-20 matrix | `PASS` | `12 passed` in 21.55s |
 | Documentation integrity | `PASS` | `51 documents; current=23, historical=26, generated=2; errors=0, warnings=149` |
-| Full pytest | `PASS` | `2244 passed, 1 skipped, 1 warning in 629.30s` |
+| Full pytest | `PASS` | `2245 passed, 1 skipped, 1 warning in 598.99s` |
 | Ruff | `PASS` | `All checks passed!` |
 | Native mypy | `PASS` | `Success: no issues found in 270 source files` |
 | `win32` mypy | `PASS` | `Success: no issues found in 270 source files` |
 | compileall | `PASS` | exit code 0; no output |
-| Wheel/runtime smoke | `PASS` | `evidence_review_system-0.2.0-py3-none-any.whl`; SHA-256 `5f7c371216915f54b639e0156d2d4500b5e7b0f4fd6b495f7dea6d1acfdc9eee`; installed target resource and CLI probe passed |
+| Wheel/runtime smoke | `PASS` | `evidence_review_system-0.2.0-py3-none-any.whl`; SHA-256 `889363c481b7efb51cf5f19a4fd4d6759f42d20757096575fd8d16f45d81d217`; installed schema/assets, MatterStore creation, and CLI probe passed |
 
 The documentation command initially resolved an unrelated global checkout and
 correctly returned `SOURCE_MISMATCH`; the passing run explicitly bound
@@ -111,18 +115,23 @@ result, protected/archive behavior, and server lifecycle status:
 | `3840×2160` | `PASS` (same protected URL, HTTP 200) | `PASS` (same protected URL, HTTP 200) | `PASS` (p.1 and p.17/17, HTTP 200) | `PASS` | `PASS` | `PASS` |
 
 Browser evidence was captured with Playwright CLI against real tokenized loopback
-servers at this exact candidate. The Formal Review page displayed seven real
+servers at exact runtime/test candidate
+`806b9ecf8b5d24b980233d79a91418f8893e97c7`. The Formal Review page displayed seven real
 evidence citations and a verified reference page; selecting a second citation kept
 the page identity bound. The Case Drawing page used the prepared
 `ATT-C6367EE43EE223059644.pdf` source and navigated `1 / 17` → `2 / 17` → `17 / 17`.
 Valid Workbench, Formal Review, and Case Drawing pages returned `200`; valid-page
 console output was zero errors/warnings, and keyboard `Tab` moved focus to a real
 button. A wrong Case Drawing token returned `403 FORBIDDEN` as required. Print
-output was captured at `output/playwright/mig20-final-formal-print.pdf`; screenshots
-are in `output/playwright/mig20-final-{workbench,formal,drawing}-{1366x768,1920x1080,3840x2160}.png`.
-The detached Workbench lifecycle was started at a bound PID/port, observed as
-`running: true`, allowed to reach its configured idle timeout and report `STOPPED`,
-and completed with verified `serve-stop`; no unrelated process was signalled.
+output was captured at `output/playwright/mig20-final-formal-806b9ec-print.pdf`
+(SHA-256 `44cd7072967aa25553a86c744e0715b84d2ded2a79865a9b7d9ace65285928ae`);
+screenshots are in
+`output/playwright/mig20-final-{workbench,formal,drawing}-806b9ec-{1366x768,1920x1080,3840x2160}.png`.
+The protected case-tile regression returned `200 image/png` with `no-store` and
+`nosniff` headers for the exact case-scoped cache identity. The detached Workbench
+lifecycle was started at a bound PID/port, observed as `running: true`, then
+controlled `serve-stop` produced `running: false`; no unrelated process was
+signalled.
 
 The archival HTML was served over loopback because the browser harness blocked direct
 Playwright `file:` navigation (`about:blank`). Its decision download prompt produced
