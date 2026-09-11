@@ -13,6 +13,7 @@ from typing import cast
 
 OVERSIZED_BODY_DRAIN_TIMEOUT_SECONDS = 0.5
 OVERSIZED_BODY_READ_CHUNK_BYTES = 8192
+REJECTED_BODY_DRAIN_MAX_BYTES = 4 * 1024 * 1024
 
 
 class ContentLengthError(ValueError):
@@ -45,6 +46,49 @@ def send_protected_response(
         handler.send_header("Allow", allow)
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def drain_rejected_body(
+    handler: BaseHTTPRequestHandler,
+    *,
+    max_bytes: int = REJECTED_BODY_DRAIN_MAX_BYTES,
+) -> None:
+    """Drain a bounded rejected request body before sending its response.
+
+    Windows clients can observe a connection reset when a server rejects a
+    POST while unread request bytes remain in the socket.  Drain only a
+    bounded amount and for a bounded time so an unauthorized client cannot
+    hold the handler indefinitely; an incomplete drain forces connection
+    closure instead of allowing leftover bytes to be parsed as another
+    request.
+    """
+    values = handler.headers.get_all("Content-Length") or []
+    if len(values) != 1:
+        return
+    try:
+        length = int(values[0])
+    except ValueError:
+        return
+    if length <= 0:
+        return
+    remaining = min(length, max_bytes)
+    deadline = time.monotonic() + OVERSIZED_BODY_DRAIN_TIMEOUT_SECONDS
+    try:
+        reader = cast(BufferedReader, handler.rfile)
+        while remaining:
+            timeout = deadline - time.monotonic()
+            if timeout <= 0:
+                break
+            handler.connection.settimeout(timeout)
+            chunk = reader.read1(min(OVERSIZED_BODY_READ_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+    except OSError:
+        remaining = 1
+    finally:
+        if remaining or length > max_bytes:
+            handler.close_connection = True
 
 
 def loopback_request_is_authorized(

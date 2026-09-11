@@ -38,6 +38,7 @@ from evidence_review.filesystem_trust import (
 from evidence_review.local_http_transport import (
     ContentLengthError,
     allowed_methods_for_tokenized_route,
+    drain_rejected_body,
     loopback_request_is_authorized,
     reject_oversized_body,
     send_protected_response,
@@ -372,7 +373,8 @@ class _AnnotationHandler(BaseHTTPRequestHandler):
         drain_body: bool = True,
         allow: str | None = None,
     ) -> None:
-        del drain_body
+        if drain_body:
+            drain_rejected_body(self)
         self._send_json(status, {"error": code}, allow=allow)
 
     def _reject_oversized_body(self, length: int) -> None:
