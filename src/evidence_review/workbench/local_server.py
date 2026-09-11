@@ -66,7 +66,7 @@ _CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 
 def _html_csp(nonce: str) -> str:
     return (
-        f"{_CSP}; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'"
+        f"{_CSP}; connect-src 'self'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'"
     )
 
 

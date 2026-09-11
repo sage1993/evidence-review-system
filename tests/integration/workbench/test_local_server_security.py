@@ -97,6 +97,8 @@ def test_workbench_default_route_serves_protected_html_and_retains_json_state(
         assert headers["Content-Type"] == "text/html; charset=utf-8"
         assert 'data-surface="workbench"' in html
         assert "script-src 'nonce-" in headers["Content-Security-Policy"]
+        csp_directives = headers["Content-Security-Policy"].split("; ")
+        assert "connect-src 'self'" in csp_directives
         assert "'unsafe-inline'" not in headers["Content-Security-Policy"]
 
         status, state, headers = _request(
