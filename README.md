@@ -70,10 +70,11 @@ ERS는 다음 원칙을 보장하도록 설계되어 있습니다.
 
 ## 설치
 
-Current source metadata version: `0.2.0rc1`
+Current source metadata version: `0.2.0`
 
-This is an unpublished release candidate, not an official public release.
-The latest official release is `v0.1.0`.
+The source version does not establish publication status. Check [GitHub
+Releases](https://github.com/sage1993/evidence-review-system/releases) for the
+current official release and published downloads.
 
 지원 Python 버전: `>=3.13,<3.14`
 
@@ -100,8 +101,8 @@ OpenDataLoader PDF
 주요 Runtime Dependency는 다음 범위로 제한됩니다.
 
 ```text
-pypdf>=6.17,<7
-pypdfium2>=5.12,<6
+pypdf>=6.18.1,<7
+pypdfium2>=5.12.1,<6
 Pillow>=12.3,<13
 ```
 

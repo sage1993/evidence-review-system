@@ -72,7 +72,7 @@ These documents are commit/date-specific verification records. They are
 evidence of the scope they name, not current runtime authority.
 
 - [Reference Viewer v2 cold-cache acceptance — 2026-09-03](REFERENCE_VIEWER_V2_COLD_CACHE_ACCEPTANCE_2026-09-03.md)
-- [Stabilization Closure Round 2 — 2026-09](STABILIZATION_CLOSURE_2026-09.md) — exact-main and inherited acceptance evidence; closure remains conditional.
+- [Stabilization Closure Round 2 — 2026-09](STABILIZATION_CLOSURE_2026-09.md) — historical exact-main and inherited acceptance evidence.
 
 ## Historical implementation plans
 

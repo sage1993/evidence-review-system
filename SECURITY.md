@@ -4,29 +4,49 @@ Evidence Review System processes local documents, parser artifacts, evidence dat
 
 ## Supported versions
 
-The active unreleased development candidate is `0.2.0rc1` on Python
-`>=3.13,<3.14`. The latest official release is `v0.1.0`. Published support
-status follows actual GitHub Releases rather than source metadata.
+The current source metadata version is `0.2.0` and its supported Python range
+is `>=3.13,<3.14`. Published support status follows actual [GitHub
+Releases](https://github.com/sage1993/evidence-review-system/releases), not
+source metadata alone.
 
 ## PDF parser dependency policy
 
-As verified on 2026-09-06, the active `0.2.0rc1` candidate requires
-`pypdf>=6.17,<7`. Upstream pypdf states that security fixes are applied to the
-latest version. The August 2026 advisories GHSA-fc8x-2rww-xw9m,
+Re-verified on 2026-09-12, the `0.2.0` source requires
+`pypdf>=6.18.1,<7`. The August 2026 advisories GHSA-fc8x-2rww-xw9m,
 GHSA-fwg2-594c-jp42, and GHSA-fp3f-mc75-235c affect versions `<6.15.0` and
-are patched in `>=6.15.0`; pypdf 6.17.0, released 2026-09-04, contains an
-additional upstream security hardening change limiting Roman-numeral values.
-The dependency floor must be re-verified against upstream security advisories
-and release notes before a future release rather than treated as permanently
-sufficient.
+are patched in `>=6.15.0`. Three additional upstream advisories published on
+2026-09-11 affect versions `<6.18.1`: [GHSA-jw7q-gvrg-4vj3](https://github.com/py-pdf/pypdf/security/advisories/GHSA-jw7q-gvrg-4vj3)
+covers long runtimes for partially malformed FlateDecode streams,
+[GHSA-g9cg-prrw-2r8q](https://github.com/py-pdf/pypdf/security/advisories/GHSA-g9cg-prrw-2r8q)
+covers memory use from oversized font widths, and
+[GHSA-fp3h-c4fm-7vvf](https://github.com/py-pdf/pypdf/security/advisories/GHSA-fp3h-c4fm-7vvf)
+covers memory use from oversized `/ToUnicode` streams. The upstream
+[6.18.1 release](https://github.com/py-pdf/pypdf/releases/tag/6.18.1)
+contains the corresponding security fixes, so the project floor is now
+`>=6.18.1`. Recheck this floor against upstream advisories and release notes
+before each future public release.
+
+## PDF rendering dependency policy
+
+Re-verified on 2026-09-12, the source requires `pypdfium2>=5.12.1,<6`. PyPI
+has [yanked 5.12.0](https://pypi.org/project/pypdfium2/5.12.0/) because its
+setup broke system-search/fallback binding generation. The
+[5.12.1 release](https://github.com/pypdfium2-team/pypdfium2/releases/tag/5.12.1)
+corrects the setup issue, and 5.13.0 is the current compatible upstream
+release. The floor was raised to exclude the yanked, defective version.
+Recheck it against upstream release notes before each future public release.
 
 ## Pillow dependency policy
 
-The active `0.2.0rc1` candidate requires `Pillow>=12.3,<13`. Pillow is part of
-the visual-input runtime boundary. `12.3.0` is the current security floor
-because it contains upstream security fixes relevant to unsafe/untrusted input
-processing. This floor must be re-evaluated against upstream security releases
-before future public releases.
+The `0.2.0` source requires `Pillow>=12.3,<13`. Pillow is part of the
+visual-input runtime boundary. Re-verified on 2026-09-12, `12.3.0` remains the
+current release and security floor. Its security fixes include protection
+against unbounded PDF-stream decompression
+([CVE-2026-59200](https://github.com/advisories/GHSA-jjj6-mw9f-p565)) and
+additional unsafe-input/resource-exhaustion cases, including the
+[Image.paste/Image.crop out-of-bounds write](https://github.com/python-pillow/Pillow/security/advisories/GHSA-6r8x-57c9-28j4).
+Recheck this floor against upstream security releases before each future
+public release.
 
 ## Reporting a vulnerability
 

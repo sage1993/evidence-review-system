@@ -4,8 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evidence-review-system"
-# Unreleased PEP 440 release candidate; not an official release.
-version = "0.2.0rc1"
+version = "0.2.0"
 description = "Evidence-first review runtime for arbitrary user-provided documents"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -14,8 +13,8 @@ classifiers = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "pypdf>=6.17,<7",
-  "pypdfium2>=5.12,<6",
+  "pypdf>=6.18.1,<7",
+  "pypdfium2>=5.12.1,<6",
   "Pillow>=12.3,<13",
 ]
 
