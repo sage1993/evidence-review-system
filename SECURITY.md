@@ -4,15 +4,29 @@ Evidence Review System processes local documents, parser artifacts, evidence dat
 
 ## Supported versions
 
-The active development line targets `v0.2.x` on Python `>=3.13,<3.14`. The historical `v0.1.0` release is not the preferred target for new security fixes once `v0.2.0` is released.
+The active unreleased development candidate is `0.2.0rc1` on Python
+`>=3.13,<3.14`. The latest official release is `v0.1.0`. Published support
+status follows actual GitHub Releases rather than source metadata.
 
 ## PDF parser dependency policy
 
-As verified on 2026-09-06, the `v0.2.x` line requires `pypdf>=6.17,<7`. Upstream pypdf states that security fixes are applied to the latest version. The August 2026 advisories GHSA-fc8x-2rww-xw9m, GHSA-fwg2-594c-jp42, and GHSA-fp3f-mc75-235c affect versions `<6.15.0` and are patched in `>=6.15.0`; pypdf 6.17.0, released 2026-09-04, contains an additional upstream security hardening change limiting Roman-numeral values. The dependency floor must be re-verified against upstream security advisories and release notes before a future release rather than treated as permanently sufficient.
+As verified on 2026-09-06, the active `0.2.0rc1` candidate requires
+`pypdf>=6.17,<7`. Upstream pypdf states that security fixes are applied to the
+latest version. The August 2026 advisories GHSA-fc8x-2rww-xw9m,
+GHSA-fwg2-594c-jp42, and GHSA-fp3f-mc75-235c affect versions `<6.15.0` and
+are patched in `>=6.15.0`; pypdf 6.17.0, released 2026-09-04, contains an
+additional upstream security hardening change limiting Roman-numeral values.
+The dependency floor must be re-verified against upstream security advisories
+and release notes before a future release rather than treated as permanently
+sufficient.
 
 ## Pillow dependency policy
 
-The `v0.2.x` line requires `Pillow>=12.3,<13`. Pillow is part of the visual-input runtime boundary. `12.3.0` is the current security floor because it contains upstream security fixes relevant to unsafe/untrusted input processing. This floor must be re-evaluated against upstream security releases before future public releases.
+The active `0.2.0rc1` candidate requires `Pillow>=12.3,<13`. Pillow is part of
+the visual-input runtime boundary. `12.3.0` is the current security floor
+because it contains upstream security fixes relevant to unsafe/untrusted input
+processing. This floor must be re-evaluated against upstream security releases
+before future public releases.
 
 ## Reporting a vulnerability
 

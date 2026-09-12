@@ -70,7 +70,10 @@ ERS는 다음 원칙을 보장하도록 설계되어 있습니다.
 
 ## 설치
 
-현재 패키지 버전: `0.2.0`
+Current source metadata version: `0.2.0rc1`
+
+This is an unpublished release candidate, not an official public release.
+The latest official release is `v0.1.0`.
 
 지원 Python 버전: `>=3.13,<3.14`
 

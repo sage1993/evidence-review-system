@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evidence-review-system"
-version = "0.2.0"
+# Unreleased PEP 440 release candidate; not an official release.
+version = "0.2.0rc1"
 description = "Evidence-first review runtime for arbitrary user-provided documents"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

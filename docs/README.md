@@ -18,6 +18,7 @@ immutable packet, and append-only Human Decision authority.
 ## Current authority
 
 - [Manual Acceptance and Main-Merge Policy](MANUAL_ACCEPTANCE_POLICY.md) — current release and merge acceptance authority.
+- [Release Version Policy](RELEASE_VERSION_POLICY.md) — current source-version and publication authority.
 - [Reviewer Workflow](REVIEWER_WORKFLOW.md) — current human review, protected browser, archival decision, and browser QA workflow.
 - [Codex Workflow](CODEX_WORKFLOW.md) — current `$ERS_PDF` / `$ERS_REVIEW` handoffs and runtime contracts.
 - [ChatGPT Web Workflow](CHATGPT_WEB_WORKFLOW.md) — current external handoff boundary for web-assisted review.
