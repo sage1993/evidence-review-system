@@ -19,14 +19,18 @@ reported as a PASS.
 
 ## GitHub-enforced `main` controls and process-level gates
 
-GitHub branch protection for `main` must block direct pushes and require
-changes through a pull request, apply to administrators with no bypass
-allowance, disable force pushes, and prohibit branch deletion. The repository
-currently has a single administrator, so the required approving-review count
-is zero; requiring a GitHub approval would make self-approval impossible. No
-GitHub Actions status check is required. These are GitHub-enforced controls
-only when configured in the repository settings; this policy text does not
-configure or prove that configuration.
+Issue #162 / PR #221 configured `main` protection. It was verified on
+2026-09-12 as: pull requests required; administrators enforced; zero required
+approvals; no bypass allowance; no required status checks; force-push disabled;
+and branch deletion disabled. The zero approval count reflects the repository's
+single-administrator operation and does not make self-approval a substitute for
+review.
+
+Those are GitHub-enforced repository settings. They are distinct from the
+operator process and local acceptance gates in
+[Commit, Push, and Pull Request Policy](COMMIT_PUSH_POLICY.md): policy text
+does not configure, replace, or itself prove GitHub settings, and a local PASS
+does not become a GitHub status check.
 
 The zero GitHub approval count does not waive the process-level requirement
 for an independent pre-merge review. The PR workflow must obtain that review

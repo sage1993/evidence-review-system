@@ -28,6 +28,10 @@ python -m pip install -e ".[dev]"
 
 하나의 목적에 집중된 Branch를 사용하고 Commit이 검토 가능한 단위로 유지되도록 합니다.
 
+Issue별 Branch/Worktree, Commit 범위와 메시지, 정확한 SHA 검증, Push, PR, Review 및
+Merge 절차는 [Commit, Push, and Pull Request Policy](docs/COMMIT_PUSH_POLICY.md)를
+따릅니다. 이 문서는 GitHub `main` 보호 설정과 로컬 Acceptance 절차의 역할도 구분합니다.
+
 Pull Request에는 다음 내용을 설명해야 합니다.
 
 - 해결하려는 문제
