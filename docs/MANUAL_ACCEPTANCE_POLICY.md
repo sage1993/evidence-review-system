@@ -17,16 +17,33 @@ implementation HEAD. GitHub Actions is not invoked as part of the normal issue
 workflow, and a workflow that is not started or has no executed steps is never
 reported as a PASS.
 
+## GitHub-enforced `main` controls and process-level gates
+
+GitHub branch protection for `main` must block direct pushes and require
+changes through a pull request, apply to administrators with no bypass
+allowance, disable force pushes, and prohibit branch deletion. The repository
+currently has a single administrator, so the required approving-review count
+is zero; requiring a GitHub approval would make self-approval impossible. No
+GitHub Actions status check is required. These are GitHub-enforced controls
+only when configured in the repository settings; this policy text does not
+configure or prove that configuration.
+
+The zero GitHub approval count does not waive the process-level requirement
+for an independent pre-merge review. The PR workflow must obtain that review
+and complete the applicable local manual acceptance gates below against the
+exact candidate HEAD. Neither process-level review nor local acceptance is a
+GitHub branch-protection status check.
+
 Before merging a change into `main`, the maintainer must complete and record the
 applicable manual gates:
 
-- exact commit and clean worktree;
+- exact tested/candidate/pushed commit SHA and clean worktree state;
 - documentation integrity validation;
 - full pytest, Ruff, strict mypy, and compileall;
 - isolated Python 3.13 wheel/install smoke when the package is changed;
 - browser or other human-facing QA when the change has a UI boundary; and
-- relevant artifact SHA-256 values, platform, Python version, command, and exit
-  code.
+- each exact command run and its result or exit code, the operating system,
+  Python version, manual QA state, and relevant artifact SHA-256 values.
 
 For changes that publish or read evidence databases, the acceptance record must
 also show the finalized lifecycle (`FINALIZED`, finalization version, logical
@@ -36,9 +53,11 @@ and that this exact file hash is unchanged through the bound review lifecycle.
 A logical snapshot hash may match across separate rebuilds without requiring
 byte-identical SQLite files.
 
-The acceptance record must state `ACTIONS_NOT_RUN` when Actions was deliberately
-excluded, or `ACTIONS_BILLING_BLOCKED` when the service was unavailable because
-of account billing or spending limits. Neither status is a GitHub Actions PASS.
+The acceptance record must state the actual Actions state. Use
+`ACTIONS_NOT_RUN` when Actions was deliberately excluded, or
+`ACTIONS_BILLING_BLOCKED` when the service was unavailable because of account
+billing or spending limits. `ACTIONS_NOT_RUN` is not a PASS, and neither status
+is a GitHub Actions PASS.
 
 This policy does not permit bypassing branch protection or an explicit
 maintainer requirement for a particular external check. Such a check remains a
