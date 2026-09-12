@@ -18,6 +18,7 @@ immutable packet, and append-only Human Decision authority.
 ## Current authority
 
 - [Manual Acceptance and Main-Merge Policy](MANUAL_ACCEPTANCE_POLICY.md) — current release and merge acceptance authority.
+- [Commit, Push, and Pull Request Policy](COMMIT_PUSH_POLICY.md) — current issue-scoped branch, commit, push, PR, review, and merge process.
 - [Release Version Policy](RELEASE_VERSION_POLICY.md) — current source-version and publication authority.
 - [Reviewer Workflow](REVIEWER_WORKFLOW.md) — current human review, protected browser, archival decision, and browser QA workflow.
 - [Codex Workflow](CODEX_WORKFLOW.md) — current `$ERS_PDF` / `$ERS_REVIEW` handoffs and runtime contracts.

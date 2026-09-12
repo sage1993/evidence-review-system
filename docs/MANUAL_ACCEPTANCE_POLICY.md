@@ -19,14 +19,18 @@ reported as a PASS.
 
 ## GitHub-enforced `main` controls and process-level gates
 
-GitHub branch protection for `main` must block direct pushes and require
-changes through a pull request, apply to administrators with no bypass
-allowance, disable force pushes, and prohibit branch deletion. The repository
-currently has a single administrator, so the required approving-review count
-is zero; requiring a GitHub approval would make self-approval impossible. No
-GitHub Actions status check is required. These are GitHub-enforced controls
-only when configured in the repository settings; this policy text does not
-configure or prove that configuration.
+Issue #162 / PR #221 configured `main` protection. It was verified on
+2026-09-12 as: pull requests required; administrators enforced; zero required
+approvals; no bypass allowance; no required status checks; force-push disabled;
+and branch deletion disabled. The zero approval count reflects the repository's
+single-administrator operation and does not make self-approval a substitute for
+review.
+
+Those are GitHub-enforced repository settings. They are distinct from the
+operator process and local acceptance gates in
+[Commit, Push, and Pull Request Policy](COMMIT_PUSH_POLICY.md): policy text
+does not configure, replace, or itself prove GitHub settings, and a local PASS
+does not become a GitHub status check.
 
 The zero GitHub approval count does not waive the process-level requirement
 for an independent pre-merge review. The PR workflow must obtain that review
@@ -53,11 +57,18 @@ and that this exact file hash is unchanged through the bound review lifecycle.
 A logical snapshot hash may match across separate rebuilds without requiring
 byte-identical SQLite files.
 
-The acceptance record must state the actual Actions state. Use
-`ACTIONS_NOT_RUN` when Actions was deliberately excluded, or
-`ACTIONS_BILLING_BLOCKED` when the service was unavailable because of account
-billing or spending limits. `ACTIONS_NOT_RUN` is not a PASS, and neither status
-is a GitHub Actions PASS.
+The acceptance record must state exactly one applicable Actions state:
+
+- `ACTIONS_NOT_RUN` when Actions was deliberately not started;
+- `ACTIONS_UNAVAILABLE` when an Actions execution or service was unavailable
+  for a non-billing reason;
+- `ACTIONS_BILLING_BLOCKED` when Actions was unavailable because of account
+  billing or spending limits; or
+- an observed workflow result, recorded as observed.
+
+`ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, and `ACTIONS_BILLING_BLOCKED` do not
+mean PASS. An observed workflow result records only that result; local/manual
+acceptance must never be inferred to be a GitHub Actions PASS.
 
 This policy does not permit bypassing branch protection or an explicit
 maintainer requirement for a particular external check. Such a check remains a
