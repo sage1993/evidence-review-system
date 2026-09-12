@@ -4,8 +4,9 @@ import re
 import tomllib
 from pathlib import Path
 
-from ansim_review import __version__
 from packaging.version import Version
+
+from ansim_review import __version__
 
 ROOT = Path(__file__).resolve().parents[3]
 
