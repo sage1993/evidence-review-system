@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import tomllib
 from pathlib import Path
 
@@ -15,20 +14,27 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_python_support_policy_is_313_only() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert data["project"]["version"] == "0.2.0rc1"
+    assert data["project"]["version"] == "0.2.0"
     assert __version__ == data["project"]["version"]
     assert canonical_version == data["project"]["version"]
-    assert Version(data["project"]["version"]).is_prerelease
+    assert not Version(data["project"]["version"]).is_prerelease
     assert data["project"]["requires-python"] == ">=3.13,<3.14"
     assert data["tool"]["ruff"]["target-version"] == "py313"
     assert data["tool"]["mypy"]["python_version"] == "3.13"
 
 
-def test_pypdf_security_floor_is_617_or_newer_within_major_6() -> None:
+def test_pypdf_security_floor_is_6181_or_newer_within_major_6() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dependencies = data["project"]["dependencies"]
 
-    assert "pypdf>=6.17,<7" in dependencies
+    assert "pypdf>=6.18.1,<7" in dependencies
+
+
+def test_pypdfium2_floor_excludes_yanked_5120_release() -> None:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = data["project"]["dependencies"]
+
+    assert "pypdfium2>=5.12.1,<6" in dependencies
 
 
 def test_pillow_security_floor_is_123_or_newer_within_major_12() -> None:
@@ -91,14 +97,18 @@ def test_release_state_documents_match_source_version() -> None:
     docs_index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "0.2.0rc1" in changelog
-    assert not re.search(r"^## \[0\.2\.0\] - ", changelog, re.MULTILINE)
-    assert "Current source metadata version: `0.2.0rc1`" in readme
-    assert "unpublished release candidate" in readme.lower()
-    assert "0.2.0rc1" in security
-    assert "latest official release" in security.lower()
-    assert "Unreleased PEP 440 release candidate; not an official release." in pyproject
+    assert "## [0.2.0] - 2026-09-12" in changelog
+    assert "published GitHub Release and exact validated tag" in changelog
+    assert "Current source metadata version: `0.2.0`" in readme
+    assert "The source version does not establish publication status" in readme
+    assert "`0.2.0` source requires" in security
+    assert "latest official release" not in security.lower()
+    assert 'version = "0.2.0"' in pyproject
+    assert "Unreleased PEP 440 release candidate; not an official release." not in pyproject
     assert "pyproject.toml" in release_policy
-    assert "GitHub Release" in release_policy
+    assert (
+        "A public version exists only when a GitHub Release has been published"
+        in release_policy
+    )
     assert "exact validated commit" in release_policy
     assert "RELEASE_VERSION_POLICY.md" in docs_index
