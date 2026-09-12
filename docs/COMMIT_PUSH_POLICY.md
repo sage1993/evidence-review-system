@@ -24,9 +24,10 @@ in [Manual Acceptance and Main-Merge Policy](MANUAL_ACCEPTANCE_POLICY.md).
    branch SHA equals the tested local candidate SHA.
 7. Open a pull request to `main`, obtain independent pre-merge review, and
    merge only when the PR head still equals the accepted candidate SHA.
-8. After merge, verify the candidate is an ancestor of `origin/main`, verify
-   the PR and issue state, and record how the remote feature branch was
-   handled.
+8. After merge, verify the candidate is an ancestor of `origin/main`, confirm
+   the PR is merged, confirm the issue is `CLOSED`, and record how the remote
+   feature branch was handled. If candidate ancestry, PR merge, or issue
+   closure cannot be confirmed, merge readiness is `HOLD`.
 
 The required identity invariant is:
 
@@ -36,6 +37,26 @@ TESTED_SHA == COMMITTED_SHA == PUSHED_SHA == PR_HEAD_SHA
 
 If any value differs, acceptance is stale and merge readiness is `HOLD` until
 the new candidate is verified.
+
+## Commit subject convention
+
+Every issue commit subject must use this exact form:
+
+```text
+<type>(issue-<N>): <concise summary>
+```
+
+`<type>` identifies the change category and `issue-<N>` identifies the issue;
+both are required. Use a concrete type such as `docs`, `feat`, `fix`, `test`,
+`refactor`, or `chore`. For example:
+
+```text
+docs(issue-169): codify commit and push policy
+fix(issue-169): require issue closure after merge
+```
+
+A commit subject that omits the issue or change type is not eligible for issue
+acceptance until corrected in a new commit.
 
 ## Commit, acceptance, and PR evidence
 
@@ -47,12 +68,24 @@ Do not report an unrun command as passing. The PR evidence must record:
 - exact validation commands and results, OS, Python version, and applicable
   artifact hashes;
 - manual-QA state; and
-- the actual Actions state: `ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`,
-  `ACTIONS_BILLING_BLOCKED`, or an observed result.
+- the actual Actions state defined below.
 
-Local/manual acceptance is not a GitHub Actions pass. Required package,
-browser, evidence, security, or platform gates remain applicable when their
-change boundary requires them.
+Record exactly one applicable Actions state:
+
+- `ACTIONS_NOT_RUN` — Actions was deliberately not started;
+- `ACTIONS_UNAVAILABLE` — an Actions execution or service was unavailable for
+  a non-billing reason;
+- `ACTIONS_BILLING_BLOCKED` — Actions was unavailable because of account
+  billing or spending limits; or
+- an observed workflow result, recorded as observed.
+
+None of `ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, or
+`ACTIONS_BILLING_BLOCKED` means PASS. An observed workflow result is evidence
+only of that observed result; local/manual acceptance is never inferred to be
+a GitHub Actions pass.
+
+Required package, browser, evidence, security, or platform gates remain
+applicable when their change boundary requires them.
 
 ## Prohibited actions and fail-closed conditions
 
@@ -62,7 +95,8 @@ claim that a SHA was tested when a different SHA is pushed or is the PR head.
 
 Fail closed and stop for a stale or unknown base, dirty candidate, unexpected
 file, failed or unrun applicable gate, local/remote SHA mismatch, missing
-independent review, changed PR head, ambiguous protection state, or unresolved
+independent review, changed PR head, candidate not in `origin/main`, PR not
+merged, issue not `CLOSED`, ambiguous protection state, or unresolved
 security/provenance concern. Do not bypass a repository control or an explicit
 maintainer-required check.
 

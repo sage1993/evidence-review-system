@@ -57,11 +57,18 @@ and that this exact file hash is unchanged through the bound review lifecycle.
 A logical snapshot hash may match across separate rebuilds without requiring
 byte-identical SQLite files.
 
-The acceptance record must state the actual Actions state. Use
-`ACTIONS_NOT_RUN` when Actions was deliberately excluded, or
-`ACTIONS_BILLING_BLOCKED` when the service was unavailable because of account
-billing or spending limits. `ACTIONS_NOT_RUN` is not a PASS, and neither status
-is a GitHub Actions PASS.
+The acceptance record must state exactly one applicable Actions state:
+
+- `ACTIONS_NOT_RUN` when Actions was deliberately not started;
+- `ACTIONS_UNAVAILABLE` when an Actions execution or service was unavailable
+  for a non-billing reason;
+- `ACTIONS_BILLING_BLOCKED` when Actions was unavailable because of account
+  billing or spending limits; or
+- an observed workflow result, recorded as observed.
+
+`ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, and `ACTIONS_BILLING_BLOCKED` do not
+mean PASS. An observed workflow result records only that result; local/manual
+acceptance must never be inferred to be a GitHub Actions PASS.
 
 This policy does not permit bypassing branch protection or an explicit
 maintainer requirement for a particular external check. Such a check remains a
