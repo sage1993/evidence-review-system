@@ -6,23 +6,12 @@ The project follows semantic versioning for public releases where practical.
 
 ## [Unreleased]
 
+`0.2.0rc1` is an unpublished release candidate. There is no public `v0.2.0`
+final release; `v0.1.0` remains the latest official release.
+
 ### Changed
 
 - Packaging metadata now uses the PEP 639 SPDX expression `Apache-2.0` with `license-files = ["LICENSE"]`; the build backend floor is `setuptools>=77.0.3`, the first setuptools release line with standardized PEP 639 project metadata support.
-
-### Fixed
-
-- Human-decision loading now excludes records whose review timestamp is beyond the permitted future-skew window, preventing a future-dated archival import from pinning the active review state.
-- Web-runtime self-test now requires every runtime-critical file to be represented in the integrity manifest instead of accepting existence without manifest coverage.
-
-### Security
-
-- Raised the pypdf support floor to `>=6.17,<7` after re-verifying upstream advisories and the 2026-09-04 pypdf 6.17.0 security release. PDF geometry and parser regression tests are required against the installed patched line.
-
-## [0.2.0] - 2026-08-15
-
-### Changed
-
 - Official Python support is `>=3.13,<3.14`, with Python 3.13 as the sole development and release-validation interpreter.
 - Canonical implementation ownership moved to the `evidence_review` namespace; `ansim_review` remains only as a minimal compatibility surface.
 - Runtime command routing is consolidated behind one canonical dispatcher.
@@ -34,6 +23,8 @@ The project follows semantic versioning for public releases where practical.
 
 ### Fixed
 
+- Human-decision loading now excludes records whose review timestamp is beyond the permitted future-skew window, preventing a future-dated archival import from pinning the active review state.
+- Web-runtime self-test now requires every runtime-critical file to be represented in the integrity manifest instead of accepting existence without manifest coverage.
 - Natural-language whole-sentence retrieval false no-evidence behavior under #112 by validating bounded semantic search requests before the existing deterministic retrieval/review pipeline.
 - Multi-document Review Workspace provenance and page navigation under #105.
 - Persisted append-only human-decision display/state under #107.
@@ -43,6 +34,8 @@ The project follows semantic versioning for public releases where practical.
 - Review Workspace responsive-layout regression against the #89 canonical three-column design.
 
 ### Security
+
+- Raised the pypdf support floor to `>=6.17,<7` after re-verifying upstream advisories and the 2026-09-04 pypdf 6.17.0 security release. PDF geometry and parser regression tests are required against the installed patched line.
 
 - Added Apache License 2.0 and public vulnerability-reporting guidance.
 - Preserved loopback-only protected review and serve-time page-image verification.

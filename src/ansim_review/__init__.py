@@ -1,5 +1,5 @@
-"""Deprecated compatibility package for the pre-v0.2.0 namespace."""
+"""Deprecated compatibility package for the pre-0.2.0 release namespace."""
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.2.0rc1"

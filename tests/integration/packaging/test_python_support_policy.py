@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
+
+from ansim_review import __version__
+from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -9,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_python_support_policy_is_313_only() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert data["project"]["version"] == "0.2.0"
+    assert data["project"]["version"] == "0.2.0rc1"
+    assert __version__ == data["project"]["version"]
+    assert Version(data["project"]["version"]).is_prerelease
     assert data["project"]["requires-python"] == ">=3.13,<3.14"
     assert data["tool"]["ruff"]["target-version"] == "py313"
     assert data["tool"]["mypy"]["python_version"] == "3.13"
@@ -70,3 +76,26 @@ def test_pep639_apache_license_metadata_is_declared_and_present() -> None:
     license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     assert "Apache License" in license_text
     assert "Version 2.0" in license_text
+
+
+def test_release_state_documents_match_source_version() -> None:
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    release_policy = (ROOT / "docs" / "RELEASE_VERSION_POLICY.md").read_text(
+        encoding="utf-8"
+    )
+    docs_index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "0.2.0rc1" in changelog
+    assert not re.search(r"^## \[0\.2\.0\] - ", changelog, re.MULTILINE)
+    assert "Current source metadata version: `0.2.0rc1`" in readme
+    assert "unpublished release candidate" in readme.lower()
+    assert "0.2.0rc1" in security
+    assert "latest official release" in security.lower()
+    assert "Unreleased PEP 440 release candidate; not an official release." in pyproject
+    assert "pyproject.toml" in release_policy
+    assert "GitHub Release" in release_policy
+    assert "exact validated commit" in release_policy
+    assert "RELEASE_VERSION_POLICY.md" in docs_index
