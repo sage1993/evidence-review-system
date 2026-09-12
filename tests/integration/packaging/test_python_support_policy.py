@@ -7,6 +7,7 @@ from pathlib import Path
 from packaging.version import Version
 
 from ansim_review import __version__
+from evidence_review import __version__ as canonical_version
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -16,6 +17,7 @@ def test_python_support_policy_is_313_only() -> None:
 
     assert data["project"]["version"] == "0.2.0rc1"
     assert __version__ == data["project"]["version"]
+    assert canonical_version == data["project"]["version"]
     assert Version(data["project"]["version"]).is_prerelease
     assert data["project"]["requires-python"] == ">=3.13,<3.14"
     assert data["tool"]["ruff"]["target-version"] == "py313"
