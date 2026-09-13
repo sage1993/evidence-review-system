@@ -2,7 +2,6 @@ import hashlib
 import json
 import os
 import shutil
-import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -26,11 +25,6 @@ def _workspace(root: Path) -> str:
         repository_root / "src/ansim_review",
         root / "src/ansim_review",
     )
-    (root / "evidence").mkdir()
-    connection = sqlite3.connect(root / "evidence/ansim-evidence.sqlite")
-    connection.execute("CREATE TABLE evidence(id TEXT PRIMARY KEY)")
-    connection.commit()
-    connection.close()
     build_valid_governance_tree(root)
     (root / "formulas").mkdir()
     (root / "formulas/manifest.json").write_text("{}", encoding="utf-8")
@@ -57,7 +51,10 @@ def _workspace(root: Path) -> str:
         repository_root / "tests/golden/questions/ansim_cases.json",
         root / "tests/golden/questions/ansim_cases.json",
     )
-    return write_valid_finalized_run(root)
+    return write_valid_finalized_run(
+        root,
+        evidence_path=root / "evidence" / "ansim-evidence.sqlite",
+    )
 
 
 def test_release_validation_blocks_network_and_checks_reproducibility(

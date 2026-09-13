@@ -421,6 +421,14 @@ def expected_final_review_packet(run_directory: Path) -> ReviewPacket:
 
 def verify_finalized_run(run_directory: Path) -> ReviewPacket:
     """Fail closed unless the stored final packet equals the derived packet."""
+    packet, _snapshot = verify_finalized_run_with_snapshot(run_directory)
+    return packet
+
+
+def verify_finalized_run_with_snapshot(
+    run_directory: Path,
+) -> tuple[ReviewPacket, VerifiedRunSnapshot]:
+    """Return the canonical packet and its exact manifest-verified inputs."""
     try:
         output_path = verified_regular_file_below(
             run_directory,
@@ -430,10 +438,14 @@ def verify_finalized_run(run_directory: Path) -> ReviewPacket:
     except (OSError, ValueError) as error:
         raise ValueError("final review packet is missing") from error
     packet = decode_review_packet(_json_file(output_path))
-    expected = expected_final_review_packet(run_directory)
+    snapshot = verify_run_snapshot(
+        run_directory,
+        required_artifacts=_REQUIRED_ARTIFACTS,
+    )
+    expected = expected_final_review_packet_from_snapshot(snapshot)
     if packet != expected:
         raise ValueError("final review packet does not match manifest-bound artifacts")
-    return packet
+    return packet, snapshot
 
 
 def finalize_run(run_directory: Path) -> ReviewPacket:

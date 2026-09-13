@@ -54,7 +54,7 @@ def _isolate_non_documentation_checks(
     monkeypatch.setattr(  # type: ignore[attr-defined]
         validator,
         "_sqlite_checks",
-        lambda path: {"status": "PASS"},
+        lambda *args, **kwargs: {"status": "PASS"},
     )
     monkeypatch.setattr(  # type: ignore[attr-defined]
         validator,
@@ -72,7 +72,7 @@ def _isolate_non_documentation_checks(
         lambda path: {"status": "PASS"},
     )
 
-    def build_zip(root: Path, output: Path) -> str:
+    def build_zip(root: Path, output: Path, **_kwargs: object) -> str:
         output.write_bytes(b"deterministic")
         return hashlib.sha256(b"deterministic").hexdigest()
 

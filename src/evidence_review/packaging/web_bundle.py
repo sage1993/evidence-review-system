@@ -160,7 +160,13 @@ def build_public_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
     return hashlib.sha256(output_zip.read_bytes()).hexdigest()
 
 
-def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
+def build_web_runtime_zip(
+    workspace_root: Path,
+    output_zip: Path,
+    *,
+    evidence_database_path: Path | None = None,
+    expected_evidence_sha256: str | None = None,
+) -> str:
     """Build byte-reproducible runtime ZIP without source PDFs or installation."""
     with tempfile.TemporaryDirectory(
         prefix="evidence-review-web-runtime-"
@@ -181,10 +187,18 @@ def build_web_runtime_zip(workspace_root: Path, output_zip: Path) -> str:
         )
         for name, source in runtime_package_roots(workspace_root / "src"):
             _copy_tree(source, stage / name)
-        _copy_file(
-            resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG),
-            stage / "evidence" / "evidence.sqlite",
+        selected_evidence = evidence_database_path or resolve_evidence_database(
+            workspace_root,
+            DEFAULT_RELEASE_CONFIG,
         )
+        copied_evidence = stage / "evidence" / "evidence.sqlite"
+        _copy_file(selected_evidence, copied_evidence)
+        if (
+            expected_evidence_sha256 is not None
+            and hashlib.sha256(copied_evidence.read_bytes()).hexdigest()
+            != expected_evidence_sha256
+        ):
+            raise ValueError("RELEASE_EVIDENCE_COPY_HASH_MISMATCH")
         _copy_tree(
             workspace_root / "rules" / "approved",
             stage / "rules" / "approved",

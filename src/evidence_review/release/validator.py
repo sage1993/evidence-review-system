@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
+import re
 import tempfile
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from evidence_review.abstention.finalizer import (
     review_packet_document,
-    verify_finalized_run,
+    verify_finalized_run_with_snapshot,
 )
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.formats import RELEASE_VALIDATION_FORMAT
@@ -42,7 +42,12 @@ from evidence_review.packaging.runtime_packages import (
 from evidence_review.packaging.web_bundle import build_web_runtime_zip
 from evidence_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
+    ReleaseConfig,
     resolve_evidence_database,
+)
+from evidence_review.release.evidence_database import (
+    ReleaseEvidenceDatabaseError,
+    verify_release_evidence_database,
 )
 from evidence_review.release.offline_boundary import resolve_manifest_member
 from evidence_review.rule_engine.governance_contract import RuleSelectionContext
@@ -50,6 +55,7 @@ from evidence_review.rule_engine.manifest import load_governed_active_rules
 from evidence_review.rule_engine.selection import rule_selection_result_bytes
 
 _ACTIVE_RULE_MANIFEST = Path("rules/manifests/active.json")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 @contextmanager
@@ -68,6 +74,8 @@ class VerifiedReleasePacket:
     raw_bytes: bytes
     packet_hash: str
     status: str
+    snapshot_sha256: str | None
+    evidence_db_sha256: str | None
 
 
 def verify_release_packet(
@@ -104,7 +112,7 @@ def verify_release_packet(
     ):
         raise ValueError("release final packet run_id does not match selected run_id")
     try:
-        packet = verify_finalized_run(run_directory)
+        packet, run_snapshot = verify_finalized_run_with_snapshot(run_directory)
         after = packet_path.read_bytes()
     except (
         KeyError,
@@ -117,12 +125,35 @@ def verify_release_packet(
         raise ValueError("release final packet changed during verification")
     if after != dump_bytes(review_packet_document(packet)):
         raise ValueError("release final packet is not canonical")
+    bundle = run_snapshot.document("track-a-bundle.json")
+    inputs = bundle.get("inputs") if isinstance(bundle, Mapping) else None
+    provenance = (
+        inputs.get("evidence_snapshot_provenance")
+        if isinstance(inputs, Mapping)
+        else None
+    )
+    evidence_db_sha256 = (
+        provenance.get("evidence_db_sha256")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    if (
+        not isinstance(inputs, Mapping)
+        or inputs.get("snapshot_hash") != packet.snapshot_sha256
+        or not isinstance(provenance, Mapping)
+        or provenance.get("evidence_snapshot_hash") != packet.snapshot_sha256
+        or not isinstance(evidence_db_sha256, str)
+        or not _SHA256.fullmatch(evidence_db_sha256)
+    ):
+        evidence_db_sha256 = None
     return VerifiedReleasePacket(
         run_id=selected_run_id,
         path=packet_path,
         raw_bytes=after,
         packet_hash=hashlib.sha256(after).hexdigest(),
         status=packet.status,
+        snapshot_sha256=packet.snapshot_sha256,
+        evidence_db_sha256=evidence_db_sha256,
     )
 
 
@@ -139,21 +170,37 @@ def _forbidden_capabilities(source_root: Path) -> list[dict[str, object]]:
     return [finding.document() for finding in scan_source_tree(source_root)]
 
 
-def _sqlite_checks(path: Path) -> dict[str, object]:
-    if not path.is_file():
-        return {"status": "FAIL", "error": "MISSING_EVIDENCE_DB"}
+def _sqlite_checks(
+    workspace_root: Path,
+    config: ReleaseConfig,
+    expected_snapshot_sha256: str | None,
+    expected_file_sha256: str | None,
+) -> dict[str, object]:
     try:
-        connection = sqlite3.connect(path)
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()
-        foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
-        connection.close()
-    except sqlite3.DatabaseError as error:
-        return {"status": "FAIL", "error": f"SQLITE_ERROR:{type(error).__name__}"}
-    integrity_value = None if integrity is None else integrity[0]
+        verified = verify_release_evidence_database(
+            workspace_root,
+            config,
+            expected_snapshot_sha256=expected_snapshot_sha256,
+            expected_file_sha256=expected_file_sha256,
+        )
+    except ReleaseEvidenceDatabaseError as error:
+        return {
+            "status": "FAIL",
+            "reason_code": error.reason_code,
+            "error": error.detail,
+        }
     return {
-        "status": "PASS" if integrity_value == "ok" and not foreign_keys else "FAIL",
-        "integrity_check": integrity_value,
-        "foreign_key_errors": len(foreign_keys),
+        "status": "PASS",
+        "integrity_check": "ok",
+        "foreign_key_errors": 0,
+        "file_sha256": verified.file_sha256,
+        "run_evidence_db_sha256": expected_file_sha256,
+        "snapshot_sha256": verified.snapshot_sha256,
+        "packet_snapshot_sha256": expected_snapshot_sha256,
+        "schema_version": verified.schema_version,
+        "retrieval_record_count": verified.retrieval_record_count,
+        "sidecars_absent": True,
+        "physical_file_hash_stable": True,
     }
 
 
@@ -283,8 +330,10 @@ def validate_release_workspace(
     output_path: Path | None = None,
     *,
     run_id: str | None = None,
+    config: ReleaseConfig = DEFAULT_RELEASE_CONFIG,
 ) -> dict[str, object]:
     """Run canonical release checks and optionally write their JSON report."""
+    selected_packet: VerifiedReleasePacket | None = None
     try:
         selected_packet = verify_release_packet(workspace_root, run_id)
     except (OSError, ValueError) as error:
@@ -300,12 +349,27 @@ def validate_release_workspace(
             "path": selected_packet.path.relative_to(workspace_root.resolve()).as_posix(),
             "sha256": selected_packet.packet_hash,
             "packet_status": selected_packet.status,
+            "snapshot_sha256": selected_packet.snapshot_sha256,
         }
     forbidden = _forbidden_capabilities(
         workspace_root / "src" / "evidence_review"
     )
+    packet_snapshot_sha256 = final_packet.get("snapshot_sha256")
+    expected_snapshot_sha256 = (
+        packet_snapshot_sha256
+        if isinstance(packet_snapshot_sha256, str)
+        else None
+    )
+    expected_file_sha256 = (
+        selected_packet.evidence_db_sha256
+        if selected_packet is not None
+        else None
+    )
     sqlite_result = _sqlite_checks(
-        resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG)
+        workspace_root,
+        config,
+        expected_snapshot_sha256,
+        expected_file_sha256,
     )
     manifests = _manifest_checks(workspace_root)
     documentation = _documentation_checks(workspace_root)
@@ -314,18 +378,34 @@ def validate_release_workspace(
     first_hash: str | None = None
     second_hash: str | None = None
     reproducible = False
-    if runtime_packages["status"] == "PASS":
+    web_zip_error: str | None = None
+    if runtime_packages["status"] == "PASS" and sqlite_result["status"] == "PASS":
+        evidence_path = resolve_evidence_database(workspace_root, config)
         with tempfile.TemporaryDirectory(
             prefix="evidence-review-release-validation-"
         ) as temporary:
             first = Path(temporary) / "first.zip"
             second = Path(temporary) / "second.zip"
-            with blocked_network():
-                first_hash = build_web_runtime_zip(workspace_root, first)
-                second_hash = build_web_runtime_zip(workspace_root, second)
-            reproducible = (
-                first_hash == second_hash and first.read_bytes() == second.read_bytes()
-            )
+            try:
+                with blocked_network():
+                    first_hash = build_web_runtime_zip(
+                        workspace_root,
+                        first,
+                        evidence_database_path=evidence_path,
+                        expected_evidence_sha256=expected_file_sha256,
+                    )
+                    second_hash = build_web_runtime_zip(
+                        workspace_root,
+                        second,
+                        evidence_database_path=evidence_path,
+                        expected_evidence_sha256=expected_file_sha256,
+                    )
+                reproducible = (
+                    first_hash == second_hash
+                    and first.read_bytes() == second.read_bytes()
+                )
+            except (OSError, ValueError) as error:
+                web_zip_error = type(error).__name__
     errors: list[str] = []
     if forbidden:
         errors.append("FORBIDDEN_RUNTIME_CAPABILITY")
@@ -360,6 +440,8 @@ def validate_release_workspace(
             "first_hash": first_hash,
             "second_hash": second_hash,
             "byte_identical": reproducible,
+            "error": web_zip_error,
+            "evidence_db_sha256": expected_file_sha256,
         },
         "offline_assurance": APPLICATION_OFFLINE_GUARD,
         "offline_policy_version": POLICY_VERSION,
