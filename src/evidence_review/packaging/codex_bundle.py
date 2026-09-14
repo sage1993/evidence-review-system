@@ -91,6 +91,9 @@ def _manifest(root: Path) -> dict[str, object]:
 def build_codex_bundle(
     workspace_root: Path,
     output_directory: Path,
+    *,
+    evidence_database_path: Path | None = None,
+    expected_evidence_sha256: str | None = None,
 ) -> dict[str, object]:
     """Copy required offline runtime assets and current ERS skills."""
     if output_directory.exists():
@@ -108,10 +111,18 @@ def build_codex_bundle(
 
     for name, source in runtime_package_roots(workspace_root / "src"):
         _copy_tree(source, output_directory / "src" / name)
-    _copy_file(
-        resolve_evidence_database(workspace_root, DEFAULT_RELEASE_CONFIG),
-        output_directory / "evidence" / "evidence.sqlite",
+    selected_evidence = evidence_database_path or resolve_evidence_database(
+        workspace_root,
+        DEFAULT_RELEASE_CONFIG,
     )
+    copied_evidence = output_directory / "evidence" / "evidence.sqlite"
+    _copy_file(selected_evidence, copied_evidence)
+    if (
+        expected_evidence_sha256 is not None
+        and hashlib.sha256(copied_evidence.read_bytes()).hexdigest()
+        != expected_evidence_sha256
+    ):
+        raise ValueError("RELEASE_EVIDENCE_COPY_HASH_MISMATCH")
     _copy_tree(
         workspace_root / "rules" / "approved",
         output_directory / "rules" / "approved",

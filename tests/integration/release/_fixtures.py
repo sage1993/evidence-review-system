@@ -6,11 +6,50 @@ from pathlib import Path
 from evidence_review.abstention.finalizer import finalize_run
 from evidence_review.canonical_json import dump_bytes
 from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.evidence.finalization import (
+    FinalizedEvidenceState,
+    finalize_evidence_database,
+    validate_finalized_evidence,
+)
+from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
+from evidence_review.evidence.store import EvidenceStore
 from evidence_review.review_run import prepare_review_run, submit_track_a
 
 
-def write_valid_finalized_run(workspace: Path) -> str:
-    """Create one minimal canonical final run for release integration tests."""
+def create_finalized_evidence_database(path: Path) -> FinalizedEvidenceState:
+    """Create the canonical finalized evidence authority for release tests."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with EvidenceStore(path, create=True) as store:
+        ingest_snapshot(store, EvidenceSnapshot())
+        return finalize_evidence_database(store)
+
+
+def write_valid_finalized_run(
+    workspace: Path,
+    *,
+    evidence_path: Path | None = None,
+    packet_snapshot_sha256: str | None = None,
+) -> str:
+    """Create a final packet bound to a canonical finalized evidence snapshot."""
+    if evidence_path is None:
+        evidence_path = workspace / "evidence" / "evidence.sqlite"
+        legacy_path = workspace / "evidence" / "ansim-evidence.sqlite"
+        if legacy_path.is_file() and not evidence_path.exists():
+            evidence_path = legacy_path
+    if evidence_path.is_file():
+        with EvidenceStore(evidence_path, read_only=True) as store:
+            evidence_state = validate_finalized_evidence(store)
+    else:
+        evidence_state = create_finalized_evidence_database(evidence_path)
+    bound_snapshot = packet_snapshot_sha256 or evidence_state.snapshot_hash
+    evidence_provenance = {
+        "evidence_snapshot_hash": bound_snapshot,
+        "evidence_db_sha256": hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+        "schema_version": evidence_state.schema_version,
+        "retrieval_record_count": evidence_state.retrieval_record_count,
+        "clause_record_count": evidence_state.clause_record_count,
+    }
+
     request_path = workspace / "release-fixture-request.json"
     request_path.write_bytes(
         dump_bytes(
@@ -18,7 +57,10 @@ def write_valid_finalized_run(workspace: Path) -> str:
                 "format": "ansim/review-run-request",
                 "version": 1,
                 "question": "Release fixture final packet",
-                "inputs": {},
+                "inputs": {
+                    "snapshot_hash": bound_snapshot,
+                    "evidence_snapshot_provenance": evidence_provenance,
+                },
                 "evidence": [],
                 "calculations": [],
                 "rules": [],

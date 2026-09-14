@@ -13,6 +13,7 @@ from typing import cast
 
 from evidence_review.canonical_json import dump_bytes, sha256_json
 from evidence_review.contracts.formats import RELEASE_FORMAT
+from evidence_review.filesystem_trust import verified_regular_directory
 from evidence_review.packaging.codex_bundle import build_codex_bundle
 from evidence_review.packaging.web_bundle import build_web_runtime_zip
 from evidence_review.release.attestation import (
@@ -26,7 +27,10 @@ from evidence_review.release.config import (
     DEFAULT_RELEASE_CONFIG,
     ReleaseConfig,
     resolve_attestation_record,
-    resolve_evidence_database,
+)
+from evidence_review.release.evidence_database import (
+    ReleaseEvidenceDatabaseError,
+    verify_release_evidence_database,
 )
 from evidence_review.release.output_verifier import validate_release_output
 from evidence_review.release.validator import (
@@ -125,6 +129,8 @@ class ReleaseInputs:
     """Read-only inputs validated before a release stage is created."""
 
     evidence: Path
+    evidence_sha256: str
+    evidence_snapshot_sha256: str
     run_id: str
     packet_bytes: bytes
     packet_hash: str
@@ -138,12 +144,22 @@ def _preflight_release(
 ) -> ReleaseInputs:
     if output_directory.exists():
         raise FileExistsError(output_directory)
-    evidence = resolve_evidence_database(workspace_root, config)
-    if not evidence.is_file():
-        raise FileNotFoundError(evidence)
     selected_packet = verify_release_packet(workspace_root, run_id)
+    try:
+        evidence = verify_release_evidence_database(
+            workspace_root,
+            config,
+            expected_snapshot_sha256=selected_packet.snapshot_sha256,
+            expected_file_sha256=selected_packet.evidence_db_sha256,
+        )
+    except ReleaseEvidenceDatabaseError as error:
+        if error.reason_code == "EVIDENCE_DATABASE_MISSING":
+            raise FileNotFoundError(str(error)) from error
+        raise
     return ReleaseInputs(
-        evidence=evidence,
+        evidence=evidence.path,
+        evidence_sha256=evidence.file_sha256,
+        evidence_snapshot_sha256=evidence.snapshot_sha256,
         run_id=selected_packet.run_id,
         packet_bytes=selected_packet.raw_bytes,
         packet_hash=selected_packet.packet_hash,
@@ -179,7 +195,10 @@ def build_evidence_release(
     config: ReleaseConfig = DEFAULT_RELEASE_CONFIG,
 ) -> dict[str, object]:
     """Build and atomically publish a deterministic evidence release."""
-    workspace_root = workspace_root.resolve()
+    workspace_root = verified_regular_directory(
+        workspace_root,
+        field="release workspace root",
+    )
     output_directory = output_directory.resolve(strict=False)
     inputs = _preflight_release(
         workspace_root,
@@ -197,6 +216,8 @@ def build_evidence_release(
         stage = Path(temporary) / "release"
         stage.mkdir()
         shutil.copyfile(inputs.evidence, stage / "evidence.sqlite")
+        if _sha(stage / "evidence.sqlite") != inputs.evidence_sha256:
+            raise ValueError("RELEASE_EVIDENCE_STAGE_HASH_MISMATCH")
         packet_output = stage / "final-review-packet.json"
         packet_output.write_bytes(inputs.packet_bytes)
         if _sha(packet_output) != inputs.packet_hash:
@@ -207,7 +228,12 @@ def build_evidence_release(
         ) as temporary_build:
             build_root = Path(temporary_build)
             codex = build_root / "codex-workspace"
-            build_codex_bundle(workspace_root, codex)
+            build_codex_bundle(
+                workspace_root,
+                codex,
+                evidence_database_path=stage / "evidence.sqlite",
+                expected_evidence_sha256=inputs.evidence_sha256,
+            )
             _zip_directory(codex, stage / "codex-workspace.zip")
             _zip_directory(
                 workspace_root / "rules" / "approved",
@@ -216,13 +242,19 @@ def build_evidence_release(
         build_web_runtime_zip(
             workspace_root,
             stage / "chatgpt-web-runtime.zip",
+            evidence_database_path=stage / "evidence.sqlite",
+            expected_evidence_sha256=inputs.evidence_sha256,
         )
 
         workspace_validation = validate_release_workspace(
             workspace_root,
             run_id=inputs.run_id,
+            config=config,
         )
-        output_validation = validate_release_output(stage)
+        output_validation = validate_release_output(
+            stage,
+            expected_evidence_sha256=inputs.evidence_sha256,
+        )
         validation = _combined_validation_report(
             workspace_validation,
             output_validation,

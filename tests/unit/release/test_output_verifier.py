@@ -91,6 +91,39 @@ def _valid_output(tmp_path: Path) -> Path:
     return output
 
 
+def _valid_output_with_evidence(tmp_path: Path, database: bytes) -> Path:
+    output = _valid_output(tmp_path)
+    (output / "evidence.sqlite").write_bytes(database)
+    for archive_name, manifest_name, format_name, software_member in (
+        (
+            "codex-workspace.zip",
+            "bundle-manifest.json",
+            "evidence-review/codex-workspace",
+            "src/evidence_review/__init__.py",
+        ),
+        (
+            "chatgpt-web-runtime.zip",
+            "runtime-manifest.json",
+            "evidence-review/chatgpt-web-runtime",
+            "evidence_review/__init__.py",
+        ),
+    ):
+        software = b"runtime"
+        files = [
+            _manifest_entry("evidence/evidence.sqlite", database),
+            _manifest_entry(software_member, software),
+        ]
+        _write_zip(
+            output / archive_name,
+            [
+                ("evidence/evidence.sqlite", database),
+                (software_member, software),
+                (manifest_name, _manifest(format_name, files)),
+            ],
+        )
+    return output
+
+
 def _replace_codex(output: Path, entries: list[tuple[str, bytes]]) -> None:
     (output / "codex-workspace.zip").unlink()
     _write_zip(output / "codex-workspace.zip", entries)
@@ -118,6 +151,57 @@ def test_release_output_verifier_accepts_exact_candidate_and_both_manifests(
     assert by_name["codex-workspace.zip"]["status"] == "PASS"
     assert by_name["chatgpt-web-runtime.zip"]["status"] == "PASS"
     assert by_name["codex-workspace.zip"]["verified_file_count"] == 1
+
+
+def test_release_output_binds_every_evidence_copy_to_expected_hash(
+    tmp_path: Path,
+) -> None:
+    database = b"finalized evidence bytes"
+    expected_hash = hashlib.sha256(database).hexdigest()
+    output = _valid_output_with_evidence(tmp_path, database)
+
+    accepted = validate_release_output(
+        output,
+        expected_evidence_sha256=expected_hash,
+    )
+
+    assert accepted["status"] == "PASS"
+    evidence_report = accepted["evidence_database"]
+    assert evidence_report["status"] == "PASS"
+    assert evidence_report["root_sha256"] == expected_hash
+    assert evidence_report["codex_bundle_sha256"] == expected_hash
+    assert evidence_report["web_runtime_sha256"] == expected_hash
+
+    wrong_database = b"different but self-consistent bytes"
+    web_path = output / "chatgpt-web-runtime.zip"
+    _write_zip(
+        web_path,
+        [
+            ("evidence/evidence.sqlite", wrong_database),
+            ("evidence_review/__init__.py", b"runtime"),
+            (
+                "runtime-manifest.json",
+                _manifest(
+                    "evidence-review/chatgpt-web-runtime",
+                    [
+                        _manifest_entry("evidence/evidence.sqlite", wrong_database),
+                        _manifest_entry("evidence_review/__init__.py", b"runtime"),
+                    ],
+                ),
+            ),
+        ],
+    )
+
+    rejected = validate_release_output(
+        output,
+        expected_evidence_sha256=expected_hash,
+    )
+
+    assert rejected["status"] == "FAIL"
+    assert (
+        "RELEASE_EVIDENCE_HASH_MISMATCH:chatgpt-web-runtime.zip:evidence/evidence.sqlite"
+        in rejected["errors"]
+    )
 
 
 def test_release_output_verifier_rejects_missing_and_unexpected_output_files(

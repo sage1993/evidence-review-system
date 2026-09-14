@@ -22,7 +22,13 @@ def sqlite_sidecar_paths(path: Path) -> tuple[Path, ...]:
 
 def reject_sqlite_sidecars(path: Path) -> None:
     """Reject a database whose bytes are not self-contained in the main file."""
-    if any(sidecar.exists() for sidecar in sqlite_sidecar_paths(path)):
+    for sidecar in sqlite_sidecar_paths(path):
+        try:
+            sidecar.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise RuntimeError("EVIDENCE_DATABASE_SIDECAR_PRESENT") from error
         raise RuntimeError("EVIDENCE_DATABASE_SIDECAR_PRESENT")
 
 

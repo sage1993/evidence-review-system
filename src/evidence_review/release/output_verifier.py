@@ -307,7 +307,82 @@ def _archive_report(
     }
 
 
-def validate_release_output(output_directory: Path) -> dict[str, object]:
+def _release_evidence_report(
+    output_directory: Path,
+    expected_sha256: str | None,
+) -> tuple[dict[str, object], list[str]]:
+    if expected_sha256 is None:
+        return {"status": "NOT_CHECKED"}, []
+    errors: list[str] = []
+    if not _SHA256.fullmatch(expected_sha256):
+        return (
+            {
+                "status": "FAIL",
+                "expected_sha256": expected_sha256,
+                "errors": ["EXPECTED_EVIDENCE_HASH_INVALID"],
+            },
+            ["EXPECTED_EVIDENCE_HASH_INVALID"],
+        )
+
+    root_path = output_directory / "evidence.sqlite"
+    root_hash: str | None = None
+    try:
+        root_hash = hashlib.sha256(root_path.read_bytes()).hexdigest()
+    except OSError:
+        errors.append("RELEASE_EVIDENCE_MISSING:evidence.sqlite")
+    if root_hash is not None and root_hash != expected_sha256:
+        errors.append("RELEASE_EVIDENCE_HASH_MISMATCH:evidence.sqlite")
+
+    archive_hashes: dict[str, str | None] = {}
+    members = (
+        ("codex-workspace.zip", "evidence/evidence.sqlite"),
+        ("chatgpt-web-runtime.zip", "evidence/evidence.sqlite"),
+    )
+    for archive_name, member_name in members:
+        archive_path = output_directory / archive_name
+        try:
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                member_infos = [
+                    info for info in archive.infolist()
+                    if info.filename == member_name
+                ]
+                if len(member_infos) != 1:
+                    errors.append(
+                        f"RELEASE_EVIDENCE_MEMBER_INVALID:{archive_name}:{member_name}"
+                    )
+                    archive_hashes[archive_name] = None
+                    continue
+                archive_hash = hashlib.sha256(
+                    archive.read(member_infos[0])
+                ).hexdigest()
+                archive_hashes[archive_name] = archive_hash
+                if archive_hash != expected_sha256:
+                    errors.append(
+                        f"RELEASE_EVIDENCE_HASH_MISMATCH:{archive_name}:{member_name}"
+                    )
+        except (OSError, zipfile.BadZipFile, KeyError, RuntimeError):
+            errors.append(f"RELEASE_EVIDENCE_ARCHIVE_INVALID:{archive_name}")
+            archive_hashes[archive_name] = None
+
+    ordered = sorted(set(errors))
+    return (
+        {
+            "status": "PASS" if not ordered else "FAIL",
+            "expected_sha256": expected_sha256,
+            "root_sha256": root_hash,
+            "codex_bundle_sha256": archive_hashes.get("codex-workspace.zip"),
+            "web_runtime_sha256": archive_hashes.get("chatgpt-web-runtime.zip"),
+            "errors": ordered,
+        },
+        ordered,
+    )
+
+
+def validate_release_output(
+    output_directory: Path,
+    *,
+    expected_evidence_sha256: str | None = None,
+) -> dict[str, object]:
     """Reopen final ZIPs and verify exact manifests, paths, sizes, and hashes."""
     output_report = _output_directory_report(output_directory)
     archives = [
@@ -321,6 +396,11 @@ def validate_release_output(output_directory: Path) -> dict[str, object]:
     errors = list(cast(list[str], output_report["errors"]))
     for archive in archives:
         errors.extend(cast(list[str], archive["errors"]))
+    evidence_report, evidence_errors = _release_evidence_report(
+        output_directory,
+        expected_evidence_sha256,
+    )
+    errors.extend(evidence_errors)
     ordered = sorted(set(errors))
     return {
         "format": RELEASE_OUTPUT_VALIDATION_FORMAT,
@@ -329,4 +409,5 @@ def validate_release_output(output_directory: Path) -> dict[str, object]:
         "errors": ordered,
         "output_directory": output_report,
         "archives": archives,
+        "evidence_database": evidence_report,
     }

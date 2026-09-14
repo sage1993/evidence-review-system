@@ -15,7 +15,7 @@ from evidence_review.evidence.schema_version import (
 )
 from evidence_review.evidence.snapshot import compute_snapshot_hash
 from evidence_review.evidence.store import EvidenceStore
-from evidence_review.retrieval.index import build_fts_index, require_fresh_index
+from evidence_review.retrieval.index import build_fts_index, validate_fresh_index
 
 FINALIZATION_VERSION = "1"
 
@@ -146,7 +146,7 @@ def finalize_evidence_database(store: EvidenceStore) -> FinalizedEvidenceState:
     # Rebuild against the final logical hash. The trigger refreshes the clause
     # retrieval projection without changing canonical snapshot rows.
     build_fts_index(connection)
-    if require_fresh_index(connection) != final_snapshot_hash:
+    if validate_fresh_index(connection) != final_snapshot_hash:
         raise EvidenceIndexStale("EVIDENCE_INDEX_STALE")
     if compute_snapshot_hash(store) != final_snapshot_hash:
         raise EvidenceLogicalSnapshotMismatch(
@@ -179,7 +179,7 @@ def validate_finalized_evidence(store: EvidenceStore) -> FinalizedEvidenceState:
         )
 
     try:
-        retrieval_hash = require_fresh_index(connection)
+        retrieval_hash = validate_fresh_index(connection)
     except (RuntimeError, sqlite3.Error) as error:
         raise EvidenceIndexStale("EVIDENCE_INDEX_STALE") from error
     if retrieval_hash != stored_snapshot_hash:

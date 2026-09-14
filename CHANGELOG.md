@@ -4,10 +4,15 @@ All notable changes to Evidence Review System are documented here.
 
 The project follows semantic versioning for public releases where practical.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-12
 
-`0.2.0rc1` is an unpublished release candidate. There is no public `v0.2.0`
-final release; `v0.1.0` remains the latest official release.
+This source version contains the stabilized 0.2.0 scope. Public release status
+is determined by the published GitHub Release and exact validated tag, not by
+this source version or changelog entry alone.
+
+The release preserves the authority chain: Evidence Navigation, mutable
+ReviewMatter, Formalization, Formal Review, then a separate append-only Human
+Decision.
 
 ### Changed
 
@@ -35,7 +40,9 @@ final release; `v0.1.0` remains the latest official release.
 
 ### Security
 
-- Raised the pypdf support floor to `>=6.17,<7` after re-verifying upstream advisories and the 2026-09-04 pypdf 6.17.0 security release. PDF geometry and parser regression tests are required against the installed patched line.
+- Raised the pypdf support floor to `>=6.18.1,<7` after reviewing three 2026-09-11 upstream advisories fixed in pypdf 6.18.1. PDF geometry and parser regression tests are required against the installed patched line.
+- Raised the pypdfium2 support floor to `>=5.12.1,<6` to exclude the yanked 5.12.0 setup-bug release; the installed qualification version is 5.13.0.
+- Re-verified the Pillow security floor at `>=12.3,<13`; Pillow 12.3.0 includes the 2026 PDF-stream decompression fix and other unsafe-input security fixes.
 
 - Added Apache License 2.0 and public vulnerability-reporting guidance.
 - Preserved loopback-only protected review and serve-time page-image verification.

@@ -229,6 +229,143 @@ def require_fresh_index(connection: sqlite3.Connection) -> str:
     return evidence_hash
 
 
+def validate_fresh_index(connection: sqlite3.Connection) -> str:
+    """Verify metadata and every derived retrieval projection against source rows."""
+    snapshot_hash = require_fresh_index(connection)
+    expected_records = _record_rows(connection)
+    actual_records = [
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT evidence_id, evidence_type, document_id, revision_id, page_id,
+                   page_number, bbox_json, source_hash, title, raw_text,
+                   normalized_text
+            FROM retrieval_records
+            ORDER BY evidence_id
+            """
+        )
+    ]
+    expected_records.sort(key=lambda row: str(row[0]))
+    if actual_records != expected_records:
+        raise StaleRetrievalIndexError("retrieval records differ from canonical evidence")
+
+    expected_fts = sorted(
+        (
+            row[0],
+            row[8],
+            row[9],
+            _fts_search_text(str(row[10])),
+        )
+        for row in expected_records
+    )
+    actual_fts = sorted(
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT evidence_id, title, raw_text, normalized_text
+            FROM evidence_fts
+            """
+        )
+    )
+    if actual_fts != expected_fts:
+        raise StaleRetrievalIndexError("full-text index differs from canonical evidence")
+
+    expected_clause_records = [
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT c.id, r.document_id, c.revision_id, c.title, NULL, NULL, NULL,
+                   COALESCE(c.raw_text, ''),
+                   COALESCE(c.normalized_text, c.raw_text, '')
+            FROM clauses c
+            JOIN revisions r ON r.id = c.revision_id
+            WHERE COALESCE(c.normalized_text, c.raw_text, '') <> ''
+            ORDER BY c.id
+            """
+        )
+    ]
+    actual_clause_records = [
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT clause_id, document_id, revision_id, title, chapter, section,
+                   clause_number, raw_text, normalized_text
+            FROM clause_retrieval_records
+            ORDER BY clause_id
+            """
+        )
+    ]
+    if actual_clause_records != expected_clause_records:
+        raise StaleRetrievalIndexError(
+            "clause retrieval records differ from canonical clauses"
+        )
+
+    expected_clause_fts = [
+        (
+            row[0],
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+            row[7],
+            row[8],
+        )
+        for row in expected_clause_records
+    ]
+    actual_clause_fts = [
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT clause_id, title, chapter, section, clause_number,
+                   raw_text, normalized_text
+            FROM clause_fts
+            ORDER BY clause_id
+            """
+        )
+    ]
+    if actual_clause_fts != expected_clause_fts:
+        raise StaleRetrievalIndexError(
+            "clause full-text index differs from canonical clauses"
+        )
+
+    expected_clause_links = [
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT c.id, l.target_id, l.relation_type
+            FROM clauses c
+            JOIN links l ON l.source_id = c.id
+            JOIN retrieval_records rr
+              ON rr.evidence_id = l.target_id
+             AND rr.revision_id = c.revision_id
+            UNION
+            SELECT c.id, l.source_id, l.relation_type
+            FROM clauses c
+            JOIN links l ON l.target_id = c.id
+            JOIN retrieval_records rr
+              ON rr.evidence_id = l.source_id
+             AND rr.revision_id = c.revision_id
+            ORDER BY 1, 2, 3
+            """
+        )
+    ]
+    actual_clause_links = [
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT clause_id, evidence_id, relation_type
+            FROM clause_evidence_links
+            ORDER BY clause_id, evidence_id, relation_type
+            """
+        )
+    ]
+    if actual_clause_links != expected_clause_links:
+        raise StaleRetrievalIndexError(
+            "clause evidence links differ from canonical evidence links"
+        )
+    return snapshot_hash
+
+
 def _normalized_query(query: str) -> str:
     normalized = unicodedata.normalize("NFC", " ".join(query.split()))
     if not normalized:
