@@ -1,5 +1,18 @@
 # Manual Acceptance and Main-Merge Policy
 
+The current public-repository policy is:
+
+```text
+GITHUB_ACTIONS = NOT_USED_BY_POLICY
+LOCAL_EXACT_SHA_VERIFICATION = AUTHORITATIVE_ACCEPTANCE
+MAIN_INTEGRATION = PULL_REQUEST_ONLY
+REQUIRED_STATUS_CHECKS = NONE
+```
+
+Opening a pull request is not acceptance. The local candidate must be tested
+at an exact clean HEAD, and the pushed branch and PR head must be rechecked
+against that same SHA. Any mismatch or unavailable identity is `HOLD`.
+
 ## ReviewMatter authority modes
 
 Release acceptance distinguishes **Evidence Navigation**, which is
@@ -14,17 +27,52 @@ packet-bound Human Decision; user Matter data is not a release artifact.
 GitHub Actions is not an acceptance dependency for this repository. Issue and
 pull-request work is verified locally from a clean checkout at the exact
 implementation HEAD. GitHub Actions is not invoked as part of the normal issue
-workflow, and a workflow that is not started or has no executed steps is never
-reported as a PASS.
+workflow and is recorded as `GITHUB_ACTIONS = NOT_USED_BY_POLICY` only when no
+workflow file is present. If a workflow file is observed, the local verifier
+reports `POLICY_MISMATCH` and holds; historical reports are not rewritten.
+
+Run the one-command local verifier:
+
+```powershell
+py -3.13 scripts/repository_gate.py --issue <N> --json-report "$env:TEMP\ers-repository-gate-<N>.json"
+```
+
+The verifier runs documentation integrity, full pytest, Ruff, both mypy
+platform checks, and compileall. It also checks branch ancestry, worktree
+cleanliness, diff whitespace, candidate stability, remote branch SHA, and PR
+head SHA. It exits nonzero and prints `MERGE_READINESS = HOLD` for any failed,
+unrun, dirty, unknown, or mismatched condition.
 
 ## GitHub-enforced `main` controls and process-level gates
 
-Issue #162 / PR #221 configured `main` protection. It was verified on
-2026-09-12 as: pull requests required; administrators enforced; zero required
-approvals; no bypass allowance; no required status checks; force-push disabled;
-and branch deletion disabled. The zero approval count reflects the repository's
-single-administrator operation and does not make self-approval a substitute for
-review.
+The authenticated GitHub UI audit observed the following on 2026-09-16:
+
+```text
+MAIN_BRANCH_PROTECTED = YES
+DIRECT_MAIN_PUSH = PROHIBITED (pull request required)
+FORCE_PUSH_TO_MAIN = PROHIBITED
+MAIN_BRANCH_DELETE = PROHIBITED
+PULL_REQUEST_REQUIRED = YES
+REQUIRE_CONVERSATION_RESOLUTION = YES
+ADMIN_BYPASS = PROHIBITED
+REQUIRED_STATUS_CHECKS = NONE
+RULESETS = NONE
+```
+
+The live audit must observe these values. If the current API or UI does not
+expose them, record:
+
+```text
+BRANCH_PROTECTION_DETAIL = NOT_OBSERVABLE_WITH_CURRENT_API_PERMISSION
+```
+
+A prior observation (including the 2026-09-12 issue #162 / PR #221 record) is
+historical evidence and is not silently promoted to a current PASS. The target
+operating policy is direct push prohibited, force-push prohibited, branch
+deletion prohibited, PR-only integration, and no required status checks.
+Conversation resolution is required by the protected main branch. The zero
+approval count does not make self-approval a
+substitute for review.
 
 Those are GitHub-enforced repository settings. They are distinct from the
 operator process and local acceptance gates in
@@ -57,18 +105,15 @@ and that this exact file hash is unchanged through the bound review lifecycle.
 A logical snapshot hash may match across separate rebuilds without requiring
 byte-identical SQLite files.
 
-The acceptance record must state exactly one applicable Actions state:
+The acceptance record must state:
 
-- `ACTIONS_NOT_RUN` when Actions was deliberately not started;
-- `ACTIONS_UNAVAILABLE` when an Actions execution or service was unavailable
-  for a non-billing reason;
-- `ACTIONS_BILLING_BLOCKED` when Actions was unavailable because of account
-  billing or spending limits; or
-- an observed workflow result, recorded as observed.
+```text
+GITHUB_ACTIONS = NOT_USED_BY_POLICY
+```
 
-`ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, and `ACTIONS_BILLING_BLOCKED` do not
-mean PASS. An observed workflow result records only that result; local/manual
-acceptance must never be inferred to be a GitHub Actions PASS.
+Historical acceptance records may retain `ACTIONS_NOT_RUN`,
+`ACTIONS_UNAVAILABLE`, or `ACTIONS_BILLING_BLOCKED`; do not rewrite them. Those
+historical values are not current policy states and do not mean PASS.
 
 This policy does not permit bypassing branch protection or an explicit
 maintainer requirement for a particular external check. Such a check remains a

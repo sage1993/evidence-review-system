@@ -58,16 +58,42 @@ py -3.13 -m pytest -v
 py -3.13 -m ruff check src tests web_runtime
 py -3.13 -m mypy src
 py -3.13 -m compileall -q src scripts web_runtime tests
-py -3.13 -m evidence_review documentation validate --repository-root .
+py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output tmp\documentation-integrity.json
 ```
 
 Packaging 또는 Release 동작을 변경한 경우 Wheel과 Web Runtime Bundle을 Build하고 Smoke Test까지 수행해야 합니다.
 
 Review Workspace를 변경한 경우 Static Test뿐 아니라 **실제 Browser Verification**도 수행해야 합니다.
 
-GitHub Actions는 사용할 수 있는 경우 유용한 검증 수단이지만, 유일한 Release Authority는 아닙니다.
+GitHub Actions는 이 저장소의 검증 경로가 아닙니다. 정책상 항상 다음과
+같이 기록합니다.
 
-GitHub Actions를 사용할 수 없는 경우에도 다음 정보를 정확히 기록하고 재현 가능한 Manual Validation을 수행했다면 검증 근거로 사용할 수 있습니다.
+```text
+GITHUB_ACTIONS = NOT_USED_BY_POLICY
+LOCAL_EXACT_SHA_VERIFICATION = AUTHORITATIVE_ACCEPTANCE
+MAIN_INTEGRATION = PULL_REQUEST_ONLY
+```
+
+PR 생성은 acceptance가 아닙니다. 정확한 candidate commit에서 원클릭
+verifier를 실행하고, push 및 PR 생성 후에도 SHA parity를 다시 확인해야
+합니다. GitHub API 또는 PR 정보를 조회할 수 없으면 PASS로 추정하지 않고
+`NOT_VERIFIED`와 `MERGE_READINESS = HOLD`를 기록합니다.
+
+```powershell
+py -3.13 scripts/repository_gate.py --issue <N> --json-report "$env:TEMP\ers-repository-gate-<N>.json"
+```
+
+실행하지 않은 gate는 사유와 함께 `NOT_RUN`으로 기록합니다. 과거
+acceptance report의 `ACTIONS_NOT_RUN`은 역사적 기록이므로 수정하지
+않습니다.
+
+검증 report는 repository 밖의 절대 경로에만 기록할 수 있습니다. Package
+변경은 exact candidate SHA를 포함한 외부 package acceptance evidence와
+wheel SHA-256, wheel build, isolated install, `pip check`, runtime smoke
+결과를 함께 요구합니다. Issue 번호가 없거나 branch/commit/PR closing
+reference가 일치하지 않으면 local gate는 `HOLD`입니다.
+
+Acceptance evidence에는 다음 정보를 포함합니다.
 
 - 정확한 HEAD
 - Python Version

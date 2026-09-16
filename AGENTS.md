@@ -6,7 +6,7 @@ This repository is migrating from a question-run-centered workflow toward a pers
 
 Always distinguish **target architecture** from **currently merged executable behavior**. Never invoke, document as current, or claim PASS for a target command/module that is not present at the exact checked-out HEAD. During migration, the issue/PR being implemented defines which target capability is active. Existing formal-review paths remain authoritative until their replacement façade is actually merged and verified.
 
-The repository-level acceptance authority is local exact-HEAD verification. GitHub Actions is optional evidence unless an issue explicitly requires it. Never report an unexecuted Actions workflow as PASS.
+The repository-level acceptance authority is local exact-HEAD verification. GitHub Actions is not used by policy: `GITHUB_ACTIONS = NOT_USED_BY_POLICY`. Never add or enable a workflow, require an Actions check, or report an unexecuted Actions workflow as a local PASS.
 
 ## 1. Authority model
 
@@ -262,7 +262,21 @@ Existing `review-question` / `review-run` commands remain compatibility and dire
 
 ## 13. Commit / Push / PR policy
 
-All issue work uses an isolated feature/fix branch or worktree from the exact latest `origin/main` SHA.
+The public repository governance contract is:
+
+```text
+GITHUB_ACTIONS = NOT_USED_BY_POLICY
+LOCAL_EXACT_SHA_VERIFICATION = AUTHORITATIVE_ACCEPTANCE
+MAIN_INTEGRATION = PULL_REQUEST_ONLY
+REQUIRED_STATUS_CHECKS = NONE
+```
+
+Pull-request creation is not acceptance. A PR may be merged only after the
+local verifier has passed on the exact candidate and the PR head is rechecked
+against that candidate. If remote or PR identity cannot be observed, record
+`NOT_VERIFIED` and hold the merge.
+
+All issue work uses an isolated issue-scoped branch (for example `feature/`, `fix/`, or `chore/`) or worktree from the exact latest `origin/main` SHA.
 
 Required flow:
 
@@ -274,7 +288,7 @@ origin/main
 → focused regression
 → commit
 → exact-HEAD full acceptance
-→ push feature/fix branch
+→ push issue branch
 → remote SHA verification
 → Pull Request
 → explicit merge step
@@ -331,7 +345,7 @@ Every MIG issue must state:
 Before claiming merge readiness from a clean checkout at the exact candidate HEAD with Python 3.13, run the applicable gates:
 
 ```powershell
-py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output $env:TEMP\ers-documentation-integrity.json
+py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output tmp\documentation-integrity.json
 py -3.13 -m pytest -v
 py -3.13 -m ruff check src tests web_runtime
 py -3.13 -m mypy src
@@ -341,7 +355,27 @@ py -3.13 -m compileall -q src scripts web_runtime tests
 
 Package changes additionally require an isolated Python 3.13 wheel/install/runtime smoke. UI/Viewer/Workbench changes require real browser QA on the supported viewport/lifecycle matrix. HTTP transport changes require the relevant Windows stress matrix. Evidence DB changes require finalized lifecycle, logical/retrieval identity, SQLite integrity, no sidecars, exact closed-file SHA and unchanged bound lifecycle hash.
 
-GitHub Actions must be reported as actually observed: `ACTIONS_NOT_RUN`, `ACTIONS_UNAVAILABLE`, `ACTIONS_BILLING_BLOCKED`, or a real executed result. Local PASS is not Actions PASS.
+The one-command local exact-SHA verifier runs these gates and the identity
+checks together:
+
+```powershell
+py -3.13 scripts/repository_gate.py --issue <N> --json-report "$env:TEMP\ers-repository-gate-<N>.json"
+```
+
+It exits nonzero for a dirty worktree, changed candidate, failed or unrun
+gate, unknown ancestry, remote/PR SHA mismatch, unavailable identity, or a
+missing issue binding. The verifier reports
+`GITHUB_ACTIONS = NOT_USED_BY_POLICY` only when no workflow file is observed;
+an observed workflow is `POLICY_MISMATCH` and holds the gate. Historical
+reports may retain `ACTIONS_NOT_RUN` and must not be rewritten.
+
+`--json-report` must name an absolute path outside the repository so report
+creation cannot make an already-computed clean verdict dirty. When the
+candidate changes runtime/package or release content, pass an external
+`--package-evidence` JSON record bound to the exact candidate SHA. That record
+must contain PASS results for wheel build, isolated install, `pip check`, and
+runtime smoke plus the wheel SHA-256; missing or stale evidence remains
+`PACKAGE_ACCEPTANCE = NOT_RUN` or `NOT_VERIFIED` and holds the gate.
 
 ## 16. Release and packaging boundaries
 

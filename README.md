@@ -277,7 +277,7 @@ py -3.13 scripts/build_release.py $WORKSPACE <output> --run-id <RUN-ID>
 정확한 HEAD의 Clean Checkout 환경에서 Python 3.13을 사용하여 다음 검증을 실행합니다.
 
 ```powershell
-py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output .verification/documentation-integrity.json
+py -3.13 -m evidence_review documentation validate --repository-root . --config documentation-integrity.json --output tmp\documentation-integrity.json
 py -3.13 -m pytest -v
 py -3.13 -m ruff check src tests web_runtime
 py -3.13 -m mypy src
@@ -306,7 +306,38 @@ Documentation Integrity 검증은 다음 항목을 검사합니다.
 
 실행하지 않은 Gate는 반드시 `NOT_RUN`으로 기록해야 합니다.
 
-또한 GitHub Actions 결과와 Local Verification 결과를 구분하여 보고해야 합니다.
+## Public repository governance and local acceptance
+
+이 공개 저장소는 GitHub를 source, issue, Pull Request 및 release 관리에만
+사용하며 GitHub Actions는 정책상 사용하지 않습니다.
+
+```text
+GITHUB_ACTIONS = NOT_USED_BY_POLICY
+LOCAL_EXACT_SHA_VERIFICATION = AUTHORITATIVE_ACCEPTANCE
+MAIN_INTEGRATION = PULL_REQUEST_ONLY
+REQUIRED_STATUS_CHECKS = NONE
+```
+
+PR 생성 자체는 acceptance가 아닙니다. 정확한 candidate commit에서 다음
+원클릭 verifier를 실행하면 repository gate, clean worktree, branch ancestry,
+remote branch SHA 및 PR HEAD SHA를 함께 확인합니다.
+
+```powershell
+py -3.13 scripts/repository_gate.py --issue <N> --json-report "$env:TEMP\ers-repository-gate-<N>.json"
+```
+
+검증기는 실패·미실행 gate, dirty worktree, candidate 변경, 알 수 없는
+ancestry 또는 SHA 불일치에서 `MERGE_READINESS = HOLD`로 종료합니다.
+원격/PR 정보를 조회할 수 없을 때도 임의로 PASS하지 않습니다. 과거
+acceptance report의 `ACTIONS_NOT_RUN` 기록은 역사적 사실이므로 수정하지
+않습니다.
+
+`<N>`은 실제 GitHub Issue 번호이며, 검증기는 issue-scoped branch, 최신
+commit subject, PR head branch 및 PR 본문의 `Closes/Fixes/Resolves #N`를
+함께 확인합니다. `--json-report`는 repository 밖의 절대 경로만 허용하며,
+runtime/package 변경에는 exact candidate SHA에 결합된 외부 `--package-evidence`
+JSON이 필요합니다. Wheel build, isolated install, `pip check`, runtime
+smoke 중 하나라도 없거나 실패하면 `PACKAGE_ACCEPTANCE`는 PASS가 아닙니다.
 
 ## 문서
 
