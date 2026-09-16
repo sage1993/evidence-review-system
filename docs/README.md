@@ -83,39 +83,16 @@ current workflow documents above.
 
 - [Historical: 2026-08-16 real-review retrieval relevance fix](plans/2026-08-16-real-review-retrieval-relevance-fix.md)
 - [Historical: 2026-08-26 Reference Viewer v2 port inventory](plans/2026-08-26-reference-viewer-v2-port-inventory.md)
-- [Historical: 2026-08-13 Korean retrieval formal-review invariants](superpowers/plans/2026-08-13-korean-retrieval-formal-review-invariants.md)
-- [Historical: 2026-08-14 Issues 98–101 integrated fix](superpowers/plans/2026-08-14-issues-98-101-integrated-fix.md)
-- [Historical: 2026-08-15 Issue 112 AI Question Planner](superpowers/plans/2026-08-15-issue-112-ai-question-planner.md)
-- [Historical: 2026-08-15 public readiness v0.2.0](superpowers/plans/2026-08-15-public-readiness-v0.2.0.md)
-- [Historical: 2026-08-16 real workspace clause retrieval repair](superpowers/plans/2026-08-16-real-workspace-clause-retrieval-repair.md)
-- [Historical: 2026-08-21 case visual review integration](superpowers/plans/2026-08-21-case-visual-review-integration.md)
-- [Historical: 2026-08-24 Issue 119 visual review hardening](superpowers/plans/2026-08-24-issue-119-visual-review-hardening.md)
-- [Historical: 2026-08-26 PR-A execution bootstrap](superpowers/plans/2026-08-26-pr-a-execution-bootstrap.md)
-- [Historical: 2026-08-26 PR-A Issue 116 correctness convergence](superpowers/plans/2026-08-26-pr-a-issue-116-correctness-convergence.md)
-- [Historical: 2026-08-26 PR-B Reference Viewer v2](superpowers/plans/2026-08-26-pr-b-reference-viewer-v2.md)
-- [Historical: 2026-08-26 PR122 formal acceptance hardening](superpowers/plans/2026-08-26-pr122-formal-acceptance-hardening.md)
-- [Historical: 2026-09-03 cold-case visual tile prewarm](superpowers/plans/2026-09-03-cold-case-visual-tile-prewarm.md)
-- [Historical: 2026-09-05 Evidence Review System stabilization implementation plan](superpowers/plans/2026-09-05-evidence-review-system-stabilization-implementation-plan.md)
-- [Historical: 2026-09-07 Issue 138 legacy workspace validator](superpowers/plans/2026-09-07-issue-138-legacy-workspace-validator.md)
-- [Historical: 2026-09-07 repository hygiene and documentation baseline](superpowers/plans/2026-09-07-repository-hygiene-documentation-baseline.md)
-- [Historical: Superpowers implementation plan index](superpowers/plans/README.md)
-- [Historical: Korean retrieval formal-review invariants design](superpowers/specs/2026-08-13-korean-retrieval-formal-review-invariants-design.md)
-- [Historical: Issues 98–101 integrated fix design](superpowers/specs/2026-08-14-issues-98-101-integrated-fix-design.md)
-- [Historical: Public readiness v0.2.0 design](superpowers/specs/2026-08-15-public-readiness-v0.2.0-design.md)
-- [Historical: Integrated correctness and Reference Viewer design](superpowers/specs/2026-08-26-integrated-correctness-reference-viewer-design.md)
-- [Historical: PR122 formal acceptance hardening design](superpowers/specs/2026-08-26-pr122-formal-acceptance-hardening-design.md)
 
 ## Classification notes
 
 - `docs/README.md`, the current workflow/contract/operations documents, and
   the active `.agents/skills` instructions are current material.
-- `docs/plans/` and `docs/superpowers/plans/` are `HISTORICAL_PLAN` records.
-- `docs/superpowers/specs/` contains historical design records in the same
-  preserved planning boundary.
+- `docs/plans/` contains tracked `HISTORICAL_PLAN` records retained as repository documentation.
+- `.superpowers/` and `docs/superpowers/` are local or agent-generated work-product paths excluded by `.gitignore`; they are not repository documentation authority.
 - The dated cold-cache document is an `ACCEPTANCE_RECORD`.
 - `docs/EVIDENCE_SCHEMA_MIGRATION.md`, `docs/LEGACY_LINEAGE_MIGRATION.md`,
   `docs/LEGACY_VISUALS.md`, and the legacy skill pointer are
   `MIGRATION_COMPATIBILITY` material.
-- No document was deleted or modernized as part of this index; no current
-  document is intentionally classified as `OBSOLETE_OR_DUPLICATE` or
+- No current document is intentionally classified as `OBSOLETE_OR_DUPLICATE` or
   `UNKNOWN`.
