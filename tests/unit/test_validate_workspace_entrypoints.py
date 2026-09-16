@@ -71,9 +71,7 @@ def test_current_docs_name_release_authority_and_legacy_scope() -> None:
     policy = (ROOT / "docs" / "MANUAL_ACCEPTANCE_POLICY.md").read_text(
         encoding="utf-8"
     )
-    plans_index = (ROOT / "docs" / "superpowers" / "plans" / "README.md").read_text(
-        encoding="utf-8"
-    )
+    docs_index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
 
     assert "scripts/validate_workspace.py" not in readme
     assert (
@@ -86,7 +84,7 @@ def test_current_docs_name_release_authority_and_legacy_scope() -> None:
     )
     assert "scripts/validate_legacy_ansim_workspace.py" in policy
     assert "not a current release gate" in policy.lower()
-    assert "historical" in plans_index.lower()
-    assert "docs/MANUAL_ACCEPTANCE_POLICY.md" in plans_index
-    assert "scripts/validate_workspace.py" in plans_index
-    assert "superseded" in plans_index.lower()
+    assert "scripts/validate_workspace.py" in docs_index
+    assert "retired" in docs_index.lower()
+    assert "docs/superpowers/" in docs_index
+    assert "not repository documentation authority" in docs_index
