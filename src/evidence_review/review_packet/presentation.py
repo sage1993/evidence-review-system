@@ -35,6 +35,7 @@ _GAP_LABELS = {
     "SOURCE_NOT_INGESTED": "참조 법령 원문 미수록",
     "REFERENCE_TARGET_MISSING": "참조 대상 원문 미확인",
     "RETRIEVAL_MISS": "관련 근거 추가 확인 필요",
+    "RELEVANCE_INSUFFICIENT": "검색된 근거의 질문 적합성이 부족합니다.",
     "PARSE_GAP": "원문 해석을 추가 확인해야 합니다.",
 }
 

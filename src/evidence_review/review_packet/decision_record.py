@@ -198,8 +198,16 @@ def _eligible_for_latest(record: HumanDecisionRecord, *, now: datetime) -> bool:
 def load_latest_valid_human_decision(
     run_directory: Path,
     packet_hash: str,
+    *,
+    as_of: datetime | str | None = None,
 ) -> HumanDecisionRecord | None:
-    """Return the latest active decision bound to *packet_hash*."""
+    """Return the latest decision bound to *packet_hash*.
+
+    With ``as_of`` supplied, the result is a deterministic historical
+    projection: only records whose server timestamp is at or before that
+    cutoff are eligible.  The default retains the live-view behavior, which
+    excludes decisions implausibly far in the future.
+    """
     try:
         run_directory = verified_regular_directory(run_directory, field="run_directory")
     except (OSError, ValueError):
@@ -213,6 +221,19 @@ def load_latest_valid_human_decision(
     except (OSError, ValueError):
         return None
 
+    cutoff: datetime | None = None
+    if as_of is not None:
+        try:
+            cutoff = (
+                as_of
+                if isinstance(as_of, datetime)
+                else datetime.fromisoformat(as_of)
+            )
+        except (TypeError, ValueError):
+            return None
+        if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+            return None
+        cutoff = cutoff.astimezone(UTC)
     now = datetime.now(UTC)
     records = [
         record
@@ -225,7 +246,11 @@ def load_latest_valid_human_decision(
             )
         )
         is not None
-        and _eligible_for_latest(record, now=now)
+        and (
+            datetime.fromisoformat(record.reviewed_at) <= cutoff
+            if cutoff is not None
+            else _eligible_for_latest(record, now=now)
+        )
     ]
     if not records:
         return None

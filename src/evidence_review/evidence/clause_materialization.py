@@ -17,6 +17,7 @@ _OPERATION_RE = re.compile(r"^\s*(\d+(?:-\d+){1,3})\.\s*(.*)$", re.DOTALL)
 _OPERATION_ALPHA_DOT_RE = re.compile(r"^\s*([가-힣])\.\s*(.*)$", re.DOTALL)
 _OPERATION_NUMBER_PAREN_RE = re.compile(r"^\s*(\d+)\)\s*(.*)$", re.DOTALL)
 _OPERATION_ALPHA_PAREN_RE = re.compile(r"^\s*([가-힣])\)\s*(.*)$", re.DOTALL)
+_APPENDIX_RE = re.compile(r"^\s*(?:부록|붙임|별첨)\b(?:\s*[:：\-]?\s*(.*))?$", re.DOTALL)
 _PARAGRAPH_CHARS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 _PARAGRAPH_INDEX = {value: index + 1 for index, value in enumerate(_PARAGRAPH_CHARS)}
 _PARAGRAPH_RE = re.compile(f"([{_PARAGRAPH_CHARS}])")
@@ -177,6 +178,26 @@ def derive_legal_clauses(
             operation_alpha = None
             operation_number = None
             active_builder = None
+
+        appendix_match = _APPENDIX_RE.match(raw_text)
+        if appendix_match:
+            current_article = None
+            current_article_title = None
+            operation_root = None
+            operation_alpha = None
+            operation_number = None
+            appendix_title = _normalize(appendix_match.group(1))
+            active_builder = start_clause(
+                revision_id=revision_id,
+                structural_key=(
+                    "APPENDIX" if not appendix_title else f"APPENDIX:{appendix_title}"
+                ),
+                title=raw_text,
+                text=raw_text,
+                source_id=element_id,
+                article_key=None,
+            )
+            continue
 
         article_match = _ARTICLE_RE.match(raw_text)
         if article_match:

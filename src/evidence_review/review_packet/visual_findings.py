@@ -31,6 +31,7 @@ _LEVEL_RE = re.compile(
 )
 _BUILDING_RE = re.compile(r"\b\d{1,4}\s*동\b")
 _DISTANCE_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:mm|cm|m)\b", re.I)
+_UNIT_RE = re.compile(r"(?:㎡|m²|m2|㎥|m3|mm|cm|km|m|%)", re.I)
 
 _CATEGORY_TITLES = {
     "space_program": "공간 구성",
@@ -60,6 +61,31 @@ def _sequence(value: object, field: str) -> Sequence[object]:
 
 def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _candidate_value(candidate: Mapping[str, object]) -> str:
+    return (
+        _text(candidate.get("display_value"))
+        or _text(candidate.get("normalized_candidate"))
+        or _text(candidate.get("raw_value"))
+    )
+
+
+def _unit(value: str) -> str | None:
+    match = _UNIT_RE.search(value)
+    return None if match is None else match.group(0)
+
+
+def _uncertainty_state(candidate: Mapping[str, object]) -> str:
+    declared = _text(candidate.get("uncertainty_state")).upper()
+    if declared in {"VERIFIED", "NOT_VERIFIED", "UNCERTAIN"}:
+        return declared
+    status = _text(candidate.get("status")).upper()
+    if status == "ACCEPTED":
+        return "VERIFIED"
+    if status == "CONFLICT":
+        return "UNCERTAIN"
+    return "NOT_VERIFIED"
 
 
 def _normalized_phrase(value: object) -> str:
@@ -224,11 +250,7 @@ def _display_values(candidates: Sequence[Mapping[str, object]]) -> str:
     values: list[str] = []
     questions = _issue_questions(candidates)
     for candidate in candidates:
-        value = (
-            _text(candidate.get("display_value"))
-            or _text(candidate.get("normalized_candidate"))
-            or _text(candidate.get("raw_value"))
-        )
+        value = _candidate_value(candidate)
         normalized = _normalized_phrase(value)
         if normalized and any(question in normalized for question in questions):
             continue
@@ -244,11 +266,19 @@ def build_semantic_visual_findings(
     grouped: dict[
         tuple[str, tuple[str, ...], str], list[Mapping[str, object]]
     ] = {}
+    page_by_asset: dict[str, int] = {}
     for page_index, raw_page in enumerate(pages):
         page = _mapping(raw_page, f"pages[{page_index}]")
         asset_key = _text(page.get("asset_key"))
         if not asset_key:
             raise ValueError("visual page asset_key is required")
+        page_number = page.get("page", page_index + 1)
+        if isinstance(page_number, bool) or not isinstance(page_number, int) or page_number < 1:
+            raise ValueError("visual page page must be a positive integer")
+        prior_page = page_by_asset.get(asset_key)
+        if prior_page is not None and prior_page != page_number:
+            raise ValueError("visual asset key maps to multiple source pages")
+        page_by_asset[asset_key] = page_number
         raw_candidates = _sequence(page.get("candidates", []), "page.candidates")
         for candidate_index, raw_candidate in enumerate(raw_candidates):
             candidate = _mapping(
@@ -304,6 +334,26 @@ def build_semantic_visual_findings(
             "category": category,
             "candidate_ids": candidate_ids,
         }
+        observations = []
+        for candidate in sorted(
+            candidates,
+            key=lambda item: _text(item.get("candidate_id")),
+        ):
+            candidate_id = _text(candidate.get("candidate_id"))
+            candidate_bounds = _geometry_bounds(candidate)
+            value = _candidate_value(candidate)
+            observations.append(
+                {
+                    "candidate_id": candidate_id,
+                    "label": _text(candidate.get("candidate_type"))
+                    or "visual observation",
+                    "value": value,
+                    "unit": _unit(value),
+                    "source_page": page_by_asset[asset_key],
+                    "bbox": list(candidate_bounds),
+                    "uncertainty_state": _uncertainty_state(candidate),
+                }
+            )
         findings.append(
             {
                 "finding_id": f"VF-{sha256_json(identity)[:20].upper()}",
@@ -317,6 +367,7 @@ def build_semantic_visual_findings(
                 "focus_bbox": focus_bbox,
                 "direct_claim_ids": direct_claim_ids,
                 "related_claim_ids": related_claim_ids,
+                "observations": observations,
             }
         )
     return findings

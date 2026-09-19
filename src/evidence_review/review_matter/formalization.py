@@ -174,7 +174,11 @@ def _request_document(
         "approved_rule_result_ids": [],
         "confidence_input": {
             "factors": {
-                name: {"value": "1.0", "source": "formalization:snapshot"}
+                name: {
+                    "value": "1.0",
+                    "source": "formalization:snapshot",
+                    "state": "VERIFIED",
+                }
                 for name in FACTOR_WEIGHTS
             }
         },

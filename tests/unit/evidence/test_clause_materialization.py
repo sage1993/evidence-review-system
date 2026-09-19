@@ -167,6 +167,28 @@ def test_splits_operational_hierarchy_into_bounded_leaf_subclauses() -> None:
     assert "400%" not in by_key["4-4-2/나/2/나"].normalized_text
 
 
+def test_appendix_heading_ends_prior_operational_hierarchy() -> None:
+    result = derive_legal_clauses(
+        (
+            _element("E-1", 0, "9-2-4. 공공기여율 한시적 완화"),
+            _element("E-2", 1, "가. 제2종일반주거지역"),
+            _element("E-3", 2, "부록 1. 공공기여 산정 예시"),
+            _element("E-4", 3, "공공시설 제공에 따른 산정 방법"),
+        )
+    )
+
+    assert not any(
+        clause.structural_key.startswith("9-2-4/")
+        and "부록" in clause.normalized_text
+        for clause in result.clauses
+    )
+    assert not any(
+        clause.structural_key.startswith("9-2-4/")
+        and "공공시설 제공" in clause.normalized_text
+        for clause in result.clauses
+    )
+
+
 def test_clause_ids_are_stable_for_identical_source_content() -> None:
     elements = (
         _element("E-1", 0, "제13조(주차장 설치기준 완화)"),

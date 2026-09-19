@@ -20,6 +20,7 @@ IssueStatus = Literal[
 ]
 GapCode = Literal[
     "RETRIEVAL_MISS",
+    "RELEVANCE_INSUFFICIENT",
     "SOURCE_NOT_INGESTED",
     "REFERENCE_TARGET_MISSING",
     "PARSE_GAP",
@@ -35,7 +36,8 @@ _GAP_ORDER: dict[GapCode, int] = {
     "REFERENCE_TARGET_MISSING": 3,
     "PARSE_GAP": 4,
     "MISSING_REQUIRED_FACET": 5,
-    "RETRIEVAL_MISS": 6,
+    "RELEVANCE_INSUFFICIENT": 6,
+    "RETRIEVAL_MISS": 7,
 }
 
 
@@ -126,6 +128,21 @@ def _complete_facet_evidence_ids(
     return evidence_ids or None
 
 
+def _automatic_relevance_insufficient_roles(
+    bundle: IssueRetrievalBundle,
+) -> dict[str, set[str]]:
+    """Collect roles whose generated candidates were rejected by relevance gates."""
+    rejected: dict[str, set[str]] = {}
+    for trace in bundle.fallback_traces:
+        if any(
+            not decision.accepted
+            and "RETRIEVAL_RELEVANCE_INSUFFICIENT" in decision.reason_codes
+            for decision in trace.relevance_decisions
+        ):
+            rejected.setdefault(trace.issue_id, set()).add(trace.role)
+    return rejected
+
+
 def evaluate_issue_coverage(
     plan: QuestionPlan,
     bundle: IssueRetrievalBundle,
@@ -133,6 +150,7 @@ def evaluate_issue_coverage(
     facet_report: FacetCoverageReport | None = None,
     reference_missing_by_issue: Mapping[str, tuple[MissingReference, ...]] | None = None,
     source_missing_issue_ids: Sequence[str] = (),
+    relevance_insufficient_issue_ids: Sequence[str] = (),
     ambiguous_issue_ids: Sequence[str] = (),
     conflicting_issue_ids: Sequence[str] = (),
     conditional_issue_ids: Sequence[str] = (),
@@ -158,14 +176,17 @@ def evaluate_issue_coverage(
         else dict(reference_missing_by_issue)
     )
     source_missing = set(source_missing_issue_ids)
+    relevance_insufficient = set(relevance_insufficient_issue_ids)
     ambiguous = set(ambiguous_issue_ids)
     conflicting = set(conflicting_issue_ids)
     conditional = set(conditional_issue_ids)
     known_issue_ids = {issue.id for issue in plan.issues}
+    automatic_relevance_insufficient = _automatic_relevance_insufficient_roles(bundle)
 
     supplied_ids = (
         set(reference_missing)
         | source_missing
+        | relevance_insufficient
         | ambiguous
         | conflicting
         | conditional
@@ -225,8 +246,21 @@ def evaluate_issue_coverage(
             ):
                 gaps.append("REFERENCE_TARGET_MISSING")
 
-            if gaps:
+            if issue.id in relevance_insufficient:
+                gaps.append("RELEVANCE_INSUFFICIENT")
+            elif any(
+                role in required and role not in citation_roles
+                for role in automatic_relevance_insufficient.get(issue.id, ())
+            ):
+                gaps.append("RELEVANCE_INSUFFICIENT")
+
+            if any(
+                code in {"SOURCE_NOT_INGESTED", "REFERENCE_TARGET_MISSING"}
+                for code in gaps
+            ):
                 status = "SOURCE_MISSING"
+            elif "RELEVANCE_INSUFFICIENT" in gaps:
+                status = "UNRESOLVED"
             elif missing:
                 if missing & semantic_roles:
                     status = "UNRESOLVED"

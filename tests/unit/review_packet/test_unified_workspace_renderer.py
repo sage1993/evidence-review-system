@@ -81,6 +81,9 @@ def test_generic_formal_review_uses_unified_reference_only_workspace_shell(
 
     assert 'data-review-workspace="unified"' in html
     assert 'data-review-workspace-mode="reference-only"' in html
+    assert 'data-has-reference="false"' in html
+    assert 'data-has-subject="false"' in html
+    assert 'data-has-comparison="false"' in html
     assert 'id="evidence-viewer"' in html
     assert 'id="decision-form"' in html
 
@@ -97,6 +100,24 @@ def test_generic_formal_review_projects_issue_results_and_conclusion(
     assert "조건부" in html
     assert "전체 검토 상태" in html
     assert "질문에 대한 결론이 제공되지 않았습니다." not in html
+
+
+def test_workspace_shell_uses_capabilities_without_switching_template_modes(
+    tmp_path: Path,
+) -> None:
+    model = _generic_model()
+    model["capabilities"] = {
+        "has_reference": True,
+        "has_subject": True,
+        "has_comparison": True,
+    }
+
+    html = render_review_html(model, tmp_path)
+
+    assert 'data-review-workspace-mode="reference-only"' in html
+    assert 'data-has-reference="true"' in html
+    assert 'data-has-subject="true"' in html
+    assert 'data-has-comparison="true"' in html
 
 
 def test_generic_formal_review_counts_issue_level_source_gaps(
@@ -119,3 +140,12 @@ def test_renderer_does_not_mutate_machine_authority_fields(tmp_path: Path) -> No
     assert model == before
     assert model["status"] == "PARTIALLY_RESOLVED"
     assert model["human_decision"] is None
+
+
+def test_renderer_loads_workspace_v2_tokens_into_the_document_shell() -> None:
+    html = render_review_html(_generic_model(), Path(":memory:"))
+
+    assert "/* Review Workspace v2 tokens */" in html
+    assert "--space-xs: 4px" in html
+    assert "font-size: 15px" in html
+    assert ".app-shell" in html and "max-width: none" in html

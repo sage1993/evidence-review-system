@@ -2,7 +2,10 @@ import re
 from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
-from evidence_review.review_packet.render_case_visual import render_case_visual_review
+from evidence_review.review_packet.render_case_visual import (
+    case_visual_css,
+    render_case_visual_review,
+)
 from evidence_review.review_packet.render_case_visual_lazy import (
     render_case_visual_review as render_lazy_case_visual_review,
 )
@@ -10,6 +13,7 @@ from evidence_review.review_packet.render_summary import (
     render_additional_review,
     render_status_band,
     render_summary,
+    visual_shell_css,
 )
 
 
@@ -196,7 +200,7 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
 
     assert "기준 근거" in html
     assert "사용자 파일" in html
-    assert "대조 결과" in html
+    assert "쟁점 탐색" in html
     assert "설계기준" in html
     assert "차량 출입구는 기준 위치를 확보해야 한다." in html
     assert 'data-case-page-src="data:image/png;base64,ZmFrZQ=="' in html
@@ -211,8 +215,8 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert '<rect class="case-visual-geometry" fill="none"' in html
     assert 'data-case-divider' in html
     assert 'role="separator"' in html
-    assert 'data-finding-prev' in html
-    assert 'data-finding-next' in html
+    assert 'data-finding-prev' not in html
+    assert 'data-finding-next' not in html
     assert 'data-case-zoom-in' in html
     assert 'data-case-zoom-out' in html
     assert 'data-case-overlay-mode="selected"' in html
@@ -225,6 +229,7 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
 def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None:
     """A future ambiguous reset control must not replace the three view modes."""
     html = render_case_visual_review(_model())
+    css = case_visual_css()
 
     for control, label in (
         ("data-case-fit-screen", "화면 맞춤"),
@@ -247,9 +252,9 @@ def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None
         "#case-visual-review .viewer-controls button{width:40px;height:40px;"
         "min-height:0;display:inline-flex;"
         "align-items:center;justify-content:center;padding:0;line-height:0}"
-    ) in html
-    assert "#case-visual-review .finding-filter{height:32px;min-height:0" in html
-    assert ".case-visual-help{margin:0;padding:8px 12px" in html
+    ) in css
+    assert "#case-visual-review .finding-filter{height:32px;min-height:0" in css
+    assert ".case-visual-help{margin:0;padding:8px 12px" in css
 
 
 def test_issue_152_no_direct_reference_uses_subject_workspace_without_empty_pane() -> None:
@@ -262,6 +267,7 @@ def test_issue_152_no_direct_reference_uses_subject_workspace_without_empty_pane
     finding["direct_claim_ids"] = []
 
     html = render_case_visual_review(model)
+    css = case_visual_css()
 
     assert 'data-reference-available="false"' in html
     assert 'class="reference-unavailable"' in html
@@ -270,7 +276,7 @@ def test_issue_152_no_direct_reference_uses_subject_workspace_without_empty_pane
     assert (
         '#case-visual-review[data-reference-available="false"] '
         ".comparison-workspace{grid-template-columns:minmax(0,1fr)}"
-    ) in html
+    ) in css
 
 
 def test_issue_152_full_renderers_share_named_review_shell_regions() -> None:
@@ -330,7 +336,8 @@ def test_multi_page_renderer_removes_hidden_pages_from_layout_and_pointer_events
 
     html = render_case_visual_review(model)
 
-    assert ".case-visual-page[hidden]{display:none!important}" in html
+    assert ".case-visual-page[hidden]{display:none!important}" in case_visual_css()
+    assert 'data-case-page="ATT-1-p2"' in html
 
 
 def test_renderer_exposes_all_six_reference_types() -> None:
@@ -352,7 +359,7 @@ def test_renderer_exposes_all_six_reference_types() -> None:
     assert 'data-case-focus-bbox=' in html
     assert 'data-case-divider' in html
     assert 'data-case-overlay-mode="selected"' in html
-    assert 'data-case-decision-open' in html
+    assert 'data-case-decision-open' not in html
 
 
 def test_renderer_marks_only_selected_reference_table_cells_as_targets() -> None:
@@ -480,22 +487,29 @@ def test_renderer_returns_empty_for_non_visual_model() -> None:
     assert render_case_visual_review({}) == ""
 
 
+def test_visual_fragment_leaves_styles_in_the_document_shell() -> None:
+    html = render_case_visual_review(_model())
+
+    assert "<style>" not in html
+    assert "<script>" in html
+
+
 def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None:
     html = render_additional_review(_model())
+    css = case_visual_css() + visual_shell_css()
 
     assert 'class="visual-review-grid-span"' in html
-    assert 'style="grid-column:1/-1;width:100%;min-width:0"' in html
+    assert 'style="grid-column:1/-1;width:100%;min-width:0"' not in html
     assert 'id="case-visual-review"' in html
     assert 'id="additional-review"' not in html
-    assert "body:has(#case-visual-review){overflow:hidden}" in html
-    assert ".review-workspace>:not(.visual-review-grid-span):not(#decision-form)" in html
-    assert 'body[data-visual-decision-open="true"]' in html
-    assert "#decision-form:hover" in html
-    assert "#decision-form:focus-within" in html
-    assert "pointer-events:none!important" in html
-    assert 'data-case-decision-open' in html
-    assert 'data-case-decision-backdrop' in html
-    assert "e.key==='Escape'" in html
+    assert "body:has(#case-visual-review){overflow:hidden}" in css
+    assert ".review-workspace>:not(.visual-review-grid-span):not(#decision-form)" in css
+    assert 'body[data-visual-decision-open="true"]' not in css
+    assert "#decision-form:hover" not in css
+    assert "#decision-form:focus-within" not in css
+    assert "pointer-events:none!important" not in css
+    assert 'data-case-decision-open' not in html
+    assert 'data-case-decision-backdrop' not in html
     assert "data:image/png;base64,ZmFrZQ==" not in html
     assert (
         'data-case-page-src="./case-pages/ATT-1/1/' + "b" * 64 + '"'

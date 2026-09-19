@@ -9,7 +9,11 @@ import pytest
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
 from evidence_review.retrieval.clause_resolution import ClauseRetrievalHit
-from evidence_review.retrieval.fallback import FallbackStage, search_clause_with_fallback
+from evidence_review.retrieval.fallback import (
+    FallbackStage,
+    _heading_scoped_search,
+    search_clause_with_fallback,
+)
 from evidence_review.retrieval.index import build_fts_index
 
 
@@ -125,3 +129,57 @@ def test_fallback_continues_when_nonempty_stage_is_rejected_by_filter(
     ]
     assert result.traces[0].hit_count == 0
     assert result.traces[1].hit_count > 0
+
+
+def test_heading_scope_scores_all_tokens_before_applying_limit() -> None:
+    snapshot = EvidenceSnapshot(
+        documents=({"id": "DOC-1", "title": "Heading ranking"},),
+        revisions=(
+            {
+                "id": "REV-1",
+                "document_id": "DOC-1",
+                "source_hash": "b" * 64,
+                "byte_size": 10,
+                "page_count": 1,
+            },
+        ),
+        pages=(
+            {
+                "id": "P-1",
+                "revision_id": "REV-1",
+                "page_number": 1,
+                "width": 600.0,
+                "height": 800.0,
+            },
+        ),
+        clauses=(
+            {
+                "id": "C-GENERAL",
+                "revision_id": "REV-1",
+                "title": "공공기여 일반원칙",
+                "raw_text": "공공기여 원칙",
+                "normalized_text": "공공기여 원칙",
+                "review_status": "AUTOMATIC",
+            },
+            {
+                "id": "C-SPECIFIC",
+                "revision_id": "REV-1",
+                "title": "공공기여 산정 방식",
+                "raw_text": "공공기여 산정 방식을 정한다.",
+                "normalized_text": "공공기여 산정 방식을 정한다.",
+                "review_status": "AUTOMATIC",
+            },
+        ),
+    )
+
+    with EvidenceStore(Path(":memory:"), create=True) as store:
+        ingest_snapshot(store, snapshot)
+        connection = store.require_connection()
+        build_fts_index(connection)
+        hits = _heading_scoped_search(
+            connection,
+            "공공기여 산정 방식",
+            limit=1,
+        )
+
+    assert hits[0].clause_id == "C-SPECIFIC"

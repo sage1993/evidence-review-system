@@ -1,0 +1,87 @@
+{
+  "number of pages": 1,
+  "kids": [
+    {
+      "type": "table",
+      "id": 608,
+      "page number": 1,
+      "bounding box": [10, 20, 110, 180],
+      "number of rows": 2,
+      "number of columns": 3,
+      "rows": [
+        {
+          "type": "table row",
+          "row number": 1,
+          "cells": [
+            {
+              "type": "table cell",
+              "page number": 1,
+              "bounding box": [10, 150, 35, 180],
+              "row number": 1,
+              "column number": 1,
+              "row span": 1,
+              "column span": 1,
+              "kids": [{"type": "paragraph", "content": "구분"}]
+            },
+            {
+              "type": "table cell",
+              "page number": 1,
+              "bounding box": [35, 150, 70, 180],
+              "row number": 1,
+              "column number": 2,
+              "row span": 1,
+              "column span": 1,
+              "kids": [{"type": "paragraph", "content": "기존 용도지역"}]
+            },
+            {
+              "type": "table cell",
+              "page number": 1,
+              "bounding box": [70, 150, 110, 180],
+              "row number": 1,
+              "column number": 3,
+              "row span": 1,
+              "column span": 1,
+              "kids": [{"type": "paragraph", "content": "변경 후 용도지역"}]
+            }
+          ]
+        },
+        {
+          "type": "table row",
+          "row number": 2,
+          "cells": [
+            {
+              "type": "table cell",
+              "page number": 1,
+              "bounding box": [10, 20, 35, 150],
+              "row number": 2,
+              "column number": 1,
+              "row span": 2,
+              "column span": 1,
+              "kids": [{"type": "paragraph", "content": "안심주택"}]
+            },
+            {
+              "type": "table cell",
+              "page number": 1,
+              "bounding box": [35, 20, 70, 150],
+              "row number": 2,
+              "column number": 2,
+              "row span": 1,
+              "column span": 1,
+              "kids": [{"type": "paragraph", "content": "제2종일반주거지역"}]
+            },
+            {
+              "type": "table cell",
+              "page number": 1,
+              "bounding box": [70, 20, 110, 150],
+              "row number": 2,
+              "column number": 3,
+              "row span": 1,
+              "column span": 1,
+              "kids": [{"type": "paragraph", "content": "준주거지역"}]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

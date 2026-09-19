@@ -4,10 +4,13 @@ from decimal import Decimal
 from evidence_review.contracts.question_plan import QuestionIssue, QuestionPlan
 from evidence_review.retrieval.clause_resolution import ClauseRetrievalHit
 from evidence_review.retrieval.coverage import evaluate_issue_coverage
+from evidence_review.retrieval.fallback import FallbackStage
 from evidence_review.retrieval.graph import MissingReference
 from evidence_review.retrieval.issue_bundle import (
     IssueCandidateMatch,
     IssueClauseCandidate,
+    IssueFallbackTrace,
+    IssueRelevanceDecision,
     IssueRetrievalBundle,
 )
 from evidence_review.retrieval.models import ChannelScore
@@ -136,6 +139,50 @@ def test_source_not_ingested_is_distinct_from_retrieval_miss() -> None:
 
     assert i2.status == "SOURCE_MISSING"
     assert i2.gap_codes == ("SOURCE_NOT_INGESTED",)
+
+
+def test_relevance_insufficient_is_distinct_from_missing_source() -> None:
+    i2 = evaluate_issue_coverage(
+        _plan(),
+        _bundle(_candidate("I2", "rule", with_evidence=True)),
+        relevance_insufficient_issue_ids=("I2",),
+    ).by_issue_id("I2")
+
+    assert i2.status == "UNRESOLVED"
+    assert i2.gap_codes == ("RELEVANCE_INSUFFICIENT",)
+
+
+def test_relevance_rejection_trace_becomes_issue_coverage_gap() -> None:
+    bundle = IssueRetrievalBundle(
+        candidates=(),
+        selected_evidence=(),
+        budget_drops=(),
+        fallback_traces=(
+            IssueFallbackTrace(
+                issue_id="I2",
+                search_request_id="S-I2-rule",
+                role="rule",
+                stage=FallbackStage.HEADING_SCOPED,
+                input_query="공공기여 산정 방식",
+                derived_query="공공기여 산정 방식",
+                hit_count=0,
+                relevance_decisions=(
+                    IssueRelevanceDecision(
+                        issue_id="I2",
+                        search_request_id="S-I2-rule",
+                        clause_id="C-UNRELATED",
+                        accepted=False,
+                        reason_codes=("RETRIEVAL_RELEVANCE_INSUFFICIENT",),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    i2 = evaluate_issue_coverage(_plan(), bundle).by_issue_id("I2")
+
+    assert i2.status == "UNRESOLVED"
+    assert i2.gap_codes == ("RELEVANCE_INSUFFICIENT",)
 
 
 def test_conflict_and_ambiguity_take_precedence_over_retrieval_status() -> None:

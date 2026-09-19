@@ -5,7 +5,10 @@ from pathlib import Path
 
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
-from evidence_review.review_packet.render_summary import render_additional_review
+from evidence_review.review_packet.render_summary import (
+    render_additional_review,
+    visual_shell_css,
+)
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -293,16 +296,16 @@ def test_renderer_implements_selected_only_and_finding_autofocus() -> None:
     assert "scrollIntoView" in html
 
 
-def test_visual_workspace_uses_click_only_decision_drawer() -> None:
+def test_visual_workspace_uses_the_shared_decision_surface() -> None:
     html = render_additional_review(_render_model())
+    css = visual_shell_css()
 
-    assert 'data-case-decision-open' in html
-    assert 'data-visual-decision-open="true"' in html
-    assert "#decision-form:hover" in html
-    assert "#decision-form:focus-within" in html
-    assert "pointer-events:none!important" in html
-    assert 'data-case-decision-backdrop' in html
-    assert "e.key==='Escape'" in html
+    assert 'data-case-decision-open' not in html
+    assert 'data-visual-decision-open="true"' not in css
+    assert "#decision-form:hover" not in css
+    assert "#decision-form:focus-within" not in css
+    assert "pointer-events:none!important" not in css
+    assert 'data-case-decision-backdrop' not in html
 
 
 def test_renderer_defers_raster_decode_to_active_page() -> None:

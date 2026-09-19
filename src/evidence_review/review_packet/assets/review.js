@@ -52,25 +52,43 @@
       : "보관 HTML에서는 결정 JSON 다운로드 시 검토자 ID를 한 번 확인합니다.";
   }
 
+  function updateReviewerField() {
+    const field = document.querySelector("#decision-reviewer-id");
+    if (!field) return;
+    if (decisionContext.reviewer_id) {
+      field.value = decisionContext.reviewer_id;
+      field.readOnly = true;
+      field.setAttribute("aria-readonly", "true");
+    } else {
+      field.readOnly = false;
+      field.removeAttribute("aria-readonly");
+    }
+  }
+
   function validReviewerId(value) {
     return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
   }
 
-  function resolveReviewerId() {
-    if (validReviewerId(decisionContext.reviewer_id)) return decisionContext.reviewer_id;
-    const candidate = window.prompt("검토자 ID를 입력하십시오.", "") || "";
+  function resolveReviewerId(form) {
+    const field = form ? form.querySelector("#decision-reviewer-id") : null;
+    const candidate = field ? String(field.value || "").trim() : decisionContext.reviewer_id;
     if (!validReviewerId(candidate)) {
+      if (field) {
+        field.setCustomValidity("검토자 ID는 영문·숫자로 시작하며 영문·숫자·점·밑줄·하이픈만 사용할 수 있습니다.");
+      }
       formStatus("검토자 ID는 영문·숫자·점·밑줄·하이픈만 사용할 수 있습니다.");
       return "";
     }
+    if (field) field.setCustomValidity("");
     decisionContext.reviewer_id = candidate;
+    updateReviewerField();
     updateReviewerSession();
     return candidate;
   }
 
   function decisionRequest(form) {
     const values = new FormData(form);
-    const reviewerId = resolveReviewerId();
+    const reviewerId = resolveReviewerId(form);
     return {
       reviewer_id: reviewerId,
       packet_hash: decisionContext.packet_hash || values.get("packet_sha256") || "",
@@ -174,6 +192,7 @@
     form.reset();
     const notes = form.querySelector("#decision-notes");
     if (notes) notes.required = false;
+    updateReviewerField();
     const count = document.querySelector("[data-notes-count]");
     if (count) count.textContent = "0 / 1,000";
     formStatus("새 결정은 기존 기록을 수정하지 않고 별도 append-only 기록으로 추가됩니다.");
@@ -198,6 +217,7 @@
       if (typeof payload.packet_hash === "string" && payload.packet_hash) {
         decisionContext.packet_hash = payload.packet_hash;
       }
+      updateReviewerField();
       renderPersistedDecision(payload.decision_record);
       updateReviewerSession();
       return payload;
@@ -458,8 +478,8 @@
     event.preventDefault();
     const form = event.currentTarget;
     validateNotesField(form);
-    if (!form.reportValidity() || !validateNotesField(form)) return;
     const request = decisionRequest(form);
+    if (!form.reportValidity() || !validateNotesField(form)) return;
     if (!validDecisionRequest(request)) {
       formStatus("결정 저장에 필요한 검토자·패킷·결정·의견 정보를 확인하십시오.");
       return;
@@ -630,6 +650,7 @@
   applyFileProtocolGuidance();
   updateTabControls(selectedDetailPanel());
   updateReviewerSession();
+  updateReviewerField();
   const initial = document.querySelector(".evidence-page.is-active");
   if (initial && initial.dataset.sourceId) setActiveSource(initial.dataset.sourceId, initial.dataset.assetKey);
   void refreshDisplayStatus();

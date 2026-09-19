@@ -14,6 +14,7 @@ from evidence_review.confidence.policy import (
 )
 from evidence_review.contracts.review import (
     ConfidenceFactor,
+    ConfidenceFactorState,
     ConfidenceLevel,
     ConfidenceResult,
 )
@@ -27,6 +28,7 @@ class FactorInput:
 
     value: str
     source: str
+    state: ConfidenceFactorState = "VERIFIED"
 
 
 def _decimal(value: str, field: str) -> Decimal:
@@ -70,6 +72,13 @@ def score_confidence(
             factor = factors[name]
             if not factor.source:
                 raise ValueError(f"confidence factor source is required: {name}")
+            if factor.state not in {
+                "VERIFIED",
+                "FAILED",
+                "NOT_VERIFIED",
+                "NOT_APPLICABLE",
+            }:
+                raise ValueError(f"unsupported confidence factor state: {name}")
             value = _decimal(factor.value, name)
             contribution = value * weight
             total += contribution
@@ -80,6 +89,7 @@ def score_confidence(
                     weight=format(weight, ".2f"),
                     contribution=_format_decimal(contribution),
                     source=factor.source,
+                    state=factor.state,
                 )
             )
         quantized_score = total.quantize(_QUANTUM, rounding=ROUND_HALF_UP)

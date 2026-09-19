@@ -60,3 +60,20 @@ def test_explicit_arterial_subject_rejects_station_area_query() -> None:
 
     assert decision.accepted is False
     assert decision.reason_codes == ("REJECT_SUBJECT_CONFLICT",)
+
+
+def test_same_document_clause_without_public_contribution_intent_is_rejected() -> None:
+    evaluate = _evaluate_api()
+    decision = evaluate(
+        issue_id="I-PUBLIC-CONTRIBUTION",
+        issue_question="공공기여 산정 방식은 무엇인가?",
+        search_request_id="S-PUBLIC-CONTRIBUTION",
+        query_text="공공기여 산정 방식",
+        clause=_clause(
+            "공공기여 일반원칙",
+            "사업시행자는 공공기여를 제공할 수 있다.",
+        ),
+    )
+
+    assert decision.accepted is False
+    assert "RETRIEVAL_RELEVANCE_INSUFFICIENT" in decision.reason_codes

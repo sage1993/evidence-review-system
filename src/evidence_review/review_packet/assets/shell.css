@@ -1,0 +1,19 @@
+/* Capability-driven Review Workspace shell contract. */
+.review-workspace[data-review-shell="unified"] {
+  --ers-shell-region-gap: var(--space-md, 12px);
+}
+
+.review-workspace[data-review-shell="unified"] > [data-review-region] {
+  min-width: 0;
+  scroll-margin-block-start: var(--space-lg, 16px);
+}
+
+.review-workspace[data-review-shell="unified"][data-has-reference="false"]
+  > [data-review-region="evidence-workspace"] {
+  --ers-viewer-empty-state: 1;
+}
+
+.review-workspace[data-review-shell="unified"][data-has-subject="false"]
+  > [data-review-region="evidence-workspace"] {
+  --ers-subject-viewer-state: unavailable;
+}

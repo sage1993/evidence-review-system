@@ -60,6 +60,22 @@ def test_pending_human_review_caps_high_confidence_at_medium() -> None:
     assert result.level == "MEDIUM"
 
 
+def test_confidence_factor_state_is_preserved_in_auditable_output() -> None:
+    factors = _uniform("1.0")
+    factors["calculation validity"] = FactorInput(
+        value="0.0",
+        source="calculation:none",
+        state="NOT_APPLICABLE",
+    )
+
+    result = score_confidence(factors)
+
+    calculation = next(
+        factor for factor in result.factors if factor.name == "calculation validity"
+    )
+    assert calculation.state == "NOT_APPLICABLE"
+
+
 def test_confidence_rejects_missing_or_out_of_range_factor() -> None:
     factors = _uniform("1")
     factors.pop("source freshness")

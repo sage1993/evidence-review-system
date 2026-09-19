@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import cast
 
@@ -207,6 +208,7 @@ DRAWING_SCALE_SPEC = FormulaSpec(
     output_policy={
         "comparison_basis": "raw_result",
         "display": "decimal-scale",
+        "intermediate_rounding_policy": "NO_INTERMEDIATE_ROUNDING",
     },
     execute=_drawing_scale,
 )
@@ -287,6 +289,7 @@ DRAWING_LENGTH_SPEC = FormulaSpec(
     output_policy={
         "comparison_basis": "raw_result",
         "display": "decimal-length",
+        "intermediate_rounding_policy": "NO_INTERMEDIATE_ROUNDING",
     },
     execute=_drawing_length,
 )
@@ -305,6 +308,7 @@ FRONTAGE_RATIO_SPEC = FormulaSpec(
     output_policy={
         "comparison_basis": "raw_result",
         "display": "percent-max-3-decimals-strip-trailing-zeros",
+        "intermediate_rounding_policy": "NO_INTERMEDIATE_ROUNDING",
     },
     execute=_frontage_ratio,
 )
@@ -323,10 +327,16 @@ def run_calculation(
     inputs: Mapping[str, str],
     *,
     registry: FormulaRegistry = DEFAULT_REGISTRY,
+    input_sources: Mapping[str, str] | None = None,
+    input_units: Mapping[str, str] | None = None,
 ) -> CalculationResult:
     """Run a registered deterministic calculation."""
     manifest_hash = formula_manifest_hash(registry.values())
     spec = registry.get(formula_id, version)
+    sources = dict(input_sources or {})
+    units = dict(input_units or {})
+    if any(key not in inputs for key in (*sources, *units)):
+        raise ValueError("calculation input provenance references an unknown input")
     if spec is None or spec.execute is None:
         result = _error_result(
             formula_id,
@@ -337,4 +347,16 @@ def run_calculation(
         )
     else:
         result = spec.execute(inputs)
+        result = replace(
+            result,
+            input_sources=sources,
+            input_units=units,
+            precision=spec.precision,
+            rounding=spec.rounding,
+            intermediate_rounding_policy=str(
+                spec.output_policy.get(
+                    "intermediate_rounding_policy", "UNDECLARED"
+                )
+            ),
+        )
     return finalize_result(result, manifest_hash)

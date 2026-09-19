@@ -73,6 +73,55 @@ def _bbox_json(value: str | None) -> str | None:
     return dumps([bbox.left, bbox.bottom, bbox.right, bbox.top])
 
 
+def _table_has_text_cells(raw_json: str) -> bool:
+    try:
+        payload = json.loads(raw_json)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        return False
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("cells"), list):
+            continue
+        for cell in row["cells"]:
+            if not isinstance(cell, dict):
+                continue
+            content = cell.get("content")
+            if isinstance(content, str) and content.strip():
+                return True
+            for child_key in ("kids", "children", "list items", "list_items"):
+                children = cell.get(child_key)
+                if not isinstance(children, list):
+                    continue
+                if any(
+                    isinstance(child, dict)
+                    and isinstance(child.get("content"), str)
+                    and child["content"].strip()
+                    for child in children
+                ):
+                    return True
+    return False
+
+
+def _table_search_text(raw_json: str, normalized_json: str | None) -> str:
+    """Read the row-aware table representation, with a safe legacy fallback."""
+    if normalized_json:
+        try:
+            payload = json.loads(normalized_json)
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            search_text = payload.get("search_text")
+            if isinstance(search_text, str) and search_text.strip():
+                return search_text
+    if _table_has_text_cells(raw_json):
+        raise RuntimeError("TABLE_SEARCH_TEXT_MISSING")
+    return raw_json
+
+
 def _snapshot_hash(connection: sqlite3.Connection) -> str:
     row = connection.execute(
         "SELECT value FROM snapshot_meta WHERE key = 'snapshot_hash'"
@@ -129,6 +178,7 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
         bbox_json = _bbox_json(row[5])
         if bbox_json is None:
             continue
+        table_text = _table_search_text(str(row[8]), row[9])
         rows.append(
             (
                 row[0],
@@ -140,8 +190,8 @@ def _record_rows(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
                 bbox_json,
                 row[6],
                 _nfc(f"{row[7]} 표 {row[0]}"),
-                _nfc(row[8]),
-                _nfc(row[9] or row[8]),
+                _nfc(table_text),
+                _nfc(table_text),
             )
         )
     for row in connection.execute(

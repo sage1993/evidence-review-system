@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,10 +39,46 @@ def _write_or_identical(path: Path, content: bytes) -> None:
             raise FileExistsError(f"existing planner artifact differs: {path.name}") from None
 
 
+def _write_bundle_or_semantically_identical(
+    path: Path, bundle: dict[str, object]
+) -> None:
+    """Keep raw wording while treating whitespace-only rewrites as one handoff."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = dump_bytes(bundle)
+    try:
+        with path.open("xb") as stream:
+            stream.write(content)
+    except FileExistsError:
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            raise FileExistsError(
+                f"existing planner artifact differs: {path.name}"
+            ) from None
+        if not isinstance(existing, dict):
+            raise FileExistsError(
+                f"existing planner artifact differs: {path.name}"
+            ) from None
+        existing_identity = dict(existing)
+        bundle_identity = dict(bundle)
+        existing_identity["raw_user_question"] = existing_identity.get(
+            "normalized_question"
+        )
+        bundle_identity["raw_user_question"] = bundle_identity.get(
+            "normalized_question"
+        )
+        if existing_identity != bundle_identity:
+            raise FileExistsError(
+                f"existing planner artifact differs: {path.name}"
+            ) from None
+
+
 def prepare_question_planner_handoff(workspace: Path, question: str) -> QuestionPlannerHandoff:
     """Write a deterministic evidence-free handoff for an external AI planner."""
     bundle = build_question_planner_bundle(question)
-    plan_id = f"PLAN-{sha256_json(bundle)[:20].upper()}"
+    plan_identity = dict(bundle)
+    plan_identity["raw_user_question"] = plan_identity["normalized_question"]
+    plan_id = f"PLAN-{sha256_json(plan_identity)[:20].upper()}"
     directory = workspace / "question-planning" / plan_id
     bundle_path = directory / "question-planner-bundle.json"
     instructions_path = directory / "QUESTION_PLANNER_INSTRUCTIONS.md"
@@ -49,7 +86,7 @@ def prepare_question_planner_handoff(workspace: Path, question: str) -> Question
     template = (
         Path(__file__).with_name("llm_layer") / "templates" / "question-planner.md"
     ).read_bytes()
-    _write_or_identical(bundle_path, dump_bytes(bundle))
+    _write_bundle_or_semantically_identical(bundle_path, bundle)
     _write_or_identical(instructions_path, template)
     return QuestionPlannerHandoff(
         planning_directory=directory,
@@ -112,6 +149,24 @@ def bind_question_plan_to_review_request(
             for item in plan.search_requests
         ],
     }
+    if (
+        plan.raw_user_question is not None
+        or plan.normalized_question is not None
+        or plan.document_context
+        or plan.planner_inference
+    ):
+        inputs["question_provenance"] = {
+            "raw_user_question": plan.raw_user_question or plan.original_question,
+            "normalized_question": plan.normalized_question or plan.original_question,
+            "document_context": [
+                {"text": item.text, "source": item.source}
+                for item in plan.document_context
+            ],
+            "planner_inference": [
+                {"text": item.text, "source": item.source}
+                for item in plan.planner_inference
+            ],
+        }
     bound["inputs"] = inputs
     return bound
 

@@ -62,30 +62,42 @@ def test_issue_coverage_updates_all_coverage_dependent_confidence_factors() -> N
     assert factors["source completeness"] == {
         "value": "0.5000",
         "source": "issue_coverage:source_complete=1/2",
+        "state": "FAILED",
     }
     assert factors["traceability"] == {
         "value": "0.5000",
         "source": "issue_coverage:traceable=1/2",
+        "state": "FAILED",
     }
     assert factors["rule coverage"] == {
         "value": "1.0000",
         "source": "issue_coverage:required_roles=2/2",
+        "state": "VERIFIED",
     }
     assert factors["input completeness"] == {
         "value": "0.5000",
         "source": "issue_coverage:complete_inputs=1/2",
+        "state": "FAILED",
     }
     assert factors["parse quality"] == {
         "value": "1.0000",
         "source": "issue_coverage:parse_gap_free=2/2",
+        "state": "VERIFIED",
     }
     assert factors["human review status"] == {
         "value": "0.0000",
         "source": "human_review:pending",
+        "state": "NOT_VERIFIED",
     }
     assert factors["unresolved conflict factor"] == {
         "value": "1.0000",
         "source": "issue_coverage:conflicts=0/2",
+        "state": "VERIFIED",
+    }
+    assert factors["source freshness"] == {
+        "value": "0.0000",
+        "source": "source_freshness:not_verified",
+        "state": "NOT_VERIFIED",
     }
 
 

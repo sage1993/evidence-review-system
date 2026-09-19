@@ -9,6 +9,7 @@ from typing import cast
 from evidence_review.review_packet.related_reference_routing import (
     related_reference_claims,
 )
+from evidence_review.review_packet.render_case_visual import case_visual_css
 from evidence_review.review_packet.render_case_visual import (
     render_case_visual_review as _render_embedded_case_visual_review,
 )
@@ -254,4 +255,4 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
     return externalize_case_visual_sources(fragment, model)
 
 
-__all__ = ["externalize_case_visual_sources", "render_case_visual_review"]
+__all__ = ["case_visual_css", "externalize_case_visual_sources", "render_case_visual_review"]

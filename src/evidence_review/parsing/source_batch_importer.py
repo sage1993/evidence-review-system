@@ -316,7 +316,7 @@ def _source_records(
                     "page_id": f"{source.revision_id}-P{table.page_number:04d}",
                     "bbox": table.bbox,
                     "raw_json": table.raw_payload,
-                    "normalized_json": None,
+                    "normalized_json": table.searchable_document(),
                 }
             )
         for visual in contribution.visuals:
