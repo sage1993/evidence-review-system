@@ -4,6 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from evidence_review.review_packet.html_renderer import render_review_html
+from evidence_review.review_packet.render_summary import render_status_band
 
 
 def _generic_model() -> dict[str, object]:
@@ -100,6 +101,26 @@ def test_generic_formal_review_projects_issue_results_and_conclusion(
     assert "조건부" in html
     assert "전체 검토 상태" in html
     assert "질문에 대한 결론이 제공되지 않았습니다." not in html
+
+
+def test_default_status_presentation_localizes_machine_status(
+    tmp_path: Path,
+) -> None:
+    html = render_review_html(_generic_model(), tmp_path)
+    status_pill = html.split('<span class="status-pill"', 1)[1].split("</span>", 1)[0]
+
+    assert "일부 항목 확인" in status_pill
+    assert "PARTIALLY_RESOLVED" not in status_pill
+    assert "전체 검토 상태: 일부 항목 확인" in html
+    assert "전체 검토 상태: 일부 항목 확인 (PARTIALLY_RESOLVED)" not in html
+
+
+def test_status_band_localizes_machine_status_without_raw_mode() -> None:
+    html = render_status_band(_generic_model())
+
+    assert 'data-display-status-mode="localized"' in html
+    assert "일부 항목 확인" in html
+    assert "PARTIALLY_RESOLVED" not in html
 
 
 def test_workspace_shell_uses_capabilities_without_switching_template_modes(

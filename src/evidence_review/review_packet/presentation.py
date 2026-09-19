@@ -8,15 +8,15 @@ from typing import cast
 from evidence_review.presentation.tokens import presentation_css_variables
 
 _STATUS_LABELS = {
-    "ABSTAIN": "추가 자료 필요",
+    "ABSTAIN": "현재 자료로 판정할 수 없음",
     "READY_FOR_HUMAN_REVIEW": "검토 준비 완료",
     "REVIEW_COMPLETED": "검토 완료",
     "INDETERMINATE": "판단 보류",
     "COMPLETE": "근거 연결 완료",
     "RESOLVED": "확인",
-    "PARTIALLY_RESOLVED": "일부 확인됨",
-    "SOURCE_MISSING": "원문 추가 확인 필요",
-    "MISSING_REQUIRED_INPUT": "필요한 자료가 부족합니다",
+    "PARTIALLY_RESOLVED": "일부 항목 확인",
+    "SOURCE_MISSING": "필요한 기준을 확인하지 못함",
+    "MISSING_REQUIRED_INPUT": "추가 자료 필요",
     "SATISFIED": "충족",
     "NOT_SATISFIED": "미충족",
     "CONDITIONAL": "조건부",
@@ -79,7 +79,7 @@ def conclusion_text(model: Mapping[str, object]) -> str:
         return value.strip()
     if _sequence(model.get("issue_results")):
         raw_status = str(model.get("display_status", model.get("status", "")))
-        return f"전체 검토 상태: {localized_status(raw_status)} ({raw_status})"
+        return f"전체 검토 상태: {localized_status(raw_status)}"
     return _NO_ANSWER_FALLBACK
 
 
