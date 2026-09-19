@@ -42,7 +42,7 @@ def _write_or_identical(path: Path, content: bytes) -> None:
 def _write_bundle_or_semantically_identical(
     path: Path, bundle: dict[str, object]
 ) -> None:
-    """Keep raw wording while treating whitespace-only rewrites as one handoff."""
+    """Write one immutable planner bundle for the exact raw user question."""
     path.parent.mkdir(parents=True, exist_ok=True)
     content = dump_bytes(bundle)
     try:
@@ -59,15 +59,7 @@ def _write_bundle_or_semantically_identical(
             raise FileExistsError(
                 f"existing planner artifact differs: {path.name}"
             ) from None
-        existing_identity = dict(existing)
-        bundle_identity = dict(bundle)
-        existing_identity["raw_user_question"] = existing_identity.get(
-            "normalized_question"
-        )
-        bundle_identity["raw_user_question"] = bundle_identity.get(
-            "normalized_question"
-        )
-        if existing_identity != bundle_identity:
+        if existing != bundle:
             raise FileExistsError(
                 f"existing planner artifact differs: {path.name}"
             ) from None
@@ -76,9 +68,7 @@ def _write_bundle_or_semantically_identical(
 def prepare_question_planner_handoff(workspace: Path, question: str) -> QuestionPlannerHandoff:
     """Write a deterministic evidence-free handoff for an external AI planner."""
     bundle = build_question_planner_bundle(question)
-    plan_identity = dict(bundle)
-    plan_identity["raw_user_question"] = plan_identity["normalized_question"]
-    plan_id = f"PLAN-{sha256_json(plan_identity)[:20].upper()}"
+    plan_id = f"PLAN-{sha256_json(bundle)[:20].upper()}"
     directory = workspace / "question-planning" / plan_id
     bundle_path = directory / "question-planner-bundle.json"
     instructions_path = directory / "QUESTION_PLANNER_INSTRUCTIONS.md"

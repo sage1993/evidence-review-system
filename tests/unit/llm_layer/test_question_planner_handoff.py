@@ -10,6 +10,7 @@ from evidence_review.llm_layer.question_planner import (
 )
 from evidence_review.question_planning import (
     bind_question_plan_to_review_request,
+    prepare_question_planner_handoff,
     question_plan_sha256,
 )
 
@@ -66,6 +67,34 @@ def test_build_question_planner_bundle_preserves_raw_question_provenance() -> No
 
     assert bundle["raw_user_question"] == "  안심주택 운영기준에서\n질문  "
     assert bundle["normalized_question"] == "안심주택 운영기준에서 질문"
+
+
+def test_planner_handoff_identity_preserves_raw_whitespace(tmp_path) -> None:
+    compact = prepare_question_planner_handoff(
+        tmp_path, "안심주택 운영기준에서 조건 알려줘"
+    )
+    spaced = prepare_question_planner_handoff(
+        tmp_path, "안심주택 운영기준에서   조건 알려줘"
+    )
+
+    assert compact.planning_directory != spaced.planning_directory
+    assert compact.bundle_path.read_bytes() != spaced.bundle_path.read_bytes()
+    assert (
+        compact.bundle_path.read_text(encoding="utf-8")
+        != spaced.bundle_path.read_text(encoding="utf-8")
+    )
+
+
+def test_planner_handoff_identity_preserves_raw_line_break(tmp_path) -> None:
+    inline = prepare_question_planner_handoff(
+        tmp_path, "안심주택 운영기준에서 조건 알려줘"
+    )
+    multiline = prepare_question_planner_handoff(
+        tmp_path, "안심주택 운영기준에서\n조건 알려줘"
+    )
+
+    assert inline.planning_directory != multiline.planning_directory
+    assert inline.bundle_path.read_bytes() != multiline.bundle_path.read_bytes()
 
 
 def test_question_provenance_is_bound_into_review_request_inputs() -> None:
