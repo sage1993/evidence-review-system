@@ -11,6 +11,17 @@ from evidence_review.review_packet.render_summary import (
 )
 
 
+def _shared_review_controller() -> str:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
+
+
 def _write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
@@ -290,10 +301,11 @@ def test_renderer_shows_compact_abstain_summary_without_repeating_issue_question
 
 def test_renderer_implements_selected_only_and_finding_autofocus() -> None:
     html = render_case_visual_review(_render_model())
+    controller = _shared_review_controller()
 
     assert 'data-case-overlay-mode="selected"' in html
-    assert "focusSubjectFinding" in html
-    assert "scrollIntoView" in html
+    assert "focusSubjectFinding" in controller
+    assert "scrollIntoView" in controller
 
 
 def test_visual_workspace_uses_the_shared_decision_surface() -> None:
@@ -310,6 +322,7 @@ def test_visual_workspace_uses_the_shared_decision_surface() -> None:
 
 def test_renderer_defers_raster_decode_to_active_page() -> None:
     html = render_case_visual_review(_render_model())
+    controller = _shared_review_controller()
 
     assert 'data-case-page-src="data:image/png;base64,ZmFrZQ=="' in html
     assert (
@@ -319,4 +332,4 @@ def test_renderer_defers_raster_decode_to_active_page() -> None:
         )
         is None
     )
-    assert "ensurePageRaster" in html
+    assert "ensurePageRaster" in controller

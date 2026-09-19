@@ -10,6 +10,17 @@ from evidence_review.review_packet.case_visual_projection import (
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
 
 
+def _shared_review_controller() -> str:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
+
+
 def test_projection_prefers_hash_matched_high_resolution_case_pdf_cache(
     tmp_path: Path,
 ) -> None:
@@ -149,8 +160,9 @@ def test_renderer_defers_large_page_tile_decode_until_viewport_use() -> None:
     }
 
     html = render_case_visual_review(model)
+    controller = _shared_review_controller()
 
     assert f'data-case-tile-src="{tile_uri}"' in html
     assert f'href="{tile_uri}"' not in html
-    assert "ensureVisibleTiles" in html
-    assert "requestAnimationFrame" in html
+    assert "ensureVisibleTiles" in controller
+    assert "requestAnimationFrame" in controller

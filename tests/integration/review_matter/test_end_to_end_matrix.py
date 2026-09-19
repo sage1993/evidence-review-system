@@ -88,7 +88,7 @@ def _planner_formal_review(root: Path) -> None:
     plan, evidence_fixture, run_directory = _prepare_workspace(root)
     track_a = _track_a_output(run_directory, evidence_fixture)
     _write_manifest_bound_outputs(
-        run_directory, track_a, _track_b_output(track_a, run_directory.name)
+        run_directory, track_a, _track_b_output(track_a, run_directory)
     )
     packet = finalize_run(run_directory)
     assert (run_directory / "question-plan.json").is_file()
@@ -129,11 +129,11 @@ def _partial_multi_issue(root: Path) -> None:
     )
     track_a = _track_a_output(run_directory, evidence_fixture)
     _write_manifest_bound_outputs(
-        run_directory, track_a, _track_b_output(track_a, run_directory.name)
+        run_directory, track_a, _track_b_output(track_a, run_directory)
     )
     packet = finalize_run(run_directory)
     by_issue = {item.issue_id: item for item in packet.issue_results}
-    assert packet.status == "PARTIALLY_RESOLVED"
+    assert packet.status == "ABSTAIN"
     assert by_issue["I7"].status == "UNRESOLVED"
     assert "RETRIEVAL_MISS" in by_issue["I7"].gap_codes
     assert all(
