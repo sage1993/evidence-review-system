@@ -20,6 +20,9 @@ from evidence_review.parsing.parser_models import (
     NormalizedParserContribution,
     PageDimensions,
     ParsedElement,
+    ParsedTable,
+    ParsedTableCell,
+    ParsedTableRow,
 )
 from evidence_review.parsing.parser_registry import ParserContext
 from evidence_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_page_geometries
@@ -27,6 +30,8 @@ from evidence_review.parsing.source_manifest import sha256_file
 
 type PathPart = str | int
 _CHILD_KEYS = ("kids", "list items", "list_items", "children")
+_TABLE_ROW_KEYS = ("rows",)
+_TABLE_CELL_KEYS = ("cells",)
 _GEOMETRY_TOLERANCE = 0.5
 
 
@@ -64,6 +69,207 @@ def _raw_bbox(payload: dict[str, Any]) -> tuple[float, float, float, float] | No
             raise ValueError("parser element bounding box must contain four numbers")
         numbers.append(float(item))
     return cast(tuple[float, float, float, float], tuple(numbers))
+
+
+def _positive_int(value: object, field: str, *, default: int | None = None) -> int:
+    if value is None and default is not None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field} must be a positive integer")
+    return value
+
+
+def _nested_content(payload: dict[str, Any]) -> tuple[str, ...]:
+    """Collect text from a parser node without flattening table relationships."""
+    parts: list[str] = []
+    content = payload.get("content")
+    if content is not None:
+        if not isinstance(content, str):
+            raise ValueError("parser table content must be a string or null")
+        if content.strip():
+            parts.append(content.strip())
+    for key in _CHILD_KEYS:
+        children = payload.get(key)
+        if children is None:
+            continue
+        if not isinstance(children, list):
+            raise ValueError(f"{key} must be an array")
+        for index, child in enumerate(children):
+            if not isinstance(child, dict):
+                raise ValueError(f"{key}[{index}] must be an object")
+            parts.extend(_nested_content(child))
+    return tuple(parts)
+
+
+def _table_search_text(payload: dict[str, Any]) -> str:
+    """Build a row/column-aware representation suitable for lexical search."""
+    rows = payload.get("rows", [])
+    if rows is None:
+        rows = []
+    if not isinstance(rows, list):
+        raise ValueError("rows must be an array")
+    segments: list[str] = []
+    for row_index, raw_row in enumerate(rows, start=1):
+        if not isinstance(raw_row, dict):
+            raise ValueError(f"rows[{row_index - 1}] must be an object")
+        row_number = _positive_int(
+            raw_row.get("row number", raw_row.get("row_number")),
+            f"rows[{row_index - 1}].row_number",
+            default=row_index,
+        )
+        cells = raw_row.get("cells", [])
+        if not isinstance(cells, list):
+            raise ValueError(f"rows[{row_index - 1}].cells must be an array")
+        for cell_index, raw_cell in enumerate(cells, start=1):
+            if not isinstance(raw_cell, dict):
+                raise ValueError(
+                    f"rows[{row_index - 1}].cells[{cell_index - 1}] must be an object"
+                )
+            column_number = _positive_int(
+                raw_cell.get("column number", raw_cell.get("column_number")),
+                f"rows[{row_index - 1}].cells[{cell_index - 1}].column_number",
+                default=cell_index,
+            )
+            text = " ".join(_nested_content(raw_cell))
+            if text:
+                segments.append(f"행 {row_number} 열 {column_number}: {text}")
+    if not segments:
+        direct = " ".join(_nested_content(payload))
+        return f"표: {direct}" if direct else ""
+    return " | ".join(segments)
+
+
+def _table_key(payload: dict[str, Any], source_path: tuple[PathPart, ...]) -> str:
+    value = payload.get("id")
+    if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value):
+        return f"T{value}"
+    return f"T-{sha256_json({'source_path': list(source_path)})[:20].upper()}"
+
+
+def _collect_table_payloads(
+    payload: dict[str, Any],
+    source_path: tuple[PathPart, ...],
+    collected: list[tuple[tuple[PathPart, ...], dict[str, Any]]],
+) -> None:
+    if payload.get("type") == "table":
+        collected.append((source_path, payload))
+    for key in _CHILD_KEYS:
+        children = payload.get(key)
+        if children is None:
+            continue
+        if not isinstance(children, list):
+            raise ValueError(f"{key} must be an array")
+        for index, child in enumerate(children):
+            if not isinstance(child, dict):
+                raise ValueError(f"{key}[{index}] must be an object")
+            _collect_table_payloads(child, (*source_path, key, index), collected)
+
+
+def _parsed_table(
+    payload: dict[str, Any],
+    source_path: tuple[PathPart, ...],
+) -> ParsedTable:
+    page_number = _page_number(payload)
+    rows_value = payload.get("rows", [])
+    if rows_value is None:
+        rows_value = []
+    if not isinstance(rows_value, list):
+        raise ValueError("rows must be an array")
+    rows: list[ParsedTableRow] = []
+    for row_index, raw_row in enumerate(rows_value, start=1):
+        if not isinstance(raw_row, dict):
+            raise ValueError(f"rows[{row_index - 1}] must be an object")
+        row_number = _positive_int(
+            raw_row.get("row number", raw_row.get("row_number")),
+            f"rows[{row_index - 1}].row_number",
+            default=row_index,
+        )
+        cells_value = raw_row.get("cells", [])
+        if not isinstance(cells_value, list):
+            raise ValueError(f"rows[{row_index - 1}].cells must be an array")
+        cells: list[ParsedTableCell] = []
+        for cell_index, raw_cell in enumerate(cells_value, start=1):
+            if not isinstance(raw_cell, dict):
+                raise ValueError(
+                    f"rows[{row_index - 1}].cells[{cell_index - 1}] must be an object"
+                )
+            cell_page = raw_cell.get("page number", raw_cell.get("page_number"))
+            if cell_page is not None and _positive_int(
+                cell_page,
+                f"rows[{row_index - 1}].cells[{cell_index - 1}].page_number",
+            ) != page_number:
+                raise ValueError("PARSER_TABLE_CELL_PAGE_MISMATCH")
+            column_number = _positive_int(
+                raw_cell.get("column number", raw_cell.get("column_number")),
+                f"rows[{row_index - 1}].cells[{cell_index - 1}].column_number",
+                default=cell_index,
+            )
+            row_span = _positive_int(
+                raw_cell.get("row span", raw_cell.get("row_span")),
+                f"rows[{row_index - 1}].cells[{cell_index - 1}].row_span",
+                default=1,
+            )
+            column_span = _positive_int(
+                raw_cell.get("column span", raw_cell.get("column_span")),
+                f"rows[{row_index - 1}].cells[{cell_index - 1}].column_span",
+                default=1,
+            )
+            cells.append(
+                ParsedTableCell(
+                    row_number=row_number,
+                    column_number=column_number,
+                    row_span=row_span,
+                    column_span=column_span,
+                    raw_payload=dict(raw_cell),
+                    raw_payload_hash=sha256_json(raw_cell),
+                    text=" ".join(_nested_content(raw_cell)) or None,
+                    bbox=_raw_bbox(raw_cell),
+                )
+            )
+        rows.append(ParsedTableRow(row_number=row_number, cells=tuple(cells)))
+    return ParsedTable(
+        table_key=_table_key(payload, source_path),
+        page_number=page_number,
+        raw_payload=dict(payload),
+        raw_payload_hash=sha256_json(payload),
+        bbox=_raw_bbox(payload),
+        rows=tuple(rows),
+        search_text=_table_search_text(payload),
+    )
+
+
+def load_parsed_tables(
+    path: Path,
+    document_id: str,
+    revision_id: str,
+) -> tuple[ParsedTable, ...]:
+    """Load all ODL tables while retaining row/cell provenance.
+
+    ``document_id`` and ``revision_id`` are accepted to keep this loader's
+    binding signature parallel with ``load_raw_elements``; table IDs remain
+    parser-local and are namespaced by the importer when persisted.
+    """
+    if not document_id or not revision_id:
+        raise ValueError("document_id and revision_id must not be empty")
+    root = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(root, dict):
+        raise ValueError("parser output root must be an object")
+    collected: list[tuple[tuple[PathPart, ...], dict[str, Any]]] = []
+    for key in _CHILD_KEYS:
+        children = root.get(key)
+        if children is None:
+            continue
+        if not isinstance(children, list):
+            raise ValueError(f"{key} must be an array")
+        for index, child in enumerate(children):
+            if not isinstance(child, dict):
+                raise ValueError(f"{key}[{index}] must be an object")
+            _collect_table_payloads(child, (key, index), collected)
+    tables = tuple(_parsed_table(payload, source_path) for source_path, payload in collected)
+    keys = [table.table_key for table in tables]
+    if len(keys) != len(set(keys)):
+        raise ValueError("PARSER_TABLE_DUPLICATE")
+    return tables
 
 
 def _walk(
@@ -122,6 +328,8 @@ def load_raw_elements(
         content = payload.get("content")
         if content is not None and not isinstance(content, str):
             raise ValueError("parser element content must be a string or null")
+        if element_type_value == "table" and content is None:
+            content = _table_search_text(payload) or None
         raw_payload = dict(payload)
         result.append(
             RawElement(
@@ -229,6 +437,11 @@ class OpenDataLoaderJsonAdapter:
             document_id="PARSER",
             revision_id="PARSER",
         )
+        parsed_tables = load_parsed_tables(
+            context.parser_artifact_path,
+            document_id="PARSER",
+            revision_id="PARSER",
+        )
         page_count = parser_page_count(payload, raw_elements)
         pdf_pages = read_pdf_page_geometries(context.source_path)
         dimensions = _reconcile_page_dimensions(payload, page_count, pdf_pages)
@@ -266,7 +479,7 @@ class OpenDataLoaderJsonAdapter:
         return NormalizedParserContribution(
             page_dimensions=dimensions,
             elements=tuple(elements),
-            tables=(),
+            tables=parsed_tables,
             visuals=(),
             parser_artifact_sha256=sha256_file(context.parser_artifact_path),
             document_title=parser_document_title(payload, context.source_path.stem),

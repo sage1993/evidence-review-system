@@ -5,7 +5,21 @@ from pathlib import Path
 
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
-from evidence_review.review_packet.render_summary import render_additional_review
+from evidence_review.review_packet.render_summary import (
+    render_additional_review,
+    visual_shell_css,
+)
+
+
+def _shared_review_controller() -> str:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -287,26 +301,28 @@ def test_renderer_shows_compact_abstain_summary_without_repeating_issue_question
 
 def test_renderer_implements_selected_only_and_finding_autofocus() -> None:
     html = render_case_visual_review(_render_model())
+    controller = _shared_review_controller()
 
     assert 'data-case-overlay-mode="selected"' in html
-    assert "focusSubjectFinding" in html
-    assert "scrollIntoView" in html
+    assert "focusSubjectFinding" in controller
+    assert "scrollIntoView" in controller
 
 
-def test_visual_workspace_uses_click_only_decision_drawer() -> None:
+def test_visual_workspace_uses_the_shared_decision_surface() -> None:
     html = render_additional_review(_render_model())
+    css = visual_shell_css()
 
-    assert 'data-case-decision-open' in html
-    assert 'data-visual-decision-open="true"' in html
-    assert "#decision-form:hover" in html
-    assert "#decision-form:focus-within" in html
-    assert "pointer-events:none!important" in html
-    assert 'data-case-decision-backdrop' in html
-    assert "e.key==='Escape'" in html
+    assert 'data-case-decision-open' not in html
+    assert 'data-visual-decision-open="true"' not in css
+    assert "#decision-form:hover" not in css
+    assert "#decision-form:focus-within" not in css
+    assert "pointer-events:none!important" not in css
+    assert 'data-case-decision-backdrop' not in html
 
 
 def test_renderer_defers_raster_decode_to_active_page() -> None:
     html = render_case_visual_review(_render_model())
+    controller = _shared_review_controller()
 
     assert 'data-case-page-src="data:image/png;base64,ZmFrZQ=="' in html
     assert (
@@ -316,4 +332,4 @@ def test_renderer_defers_raster_decode_to_active_page() -> None:
         )
         is None
     )
-    assert "ensurePageRaster" in html
+    assert "ensurePageRaster" in controller

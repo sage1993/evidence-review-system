@@ -8,7 +8,10 @@ from typing import cast
 from evidence_review.contracts.review import (
     AuditDisposition,
     ClaimAudit,
+    QuestionResponsiveness,
+    RequiredFacetCompleteness,
     TrackBAudit,
+    TrackBSemanticGateStatus,
 )
 from evidence_review.llm_layer.claim_lineage import validate_claim_id_issue_binding
 from evidence_review.llm_layer.track_a import ValidatedTrackA
@@ -35,6 +38,8 @@ _FORBIDDEN_FIELDS = frozenset(
         "abstention",
     }
 )
+_ALLOWED_QUESTION_RESPONSIVENESS = frozenset({"PASS", "FAIL", "NOT_VERIFIED"})
+_ALLOWED_FACET_COMPLETENESS = frozenset({"COMPLETE", "INCOMPLETE", "NOT_APPLICABLE"})
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -65,13 +70,59 @@ def _derive_overall(audits: Sequence[ClaimAudit]) -> AuditDisposition:
     return "ACCEPT"
 
 
-def validate_track_b_output(value: object, track_a: ValidatedTrackA) -> TrackBAudit:
+def required_facet_completeness_status(value: object) -> RequiredFacetCompleteness:
+    """Derive required-facet obligation status from immutable request inputs."""
+    if value is None:
+        return "NOT_APPLICABLE"
+    coverage = _sequence(value, "facet_coverage")
+    if not coverage:
+        return "NOT_APPLICABLE"
+    for index, item in enumerate(coverage):
+        entry = _mapping(item, f"facet_coverage[{index}]")
+        missing = _sequence(
+            entry.get("missing_facet_ids", []),
+            f"facet_coverage[{index}].missing_facet_ids",
+        )
+        if missing:
+            return "INCOMPLETE"
+    return "COMPLETE"
+
+
+def track_b_semantic_gate_status(audit: TrackBAudit) -> TrackBSemanticGateStatus:
+    """Return the final semantic acceptance state for the independent audit."""
+    if audit.overall_disposition == "REJECT" or audit.question_responsiveness == "FAIL":
+        return "FAILED"
+    if audit.overall_disposition != "ACCEPT":
+        return "NOT_VERIFIED"
+    if audit.question_responsiveness != "PASS":
+        return "NOT_VERIFIED"
+    if audit.required_facet_completeness == "INCOMPLETE":
+        return "NOT_VERIFIED"
+    if audit.required_facet_completeness not in {"COMPLETE", "NOT_APPLICABLE"}:
+        return "NOT_VERIFIED"
+    return "PASS"
+
+
+def validate_track_b_output(
+    value: object,
+    track_a: ValidatedTrackA,
+    *,
+    expected_question: str | None = None,
+    expected_facet_completeness: RequiredFacetCompleteness | None = None,
+) -> TrackBAudit:
     """Validate an independent audit covering every Track A claim exactly once."""
     payload = _mapping(value, "track_b")
     forbidden = sorted(set(payload) & _FORBIDDEN_FIELDS)
     if forbidden:
         raise ValueError(f"track_b contains forbidden fields: {', '.join(forbidden)}")
-    required = {"run_id", "claim_audits", "overall_disposition"}
+    required = {
+        "run_id",
+        "audited_question",
+        "question_responsiveness",
+        "required_facet_completeness",
+        "claim_audits",
+        "overall_disposition",
+    }
     missing = sorted(required - set(payload))
     if missing:
         raise ValueError(f"track_b is missing required fields: {', '.join(missing)}")
@@ -82,6 +133,27 @@ def validate_track_b_output(value: object, track_a: ValidatedTrackA) -> TrackBAu
     run_id = _string(payload.get("run_id"), "run_id")
     if run_id != track_a.draft.run_id:
         raise ValueError("track_b run_id does not match track_a")
+    audited_question = _string(payload.get("audited_question"), "audited_question")
+    question_responsiveness_value = _string(
+        payload.get("question_responsiveness"), "question_responsiveness"
+    )
+    if question_responsiveness_value not in _ALLOWED_QUESTION_RESPONSIVENESS:
+        raise ValueError(
+            "unsupported question_responsiveness: " + question_responsiveness_value
+        )
+    facet_value = _string(
+        payload.get("required_facet_completeness"),
+        "required_facet_completeness",
+    )
+    if facet_value not in _ALLOWED_FACET_COMPLETENESS:
+        raise ValueError("unsupported required_facet_completeness: " + facet_value)
+    if expected_question is not None:
+        if audited_question != expected_question and question_responsiveness_value != "FAIL":
+            raise ValueError("audited_question does not match the immutable review question")
+    if expected_facet_completeness is not None and facet_value != expected_facet_completeness:
+        raise ValueError(
+            "required_facet_completeness does not match immutable facet coverage"
+        )
     for claim in track_a.draft.claims:
         validate_claim_id_issue_binding(claim.claim_id, claim.issue_ids)
     expected_claim_ids = {claim.claim_id for claim in track_a.draft.claims}
@@ -96,6 +168,8 @@ def validate_track_b_output(value: object, track_a: ValidatedTrackA) -> TrackBAu
             run_id=run_id,
             claim_audits=(),
             overall_disposition="INCOMPLETE",
+            question_responsiveness=cast(QuestionResponsiveness, question_responsiveness_value),
+            required_facet_completeness=cast(RequiredFacetCompleteness, facet_value),
         )
 
     audits: list[ClaimAudit] = []
@@ -160,4 +234,6 @@ def validate_track_b_output(value: object, track_a: ValidatedTrackA) -> TrackBAu
         run_id=run_id,
         claim_audits=tuple(audits),
         overall_disposition=expected_overall,
+        question_responsiveness=cast(QuestionResponsiveness, question_responsiveness_value),
+        required_facet_completeness=cast(RequiredFacetCompleteness, facet_value),
     )

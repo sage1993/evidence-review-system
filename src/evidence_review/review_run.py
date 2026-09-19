@@ -21,7 +21,7 @@ from evidence_review.contracts.codecs import (
 from evidence_review.contracts.common import Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 from evidence_review.contracts.next_action import NextAction, next_action_document
-from evidence_review.contracts.review import ReviewPacket
+from evidence_review.contracts.review import ConfidenceFactorState, ReviewPacket, TrackBAudit
 from evidence_review.contracts.run_context import (
     compute_run_id_from_request,
     create_run_directory,
@@ -37,7 +37,11 @@ from evidence_review.llm_layer.track_a import (
     track_a_bundle_document,
     validate_track_a_output,
 )
-from evidence_review.llm_layer.track_b import validate_track_b_output
+from evidence_review.llm_layer.track_b import (
+    required_facet_completeness_status,
+    track_b_semantic_gate_status,
+    validate_track_b_output,
+)
 from evidence_review.llm_layer.validators import validate_track_a_integrity
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from evidence_review.review_packet.browser_launcher import (
@@ -271,7 +275,7 @@ def _citation_document(citation: Citation) -> dict[str, object]:
 
 
 def _calculation_document(result: CalculationResult) -> dict[str, object]:
-    return {
+    document: dict[str, object] = {
         "calculation_result_id": result.calculation_result_id,
         "status": result.status,
         "formula_id": result.formula_id,
@@ -285,6 +289,17 @@ def _calculation_document(result: CalculationResult) -> dict[str, object]:
         "result_hash": result.result_hash,
         "error_codes": list(result.error_codes),
     }
+    if result.input_sources:
+        document["input_sources"] = dict(result.input_sources)
+    if result.input_units:
+        document["input_units"] = dict(result.input_units)
+    if result.precision is not None:
+        document["precision"] = result.precision
+    if result.rounding is not None:
+        document["rounding"] = result.rounding
+    if result.intermediate_rounding_policy is not None:
+        document["intermediate_rounding_policy"] = result.intermediate_rounding_policy
+    return document
 
 
 def _rule_document(result: RuleResult) -> dict[str, object]:
@@ -310,7 +325,10 @@ def _decode_confidence_input(value: object) -> dict[str, object]:
     document: dict[str, object] = {}
     for name, item in sorted(factor_payload.items()):
         factor = _mapping(item, f"confidence_input.factors.{name}")
-        if set(factor) != {"value", "source"}:
+        if set(factor) - {"value", "source", "state"} or set(factor) < {
+            "value",
+            "source",
+        }:
             raise ValueError(
                 f"confidence factor {name} must contain value and source"
             )
@@ -320,8 +338,15 @@ def _decode_confidence_input(value: object) -> dict[str, object]:
         source = _string(
             factor.get("source"), f"confidence_input.factors.{name}.source"
         )
-        factors[name] = FactorInput(value=value_text, source=source)
-        document[name] = {"value": value_text, "source": source}
+        state = factor.get("state", "VERIFIED")
+        if state not in {"VERIFIED", "FAILED", "NOT_VERIFIED", "NOT_APPLICABLE"}:
+            raise ValueError(f"unsupported confidence factor state: {name}")
+        factors[name] = FactorInput(
+            value=value_text,
+            source=source,
+            state=cast(ConfidenceFactorState, state),
+        )
+        document[name] = {"value": value_text, "source": source, "state": state}
     score_confidence(factors)
     return {"factors": document}
 
@@ -592,6 +617,15 @@ def _track_b_bundle_document(
             )
 
     request = _mapping(_json(_run_file(run_directory, "review-request.json")), "review_request")
+    question = _string(request.get("question"), "review_request.question")
+    request_inputs = _mapping(request.get("inputs", {}), "review_request.inputs")
+    facet_values = request_inputs.get("facet_coverage", [])
+    facet_coverage = [
+        dict(_mapping(item, f"review_request.inputs.facet_coverage[{index}]"))
+        for index, item in enumerate(
+            _sequence(facet_values, "review_request.inputs.facet_coverage")
+        )
+    ]
     support_by_id: dict[str, dict[str, object]] = {}
     for index, item in enumerate(_sequence(request.get("evidence", []), "review_request.evidence")):
         evidence = _mapping(item, f"review_request.evidence[{index}]")
@@ -621,8 +655,64 @@ def _track_b_bundle_document(
         "format": "evidence-review/track-b-bundle",
         "version": 1,
         "run_id": run_id,
+        "question": question,
         "claims": claims,
         "evidence_support": [support_by_id[item] for item in sorted(cited_ids)],
+        "required_facet_completeness": _required_facet_completeness(facet_coverage),
+    }
+
+
+def _required_facet_completeness(
+    facet_coverage: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """Summarize required-facet coverage without turning it into a conclusion."""
+    if not facet_coverage:
+        return {
+            "status": "NOT_APPLICABLE",
+            "covered_issue_count": 0,
+            "total_issue_count": 0,
+        }
+    complete = sum(
+        not _sequence(item.get("missing_facet_ids", []), "missing_facet_ids")
+        for item in facet_coverage
+    )
+    total = len(facet_coverage)
+    return {
+        "status": "COMPLETE" if complete == total else "INCOMPLETE",
+        "covered_issue_count": complete,
+        "total_issue_count": total,
+    }
+
+
+def _track_b_validation_document(
+    run_directory: Path,
+    run_id: str,
+    track_b_path: Path,
+    audit: TrackBAudit,
+) -> dict[str, object]:
+    """Record immutable runtime metadata for one validated Track B attempt."""
+    bundle_path = _run_file(run_directory, "track-b-bundle.json")
+    bundle = _mapping(_json(bundle_path), "track_b_bundle")
+    return {
+        "format": "evidence-review/track-b-validation",
+        "version": 2,
+        "run_id": run_id,
+        "status": "VALIDATED",
+        "input_bundle_sha256": _sha256(bundle_path),
+        "track_b_sha256": _sha256(track_b_path),
+        "audit_attempt_id": f"TRACK-B-{_sha256(track_b_path)[:20].upper()}",
+        "generation_context": {
+            "source": "external_submission",
+            "validator": "evidence_review.llm_layer.track_b.validate_track_b_output",
+            "question": bundle.get("question"),
+        },
+        "question_responsive": audit.question_responsiveness == "PASS",
+        "question_responsiveness": audit.question_responsiveness,
+        "semantic_gate_status": track_b_semantic_gate_status(audit),
+        "required_facet_completeness": bundle.get(
+            "required_facet_completeness",
+            {"status": "NOT_APPLICABLE", "covered_issue_count": 0, "total_issue_count": 0},
+        ),
     }
 
 
@@ -727,7 +817,23 @@ def submit_track_b(
     run_directory = _require_prepared_run(workspace_root, run_id)
     output = _json(track_b_output)
     bound_track_b = run_directory / "track-b-output.json"
+    track_a_path = _run_file(run_directory, "track-a-output.json")
+    bundle = _track_a_bundle_for_run(run_directory)
+    validated_a = validate_track_a_output(_json(track_a_path), bundle)
+    validate_track_a_integrity(validated_a, bundle)
+    audit = validate_track_b_output(
+        output,
+        validated_a,
+        expected_question=bundle.question,
+        expected_facet_completeness=required_facet_completeness_status(
+            bundle.inputs.get("facet_coverage")
+        ),
+    )
     _publish_validated_track_b(track_b_output, bound_track_b, output)
+    _write_json_or_identical(
+        run_directory / "track-b-validation.json",
+        _track_b_validation_document(run_directory, run_id, bound_track_b, audit),
+    )
     track_a_path = _run_file(run_directory, "track-a-output.json")
     return finalize_review_run(
         workspace_root,
@@ -753,7 +859,14 @@ def validate_track_b_submission(
     bundle = _track_a_bundle_for_run(run_directory)
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
-    validate_track_b_output(_json(track_b_output), validated_a)
+    validate_track_b_output(
+        _json(track_b_output),
+        validated_a,
+        expected_question=bundle.question,
+        expected_facet_completeness=required_facet_completeness_status(
+            bundle.inputs.get("facet_coverage")
+        ),
+    )
 
 
 def _validate_track_output_run_id(value: object, run_id: str, field: str) -> None:

@@ -8,6 +8,7 @@ import pytest
 from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.review_packet import builder
 from evidence_review.review_packet.builder import build_review_view_model
 
 V1_SCHEMA = Path("tests/fixtures/evidence/schema_v1.sql")
@@ -375,3 +376,59 @@ def test_v2_exposes_resolved_reference_citations_in_deterministic_order(
     assert related["reference"]["type"] == "TEXT"
     assert related["page_width"] == 120.0
     assert related["page_height"] == 200.0
+
+
+def test_view_model_passes_verified_case_related_citations_to_visual_projection(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "evidence" / "evidence.sqlite"
+    database.parent.mkdir(parents=True)
+    _db(database)
+    packet = _packet()
+    run_dir = tmp_path / "runs" / packet["run_id"]
+    run_dir.mkdir(parents=True)
+    (run_dir / "track-a-bundle.json").write_text(
+        json.dumps(
+            {
+                "evidence": [
+                    {
+                        "citation": {
+                            "citation_id": "CIT-E2",
+                            "evidence_id": "E2",
+                            "document_id": "DOC1",
+                            "revision_id": "REV1",
+                            "page_number": 3,
+                            "bbox": [20, 50, 100, 70],
+                            "source_hash": "a" * 64,
+                        },
+                        "text": "unused related citation",
+                        "issue_ids": ["I1"],
+                        "role": "supporting_fact",
+                    }
+                ],
+                "inputs": {"case_visual_context": {}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_projection(
+        model: object,
+        *,
+        workspace_root: Path,
+        supplemental_reference_citations: object,
+    ) -> None:
+        captured["workspace_root"] = workspace_root
+        captured["supplemental_reference_citations"] = supplemental_reference_citations
+        return None
+
+    monkeypatch.setattr(builder, "build_case_visual_projection", fake_projection)
+
+    builder.build_review_view_model(packet, database)
+
+    supplemental = captured["supplemental_reference_citations"]
+    assert isinstance(supplemental, list)
+    assert [item["citation_id"] for item in supplemental] == ["CIT-E2"]
+    assert supplemental[0]["quote"] == "unused related citation"

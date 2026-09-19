@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from evidence_review.canonical_json import sha256_json
-from evidence_review.parsing.odl_adapter import OpenDataLoaderJsonAdapter, load_raw_elements
+from evidence_review.parsing.odl_adapter import (
+    OpenDataLoaderJsonAdapter,
+    load_parsed_tables,
+    load_raw_elements,
+)
 from evidence_review.parsing.odl_source import (
     ParserPageDimensionsResult,
     parser_page_dimensions,
@@ -31,6 +35,32 @@ def test_load_raw_elements_assigns_stable_page_ordered_ids() -> None:
     assert [item.element_type for item in first] == ["list", "list item", "paragraph"]
     assert first[1].raw_payload_hash == sha256_json(first[1].raw_payload)
     assert first[1].source_path == ("kids", 1, "list items", 0)
+
+
+def test_load_parsed_tables_preserves_rows_columns_spans_and_search_text() -> None:
+    fixture = Path("tests/golden/fixtures/minimal-table-parser-output.json")
+
+    first = load_parsed_tables(fixture, document_id="LAW1", revision_id="LAW1-abc123")
+    second = load_parsed_tables(fixture, document_id="LAW1", revision_id="LAW1-abc123")
+
+    assert first == second
+    assert len(first) == 1
+    table = first[0]
+    assert table.table_key == "T608"
+    assert table.page_number == 1
+    assert table.bbox == (10.0, 20.0, 110.0, 180.0)
+    assert [(row.row_number, len(row.cells)) for row in table.rows] == [(1, 3), (2, 3)]
+    assert table.rows[1].cells[0].row_span == 2
+    assert table.rows[0].cells[1].column_number == 2
+    assert table.rows[0].cells[1].text == "기존 용도지역"
+    assert "행 1 열 2: 기존 용도지역" in table.search_text
+    assert "행 2 열 3: 준주거지역" in table.search_text
+    assert table.rows[0].cells[1].raw_payload_hash == sha256_json(
+        table.rows[0].cells[1].raw_payload
+    )
+    element = load_raw_elements(fixture, document_id="LAW1", revision_id="LAW1-abc123")[0]
+    assert element.element_type == "table"
+    assert "행 1 열 2: 기존 용도지역" in element.raw_text
 
 
 def test_missing_parser_dimensions_are_absent_not_a4() -> None:

@@ -12,6 +12,7 @@ from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.review import ReviewPacket
 from evidence_review.evidence.finalization import validate_finalized_evidence
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.review_packet.case_visual_projection import build_case_visual_projection
 from evidence_review.review_packet.reference_projection import project_reference_record
 
@@ -259,6 +260,63 @@ def _resolve_display_citation(
     }
 
 
+def _case_visual_reference_citations(
+    connection: sqlite3.Connection,
+    workspace_root: Path,
+    run_id: str,
+    provided_records: Mapping[str, Mapping[str, object]],
+    *,
+    require_packet_quote: bool,
+) -> list[dict[str, object]]:
+    """Resolve case-bundle evidence for visual related-reference anchors."""
+    try:
+        bundle_path = verified_regular_file_below(
+            workspace_root,
+            ("runs", run_id, "track-a-bundle.json"),
+            field="case visual Track A bundle",
+        )
+    except FileNotFoundError:
+        return []
+
+    try:
+        bundle = _mapping(
+            json.loads(bundle_path.read_text(encoding="utf-8")),
+            "track_a_bundle",
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("invalid case visual Track A bundle") from error
+
+    inputs = _mapping(bundle.get("inputs"), "track_a_bundle.inputs")
+    if inputs.get("case_visual_context") is None:
+        return []
+
+    resolved: dict[str, dict[str, object]] = {}
+    for index, raw_evidence in enumerate(
+        _sequence(bundle.get("evidence", []), "track_a_bundle.evidence")
+    ):
+        evidence = _mapping(raw_evidence, f"track_a_bundle.evidence[{index}]")
+        citation = _mapping(
+            evidence.get("citation"),
+            f"track_a_bundle.evidence[{index}].citation",
+        )
+        citation_id = _string(
+            citation.get("citation_id"),
+            f"track_a_bundle.evidence[{index}].citation.citation_id",
+        )
+        resolved_citation = _resolve_display_citation(
+            connection,
+            citation_id,
+            provided_records,
+            require_packet_quote=require_packet_quote,
+        )
+        _verify_citation_identity(citation, resolved_citation)
+        prior = resolved.get(citation_id)
+        if prior is not None and prior != resolved_citation:
+            raise ValueError("conflicting case visual citation payload")
+        resolved[citation_id] = resolved_citation
+    return [resolved[citation_id] for citation_id in sorted(resolved)]
+
+
 def _build_review_items(
     claims: Sequence[Mapping[str, object]],
     calculations: Sequence[Mapping[str, object]],
@@ -378,6 +436,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
     require_packet_quote = _requires_packet_quote(document)
     claims: list[dict[str, object]] = []
     resolved_citations: dict[str, dict[str, object]] = {}
+    case_visual_reference_citations: list[dict[str, object]] = []
     with EvidenceStore(evidence_db, read_only=True) as store:
         finalized = validate_finalized_evidence(store)
         connection = store.require_connection()
@@ -429,6 +488,14 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
                 require_packet_quote=require_packet_quote,
             )
             resolved_citations.setdefault(citation_id, resolved)
+
+        case_visual_reference_citations = _case_visual_reference_citations(
+            connection,
+            evidence_db.parent.parent,
+            _string(document.get("run_id"), "run_id"),
+            provided_records,
+            require_packet_quote=require_packet_quote,
+        )
 
     reasons = [
         _string(item, "abstention_reason")
@@ -548,7 +615,25 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
     case_visual_review = build_case_visual_projection(
         model,
         workspace_root=evidence_db.parent.parent,
+        supplemental_reference_citations=case_visual_reference_citations,
     )
     if case_visual_review is not None:
         model["case_visual_review"] = case_visual_review
+    visual = case_visual_review or {}
+    visual_findings = (
+        _sequence(visual.get("findings", []), "case_visual_review.findings")
+        if isinstance(visual, Mapping)
+        else []
+    )
+    model["capabilities"] = {
+        "has_reference": bool(resolved_citations)
+        or bool(visual.get("reference_pages", []) if isinstance(visual, Mapping) else []),
+        "has_subject": bool(visual.get("pages", []) if isinstance(visual, Mapping) else []),
+        "has_comparison": bool(model.get("comparisons"))
+        or any(
+            isinstance(item, Mapping)
+            and str(item.get("status", "")) != "not_comparable"
+            for item in visual_findings
+        ),
+    }
     return model

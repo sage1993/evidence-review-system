@@ -13,6 +13,7 @@ from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.question_plan import decode_question_plan
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.llm_layer.track_b import required_facet_completeness_status
 from evidence_review.planned_review_question import prepare_planned_review_question
 from evidence_review.retrieval.index import build_fts_index
 
@@ -240,11 +241,16 @@ def _track_a_output(run_directory: Path) -> dict[str, object]:
     }
 
 
-def _track_b_output(track_a: dict[str, object], run_id: str) -> dict[str, object]:
+def _track_b_output(track_a: dict[str, object], run_directory: Path) -> dict[str, object]:
     claims = track_a["claims"]
     assert isinstance(claims, list)
+    bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
+    facet_status = required_facet_completeness_status(bundle["inputs"].get("facet_coverage"))
     return {
-        "run_id": run_id,
+        "run_id": run_directory.name,
+        "audited_question": bundle["question"],
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": facet_status,
         "claim_audits": [
             {
                 "claim_id": claim["claim_id"],
@@ -379,7 +385,7 @@ def test_finalized_real_workspace_reaches_finalizer_with_all_issue_lineage(
     assert any("복합" in text for text in issue_text["I4"])
 
     track_a = _track_a_output(run_directory)
-    track_b = _track_b_output(track_a, run_directory.name)
+    track_b = _track_b_output(track_a, run_directory)
     _write_manifest_outputs(run_directory, track_a, track_b)
 
     packet = finalize_run(run_directory)

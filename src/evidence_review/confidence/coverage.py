@@ -12,6 +12,7 @@ _SOURCE_GAPS = {
     "SOURCE_NOT_INGESTED",
     "REFERENCE_TARGET_MISSING",
     "RETRIEVAL_MISS",
+    "RELEVANCE_INSUFFICIENT",
 }
 _COMPLETE_STATUSES = {"RESOLVED", "CONDITIONAL"}
 
@@ -21,6 +22,14 @@ def _ratio(numerator: int, denominator: int) -> str:
         raise ValueError("confidence ratio denominator must be positive")
     value = Decimal(numerator) / Decimal(denominator)
     return format(value.quantize(_QUANTUM, rounding=ROUND_HALF_UP), ".4f")
+
+
+def _coverage_state(numerator: int, denominator: int) -> str:
+    return "VERIFIED" if numerator == denominator else "FAILED"
+
+
+def _factor(value: str, source: str, state: str) -> dict[str, object]:
+    return {"value": value, "source": source, "state": state}
 
 
 def apply_issue_coverage_factors(
@@ -90,34 +99,48 @@ def apply_issue_coverage_factors(
     if len(factors) != len(factors_value):
         raise ValueError("review request confidence factors must be objects")
 
-    factors["source completeness"] = {
-        "value": _ratio(source_complete, total_issues),
-        "source": f"issue_coverage:source_complete={source_complete}/{total_issues}",
-    }
-    factors["traceability"] = {
-        "value": _ratio(traceable, total_issues),
-        "source": f"issue_coverage:traceable={traceable}/{total_issues}",
-    }
-    factors["rule coverage"] = {
-        "value": _ratio(covered_roles, required_roles),
-        "source": f"issue_coverage:required_roles={covered_roles}/{required_roles}",
-    }
-    factors["input completeness"] = {
-        "value": _ratio(complete_inputs, total_issues),
-        "source": f"issue_coverage:complete_inputs={complete_inputs}/{total_issues}",
-    }
-    factors["parse quality"] = {
-        "value": _ratio(parse_gap_free, total_issues),
-        "source": f"issue_coverage:parse_gap_free={parse_gap_free}/{total_issues}",
-    }
-    factors["human review status"] = {
-        "value": "0.0000",
-        "source": "human_review:pending",
-    }
-    factors["unresolved conflict factor"] = {
-        "value": "0.0000" if conflicts else "1.0000",
-        "source": f"issue_coverage:conflicts={conflicts}/{total_issues}",
-    }
+    factors["source completeness"] = _factor(
+        _ratio(source_complete, total_issues),
+        f"issue_coverage:source_complete={source_complete}/{total_issues}",
+        _coverage_state(source_complete, total_issues),
+    )
+    factors["traceability"] = _factor(
+        _ratio(traceable, total_issues),
+        f"issue_coverage:traceable={traceable}/{total_issues}",
+        _coverage_state(traceable, total_issues),
+    )
+    factors["rule coverage"] = _factor(
+        _ratio(covered_roles, required_roles),
+        f"issue_coverage:required_roles={covered_roles}/{required_roles}",
+        _coverage_state(covered_roles, required_roles),
+    )
+    factors["input completeness"] = _factor(
+        _ratio(complete_inputs, total_issues),
+        f"issue_coverage:complete_inputs={complete_inputs}/{total_issues}",
+        _coverage_state(complete_inputs, total_issues),
+    )
+    factors["parse quality"] = _factor(
+        _ratio(parse_gap_free, total_issues),
+        f"issue_coverage:parse_gap_free={parse_gap_free}/{total_issues}",
+        _coverage_state(parse_gap_free, total_issues),
+    )
+    factors["human review status"] = _factor(
+        "0.0000", "human_review:pending", "NOT_VERIFIED"
+    )
+    factors["unresolved conflict factor"] = _factor(
+        "0.0000" if conflicts else "1.0000",
+        f"issue_coverage:conflicts={conflicts}/{total_issues}",
+        "FAILED" if conflicts else "VERIFIED",
+    )
+
+    freshness = factors["source freshness"]
+    if not (
+        freshness.get("state") == "VERIFIED"
+        and str(freshness.get("source", "")).startswith("source_freshness:verified")
+    ):
+        factors["source freshness"] = _factor(
+            "0.0000", "source_freshness:not_verified", "NOT_VERIFIED"
+        )
 
     bound = dict(request)
     confidence = dict(confidence_value)

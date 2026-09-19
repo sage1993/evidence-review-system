@@ -111,3 +111,18 @@ def test_generated_document_failure_becomes_canonical_finding(tmp_path: Path) ->
     assert "GENERATED_DOCUMENT_IMPORT_FAILED" in {
         finding.code for finding in report.findings
     }
+
+
+def test_unclosed_command_quote_becomes_canonical_finding(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    _write(
+        tmp_path / "docs" / "guide.md",
+        '# Guide\n\n```powershell\nevidence-review --workspace "<path>\n```\n',
+    )
+    report = validate_documentation(tmp_path, _config(tmp_path))
+
+    assert report.status == "FAIL"
+    assert [finding.code for finding in report.findings] == [
+        "COMMAND_PARSE_INVALID",
+        "HISTORICAL_MARKER_MISSING",
+    ]

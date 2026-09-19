@@ -13,7 +13,7 @@ from typing import cast
 
 from evidence_review.abstention.finalizer import verify_finalized_run
 from evidence_review.canonical_json import dump_bytes, sha256_json
-from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.confidence.initialization import initial_confidence_factors
 from evidence_review.contracts.next_action import NextAction, next_action_document
 from evidence_review.contracts.review import (
     TERMINAL_FINALIZER_STATUSES,
@@ -191,14 +191,10 @@ def build_review_run_request(
     }
     if set(approved) - known_rule_ids:
         raise ValueError("approved_rule_result_ids reference unknown rules")
-    evidence_dependent_factors = {
-        "source completeness",
-        "traceability",
-        "input completeness",
-    }
     inputs: dict[str, object] = {"snapshot_hash": snapshot_hash}
     if provenance is not None:
         inputs["evidence_snapshot_provenance"] = provenance
+
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
@@ -209,17 +205,13 @@ def build_review_run_request(
         "rules": rule_documents,
         "approved_rule_result_ids": approved,
         "confidence_input": {
-            "factors": {
-                name: {
-                    "value": (
-                        "0.0"
-                        if not evidence and name in evidence_dependent_factors
-                        else "1.0"
-                    ),
-                    "source": "retrieval:evidence_availability",
-                }
-                for name in FACTOR_WEIGHTS
-            }
+            "factors": initial_confidence_factors(
+                evidence_available=bool(evidence),
+                evidence_source="retrieval:evidence_availability",
+                calculation_statuses=[
+                    item.get("status") for item in calculation_documents
+                ],
+            )
         },
     }
 

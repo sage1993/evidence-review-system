@@ -365,8 +365,20 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
     validated_run_id = validate_identifier(run_id, "run_id")
     try:
         path = _server_state_path(workspace_root, validated_run_id)
-    except (OSError, ValueError):
+    except PermissionError:
+        return {
+            "running": False,
+            "run_id": validated_run_id,
+            "reason_code": "PERMISSION_DENIED",
+        }
+    except ValueError:
         return {"running": False, "run_id": validated_run_id}
+    except OSError:
+        return {
+            "running": False,
+            "run_id": validated_run_id,
+            "reason_code": "SOURCE_MISMATCH",
+        }
     if path is None:
         return {"running": False, "run_id": validated_run_id}
     try:

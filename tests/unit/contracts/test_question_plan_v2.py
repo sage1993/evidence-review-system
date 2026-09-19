@@ -110,6 +110,36 @@ def test_v2_decodes_issue_required_roles_and_search_role() -> None:
     ]
 
 
+def test_question_plan_preserves_raw_question_and_separates_context_sources() -> None:
+    payload = _v2_payload()
+    payload["raw_user_question"] = "  " + QUESTION + "\n"
+    payload["normalized_question"] = QUESTION
+    payload["document_context"] = [
+        {"text": "서울특별시 안심주택 운영기준", "source": "document"}
+    ]
+    payload["planner_inference"] = [
+        {"text": "용도지역 변경 기준을 확인한다", "source": "planner"}
+    ]
+
+    plan = decode_question_plan(payload, QUESTION)
+    document = question_plan_document(plan)
+
+    assert plan.raw_user_question == "  " + QUESTION + "\n"
+    assert plan.normalized_question == QUESTION
+    assert plan.document_context[0].source == "document"
+    assert plan.planner_inference[0].source == "planner"
+    assert document["raw_user_question"] == "  " + QUESTION + "\n"
+    assert document["document_context"] == payload["document_context"]
+
+
+def test_question_plan_rejects_semantically_changed_raw_question() -> None:
+    payload = _v2_payload()
+    payload["raw_user_question"] = QUESTION.replace("300m", "500m")
+
+    with pytest.raises(ValueError, match="raw_user_question does not match"):
+        decode_question_plan(payload, QUESTION)
+
+
 def test_v1_is_accepted_through_deterministic_legacy_adapter() -> None:
     plan = decode_question_plan(_v1_payload(), QUESTION)
 

@@ -135,6 +135,33 @@ _UNIT_KEYS = {
     "cm": "length_cm",
 }
 _MAX_CORE_VARIANTS = 10
+_HEADING_STOP_TOKENS = frozenset(
+    {
+        "기준",
+        "검토",
+        "검색",
+        "검색한다",
+        "검색하는",
+        "검색한다.",
+        "관련",
+        "무엇인가",
+        "무엇인가?",
+        "어떤",
+        "정하는",
+        "정한다",
+        "조항",
+        "조항을",
+        "법령",
+        "조례",
+        "지침",
+        "법령·조례·지침·기준",
+        "여부",
+        "적용",
+        "최소",
+        "최대",
+        "추가",
+    }
+)
 
 
 def _normalize_text(value: str) -> str:
@@ -318,55 +345,98 @@ def _heading_scoped_search(
     required = tuple(
         _clean_token(token) for token in required_tokens if _clean_token(token)
     )
+    token_conditions: list[str] = []
+    parameters: list[str] = []
+    for token in tokens:
+        token_conditions.append(
+            "(" + " OR ".join(
+                (
+                    '" " || r.normalized_text || " " LIKE ?',
+                    '" " || r.title || " " LIKE ?',
+                    '" " || COALESCE(r.chapter, \'\') || " " LIKE ?',
+                    '" " || COALESCE(r.section, \'\') || " " LIKE ?',
+                    '" " || COALESCE(r.clause_number, \'\') || " " LIKE ?',
+                )
+            ) + ")"
+        )
+        parameters.extend([f"%{token}%"] * 5)
     rows = connection.execute(
-        """
+        f"""
         SELECT r.clause_id, r.document_id, r.revision_id, r.title,
                r.chapter, r.section, r.clause_number, r.raw_text,
                r.normalized_text
         FROM clause_retrieval_records AS r
-        WHERE " " || r.normalized_text || " " LIKE ?
-           OR " " || r.title || " " LIKE ?
-           OR " " || COALESCE(r.chapter, '') || " " LIKE ?
-           OR " " || COALESCE(r.section, '') || " " LIKE ?
+        WHERE {' OR '.join(token_conditions)}
         ORDER BY r.clause_id
-        LIMIT ?
         """,
-        (
-            f"%{tokens[0]}%",
-            f"%{tokens[0]}%",
-            f"%{tokens[0]}%",
-            f"%{tokens[0]}%",
-            limit,
-        ),
+        parameters,
     ).fetchall()
-    hits: list[ClauseRetrievalHit] = []
+    ranked: list[tuple[int, int, str, ClauseRetrievalHit]] = []
     for row in rows:
-        searchable = _normalize_text(
+        headings = _normalize_text(
             " ".join("" if value is None else str(value) for value in row[3:9])
         )
-        if any(token not in searchable for token in required):
+        if any(token not in headings for token in required):
             continue
-        score = Decimal(limit - len(hits)) / Decimal(max(limit, 1))
-        hits.append(
-            ClauseRetrievalHit(
-                clause_id=str(row[0]),
-                document_id=str(row[1]),
-                revision_id=str(row[2]),
-                title=str(row[3]),
-                chapter=None if row[4] is None else str(row[4]),
-                section=None if row[5] is None else str(row[5]),
-                clause_number=None if row[6] is None else str(row[6]),
-                text=str(row[8] or row[7] or ""),
-                channel_scores=(
-                    ChannelScore(
-                        "clause_heading_scoped",
-                        score,
-                        f"heading-token:{tokens[0]}",
-                    ),
-                ),
+        matched_tokens = sum(token in headings for token in tokens)
+        meaningful_tokens = []
+        for token in tokens:
+            cleaned = _clean_token(token)
+            if cleaned in _HEADING_STOP_TOKENS:
+                continue
+            for suffix in (
+                "에서",
+                "으로",
+                "에게",
+                "의",
+                "을",
+                "를",
+                "은",
+                "는",
+                "이",
+                "가",
+                "에",
+                "로",
+                "과",
+                "와",
+                "도",
+                "만",
+            ):
+                if len(cleaned) > len(suffix) + 1 and cleaned.endswith(suffix):
+                    cleaned = cleaned[: -len(suffix)]
+                    break
+            if cleaned and cleaned not in _HEADING_STOP_TOKENS:
+                meaningful_tokens.append(cleaned)
+        if meaningful_tokens and not all(token in headings for token in meaningful_tokens):
+            continue
+        heading_matches = sum(
+            token in _normalize_text(
+                " ".join("" if value is None else str(value) for value in row[3:7])
             )
+            for token in tokens
         )
-    return tuple(hits)
+        hit = ClauseRetrievalHit(
+            clause_id=str(row[0]),
+            document_id=str(row[1]),
+            revision_id=str(row[2]),
+            title=str(row[3]),
+            chapter=None if row[4] is None else str(row[4]),
+            section=None if row[5] is None else str(row[5]),
+            clause_number=None if row[6] is None else str(row[6]),
+            text=str(row[8] or row[7] or ""),
+            channel_scores=(
+                ChannelScore(
+                    "clause_heading_scoped",
+                    Decimal(matched_tokens * 2 + heading_matches)
+                    / Decimal(max(len(tokens) * 3, 1)),
+                    f"heading-token-coverage:{matched_tokens}/{len(tokens)}",
+                ),
+            ),
+        )
+        ranked.append((matched_tokens, heading_matches, hit.clause_id, hit))
+    ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
+    candidate_limit = max(limit * 16, 100)
+    return tuple(item[3] for item in ranked[:candidate_limit])
 
 
 def _accepted_hits(
@@ -409,6 +479,7 @@ def search_clause_with_fallback(
     limit: int = 20,
     hit_filter: HitFilter | None = None,
     allow_heading_scoped: bool = True,
+    allow_derived_fallback: bool = True,
 ) -> FallbackResult:
     normalized = _normalize_text(query)
     if not normalized:
@@ -422,7 +493,11 @@ def search_clause_with_fallback(
         (FallbackStage.TOKEN_AND, normalized, search_clause_token_and),
         (FallbackStage.TOKEN_PREFIX, normalized, search_clause_token_prefix_and),
     ]
-    decontaminated = _fact_decontaminated_query(normalized, fact_texts)
+    decontaminated = (
+        _fact_decontaminated_query(normalized, fact_texts)
+        if allow_derived_fallback
+        else None
+    )
     if decontaminated is not None:
         attempts.append(
             (
@@ -437,46 +512,47 @@ def search_clause_with_fallback(
             (normalized, decontaminated) if decontaminated is not None else (normalized,)
         )
     )
-    for base in bases:
-        attempts.extend(
-            (FallbackStage.APPROVED_ALIAS, derived, search_clause_token_and)
-            for derived in _approved_alias_queries(base)
-        )
-
-    compound_queries: list[str] = []
-    for base in bases:
-        for derived in _compound_decomposition_queries(base):
-            if derived in compound_queries:
-                continue
-            compound_queries.append(derived)
-            attempts.append(
-                (
-                    FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
-                    derived,
-                    search_clause_token_prefix_and,
-                )
-            )
-
     protected_mechanisms = _protected_core_tokens(normalized)
     protected_numerics = _protected_numeric_tokens(normalized, fact_texts)
-    protected_tokens = protected_mechanisms | protected_numerics
-    core_queries: list[str] = []
-    for base in tuple(dict.fromkeys((*bases, *compound_queries))):
-        for derived in _core_token_queries(base, required_tokens=protected_tokens):
-            if derived in core_queries:
-                continue
-            core_queries.append(derived)
-            attempts.append(
-                (
-                    FallbackStage.CORE_TOKEN_AND,
-                    derived,
-                    search_clause_token_prefix_and,
-                )
+    if allow_derived_fallback:
+        for base in bases:
+            attempts.extend(
+                (FallbackStage.APPROVED_ALIAS, derived, search_clause_token_and)
+                for derived in _approved_alias_queries(base)
             )
+
+        compound_queries: list[str] = []
+        for base in bases:
+            for derived in _compound_decomposition_queries(base):
+                if derived in compound_queries:
+                    continue
+                compound_queries.append(derived)
+                attempts.append(
+                    (
+                        FallbackStage.LEGAL_COMPOUND_DECOMPOSITION,
+                        derived,
+                        search_clause_token_prefix_and,
+                    )
+                )
+
+        protected_tokens = protected_mechanisms | protected_numerics
+        core_queries: list[str] = []
+        for base in tuple(dict.fromkeys((*bases, *compound_queries))):
+            for derived in _core_token_queries(base, required_tokens=protected_tokens):
+                if derived in core_queries:
+                    continue
+                core_queries.append(derived)
+                attempts.append(
+                    (
+                        FallbackStage.CORE_TOKEN_AND,
+                        derived,
+                        search_clause_token_prefix_and,
+                    )
+                )
+                if len(core_queries) >= _MAX_CORE_VARIANTS:
+                    break
             if len(core_queries) >= _MAX_CORE_VARIANTS:
                 break
-        if len(core_queries) >= _MAX_CORE_VARIANTS:
-            break
 
     traces: list[FallbackTrace] = []
     seen: set[tuple[FallbackStage, str]] = set()
@@ -520,6 +596,7 @@ def search_clause_with_fallback(
         raw_heading_hits,
         hit_filter,
     )
+    heading_hits = heading_hits[:limit]
     traces.append(
         FallbackTrace(
             stage=FallbackStage.HEADING_SCOPED,

@@ -91,6 +91,9 @@ def _empty_track_a():
 def test_track_b_rejects_unaudited_track_a_claim() -> None:
     payload = {
         "run_id": "RUN-0123456789ABCDEF0123",
+        "audited_question": "검토",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [
             {"claim_id": "CL1", "disposition": "ACCEPT", "finding_codes": [], "notes": ""}
         ],
@@ -103,6 +106,9 @@ def test_track_b_rejects_unaudited_track_a_claim() -> None:
 def test_track_b_requires_consistent_overall_disposition() -> None:
     payload = {
         "run_id": "RUN-0123456789ABCDEF0123",
+        "audited_question": "검토",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [
             {
                 "claim_id": "CL1",
@@ -121,6 +127,9 @@ def test_track_b_requires_consistent_overall_disposition() -> None:
 def test_track_b_accepts_complete_independent_audit() -> None:
     payload = {
         "run_id": "RUN-0123456789ABCDEF0123",
+        "audited_question": "검토",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [
             {"claim_id": "CL1", "disposition": "ACCEPT", "finding_codes": [], "notes": ""},
             {
@@ -137,6 +146,53 @@ def test_track_b_accepts_complete_independent_audit() -> None:
     assert tuple(item.claim_id for item in audit.claim_audits) == ("CL1", "CL2")
 
 
+def test_track_b_requires_explicit_question_and_facet_semantics() -> None:
+    payload = {
+        "run_id": "RUN-0123456789ABCDEF0123",
+        "audited_question": "검토",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
+        "claim_audits": [
+            {"claim_id": "CL1", "disposition": "ACCEPT", "finding_codes": [], "notes": ""},
+            {"claim_id": "CL2", "disposition": "ACCEPT", "finding_codes": [], "notes": ""},
+        ],
+        "overall_disposition": "ACCEPT",
+    }
+
+    audit = validate_track_b_output(
+        payload,
+        _track_a(),
+        expected_question="검토",
+        expected_facet_completeness="NOT_APPLICABLE",
+    )
+
+    assert audit.question_responsiveness == "PASS"
+    assert audit.required_facet_completeness == "NOT_APPLICABLE"
+
+
+def test_track_b_question_mismatch_is_an_explicit_failed_gate() -> None:
+    payload = {
+        "run_id": "RUN-0123456789ABCDEF0123",
+        "audited_question": "다른 질문",
+        "question_responsiveness": "FAIL",
+        "required_facet_completeness": "NOT_APPLICABLE",
+        "claim_audits": [
+            {"claim_id": "CL1", "disposition": "ACCEPT", "finding_codes": [], "notes": ""},
+            {"claim_id": "CL2", "disposition": "ACCEPT", "finding_codes": [], "notes": ""},
+        ],
+        "overall_disposition": "ACCEPT",
+    }
+
+    audit = validate_track_b_output(
+        payload,
+        _track_a(),
+        expected_question="검토",
+        expected_facet_completeness="NOT_APPLICABLE",
+    )
+
+    assert audit.question_responsiveness == "FAIL"
+
+
 def test_track_b_rejects_accept_for_empty_track_a_claim_set() -> None:
     track_a = _empty_track_a()
 
@@ -144,6 +200,9 @@ def test_track_b_rejects_accept_for_empty_track_a_claim_set() -> None:
         validate_track_b_output(
             {
                 "run_id": track_a.draft.run_id,
+                "audited_question": "근거가 없는 질문",
+                "question_responsiveness": "NOT_VERIFIED",
+                "required_facet_completeness": "NOT_APPLICABLE",
                 "claim_audits": [],
                 "overall_disposition": "ACCEPT",
             },
@@ -157,6 +216,9 @@ def test_track_b_accepts_incomplete_for_empty_track_a_claim_set() -> None:
     audit = validate_track_b_output(
         {
             "run_id": track_a.draft.run_id,
+            "audited_question": "근거가 없는 질문",
+            "question_responsiveness": "NOT_VERIFIED",
+            "required_facet_completeness": "NOT_APPLICABLE",
             "claim_audits": [],
             "overall_disposition": "INCOMPLETE",
         },

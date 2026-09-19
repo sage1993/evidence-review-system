@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 
 from evidence_review.review_packet.render_case_visual import render_case_visual_review
 from evidence_review.review_packet.render_case_visual_lazy import (
@@ -96,8 +97,16 @@ def test_reference_presentation_pipeline_preserves_machine_authority() -> None:
         assert f'data-reference-type="{reference_type}"' in embedded
     assert 'data-reference-role="direct"' in embedded
     assert 'data-reference-role="related"' in embedded
-    assert "function focusSubjectFinding" in embedded
-    assert "function focusReferenceFinding" in embedded
+    controller = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
+    assert "function focusSubjectFinding" in controller
+    assert "function focusReferenceFinding" in controller
     assert 'data-reference-page-src="./page-images/' in lazy
     assert 'data-reference-page-image' in lazy
     assert 'href="./page-images/' not in lazy

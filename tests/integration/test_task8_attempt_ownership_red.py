@@ -97,10 +97,15 @@ def _track_a(run_directory: Path) -> Path:
 
 def _track_b(run_directory: Path) -> Path:
     output = run_directory / "track-b-attempt-1.json"
+    bundle = json.loads((run_directory / "track-b-bundle.json").read_text(encoding="utf-8"))
+    facet_status = bundle["required_facet_completeness"]["status"]
     output.write_bytes(
         dump_bytes(
             {
                 "run_id": run_directory.name,
+                "audited_question": bundle["question"],
+                "question_responsiveness": "PASS",
+                "required_facet_completeness": facet_status,
                 "claim_audits": [
                     {
                         "claim_id": "CL1",

@@ -17,7 +17,6 @@ from evidence_review.review_packet.render_case_visual_lazy import render_case_vi
 
 
 _VISUAL_SHELL_STYLE = """
-<style>
 body:has(#case-visual-review){overflow:hidden}
 body:has(#case-visual-review) .app-shell{width:100%;max-width:none;height:100vh;margin:0;padding:12px}
 body:has(#case-visual-review) .review-workspace{display:block;height:100%;padding:0}
@@ -26,17 +25,10 @@ body:has(#case-visual-review) .review-workspace>:not(.visual-review-grid-span):n
 body:has(#case-visual-review) #case-visual-review{height:100%;min-height:0;max-height:none;margin:0}
 body:has(#case-visual-review) .process-strip{display:none!important}
 body:has(#case-visual-review) .case-visual-transform{user-select:none;-webkit-user-select:none}
-body:has(#case-visual-review) #decision-form,
-body:has(#case-visual-review) #decision-form:hover,
-body:has(#case-visual-review) #decision-form:focus-within{position:fixed;right:12px;top:50%;z-index:30;width:min(380px,calc(100vw - 48px));max-height:86vh;overflow:auto;transform:translate(calc(100% + 28px),-50%)!important;transition:none;box-shadow:0 12px 32px rgba(16,24,40,.18);background:#fff;pointer-events:none!important;visibility:hidden;opacity:0}
-body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form,
-body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form:hover,
-body[data-visual-decision-open="true"]:has(#case-visual-review) #decision-form:focus-within{transform:translate(0,-50%)!important;pointer-events:auto!important;visibility:visible!important;opacity:1!important}
-body:has(#case-visual-review) #decision-form .visual-decision-close{display:block;margin:8px 8px 0 auto;min-height:30px;padding:0 9px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;color:#344054;font-size:11px}
 @media(min-width:2560px){
 body:has(#case-visual-review) .workspace-grid{grid-template-columns:minmax(0,1fr) minmax(380px,420px)}
 body:has(#case-visual-review) .reference-viewer,body:has(#case-visual-review) .subject-viewer{grid-template-rows:52px minmax(0,1fr)}
-body:has(#case-visual-review) .findings-panel{grid-template-rows:52px 44px minmax(0,1fr) 56px}
+body:has(#case-visual-review) .findings-panel{grid-template-rows:52px 44px minmax(0,1fr)}
 body:has(#case-visual-review) .reference-viewer>header,body:has(#case-visual-review) .findings-panel>header,body:has(#case-visual-review) .subject-toolbar{padding:0 16px;font-size:14px}
 body:has(#case-visual-review) .reference-viewer header span,body:has(#case-visual-review) .findings-panel header span,body:has(#case-visual-review) .subject-toolbar span{font-size:12px}
 body:has(#case-visual-review) .overlay-modes button{height:34px;padding:0 10px;font-size:12px}
@@ -47,17 +39,14 @@ body:has(#case-visual-review) .findings-body{padding:10px;gap:9px}
 body:has(#case-visual-review) .finding-card{padding:12px}
 body:has(#case-visual-review) .finding-number,body:has(#case-visual-review) .finding-status{font-size:12px}
 body:has(#case-visual-review) .finding-card h3{font-size:15px}
-body:has(#case-visual-review) .comparison-grid dt{font-size:11px}
+body:has(#case-visual-review) .comparison-grid dt{font-size:12px}
 body:has(#case-visual-review) .comparison-grid dd{font-size:12.5px}
-body:has(#case-visual-review) .finding-pagination{font-size:12px}
-body:has(#case-visual-review) .finding-pagination>button:not(.decision-open){width:36px;height:36px}
-body:has(#case-visual-review) .decision-open{height:38px;padding:0 12px;font-size:12px}
 body:has(#case-visual-review) .case-visual-help{padding:7px 16px;font-size:12px}
 }
 @media(min-width:3200px){
 body:has(#case-visual-review) .workspace-grid{grid-template-columns:minmax(0,1fr) minmax(600px,660px)}
 body:has(#case-visual-review) .reference-viewer,body:has(#case-visual-review) .subject-viewer{grid-template-rows:68px minmax(0,1fr)}
-body:has(#case-visual-review) .findings-panel{grid-template-rows:68px 56px minmax(0,1fr) 68px}
+body:has(#case-visual-review) .findings-panel{grid-template-rows:68px 56px minmax(0,1fr)}
 body:has(#case-visual-review) .reference-viewer>header,body:has(#case-visual-review) .findings-panel>header,body:has(#case-visual-review) .subject-toolbar{padding:0 20px;font-size:17px}
 body:has(#case-visual-review) .reference-viewer header span,body:has(#case-visual-review) .findings-panel header span,body:has(#case-visual-review) .subject-toolbar span{font-size:14px}
 body:has(#case-visual-review) .reference-body{padding:18px}
@@ -85,13 +74,9 @@ body:has(#case-visual-review) .comparison-grid{gap:8px}
 body:has(#case-visual-review) .comparison-grid div{padding:9px 10px}
 body:has(#case-visual-review) .comparison-grid dt{font-size:13px;margin-bottom:4px}
 body:has(#case-visual-review) .comparison-grid dd{font-size:15px;line-height:1.45}
-body:has(#case-visual-review) .finding-pagination{gap:12px;padding:10px 12px;font-size:14px}
-body:has(#case-visual-review) .finding-pagination>button:not(.decision-open){width:46px;height:46px}
-body:has(#case-visual-review) .decision-open{height:48px;padding:0 16px;font-size:14px}
 body:has(#case-visual-review) .case-visual-help{padding:9px 20px;font-size:14px}
 }
-@media(max-width:720px){body:has(#case-visual-review) .app-shell{padding:6px}body:has(#case-visual-review) #decision-form{right:6px;width:min(340px,calc(100vw - 18px))}}
-</style>
+@media(max-width:720px){body:has(#case-visual-review) .app-shell{padding:6px}}
 """
 
 
@@ -112,11 +97,15 @@ def _visual_grid_span(visual_review: str) -> str:
     if not visual_review:
         return ""
     return (
-        _VISUAL_SHELL_STYLE
-        + '<div class="visual-review-grid-span" '
-        'style="grid-column:1/-1;width:100%;min-width:0">'
+        '<div class="visual-review-grid-span" '
+        '>'
         f"{visual_review}</div>"
     )
+
+
+def visual_shell_css() -> str:
+    """Return visual-shell layout CSS for the document-level stylesheet."""
+    return _VISUAL_SHELL_STYLE
 
 
 def render_status_band(model: Mapping[str, object]) -> str:
@@ -127,8 +116,8 @@ def render_status_band(model: Mapping[str, object]) -> str:
             '<div class="status-copy"><h1>정식 근거 검토</h1></div>',
             '<div class="header-actions">',
             '<span class="status-label">검토 상태</span>',
-            '<span class="status-pill" data-display-status data-display-status-mode="raw">',
-            _text(raw_status),
+            '<span class="status-pill" data-display-status data-display-status-mode="localized">',
+            _text(localized_status(raw_status)),
             "</span>",
             '<button type="button" data-print>', icon_svg("printer", size=16), ' 인쇄</button>',
             "</div>",
@@ -211,4 +200,9 @@ def render_additional_review(model: Mapping[str, object]) -> str:
     )
 
 
-__all__ = ["render_additional_review", "render_status_band", "render_summary"]
+__all__ = [
+    "render_additional_review",
+    "render_status_band",
+    "render_summary",
+    "visual_shell_css",
+]

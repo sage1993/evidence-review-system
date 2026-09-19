@@ -7,6 +7,9 @@ Write only `track-b-output.json` using this exact shape:
 ```json
 {
   "run_id": "<exact run id>",
+  "audited_question": "<exact question copied from the immutable input bundle>",
+  "question_responsiveness": "PASS|FAIL|NOT_VERIFIED",
+  "required_facet_completeness": "COMPLETE|INCOMPLETE|NOT_APPLICABLE",
   "claim_audits": [
     {
       "claim_id": "<exact Track A claim id>",
@@ -21,6 +24,9 @@ Write only `track-b-output.json` using this exact shape:
 
 Rules:
 
+- Copy the immutable input question exactly into `audited_question`; do not answer a different question.
+- Set `question_responsiveness` to `PASS` only when the audit actually addresses that exact question. Use `FAIL` when it addresses another question or otherwise does not answer the requested question. Use `NOT_VERIFIED` when responsiveness cannot be established.
+- Copy the required-facet status from the immutable input bundle. `NOT_APPLICABLE` is allowed only when the bundle declares no required facet obligation. `INCOMPLETE` must never be reported as a complete acceptance.
 - Audit every Track A `claim_id` exactly once. Do not omit, duplicate, invent, or rename claim IDs.
 - `run_id` must exactly match the input bundle.
 - Allowed dispositions are `ACCEPT`, `REJECT`, and `INCOMPLETE`.

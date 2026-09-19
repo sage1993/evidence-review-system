@@ -113,6 +113,9 @@ def _write_run(
     findings = [] if disposition == "ACCEPT" else ["UNSUPPORTED_CLAIM"]
     track_b = {
         "run_id": RUN_ID,
+        "audited_question": "접면 기준 충족 여부",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [
             {
                 "claim_id": "CL1",
@@ -235,6 +238,21 @@ def test_partial_issue_coverage_does_not_preserve_track_b_unsupported_resolved_c
     assert by_issue["I2"].status == "SOURCE_MISSING"
     assert packet.status == "ABSTAIN"
     assert "UNCITED_OR_UNRESOLVED_CLAIM" in packet.abstention_reasons
+
+
+def test_incomplete_track_b_audit_is_not_a_verified_confidence_factor(
+    tmp_path: Path,
+) -> None:
+    packet = finalize_run(_write_run(tmp_path, disposition="INCOMPLETE"))
+
+    assert packet.confidence is not None
+    track_b = next(
+        factor
+        for factor in packet.confidence.factors
+        if factor.name == "Track B agreement"
+    )
+    assert track_b.value == "0.0000"
+    assert track_b.state == "NOT_VERIFIED"
 
 
 def test_partial_issue_coverage_does_not_suppress_rule_missing_input_hard_gate(

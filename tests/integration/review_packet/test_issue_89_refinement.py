@@ -18,9 +18,26 @@ def _installed_version() -> str:
 
 
 def _inline_controller(html: str) -> str:
-    scripts = re.findall(r"<script(?: [^>]*)?>(.*?)</script>", html, re.DOTALL)
-    assert scripts
-    return scripts[-1]
+    del html
+    return (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
+
+
+def _shared_controller_path() -> Path:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    )
 
 
 def test_image_matched_workspace_contract_has_three_columns_and_reference_hierarchy(
@@ -118,7 +135,12 @@ def test_browser_controller_contains_keyboard_evidence_and_notes_validation(tmp_
     assert "decision-notes-error" in controller
 
     completed = subprocess.run(
-        ["node", "-e", "new Function(process.argv[1])", controller],
+        [
+            "node",
+            "-e",
+            "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))",
+            str(_shared_controller_path()),
+        ],
         capture_output=True,
         text=True,
     )

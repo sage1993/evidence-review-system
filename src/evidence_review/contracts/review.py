@@ -18,7 +18,16 @@ HumanDecision = Literal[
     "ADDITIONAL_REVIEW_REQUIRED",
 ]
 ConfidenceLevel = Literal["HIGH", "MEDIUM", "LOW"]
+ConfidenceFactorState = Literal[
+    "VERIFIED",
+    "FAILED",
+    "NOT_VERIFIED",
+    "NOT_APPLICABLE",
+]
 AuditDisposition = Literal["ACCEPT", "REJECT", "INCOMPLETE"]
+QuestionResponsiveness = Literal["PASS", "FAIL", "NOT_VERIFIED"]
+RequiredFacetCompleteness = Literal["COMPLETE", "INCOMPLETE", "NOT_APPLICABLE"]
+TrackBSemanticGateStatus = Literal["PASS", "FAILED", "NOT_VERIFIED"]
 IssueStatus = Literal[
     "RESOLVED",
     "CONDITIONAL",
@@ -83,6 +92,8 @@ class TrackBAudit:
     run_id: str
     claim_audits: tuple[ClaimAudit, ...]
     overall_disposition: AuditDisposition
+    question_responsiveness: QuestionResponsiveness = "NOT_VERIFIED"
+    required_facet_completeness: RequiredFacetCompleteness = "NOT_APPLICABLE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +105,7 @@ class ConfidenceFactor:
     weight: str
     contribution: str
     source: str
+    state: ConfidenceFactorState = "VERIFIED"
 
 
 @dataclass(frozen=True, slots=True)
