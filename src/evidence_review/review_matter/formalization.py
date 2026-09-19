@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
-from evidence_review.confidence.policy import FACTOR_WEIGHTS
+from evidence_review.confidence.initialization import initial_confidence_factors
 from evidence_review.contracts.next_action import decode_next_action, next_action_document
 from evidence_review.contracts.question_plan import question_plan_document
 from evidence_review.contracts.run_context import compute_run_id_from_request
@@ -173,14 +173,10 @@ def _request_document(
         "rules": [],
         "approved_rule_result_ids": [],
         "confidence_input": {
-            "factors": {
-                name: {
-                    "value": "1.0",
-                    "source": "formalization:snapshot",
-                    "state": "VERIFIED",
-                }
-                for name in FACTOR_WEIGHTS
-            }
+            "factors": initial_confidence_factors(
+                evidence_available=bool(snapshot.selected_evidence),
+                evidence_source="formalization:snapshot",
+            )
         },
     }
 
