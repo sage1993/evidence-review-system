@@ -16,8 +16,8 @@ from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
 )
-from evidence_review.runtime_filesystem import create_inherited_temp_file
 from evidence_review.review_matter.formal_run_binding import verify_formal_run_authority
+from evidence_review.runtime_filesystem import create_inherited_temp_file
 
 CURRENT_REVIEW_BINDING_FORMAT = "evidence-review/current-review-binding"
 CURRENT_REVIEW_BINDING_VERSION = 1

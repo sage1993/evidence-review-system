@@ -18,12 +18,12 @@ from evidence_review.contracts.attachments import (
     ImmutableAttachment,
     case_visual_source_relative_parts,
 )
-from evidence_review.runtime_filesystem import create_inherited_temp_directory
 from evidence_review.contracts.drawing import CoordinateSystem
 from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.parsing.drawing_source import verify_visual_source_decoder_binding
 from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 from evidence_review.parsing.source_manifest import sha256_file
+from evidence_review.runtime_filesystem import create_inherited_temp_directory
 
 _VISUAL_PAGE_FORMAT = "evidence-review/case-visual-page"
 _VISUAL_TILE_FORMAT = "evidence-review/case-visual-tile-manifest"

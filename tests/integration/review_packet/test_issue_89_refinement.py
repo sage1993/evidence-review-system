@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import subprocess
 import re
+import subprocess
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 

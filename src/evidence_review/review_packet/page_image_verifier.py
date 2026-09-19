@@ -132,7 +132,8 @@ def read_verified_page_image(
         )
     except PermissionError as error:
         raise ValueError(
-            f"CACHE_NOT_READABLE: page image cache is not readable: {revision_id} page {page_number}"
+            "CACHE_NOT_READABLE: page image cache is not readable: "
+            f"{revision_id} page {page_number}"
         ) from error
     except FileNotFoundError as error:
         raise FileNotFoundError(
@@ -143,7 +144,8 @@ def read_verified_page_image(
         document = json.loads(metadata_path.read_text(encoding="utf-8"))
     except PermissionError as error:
         raise ValueError(
-            f"CACHE_NOT_READABLE: page image metadata is not readable: {revision_id} page {page_number}"
+            "CACHE_NOT_READABLE: page image metadata is not readable: "
+            f"{revision_id} page {page_number}"
         ) from error
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError("page image metadata is invalid") from error

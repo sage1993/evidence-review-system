@@ -57,7 +57,14 @@ def test_unified_shell_has_one_capability_driven_layout_and_no_legacy_css_cascad
     assert "review_responsive.css" not in html
 
     css = _canonical_css()
-    for selector in (".review-workspace", "#decision-form", ".page-canvas", ".status-band", ".result-card"):
+    selectors = (
+        ".review-workspace",
+        "#decision-form",
+        ".page-canvas",
+        ".status-band",
+        ".result-card",
+    )
+    for selector in selectors:
         assert len(re.findall(rf"(?m)^{re.escape(selector)}\s*\{{", css)) == 1
 
 

@@ -8,10 +8,10 @@ from typing import cast
 from evidence_review.contracts.review import (
     AuditDisposition,
     ClaimAudit,
-    RequiredFacetCompleteness,
     QuestionResponsiveness,
-    TrackBSemanticGateStatus,
+    RequiredFacetCompleteness,
     TrackBAudit,
+    TrackBSemanticGateStatus,
 )
 from evidence_review.llm_layer.claim_lineage import validate_claim_id_issue_binding
 from evidence_review.llm_layer.track_a import ValidatedTrackA
@@ -79,7 +79,10 @@ def required_facet_completeness_status(value: object) -> RequiredFacetCompletene
         return "NOT_APPLICABLE"
     for index, item in enumerate(coverage):
         entry = _mapping(item, f"facet_coverage[{index}]")
-        missing = _sequence(entry.get("missing_facet_ids", []), f"facet_coverage[{index}].missing_facet_ids")
+        missing = _sequence(
+            entry.get("missing_facet_ids", []),
+            f"facet_coverage[{index}].missing_facet_ids",
+        )
         if missing:
             return "INCOMPLETE"
     return "COMPLETE"
