@@ -92,6 +92,25 @@ def test_server_status_retries_transient_windows_identity_query(
     assert state_path.is_file()
 
 
+def test_server_status_reports_permission_denied_instead_of_false_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "RUN-1234567890ABCDEF1234"
+    monkeypatch.setattr(
+        browser_launcher,
+        "_server_state_path",
+        lambda *_args: (_ for _ in ()).throw(PermissionError("access denied")),
+    )
+
+    status = browser_launcher.review_server_status(Path("C:/workspace"), run_id)
+
+    assert status == {
+        "running": False,
+        "run_id": run_id,
+        "reason_code": "PERMISSION_DENIED",
+    }
+
+
 
 def test_http_readiness_and_browser_dispatch_are_tracked_separately(
     monkeypatch, tmp_path

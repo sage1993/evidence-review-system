@@ -101,3 +101,31 @@ def test_page_image_cache_rejects_tampered_existing_artifact(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="page image cache"):
         cache_pdf_page_images(cache_root, source, "REV-1", source_hash)
+
+
+def test_page_image_cache_uses_acl_safe_workspace_temp_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import evidence_review.parsing.page_image_cache as cache_module
+    from evidence_review.parsing.page_image_cache import cache_pdf_page_images
+    from evidence_review.runtime_filesystem import create_inherited_temp_directory
+
+    calls: list[tuple[Path, str]] = []
+
+    def wrapped(parent: Path, prefix: str):
+        calls.append((parent, prefix))
+        return create_inherited_temp_directory(parent, prefix=prefix)
+
+    monkeypatch.setattr(
+        cache_module,
+        "create_inherited_temp_directory",
+        wrapped,
+        raising=False,
+    )
+    source = write_pdf_fixture(tmp_path / "source.pdf", page_sizes=((100, 200),))
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    cache_pdf_page_images(tmp_path / "page-images", source, "REV-ACL", source_hash)
+
+    assert calls == [(tmp_path / "page-images", ".REV-ACL.tmp-")]

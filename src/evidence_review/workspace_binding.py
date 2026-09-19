@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -15,6 +14,7 @@ from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
 )
+from evidence_review.runtime_filesystem import create_inherited_temp_file
 
 ACTIVE_WORKSPACE_BINDING_FORMAT = "evidence-review/active-workspace-binding"
 ACTIVE_WORKSPACE_BINDING_VERSION = 1
@@ -115,17 +115,14 @@ def _write_binding(path: Path, binding: ActiveWorkspaceBinding) -> None:
 
     temporary_path: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=state_directory,
+        with create_inherited_temp_file(
+            state_directory,
             prefix=".active-workspace-",
-            suffix=".tmp",
             delete=False,
-        ) as stream:
+        ) as (temporary_path, stream):
             stream.write(dump_bytes(binding.to_document()))
             stream.flush()
             os.fsync(stream.fileno())
-            temporary_path = Path(stream.name)
         os.replace(temporary_path, path)
         temporary_path = None
     finally:
@@ -216,10 +213,20 @@ def resolve_active_workspace(repository_root: Path) -> ActiveWorkspaceBinding:
 
     try:
         current = _binding_for_workspace(stored.workspace)
+    except PermissionError as error:
+        raise ValueError(f"PERMISSION_DENIED: {error}") from error
     except (FileNotFoundError, OSError, ValueError) as error:
         raise ValueError(f"ACTIVE_WORKSPACE_STALE: {error}") from error
     if stored != current:
+        reason = (
+            "SOURCE_MISMATCH"
+            if (
+                stored.evidence_snapshot_hash != current.evidence_snapshot_hash
+                or stored.evidence_db_sha256 != current.evidence_db_sha256
+            )
+            else "ACTIVE_WORKSPACE_STALE"
+        )
         raise ValueError(
-            "ACTIVE_WORKSPACE_STALE: evidence snapshot or workspace identity changed"
+            f"ACTIVE_WORKSPACE_STALE: {reason}: evidence snapshot or workspace identity changed"
         )
     return current
