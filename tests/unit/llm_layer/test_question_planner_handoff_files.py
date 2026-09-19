@@ -11,14 +11,9 @@ from evidence_review.question_planning import prepare_question_planner_handoff
 def test_prepare_question_planner_handoff_is_deterministic_and_evidence_free(
     tmp_path: Path,
 ) -> None:
-    first = prepare_question_planner_handoff(
-        tmp_path,
-        "  에어컨 등  가전제품 설치기준 알려줘 ",
-    )
-    second = prepare_question_planner_handoff(
-        tmp_path,
-        "에어컨 등 가전제품 설치기준 알려줘",
-    )
+    raw_question = "  에어컨 등  가전제품 설치기준 알려줘 "
+    first = prepare_question_planner_handoff(tmp_path, raw_question)
+    second = prepare_question_planner_handoff(tmp_path, raw_question)
 
     assert first == second
     assert first.planning_directory.name.startswith("PLAN-")
@@ -28,6 +23,7 @@ def test_prepare_question_planner_handoff_is_deterministic_and_evidence_free(
     assert not first.expected_output_path.exists()
     bundle = json.loads(first.bundle_path.read_text(encoding="utf-8"))
     assert bundle["original_question"] == "에어컨 등 가전제품 설치기준 알려줘"
+    assert bundle["raw_user_question"] == raw_question
     assert "evidence" not in bundle
     assert "answer" not in bundle
 
