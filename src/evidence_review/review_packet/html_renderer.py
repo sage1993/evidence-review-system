@@ -772,7 +772,10 @@ def _render_presentation_guidance(
                 "<h2>보호된 검토기는 파일로 열 수 없습니다</h2>",
                 "<p>보호된 도면은 파일 경로가 아니라 로컬 보호 서버에서만 표시됩니다. ",
                 "아래 명령으로 검토기를 실행하십시오.</p>",
+                '<details class="presentation-advanced">',
+                "<summary>고급 실행 정보</summary>",
                 f"<code>{serve_command}</code>",
+                "</details>",
                 "</aside>",
             )
         )
@@ -783,7 +786,10 @@ def _render_presentation_guidance(
             "<h2>보관용 정적 HTML</h2>",
             "<p>이 파일은 보관·인쇄용 정적 검토 화면입니다. 결정은 이 HTML에 저장되지 않으며, ",
             "보호된 검토기에서 기록해야 합니다.</p>",
+            '<details class="presentation-advanced">',
+            "<summary>고급 실행 정보</summary>",
             f"<p>보호된 검토기 실행: <code>{serve_command}</code></p>",
+            "</details>",
             "</aside>",
         )
     )

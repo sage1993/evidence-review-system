@@ -4,12 +4,15 @@
   const modelNode = document.getElementById("review-model");
   const reviewModel = modelNode ? JSON.parse(modelNode.textContent || "{}") : {};
   const STATUS_LABELS = {
-    ABSTAIN: "추가 자료 필요",
+    ABSTAIN: "현재 자료로 판정할 수 없음",
     READY_FOR_HUMAN_REVIEW: "검토 준비 완료",
     REVIEW_COMPLETED: "검토 완료",
     INDETERMINATE: "판단 보류",
     COMPLETE: "근거 연결 완료",
-    MISSING_REQUIRED_INPUT: "필요한 자료가 부족합니다"
+    RESOLVED: "확인",
+    PARTIALLY_RESOLVED: "일부 항목 확인",
+    SOURCE_MISSING: "필요한 기준을 확인하지 못함",
+    MISSING_REQUIRED_INPUT: "추가 자료 필요"
   };
   const VIEWER_LABELS = {
     original: "원문",

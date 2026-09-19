@@ -22,14 +22,14 @@ def test_summary_separates_answer_from_workflow_status(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
     html = render_review_html(_reviewer_model(), tmp_path / "pages")
 
-    status = html.index("검토 준비 완료")
+    status = html.index('<span class="status-pill"')
     question = html.index("&lt;검토 질문&gt;")
     answer = html.index("질문에 대한 실제 검토 결론입니다.")
 
     assert question < answer
     assert "근거</dt><dd>1 건" in html
     assert "최종 검토가 가능한 상태입니다." not in html
-    assert html.index('id="review-summary"') < status
+    assert status < html.index('id="review-summary"')
 
 
 def test_missing_answer_uses_neutral_fallback_not_status_explanation(tmp_path: Path) -> None:
@@ -114,3 +114,17 @@ def test_protected_and_archive_guidance_are_separate(tmp_path: Path) -> None:
     assert "data-protected-only" in form
     assert "data-archive-only" in form
     assert "append-only" not in form
+
+
+def test_archive_guidance_keeps_cli_recovery_command_in_advanced_disclosure(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    html = render_review_html(_reviewer_model(), tmp_path / "pages")
+
+    start = html.index('data-archival-static-mode="true"')
+    end = html.index("</aside>", start)
+    guidance = html[start:end]
+
+    assert '<details class="presentation-advanced">' in guidance
+    assert "evidence-review review-run serve" in guidance
