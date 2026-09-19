@@ -42,6 +42,9 @@ def _finalize_prepared_run(run_directory: Path) -> Path:
         dump_bytes(
             {
                 "run_id": bundle["run_id"],
+                "audited_question": bundle["question"],
+                "question_responsiveness": "NOT_VERIFIED",
+                "required_facet_completeness": "NOT_APPLICABLE",
                 "claim_audits": [],
                 "overall_disposition": "INCOMPLETE",
             }

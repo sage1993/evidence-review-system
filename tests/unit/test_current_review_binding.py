@@ -61,6 +61,9 @@ def _finalized_run(
     }
     track_b = {
         "run_id": prepared.run_id,
+        "audited_question": "Is the packet immutable?",
+        "question_responsiveness": "NOT_VERIFIED",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [],
         "overall_disposition": "INCOMPLETE",
     }

@@ -16,7 +16,7 @@ def test_required_facet_completeness_is_a_non_authoritative_summary() -> None:
 
 def test_required_facet_completeness_explicitly_marks_absence() -> None:
     assert _required_facet_completeness(()) == {
-        "status": "NOT_PROVIDED",
+        "status": "NOT_APPLICABLE",
         "covered_issue_count": 0,
         "total_issue_count": 0,
     }

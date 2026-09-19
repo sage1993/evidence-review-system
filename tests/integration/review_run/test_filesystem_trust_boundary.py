@@ -118,6 +118,9 @@ def test_validate_track_b_rejects_run_artifact_link_before_external_read(
         dump_bytes(
             {
                 "run_id": prepared.run_id,
+                "audited_question": "filesystem trust boundary",
+                "question_responsiveness": "NOT_VERIFIED",
+                "required_facet_completeness": "NOT_APPLICABLE",
                 "claim_audits": [],
                 "overall_disposition": "INCOMPLETE",
             }
@@ -164,7 +167,14 @@ def test_track_b_collision_check_rejects_linked_canonical_destination(
 ) -> None:
     prepared = _prepared(tmp_path)
     external = tmp_path / "external-track-b.json"
-    payload = {"run_id": prepared.run_id, "claim_audits": [], "overall_disposition": "INCOMPLETE"}
+    payload = {
+        "run_id": prepared.run_id,
+        "audited_question": "filesystem trust boundary",
+        "question_responsiveness": "NOT_VERIFIED",
+        "required_facet_completeness": "NOT_APPLICABLE",
+        "claim_audits": [],
+        "overall_disposition": "INCOMPLETE",
+    }
     external.write_bytes(dump_bytes(payload))
     destination = prepared.run_directory / "track-b-output.json"
     _file_link(destination, external)

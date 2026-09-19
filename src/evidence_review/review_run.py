@@ -21,7 +21,7 @@ from evidence_review.contracts.codecs import (
 from evidence_review.contracts.common import Citation
 from evidence_review.contracts.engines import CalculationResult, RuleResult
 from evidence_review.contracts.next_action import NextAction, next_action_document
-from evidence_review.contracts.review import ConfidenceFactorState, ReviewPacket
+from evidence_review.contracts.review import ConfidenceFactorState, ReviewPacket, TrackBAudit
 from evidence_review.contracts.run_context import (
     compute_run_id_from_request,
     create_run_directory,
@@ -37,7 +37,11 @@ from evidence_review.llm_layer.track_a import (
     track_a_bundle_document,
     validate_track_a_output,
 )
-from evidence_review.llm_layer.track_b import validate_track_b_output
+from evidence_review.llm_layer.track_b import (
+    required_facet_completeness_status,
+    track_b_semantic_gate_status,
+    validate_track_b_output,
+)
 from evidence_review.llm_layer.validators import validate_track_a_integrity
 from evidence_review.observability.run_metrics import append_stage, finish_stage, start_stage
 from evidence_review.review_packet.browser_launcher import (
@@ -664,7 +668,7 @@ def _required_facet_completeness(
     """Summarize required-facet coverage without turning it into a conclusion."""
     if not facet_coverage:
         return {
-            "status": "NOT_PROVIDED",
+            "status": "NOT_APPLICABLE",
             "covered_issue_count": 0,
             "total_issue_count": 0,
         }
@@ -684,6 +688,7 @@ def _track_b_validation_document(
     run_directory: Path,
     run_id: str,
     track_b_path: Path,
+    audit: TrackBAudit,
 ) -> dict[str, object]:
     """Record immutable runtime metadata for one validated Track B attempt."""
     bundle_path = _run_file(run_directory, "track-b-bundle.json")
@@ -701,10 +706,12 @@ def _track_b_validation_document(
             "validator": "evidence_review.llm_layer.track_b.validate_track_b_output",
             "question": bundle.get("question"),
         },
-        "question_responsive": bundle.get("question") is not None,
+        "question_responsive": audit.question_responsiveness == "PASS",
+        "question_responsiveness": audit.question_responsiveness,
+        "semantic_gate_status": track_b_semantic_gate_status(audit),
         "required_facet_completeness": bundle.get(
             "required_facet_completeness",
-            {"status": "NOT_PROVIDED", "covered_issue_count": 0, "total_issue_count": 0},
+            {"status": "NOT_APPLICABLE", "covered_issue_count": 0, "total_issue_count": 0},
         ),
     }
 
@@ -810,10 +817,22 @@ def submit_track_b(
     run_directory = _require_prepared_run(workspace_root, run_id)
     output = _json(track_b_output)
     bound_track_b = run_directory / "track-b-output.json"
+    track_a_path = _run_file(run_directory, "track-a-output.json")
+    bundle = _track_a_bundle_for_run(run_directory)
+    validated_a = validate_track_a_output(_json(track_a_path), bundle)
+    validate_track_a_integrity(validated_a, bundle)
+    audit = validate_track_b_output(
+        output,
+        validated_a,
+        expected_question=bundle.question,
+        expected_facet_completeness=required_facet_completeness_status(
+            bundle.inputs.get("facet_coverage")
+        ),
+    )
     _publish_validated_track_b(track_b_output, bound_track_b, output)
     _write_json_or_identical(
         run_directory / "track-b-validation.json",
-        _track_b_validation_document(run_directory, run_id, bound_track_b),
+        _track_b_validation_document(run_directory, run_id, bound_track_b, audit),
     )
     track_a_path = _run_file(run_directory, "track-a-output.json")
     return finalize_review_run(
@@ -840,7 +859,14 @@ def validate_track_b_submission(
     bundle = _track_a_bundle_for_run(run_directory)
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
-    validate_track_b_output(_json(track_b_output), validated_a)
+    validate_track_b_output(
+        _json(track_b_output),
+        validated_a,
+        expected_question=bundle.question,
+        expected_facet_completeness=required_facet_completeness_status(
+            bundle.inputs.get("facet_coverage")
+        ),
+    )
 
 
 def _validate_track_output_run_id(value: object, run_id: str, field: str) -> None:

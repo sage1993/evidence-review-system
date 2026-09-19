@@ -113,6 +113,9 @@ def _write_run(
     findings = [] if disposition == "ACCEPT" else ["UNSUPPORTED_CLAIM"]
     track_b = {
         "run_id": RUN_ID,
+        "audited_question": "접면 기준 충족 여부",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [
             {
                 "claim_id": "CL1",

@@ -50,7 +50,11 @@ from evidence_review.llm_layer.track_a import (
     build_track_a_bundle,
     validate_track_a_output,
 )
-from evidence_review.llm_layer.track_b import validate_track_b_output
+from evidence_review.llm_layer.track_b import (
+    required_facet_completeness_status,
+    track_b_semantic_gate_status,
+    validate_track_b_output,
+)
 from evidence_review.llm_layer.validators import validate_track_a_integrity
 
 _REQUIRED_ARTIFACTS = (
@@ -210,17 +214,18 @@ def _finalizer_confidence_factors(
             state=calculation_state,
         )
     if "Track B agreement" in bound:
-        if audit.overall_disposition == "ACCEPT":
+        semantic_status = track_b_semantic_gate_status(audit)
+        if semantic_status == "PASS":
             track_b_value = "1.0"
-            track_b_source = "track_b:audit=ACCEPT"
+            track_b_source = "track_b:semantic_gate=PASS"
             track_b_state: ConfidenceFactorState = "VERIFIED"
-        elif audit.overall_disposition == "REJECT":
+        elif semantic_status == "FAILED":
             track_b_value = "0.0"
-            track_b_source = "track_b:audit=REJECT"
+            track_b_source = "track_b:semantic_gate=FAILED"
             track_b_state = "FAILED"
         else:
             track_b_value = "0.0"
-            track_b_source = "track_b:audit=INCOMPLETE"
+            track_b_source = "track_b:semantic_gate=NOT_VERIFIED"
             track_b_state = "NOT_VERIFIED"
         bound["Track B agreement"] = FactorInput(
             value=track_b_value,
@@ -390,7 +395,14 @@ def expected_final_review_packet_from_snapshot(
     validated_a = validate_track_a_output(track_a_output, bundle)
     validate_track_a_integrity(validated_a, bundle)
     track_b_output = snapshot.document("track-b-output.json")
-    audit = validate_track_b_output(track_b_output, validated_a)
+    audit = validate_track_b_output(
+        track_b_output,
+        validated_a,
+        expected_question=bundle.question,
+        expected_facet_completeness=required_facet_completeness_status(
+            bundle.inputs.get("facet_coverage")
+        ),
+    )
     confidence_inputs = _finalizer_confidence_factors(
         _decode_confidence_inputs(snapshot.document("confidence-input.json")),
         bundle.calculations,
@@ -444,7 +456,7 @@ def expected_final_review_packet_from_snapshot(
         or any(result.status == "ENGINE_ERROR" for result in bundle.rules),
         source_hash_mismatch=False,
         unresolved_conflict=bool(validated_a.draft.conflicts) or "SOURCE_CONFLICT" in finding_codes,
-        track_b_rejection=audit.overall_disposition == "REJECT",
+        track_b_rejection=track_b_semantic_gate_status(audit) != "PASS",
         machine_set_human_decision=False,
         unregistered_numeric_value=False,
     )
