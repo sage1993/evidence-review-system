@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from html import escape
 
 
 def workspace_mode(model: Mapping[str, object]) -> str:
@@ -36,11 +35,10 @@ def render_workspace(
     audit: str,
 ) -> str:
     """Render the common reviewer landmarks for every review presentation."""
-    mode = escape(workspace_mode(model), quote=True)
     capabilities = workspace_capabilities(model)
     return (
         '<main class="review-workspace" data-review-workspace="unified" '
-        f'data-review-workspace-mode="{mode}" data-review-shell="unified" '
+        'data-review-shell="unified" '
         f'data-has-reference="{str(capabilities["has_reference"]).lower()}" '
         f'data-has-subject="{str(capabilities["has_subject"]).lower()}" '
         f'data-has-comparison="{str(capabilities["has_comparison"]).lower()}">'

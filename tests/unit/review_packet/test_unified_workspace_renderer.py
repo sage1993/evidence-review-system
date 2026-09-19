@@ -81,7 +81,7 @@ def test_generic_formal_review_uses_unified_reference_only_workspace_shell(
     html = render_review_html(_generic_model(), tmp_path)
 
     assert 'data-review-workspace="unified"' in html
-    assert 'data-review-workspace-mode="reference-only"' in html
+    assert 'data-review-shell="unified"' in html
     assert 'data-has-reference="false"' in html
     assert 'data-has-subject="false"' in html
     assert 'data-has-comparison="false"' in html
@@ -135,7 +135,7 @@ def test_workspace_shell_uses_capabilities_without_switching_template_modes(
 
     html = render_review_html(model, tmp_path)
 
-    assert 'data-review-workspace-mode="reference-only"' in html
+    assert 'data-review-shell="unified"' in html
     assert 'data-has-reference="true"' in html
     assert 'data-has-subject="true"' in html
     assert 'data-has-comparison="true"' in html

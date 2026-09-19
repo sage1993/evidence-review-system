@@ -17,6 +17,17 @@ from evidence_review.review_packet.render_summary import (
 )
 
 
+def _review_script() -> str:
+    return (
+        Path(__file__).parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
+
+
 def _model() -> dict[str, object]:
     return {
         "missing_inputs": [],
@@ -197,6 +208,7 @@ def _typed_reference_model() -> dict[str, object]:
 def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> None:
     model = _model()
     html = render_case_visual_review(model)
+    script = _review_script()
 
     assert "기준 근거" in html
     assert "사용자 파일" in html
@@ -220,16 +232,24 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert 'data-case-zoom-in' in html
     assert 'data-case-zoom-out' in html
     assert 'data-case-overlay-mode="selected"' in html
-    assert "focusSubjectFinding" in html
+    assert "focusSubjectFinding" in script
     assert "마우스 휠 Zoom" in html
     assert "http://" not in html
     assert "https://" not in html
+
+
+def test_case_visual_markup_has_no_inline_controller_or_style() -> None:
+    html = render_case_visual_review(_model())
+
+    assert "<script" not in html
+    assert "<style" not in html
 
 
 def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None:
     """A future ambiguous reset control must not replace the three view modes."""
     html = render_case_visual_review(_model())
     css = case_visual_css()
+    script = _review_script()
 
     for control, label in (
         ("data-case-fit-screen", "화면 맞춤"),
@@ -244,10 +264,10 @@ def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None
         for control in ("data-case-fit-screen", "data-case-fit-width", "data-case-original-size")
     ]
     assert len(set(affordances)) == 3
-    assert "function fitScreen(stage)" in html
-    assert "function fitWidth(stage)" in html
-    assert "function originalSize(stage)" in html
-    assert "fitWidth(pages[0]?.querySelector('[data-case-stage]'))" in html
+    assert "function fitScreen(stage)" in script
+    assert "function fitWidth(stage)" in script
+    assert "function originalSize(stage)" in script
+    assert "fitWidth(pages[0]?.querySelector('[data-case-stage]'))" in script
     assert (
         "#case-visual-review .viewer-controls button{width:40px;height:40px;"
         "min-height:0;display:inline-flex;"
@@ -430,11 +450,12 @@ def test_reference_stage_keeps_anchor_content_outside_independent_transform() ->
 
 def test_renderer_exposes_independent_subject_and_reference_focus_contract() -> None:
     html = render_case_visual_review(_typed_reference_model())
+    script = _review_script()
 
-    assert "function focusSubjectFinding" in html
-    assert "function focusReferenceFinding" in html
-    assert "referenceStates" in html
-    assert "function preferredReferenceItem" in html
+    assert "function focusSubjectFinding" in script
+    assert "function focusReferenceFinding" in script
+    assert "referenceStates" in script
+    assert "function preferredReferenceItem" in script
     assert 'data-reference-role="direct"' in html
     assert 'data-reference-role="related"' in html
 
@@ -491,7 +512,7 @@ def test_visual_fragment_leaves_styles_in_the_document_shell() -> None:
     html = render_case_visual_review(_model())
 
     assert "<style>" not in html
-    assert "<script>" in html
+    assert "<script" not in html
 
 
 def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None:

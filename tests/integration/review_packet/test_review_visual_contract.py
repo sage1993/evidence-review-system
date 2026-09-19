@@ -70,7 +70,8 @@ def test_accessibility_contract_has_visible_focus_and_44px_targets(tmp_path: Pat
     assert ".evidence-page:focus-visible" in css
     assert ".pdf-page-controls button, .pdf-zoom-controls button" in css
     assert "min-height: 44px" in css
-    assert "review_responsive.css" in html
+    assert "review_responsive.css" not in html
+    assert "/* responsive.css */" in html
 
 
 def test_rendered_styles_meet_typography_and_unbounded_viewer_contract(

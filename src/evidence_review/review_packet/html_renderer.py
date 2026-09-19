@@ -804,8 +804,6 @@ def _render_review_html(
     """Render archive or protected Review Workspace from an explicit model."""
     model = _mapping(view_model, "view_model")
     assets_path = Path(__file__).with_name("assets")
-    css = (assets_path / "review.css").read_text(encoding="utf-8")
-    responsive_css = (assets_path / "review_responsive.css").read_text(encoding="utf-8")
     tokens_css = (assets_path / "tokens.css").read_text(encoding="utf-8")
     css_modules = tuple(
         (
@@ -822,11 +820,7 @@ def _render_review_html(
         )
     )
     css_bundle = (
-        css
-        + "\n/* review_responsive.css */\n"
-        + responsive_css
-        + "\n"
-        + "\n".join(
+        "\n".join(
             f"/* {name} */\n{module_css}" for name, module_css in css_modules
         )
         + "\n/* shared presentation tokens */\n"

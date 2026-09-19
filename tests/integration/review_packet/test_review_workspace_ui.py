@@ -13,8 +13,18 @@ from .test_html_renderer import _decision_form_html, _model, _write_page_assets
 
 def _inline_controller(html: str) -> str:
     scripts = re.findall(r"<script(?: [^>]*)?>(.*?)</script>", html, re.DOTALL)
-    assert scripts
-    return scripts[-1]
+    if scripts:
+        return scripts[-1]
+    script = (
+        Path(__file__).parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
+    marker = "(()=>{const root=document.getElementById('case-visual-review')"
+    return script[script.index(marker) :]
 
 
 def _run_node_harness(controller: str, harness: str) -> subprocess.CompletedProcess[str]:
@@ -594,12 +604,11 @@ def test_issue_152_drawing_print_cascade_returns_human_decision_to_document_flow
         / "evidence_review"
         / "review_packet"
         / "assets"
-        / "review.css"
+        / "shell.css"
     ).read_text(encoding="utf-8")
     print_css = css[css.index("@media print {") :]
 
     assert re.search(
-        r'body:has\(.review-workspace\[data-review-workspace-mode="reference-subject"\]\)\s*'
         r'#decision-form\s*\{'
         r'(?=[^}]*position:\s*static)'
         r'(?=[^}]*top:\s*auto)'
