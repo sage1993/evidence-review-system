@@ -237,9 +237,24 @@ def validate_documentation(
         findings.extend(_duplicate_heading_findings(item.document, item.parsed))
         findings.extend(validate_links(item.document, item.parsed, index))
         for block in item.parsed.command_blocks:
+            try:
+                normalized_commands = normalize_command_block(block)
+            except ValueError:
+                findings.append(
+                    _finding(
+                        severity="ERROR",
+                        code="COMMAND_PARSE_INVALID",
+                        document_path=item.document.path,
+                        line=block.start_line,
+                        column=1,
+                        target="command block",
+                        message="Documented command block could not be tokenized.",
+                    )
+                )
+                continue
             findings.extend(
                 validate_command_lines(
-                    normalize_command_block(block),
+                    normalized_commands,
                     root,
                     item.document,
                 )

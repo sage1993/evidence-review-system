@@ -55,3 +55,33 @@ def test_frontage_ratio_zero_perimeter_has_no_numeric_result() -> None:
     assert result.status == "DIVISION_BY_ZERO"
     assert result.raw_result is None
     assert result.display_result is None
+
+
+def test_calculation_result_preserves_authoritative_operands_and_rounding_policy() -> None:
+    result = run_calculation(
+        "FRONTAGE_RATIO",
+        "1.0.0",
+        {
+            "frontage_length_m": "7140.85555",
+            "perimeter_length_m": "4879.3",
+            "threshold_ratio": "0.125",
+        },
+        input_sources={
+            "frontage_length_m": "drawing-confirmation:CONF-001",
+            "perimeter_length_m": "drawing-confirmation:CONF-001",
+            "threshold_ratio": "approved-rule:ANSIM-001",
+        },
+        input_units={
+            "frontage_length_m": "m",
+            "perimeter_length_m": "m",
+            "threshold_ratio": "ratio",
+        },
+    )
+
+    assert result.raw_result == "1.4635"
+    assert result.display_result == "146.35%"
+    assert result.input_sources["frontage_length_m"].startswith("drawing-confirmation:")
+    assert result.input_units["perimeter_length_m"] == "m"
+    assert result.precision == 28
+    assert result.rounding == "ROUND_HALF_UP"
+    assert result.intermediate_rounding_policy == "NO_INTERMEDIATE_ROUNDING"

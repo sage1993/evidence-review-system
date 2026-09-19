@@ -25,10 +25,14 @@ def _normalize_question(value: str) -> str:
 
 def build_question_planner_bundle(question: str) -> dict[str, object]:
     """Build the evidence-free artifact handed to an external question planner."""
+    raw_user_question = unicodedata.normalize("NFC", question)
+    normalized_question = _normalize_question(question)
     return {
         "format": QUESTION_PLANNER_BUNDLE_FORMAT,
         "version": QUESTION_PLANNER_BUNDLE_VERSION,
-        "original_question": _normalize_question(question),
+        "original_question": normalized_question,
+        "raw_user_question": raw_user_question,
+        "normalized_question": normalized_question,
         "question_plan_format": QUESTION_PLAN_FORMAT,
         "question_plan_version": QUESTION_PLAN_VERSION,
     }

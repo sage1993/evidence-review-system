@@ -54,3 +54,21 @@ def test_review_script_hydrates_persisted_decision_and_refreshes_conflict() -> N
     assert "payload.decision_record" in script
     assert "response.status === 409" in script
     assert "await refreshDisplayStatus()" in script
+
+
+def test_decision_form_collects_explicit_reviewer_id_without_browser_prompt() -> None:
+    html = render_decision_form(_model())
+    script = (
+        Path(__file__).parents[3]
+        / "src"
+        / "evidence_review"
+        / "review_packet"
+        / "assets"
+        / "review.js"
+    ).read_text(encoding="utf-8")
+
+    assert 'id="decision-reviewer-id"' in html
+    assert 'name="reviewer_id"' in html
+    assert 'pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}"' in html
+    assert '"#decision-reviewer-id"' in script
+    assert "window.prompt" not in script

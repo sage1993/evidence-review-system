@@ -199,6 +199,52 @@ def build_review_run_request(
     inputs: dict[str, object] = {"snapshot_hash": snapshot_hash}
     if provenance is not None:
         inputs["evidence_snapshot_provenance"] = provenance
+
+    def initial_factor(name: str) -> dict[str, str]:
+        if name in evidence_dependent_factors:
+            return {
+                "value": "0.0" if not evidence else "1.0",
+                "source": "retrieval:evidence_availability",
+                "state": "FAILED" if not evidence else "VERIFIED",
+            }
+        if name == "calculation validity":
+            statuses = [item.get("status") for item in calculation_documents]
+            if not statuses:
+                return {
+                    "value": "0.0",
+                    "source": "calculation:none",
+                    "state": "NOT_APPLICABLE",
+                }
+            valid = all(status == "SUCCESS" for status in statuses)
+            return {
+                "value": "1.0" if valid else "0.0",
+                "source": "calculation:approved_results",
+                "state": "VERIFIED" if valid else "FAILED",
+            }
+        if name == "Track B agreement":
+            return {
+                "value": "0.0",
+                "source": "track_b:not_submitted",
+                "state": "NOT_VERIFIED",
+            }
+        if name == "source freshness":
+            return {
+                "value": "0.0",
+                "source": "source_freshness:not_verified",
+                "state": "NOT_VERIFIED",
+            }
+        if name == "human review status":
+            return {
+                "value": "0.0",
+                "source": "human_review:pending",
+                "state": "NOT_VERIFIED",
+            }
+        return {
+            "value": "1.0",
+            "source": "retrieval:evidence_availability",
+            "state": "VERIFIED",
+        }
+
     return {
         "format": "evidence-review/review-run-request",
         "version": 1,
@@ -209,17 +255,7 @@ def build_review_run_request(
         "rules": rule_documents,
         "approved_rule_result_ids": approved,
         "confidence_input": {
-            "factors": {
-                name: {
-                    "value": (
-                        "0.0"
-                        if not evidence and name in evidence_dependent_factors
-                        else "1.0"
-                    ),
-                    "source": "retrieval:evidence_availability",
-                }
-                for name in FACTOR_WEIGHTS
-            }
+            "factors": {name: initial_factor(name) for name in FACTOR_WEIGHTS}
         },
     }
 

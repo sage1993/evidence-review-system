@@ -33,10 +33,12 @@ from evidence_review.contracts.engines import CalculationResult, RuleResult
 from evidence_review.contracts.question_plan import EvidenceRole
 from evidence_review.contracts.review import (
     ClaimAudit,
+    ConfidenceFactorState,
     ConfidenceResult,
     FinalizerStatus,
     IssueResult,
     ReviewPacket,
+    TrackBAudit,
 )
 from evidence_review.filesystem_trust import (
     verified_regular_directory,
@@ -166,13 +168,66 @@ def _decode_confidence_inputs(value: object) -> dict[str, FactorInput]:
     factors: dict[str, FactorInput] = {}
     for name, item in factors_payload.items():
         factor = _mapping(item, f"confidence_input.factors.{name}")
-        if set(factor) != {"value", "source"}:
+        if set(factor) - {"value", "source", "state"} or set(factor) < {
+            "value",
+            "source",
+        }:
             raise ValueError(f"confidence factor {name} must contain value and source")
+        state = factor.get("state", "VERIFIED")
+        if state not in {"VERIFIED", "FAILED", "NOT_VERIFIED", "NOT_APPLICABLE"}:
+            raise ValueError(f"unsupported confidence factor state: {name}")
         factors[name] = FactorInput(
             value=_string(factor.get("value"), f"confidence_input.factors.{name}.value"),
             source=_string(factor.get("source"), f"confidence_input.factors.{name}.source"),
+            state=cast(ConfidenceFactorState, state),
         )
     return factors
+
+
+def _finalizer_confidence_factors(
+    factors: Mapping[str, FactorInput],
+    calculations: Sequence[CalculationResult],
+    audit: TrackBAudit,
+) -> dict[str, FactorInput]:
+    """Bind final, runtime-observed calculation and Track B states."""
+    bound = dict(factors)
+    if "calculation validity" in bound:
+        if not calculations:
+            calculation_value = "0.0"
+            calculation_source = "calculation:none"
+            calculation_state: ConfidenceFactorState = "NOT_APPLICABLE"
+        elif all(item.status == "SUCCESS" for item in calculations):
+            calculation_value = "1.0"
+            calculation_source = "calculation:approved_results"
+            calculation_state = "VERIFIED"
+        else:
+            calculation_value = "0.0"
+            calculation_source = "calculation:failed_result"
+            calculation_state = "FAILED"
+        bound["calculation validity"] = FactorInput(
+            value=calculation_value,
+            source=calculation_source,
+            state=calculation_state,
+        )
+    if "Track B agreement" in bound:
+        if audit.overall_disposition == "ACCEPT":
+            track_b_value = "1.0"
+            track_b_source = "track_b:audit=ACCEPT"
+            track_b_state: ConfidenceFactorState = "VERIFIED"
+        elif audit.overall_disposition == "REJECT":
+            track_b_value = "0.0"
+            track_b_source = "track_b:audit=REJECT"
+            track_b_state = "FAILED"
+        else:
+            track_b_value = "0.0"
+            track_b_source = "track_b:audit=INCOMPLETE"
+            track_b_state = "NOT_VERIFIED"
+        bound["Track B agreement"] = FactorInput(
+            value=track_b_value,
+            source=track_b_source,
+            state=track_b_state,
+        )
+    return bound
 
 
 def _citation_document(citation: Citation) -> dict[str, object]:
@@ -188,7 +243,7 @@ def _citation_document(citation: Citation) -> dict[str, object]:
 
 
 def _calculation_document(result: CalculationResult) -> dict[str, object]:
-    return {
+    document: dict[str, object] = {
         "calculation_result_id": result.calculation_result_id,
         "status": result.status,
         "formula_id": result.formula_id,
@@ -202,6 +257,17 @@ def _calculation_document(result: CalculationResult) -> dict[str, object]:
         "result_hash": result.result_hash,
         "error_codes": list(result.error_codes),
     }
+    if result.input_sources:
+        document["input_sources"] = dict(result.input_sources)
+    if result.input_units:
+        document["input_units"] = dict(result.input_units)
+    if result.precision is not None:
+        document["precision"] = result.precision
+    if result.rounding is not None:
+        document["rounding"] = result.rounding
+    if result.intermediate_rounding_policy is not None:
+        document["intermediate_rounding_policy"] = result.intermediate_rounding_policy
+    return document
 
 
 def _rule_document(result: RuleResult) -> dict[str, object]:
@@ -230,6 +296,7 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
                 "weight": factor.weight,
                 "contribution": factor.contribution,
                 "source": factor.source,
+                "state": factor.state,
             }
             for factor in result.factors
         ],
@@ -324,9 +391,12 @@ def expected_final_review_packet_from_snapshot(
     validate_track_a_integrity(validated_a, bundle)
     track_b_output = snapshot.document("track-b-output.json")
     audit = validate_track_b_output(track_b_output, validated_a)
-    confidence = score_confidence(
-        _decode_confidence_inputs(snapshot.document("confidence-input.json"))
+    confidence_inputs = _finalizer_confidence_factors(
+        _decode_confidence_inputs(snapshot.document("confidence-input.json")),
+        bundle.calculations,
+        audit,
     )
+    confidence = score_confidence(confidence_inputs)
 
     snapshot_value = bundle.inputs.get("snapshot_hash")
     snapshot_sha256: str | None

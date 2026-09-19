@@ -166,8 +166,8 @@ def test_builder_does_not_assign_full_confidence_to_zero_evidence() -> None:
     assert factors["traceability"]["value"] == "0.0"
     assert factors["input completeness"]["value"] == "0.0"
     assert all(
-        factor["source"] == "retrieval:evidence_availability"
-        for factor in factors.values()
+        factors[name]["source"] == "retrieval:evidence_availability"
+        for name in ("source completeness", "traceability", "input completeness")
     )
 
 
@@ -193,8 +193,21 @@ def test_zero_evidence_only_reduces_evidence_dependent_factors() -> None:
         "source completeness",
         "traceability",
         "input completeness",
+        "human review status",
+        "calculation validity",
+        "Track B agreement",
+        "source freshness",
     }
-    assert all(factors[name]["value"] == "1.0" for name in unaffected)
+    assert all(
+        factors[name]["value"] == "1.0"
+        for name in unaffected
+        if name not in {
+            "human review status",
+            "calculation validity",
+            "Track B agreement",
+            "source freshness",
+        }
+    )
 
 
 def test_builder_keeps_full_initial_confidence_for_traceable_evidence() -> None:
@@ -203,8 +216,56 @@ def test_builder_keeps_full_initial_confidence_for_traceable_evidence() -> None:
     request = build_review_run_request(_bundle())
     factors = request["confidence_input"]["factors"]
 
-    assert all(factor["value"] == "1.0" for factor in factors.values())
     assert all(
-        factor["source"] == "retrieval:evidence_availability"
-        for factor in factors.values()
+        factors[name]["value"] == "1.0"
+        for name in (
+            "source completeness",
+            "traceability",
+            "parse quality",
+            "rule coverage",
+            "input completeness",
+            "unresolved conflict factor",
+        )
     )
+    assert all(
+        factors[name]["value"] == "0.0"
+        for name in (
+            "human review status",
+            "calculation validity",
+            "Track B agreement",
+            "source freshness",
+        )
+    )
+    assert all(
+        factors[name]["source"] == "retrieval:evidence_availability"
+        for name in (
+            "source completeness",
+            "traceability",
+            "parse quality",
+            "rule coverage",
+            "input completeness",
+            "unresolved conflict factor",
+        )
+    )
+
+
+def test_builder_does_not_mark_unverified_confidence_factors_as_verified() -> None:
+    from evidence_review.review_question import build_review_run_request
+
+    factors = build_review_run_request(_bundle())["confidence_input"]["factors"]
+
+    assert factors["calculation validity"] == {
+        "value": "0.0",
+        "source": "calculation:none",
+        "state": "NOT_APPLICABLE",
+    }
+    assert factors["Track B agreement"] == {
+        "value": "0.0",
+        "source": "track_b:not_submitted",
+        "state": "NOT_VERIFIED",
+    }
+    assert factors["source freshness"] == {
+        "value": "0.0",
+        "source": "source_freshness:not_verified",
+        "state": "NOT_VERIFIED",
+    }

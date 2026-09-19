@@ -1,0 +1,12 @@
+/* Named responsive contract for the unified shell. */
+@media (max-width: 1100px) {
+  .review-workspace[data-review-shell="unified"] > [data-review-region] {
+    width: 100%;
+  }
+}
+
+@media (max-width: 700px) {
+  .review-workspace[data-review-shell="unified"] > [data-review-region] {
+    overflow-wrap: anywhere;
+  }
+}

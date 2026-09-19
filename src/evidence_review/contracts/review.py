@@ -18,6 +18,12 @@ HumanDecision = Literal[
     "ADDITIONAL_REVIEW_REQUIRED",
 ]
 ConfidenceLevel = Literal["HIGH", "MEDIUM", "LOW"]
+ConfidenceFactorState = Literal[
+    "VERIFIED",
+    "FAILED",
+    "NOT_VERIFIED",
+    "NOT_APPLICABLE",
+]
 AuditDisposition = Literal["ACCEPT", "REJECT", "INCOMPLETE"]
 IssueStatus = Literal[
     "RESOLVED",
@@ -94,6 +100,7 @@ class ConfidenceFactor:
     weight: str
     contribution: str
     source: str
+    state: ConfidenceFactorState = "VERIFIED"
 
 
 @dataclass(frozen=True, slots=True)

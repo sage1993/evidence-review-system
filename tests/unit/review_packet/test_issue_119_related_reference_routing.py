@@ -251,6 +251,24 @@ def test_projection_routes_retrieved_issue_evidence_as_related_reference(
     } == {"CIT-UNIT"}
 
 
+def test_projection_uses_verified_supplemental_citation_for_related_anchor(
+    tmp_path: Path,
+) -> None:
+    view_model, workspace = _fixture(tmp_path)
+    reference_citations = view_model.pop("reference_citations")
+    view_model["reference_citations"] = []
+
+    result = build_case_visual_projection(
+        view_model,
+        workspace_root=workspace,
+        supplemental_reference_citations=reference_citations,
+    )
+
+    assert result is not None
+    finding = result["findings"][0]
+    assert finding["related_reference_anchors"][0]["anchor_id"] == "CIT-UNIT"
+
+
 def test_renderer_shows_related_retrieval_reference_without_track_a_claim(
     tmp_path: Path,
 ) -> None:

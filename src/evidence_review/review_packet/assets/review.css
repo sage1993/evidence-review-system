@@ -81,7 +81,7 @@ pre {
 
 .app-shell {
   width: calc(100% - 32px);
-  max-width: 1700px;
+  max-width: none;
   margin: 16px auto;
 }
 
@@ -669,6 +669,7 @@ pre {
 }
 
 .decision-fields label,
+.decision-reviewer,
 .decision-notes {
   display: grid;
   gap: 4px;
@@ -837,7 +838,7 @@ pre {
   background: #f2f7ff; color: #18365f;
 }
 .additional-message { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.info-mark { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1.5px solid #1464d2; border-radius: 50%; color: #1464d2; font-size: 11px; font-weight: 800; }
+.info-mark { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1.5px solid #1464d2; border-radius: 50%; color: #1464d2; font-size: 12px; font-weight: 800; }
 .additional-message strong { color: #075fd3; white-space: nowrap; }
 .additional-message span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .additional-toggle { flex: 0 0 auto; min-height: 44px; border-color: #b9cde8; padding: 4px 13px; background: #fff; font-size: 13px; }
@@ -868,7 +869,7 @@ pre {
 .pdf-page-controls button, .pdf-zoom-controls button { min-height: 44px; border: 0; padding: 3px 7px; }
 .pdf-page-controls span { min-width: 92px; text-align: center; font-size: 13px; }
 .pdf-zoom-controls { border-left: 1px solid var(--border); padding-left: 12px; }
-.viewer-body { display: grid; grid-template-columns: 104px minmax(0, 1fr); min-height: 530px; }
+.viewer-body { display: grid; grid-template-columns: 104px minmax(0, 1fr); min-height: 58vh; }
 .thumbnail-rail { display: grid; align-content: start; gap: 10px; overflow: auto; border-right: 1px solid var(--border); background: #f3f5f7; padding: 10px 12px; }
 .page-thumb { display: grid; gap: 3px; min-height: 44px; border: 1px solid transparent; padding: 3px; background: transparent; font-size: 12px; }
 .page-thumb img { display: block; width: 76px; height: 74px; object-fit: cover; background: #fff; }
@@ -877,8 +878,8 @@ pre {
 .page-thumb.is-active span { color: #1769e0; font-weight: 700; }
 .page-viewport { min-width: 0; overflow: auto; background: #e9edf2; }
 .evidence-page { background: #e9edf2; }
-.page-stage { min-height: 530px; max-height: 530px; padding: 14px 20px; }
-.page-canvas { width: min(100%, 720px); }
+.page-stage { min-height: 58vh; max-height: none; padding: 14px 20px; }
+.page-canvas { width: 100%; max-width: none; }
 .page-canvas img { display: block; width: 100%; height: auto; }
 .viewer-footnote { margin: 0; border-top: 1px solid var(--border); padding: 5px 9px; color: #667085; font-size: 12px; }
 #detail-tabs { display: none; }
@@ -975,45 +976,11 @@ pre {
 }
 .review-shell-region[data-review-shell-region="evidence-workspace"] #case-visual-review {
   grid-column: 1 / -1;
-  height: min(72vh, 820px);
-  min-height: 560px;
+  height: 72vh;
+  min-height: 0;
 }
 .review-shell-region[data-review-shell-region="human-decision"] #decision-form {
-  max-width: 720px;
-}
-/* CASE_DRAWING keeps Human Decision in an accessible off-canvas panel. */
-body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
-  position: fixed;
-  right: 12px;
-  top: 50%;
-  z-index: 30;
-  width: min(380px, calc(100vw - 48px));
-  max-height: 86vh;
-  overflow: auto;
-  transform: translate(calc(100% + 28px), -50%) !important;
-  transition: none;
-  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
-  background: #fff;
-  pointer-events: none !important;
-  visibility: hidden;
-  opacity: 0;
-}
-body[data-visual-decision-open="true"]:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form {
-  transform: translate(0, -50%) !important;
-  pointer-events: auto !important;
-  visibility: visible;
-  opacity: 1;
-}
-body:has(.review-workspace[data-review-workspace-mode="reference-subject"]) #decision-form .visual-decision-close {
-  display: block;
-  margin: 8px 8px 0 auto;
-  min-height: 30px;
-  padding: 0 9px;
-  border: 1px solid #d0d5dd;
-  border-radius: 6px;
-  background: #fff;
-  color: #344054;
-  font-size: 11px;
+  max-width: none;
 }
 @media (max-width: 720px) {
   .review-shell-region[data-review-shell-region="evidence-workspace"] {

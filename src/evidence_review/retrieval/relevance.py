@@ -16,6 +16,20 @@ _REQUIRED_ANCHOR_RULES: tuple[
     (("최소", "면적"), (("최소", "면적"), ("최소면적",), ("대지면적",))),
     (("산업부지", "확보비율"), (("산업부지", "확보비율"),)),
 )
+_REQUIRED_INTENT_RULES: tuple[
+    tuple[tuple[str, ...], tuple[tuple[str, ...], ...]], ...
+] = (
+    (
+        ("공공기여", "산정"),
+        (
+            ("공공기여", "산정"),
+            ("공공기여", "비율"),
+            ("공공기여", "면적"),
+            ("공공기여", "가격"),
+            ("공공기여", "부담"),
+        ),
+    ),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +69,15 @@ def _searchable_clause_text(clause: ClauseRetrievalHit) -> str:
 
 def _required_anchor_missing(query: str, candidate: str) -> bool:
     for trigger, alternatives in _REQUIRED_ANCHOR_RULES:
+        if not _contains_all(query, trigger):
+            continue
+        if not any(_contains_all(candidate, alternative) for alternative in alternatives):
+            return True
+    return False
+
+
+def _required_intent_missing(query: str, candidate: str) -> bool:
+    for trigger, alternatives in _REQUIRED_INTENT_RULES:
         if not _contains_all(query, trigger):
             continue
         if not any(_contains_all(candidate, alternative) for alternative in alternatives):
@@ -112,6 +135,14 @@ def evaluate_issue_clause_relevance(
             clause_id=clause.clause_id,
             accepted=False,
             reason_codes=("REJECT_REQUIRED_ANCHOR_MISSING",),
+        )
+    if _required_intent_missing(request_query, candidate):
+        return RelevanceDecision(
+            issue_id=issue_id,
+            search_request_id=search_request_id,
+            clause_id=clause.clause_id,
+            accepted=False,
+            reason_codes=("RETRIEVAL_RELEVANCE_INSUFFICIENT",),
         )
 
     if any(
