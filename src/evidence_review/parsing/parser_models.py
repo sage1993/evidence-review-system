@@ -12,6 +12,7 @@ from evidence_review.evidence.page_geometry import PageGeometry, validate_bbox_w
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 BBoxValue = tuple[float, float, float, float]
+StructuralPathPart = str | int
 
 
 def _require_key(value: str, field: str) -> None:
@@ -126,10 +127,20 @@ class ParsedTable:
     bbox: BBoxValue | None
     rows: tuple[ParsedTableRow, ...] = ()
     search_text: str = ""
+    raw_parser_table_id: str | int | None = None
+    source_revision_id: str | None = None
+    structural_path: tuple[StructuralPathPart, ...] = ()
 
     def __post_init__(self) -> None:
         _require_key(self.table_key, "table_key")
         _require_hash(self.raw_payload_hash, "raw_payload_hash")
+        if self.source_revision_id is not None:
+            _require_key(self.source_revision_id, "source_revision_id")
+        if any(
+            isinstance(part, bool) or not isinstance(part, (str, int))
+            for part in self.structural_path
+        ):
+            raise ValueError("structural_path parts must be strings or integers")
         if isinstance(self.page_number, bool) or self.page_number < 1:
             raise ValueError("page_number must be positive")
         row_numbers = [row.row_number for row in self.rows]
@@ -138,11 +149,20 @@ class ParsedTable:
         if not isinstance(self.search_text, str):
             raise ValueError("table search_text must be a string")
 
+    @property
+    def canonical_table_id(self) -> str:
+        """Return the deterministic source-revision-scoped table identity."""
+        return self.table_key
+
     def searchable_document(self) -> dict[str, Any]:
         """Return deterministic row-aware text and provenance for indexing."""
         return {
             "table_key": self.table_key,
+            "canonical_table_id": self.canonical_table_id,
+            "raw_parser_table_id": self.raw_parser_table_id,
+            "source_revision_id": self.source_revision_id,
             "page_number": self.page_number,
+            "structural_path": list(self.structural_path),
             "rows": [
                 {
                     "row_number": row.row_number,

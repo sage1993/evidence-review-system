@@ -317,6 +317,62 @@ def test_arbitrary_pdf_and_parser_create_searchable_evidence_database(
     assert page_geometry == (1000.0, 700.0)
 
 
+def test_table_database_id_binds_source_revision_and_retains_raw_parser_id(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "inputs" / "original" / "table.pdf"
+    parser = tmp_path / "inputs" / "parser" / "table.json"
+    write_pdf_fixture(source, page_sizes=((1000.0, 700.0),))
+    parser.parent.mkdir(parents=True)
+    parser.write_text(
+        json.dumps(
+            {
+                "file name": source.name,
+                "number of pages": 1,
+                "kids": [
+                    {
+                        "type": "table",
+                        "id": 1,
+                        "page number": 1,
+                        "bounding box": [10, 20, 500, 400],
+                        "rows": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "evidence" / "evidence.sqlite"
+
+    report = import_source_batch(
+        tmp_path,
+        _batch(
+            _source(
+                "inputs/original/table.pdf",
+                parser_path="inputs/parser/table.json",
+            )
+        ),
+        output,
+    )
+
+    with sqlite3.connect(output) as connection:
+        row = connection.execute(
+            "SELECT id, page_id, raw_json, normalized_json FROM tables"
+        ).fetchone()
+
+    assert row is not None
+    table_id, page_id, raw_json, normalized_json = row
+    raw = json.loads(raw_json)
+    normalized = json.loads(normalized_json)
+    assert table_id == normalized["canonical_table_id"]
+    assert table_id.startswith("T-")
+    assert page_id == f"{report.sources[0].revision_id}-P0001"
+    assert normalized["source_revision_id"] == report.sources[0].revision_id
+    assert normalized["raw_parser_table_id"] == 1
+    assert normalized["structural_path"] == ["kids", 0]
+    assert raw["id"] == 1
+
+
 def test_geometry_mismatch_does_not_create_output_database(tmp_path: Path) -> None:
     source = tmp_path / "inputs" / "original" / "document.pdf"
     parser = tmp_path / "inputs" / "parser" / "result.json"

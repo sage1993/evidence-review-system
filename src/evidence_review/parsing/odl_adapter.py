@@ -139,11 +139,31 @@ def _table_search_text(payload: dict[str, Any]) -> str:
     return " | ".join(segments)
 
 
-def _table_key(payload: dict[str, Any], source_path: tuple[PathPart, ...]) -> str:
+def _raw_parser_table_id(payload: dict[str, Any]) -> str | int | None:
     value = payload.get("id")
-    if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value):
-        return f"T{value}"
-    return f"T-{sha256_json({'source_path': list(source_path)})[:20].upper()}"
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str) and value:
+        return value
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _canonical_table_id(
+    *,
+    source_revision_id: str,
+    page_number: int,
+    raw_parser_table_id: str | int | None,
+    structural_path: tuple[PathPart, ...],
+) -> str:
+    identity = {
+        "source_revision_id": source_revision_id,
+        "page_number": page_number,
+        "raw_parser_table_id": raw_parser_table_id,
+        "structural_path": list(structural_path),
+    }
+    return f"T-{sha256_json(identity).upper()}"
 
 
 def _collect_table_payloads(
@@ -168,8 +188,10 @@ def _collect_table_payloads(
 def _parsed_table(
     payload: dict[str, Any],
     source_path: tuple[PathPart, ...],
+    source_revision_id: str,
 ) -> ParsedTable:
     page_number = _page_number(payload)
+    raw_parser_table_id = _raw_parser_table_id(payload)
     rows_value = payload.get("rows", [])
     if rows_value is None:
         rows_value = []
@@ -228,13 +250,21 @@ def _parsed_table(
             )
         rows.append(ParsedTableRow(row_number=row_number, cells=tuple(cells)))
     return ParsedTable(
-        table_key=_table_key(payload, source_path),
+        table_key=_canonical_table_id(
+            source_revision_id=source_revision_id,
+            page_number=page_number,
+            raw_parser_table_id=raw_parser_table_id,
+            structural_path=source_path,
+        ),
         page_number=page_number,
         raw_payload=dict(payload),
         raw_payload_hash=sha256_json(payload),
         bbox=_raw_bbox(payload),
         rows=tuple(rows),
         search_text=_table_search_text(payload),
+        raw_parser_table_id=raw_parser_table_id,
+        source_revision_id=source_revision_id,
+        structural_path=source_path,
     )
 
 
@@ -243,11 +273,11 @@ def load_parsed_tables(
     document_id: str,
     revision_id: str,
 ) -> tuple[ParsedTable, ...]:
-    """Load all ODL tables while retaining row/cell provenance.
+    """Load tables with deterministic source-revision-bound identities.
 
-    ``document_id`` and ``revision_id`` are accepted to keep this loader's
-    binding signature parallel with ``load_raw_elements``; table IDs remain
-    parser-local and are namespaced by the importer when persisted.
+    ``document_id`` is accepted to keep the binding signature parallel with
+    ``load_raw_elements``. The raw parser ID remains a separate provenance
+    value and never becomes the canonical table identity on its own.
     """
     if not document_id or not revision_id:
         raise ValueError("document_id and revision_id must not be empty")
@@ -265,10 +295,13 @@ def load_parsed_tables(
             if not isinstance(child, dict):
                 raise ValueError(f"{key}[{index}] must be an object")
             _collect_table_payloads(child, (key, index), collected)
-    tables = tuple(_parsed_table(payload, source_path) for source_path, payload in collected)
-    keys = [table.table_key for table in tables]
-    if len(keys) != len(set(keys)):
-        raise ValueError("PARSER_TABLE_DUPLICATE")
+    tables = tuple(
+        _parsed_table(payload, source_path, revision_id)
+        for source_path, payload in collected
+    )
+    canonical_ids = [table.canonical_table_id for table in tables]
+    if len(canonical_ids) != len(set(canonical_ids)):
+        raise ValueError("PARSER_TABLE_IDENTITY_COLLISION")
     return tables
 
 
@@ -422,7 +455,7 @@ def _validate_source_binding(payload: Mapping[str, Any], context: ParserContext)
 
 @dataclass(frozen=True, slots=True)
 class OpenDataLoaderJsonAdapter:
-    """Normalize one OpenDataLoader JSON artifact without document identities."""
+    """Normalize one OpenDataLoader JSON artifact without document records."""
 
     kind: str = "OPENDATALOADER_JSON"
 
@@ -440,7 +473,11 @@ class OpenDataLoaderJsonAdapter:
         parsed_tables = load_parsed_tables(
             context.parser_artifact_path,
             document_id="PARSER",
-            revision_id="PARSER",
+            revision_id=(
+                context.source_revision_id
+                or context.source_sha256
+                or sha256_file(context.source_path)
+            ),
         )
         page_count = parser_page_count(payload, raw_elements)
         pdf_pages = read_pdf_page_geometries(context.source_path)

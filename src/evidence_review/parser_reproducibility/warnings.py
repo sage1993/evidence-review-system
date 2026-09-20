@@ -42,6 +42,26 @@ _PAGE_PATTERNS = (
 _CODE_PREFIX = re.compile(
     r"^(?:\[(?P<bracket>[A-Z_]+)\]|(?P<plain>[A-Z_]+):)\s*(?P<message>.*)$"
 )
+_LOG_LEVEL = r"WARN|WARNING|ERROR|SEVERE|FATAL|INFO|DEBUG|TRACE|경고|심각"
+_PYTHON_LOG_PREFIX = re.compile(
+    rf"^\d{{4}}-\d{{2}}-\d{{2}}[ T]\d{{2}}:\d{{2}}:\d{{2}}(?:[,.]\d{{1,9}})?"
+    rf"\s+-\s+(?P<severity>{_LOG_LEVEL})\s+-\s+(?P<message>.*)$",
+    re.IGNORECASE,
+)
+_SEVERITY_PREFIX = re.compile(
+    rf"^(?:\[(?P<bracket>{_LOG_LEVEL})\]|(?P<plain>{_LOG_LEVEL}))"
+    r"\s*:\s*(?P<message>.*)$",
+    re.IGNORECASE,
+)
+_WARNING_SEVERITY_CANONICAL = {
+    "WARN": "WARNING",
+    "WARNING": "WARNING",
+    "ERROR": "ERROR",
+    "SEVERE": "ERROR",
+    "FATAL": "ERROR",
+    "경고": "WARNING",
+    "심각": "ERROR",
+}
 _RUN_TOKEN_PATH = re.compile(r"<RUN_ROOT>(?P<suffix>(?:[\\/][^\s)\]}>;,]+)*)")
 
 
@@ -129,12 +149,16 @@ def _new_warning(
     *,
     code: WarningCode,
     message: str,
+    identity_message: str | None = None,
     page_number: int | None,
     raw_source_relative_path: str,
     raw_location: str,
     context: WarningContext,
 ) -> ParserWarning:
-    normalized = _normalized_message(message, context.run_root)
+    normalized = _normalized_message(
+        message if identity_message is None else identity_message,
+        context.run_root,
+    )
     normalized_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest().upper()
     provisional = ParserWarning(
         warning_id="",
@@ -247,18 +271,38 @@ def _warnings_from_log(
     for line_number, raw_line in enumerate(log_text.splitlines(), start=1):
         if not raw_line.strip():
             continue
-        match = _CODE_PREFIX.match(raw_line)
+        python_match = _PYTHON_LOG_PREFIX.match(raw_line)
+        severity_match = (
+            None if python_match is not None else _SEVERITY_PREFIX.match(raw_line)
+        )
+        if python_match is not None:
+            raw_severity = python_match.group("severity")
+            message = python_match.group("message")
+        elif severity_match is not None:
+            raw_severity = severity_match.group("plain") or severity_match.group("bracket")
+            message = severity_match.group("message")
+        else:
+            continue
+        if raw_severity is None:
+            continue
+        canonical_severity = _WARNING_SEVERITY_CANONICAL.get(raw_severity.upper())
+        if canonical_severity is None:
+            continue
+        code_match = _CODE_PREFIX.match(message)
         raw_code = (
             None
-            if match is None
-            else (match.group("bracket") or match.group("plain"))
+            if code_match is None
+            else (code_match.group("bracket") or code_match.group("plain"))
         )
         warnings.append(
             _new_warning(
                 code=_warning_code(raw_code),
                 message=raw_line,
+                identity_message=(
+                    f"{canonical_severity}: {message}"
+                ),
                 page_number=_page_from_message(
-                    raw_line,
+                    message,
                     context.parser_page_count,
                 ),
                 raw_source_relative_path="parser.log",

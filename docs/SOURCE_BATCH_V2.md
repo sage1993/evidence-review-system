@@ -83,7 +83,7 @@ Registry 특성:
 
 ## Normalized parser contribution
 
-Adapter는 DB identity를 생성하지 않는다. 다음 source-relative record만 반환한다.
+Adapter는 document와 page DB record를 생성하지 않는다. Table record는 raw parser ID와 분리된 결정적 canonical ID를 반환한다. 이 ID는 exact source revision, page number, raw parser table ID, parser JSON의 structural path에 바인딩된다. Importer는 같은 source revision을 확인하고 canonical ID를 그대로 persistence에 쓴다. 다음 record를 반환한다.
 
 - page number와 page dimensions
 - page-relative element records
@@ -106,6 +106,8 @@ Contribution 불변식:
 - bbox는 page 경계 안에 있어야 함
 - parser artifact hash는 lowercase SHA-256이어야 함
 - 같은 kind 안에서 record key가 중복될 수 없음
+- raw parser table ID는 원본 provenance로 보존되며 canonical table ID로 재사용하지 않음
+- canonical table identity 충돌은 `PARSER_TABLE_IDENTITY_COLLISION`으로 fail-closed 처리함
 
 ## Source states
 

@@ -50,6 +50,87 @@ def test_raw_equality_is_byte_identical(tmp_path: Path) -> None:
     assert report.differences == ()
 
 
+def test_timestamp_only_parser_log_difference_is_semantically_identical(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf(tmp_path / "source.pdf")
+    run_a = write_run(tmp_path / "run-a", source)
+    run_b = write_run(tmp_path / "run-b", source)
+    first_log = b"2026-09-20 12:34:56,789 - WARNING - page 1: extraction failed\n"
+    second_log = b"2026-09-20 12:35:06,012 - WARNING - page 1: extraction failed\n"
+    (run_a / "parser.log").write_bytes(first_log)
+    (run_b / "parser.log").write_bytes(second_log)
+
+    report = validate_opendataloader_reproducibility(
+        source,
+        run_a,
+        run_b,
+        config(),
+    )
+
+    assert report.status == "SEMANTICALLY_IDENTICAL"
+    assert report.warning_count == 1
+    assert report.differences == ()
+    assert (run_a / "parser.log").read_bytes() == first_log
+    assert (run_b / "parser.log").read_bytes() == second_log
+
+
+def test_info_only_parser_logs_do_not_create_warning_differences(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf(tmp_path / "source.pdf")
+    run_a = write_run(tmp_path / "run-a", source)
+    run_b = write_run(tmp_path / "run-b", source)
+    (run_a / "parser.log").write_text(
+        "2026-09-20 12:34:56,789 - INFO - Processing page 1\n",
+        encoding="utf-8",
+    )
+    (run_b / "parser.log").write_text(
+        "2026-09-20 12:35:06,012 - INFO - Processing page 1\n",
+        encoding="utf-8",
+    )
+
+    report = validate_opendataloader_reproducibility(
+        source,
+        run_a,
+        run_b,
+        config(),
+    )
+
+    assert report.status == "SEMANTICALLY_IDENTICAL"
+    assert report.warning_count == 0
+    assert report.differences == ()
+
+
+def test_changed_warning_content_in_parser_logs_is_a_mismatch(
+    tmp_path: Path,
+) -> None:
+    source = write_pdf(tmp_path / "source.pdf")
+    run_a = write_run(tmp_path / "run-a", source)
+    run_b = write_run(tmp_path / "run-b", source)
+    (run_a / "parser.log").write_text(
+        "2026-09-20 12:34:56,789 - WARNING - page 1: table extraction failed\n",
+        encoding="utf-8",
+    )
+    (run_b / "parser.log").write_text(
+        "2026-09-20 12:34:56,789 - WARNING - page 1: image extraction failed\n",
+        encoding="utf-8",
+    )
+
+    report = validate_opendataloader_reproducibility(
+        source,
+        run_a,
+        run_b,
+        config(),
+    )
+
+    assert report.status == "MISMATCH"
+    assert {item.kind for item in report.differences} & {
+        "WARNING_ADDED",
+        "WARNING_REMOVED",
+    }
+
+
 def test_approved_run_root_difference_is_semantically_identical(
     tmp_path: Path,
 ) -> None:

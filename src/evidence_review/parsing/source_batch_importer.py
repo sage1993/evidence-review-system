@@ -224,6 +224,7 @@ def _parser_context(source: PreparedSource) -> ParserContext:
             else "DIRECT"
         ),
         source_sha256=bound_source_sha256,
+        source_revision_id=source.revision_id,
     )
 
 
@@ -310,9 +311,11 @@ def _source_records(
                 }
             )
         for table in contribution.tables:
+            if table.source_revision_id != source.revision_id:
+                raise ValueError("PARSER_TABLE_SOURCE_REVISION_MISMATCH")
             tables.append(
                 {
-                    "id": f"{source.revision_id}-{table.table_key}",
+                    "id": table.canonical_table_id,
                     "page_id": f"{source.revision_id}-P{table.page_number:04d}",
                     "bbox": table.bbox,
                     "raw_json": table.raw_payload,
