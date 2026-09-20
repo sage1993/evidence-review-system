@@ -102,7 +102,6 @@ def _post_decision(port: int, packet: bytes) -> int:
     payload = json.dumps(
         {
             "reviewer_id": "reviewer-01",
-            "packet_hash": hashlib.sha256(packet).hexdigest(),
             "decision": "SATISFIED",
             "notes": "reviewed",
         }

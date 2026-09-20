@@ -104,7 +104,7 @@ Allowed decisions:
 | `CONDITIONAL` | 조건 충족 시 동의 |
 | `ADDITIONAL_REVIEW_REQUIRED` | 추가 자료 검토 필요 |
 
-The protected browser request contains four fields: `reviewer_id`, `packet_hash`, `decision`, and `notes`. Reviewer ID is supplied from the protected session when configured; packet hash is supplied from the current immutable packet. The server independently revalidates both and creates `reviewed_at` as an offset-aware ISO-8601 server timestamp.
+The protected browser intent contains three fields: `reviewer_id`, `decision`, and `notes`. Client-supplied `packet_hash` or timestamps are rejected. The server computes SHA-256 from the exact packet bytes and creates an offset-aware `reviewed_at` timestamp. If the packet differs from the presentation bound to the server session, POST fails with `STALE_PACKET`; restart only after reviewing the correct packet. The status endpoint recomputes the current hash and reports `decision_binding_status` as `VALID`, `STALE`, or `MISSING`. A stale decision never yields `REVIEW_COMPLETED`.
 
 A successful request creates a new JSON file under:
 
