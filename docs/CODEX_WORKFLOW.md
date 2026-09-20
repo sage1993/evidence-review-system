@@ -78,11 +78,11 @@ For persistent reviewer work, use the merged `review-matter` interface:
 ```powershell
 evidence-review review-matter create --workspace <workspace> --matter-id <MATTER-ID> --title "<title>"
 evidence-review review-matter status --workspace <workspace> --matter-id <MATTER-ID>
-evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision <N> --issue-id <ISSUE-ID> --question "<question>"
-evidence-review review-matter bind-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision <N>
+evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0 --issue-id <ISSUE-ID> --question "<question>"
+evidence-review review-matter bind-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0
 evidence-review review-matter search --workspace <workspace> --matter-id <MATTER-ID> --query "<query>"
-evidence-review review-matter select-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision <N> --evidence-id <EVIDENCE-ID> --query "<query>"
-evidence-review review-matter formalize --workspace <workspace> --matter-id <MATTER-ID> --expected-revision <N>
+evidence-review review-matter select-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0 --evidence-id <EVIDENCE-ID> --query "<query>"
+evidence-review review-matter formalize --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0
 ```
 
 Search/navigation and Workbench actions do not create a compliance conclusion or Human Decision. `formalize` freezes the exact Matter revision and finalized evidence identity before preparing the immutable Formal Review run.

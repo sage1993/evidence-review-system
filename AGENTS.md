@@ -261,14 +261,14 @@ evidence-review review-matter status `
 evidence-review review-matter add-issue `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision <N> `
+  --expected-revision 0 `
   --issue-id <ISSUE-ID> `
   --question "<question>"
 
 evidence-review review-matter bind-evidence `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision <N>
+  --expected-revision 0
 
 evidence-review review-matter search `
   --workspace <workspace> `
@@ -278,14 +278,14 @@ evidence-review review-matter search `
 evidence-review review-matter select-evidence `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision <N> `
+  --expected-revision 0 `
   --evidence-id <EVIDENCE-ID> `
   --query "<query>"
 
 evidence-review review-matter formalize `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision <N>
+  --expected-revision 0
 ```
 
 The protected Workbench is also current:
