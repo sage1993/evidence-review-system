@@ -146,7 +146,7 @@ def test_generic_formal_review_counts_issue_level_source_gaps(
 ) -> None:
     html = render_review_html(_generic_model(), tmp_path)
 
-    assert '<dt>추가 확인</dt><dd>5 건</dd>' in html
+    assert '<dt>추가 확인 항목</dt><dd>10건</dd>' in html
     assert "I3" in html and "참조 법령 원문 미수록" in html
     assert "SOURCE_NOT_INGESTED" in html
     assert "추가 확인 0 건" not in html

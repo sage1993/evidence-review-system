@@ -8,8 +8,9 @@ from evidence_review.review_packet.icons import icon_svg
 from evidence_review.review_packet.presentation import (
     additional_review_items,
     conclusion_text,
-    issue_result_gap_items,
     localized_status,
+    machine_status,
+    summary_attention_items,
 )
 from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
 
@@ -109,14 +110,15 @@ def visual_shell_css() -> str:
 
 
 def render_status_band(model: Mapping[str, object]) -> str:
-    raw_status = str(model.get("display_status", model.get("status", "")))
+    raw_status = machine_status(model)
     return "".join(
         (
             '<header id="review-status" class="status-band">',
             '<div class="status-copy"><h1>정식 근거 검토</h1></div>',
             '<div class="header-actions">',
-            '<span class="status-label">검토 상태</span>',
-            '<span class="status-pill" data-display-status data-display-status-mode="localized">',
+            '<span class="status-label">기계 검토 결과</span>',
+            '<span class="status-pill" data-machine-status data-display-status '
+            'data-display-status-mode="localized">',
             _text(localized_status(raw_status)),
             "</span>",
             '<button type="button" data-print>', icon_svg("printer", size=16), ' 인쇄</button>',
@@ -133,9 +135,9 @@ def render_summary(model: Mapping[str, object]) -> str:
     missing = summary.get("missing_input_count", 0)
     conflicts = summary.get("conflict_count", 0)
     exceptions = summary.get("exception_count", 0)
-    issue_gaps = issue_result_gap_items(model)
+    attention_items = summary_attention_items(model)
     additional_count = (
-        len(issue_gaps)
+        len(attention_items)
         if model.get("issue_results")
         else sum(
             value
@@ -156,16 +158,21 @@ def render_summary(model: Mapping[str, object]) -> str:
             f'<p class="answer-summary">{_text(conclusion_text(model))}</p>',
             "</div>",
             '<dl class="result-facts">',
-            '<div><dt>근거</dt><dd>',
+            '<div><dt>인용 근거</dt><dd>',
             _text(citation_count),
-            ' 건</dd></div>',
-            '<div><dt>추가 확인</dt><dd>',
+            '건</dd></div>',
+            '<div><dt>추가 확인 항목</dt><dd>',
             _text(additional_count),
-            ' 건</dd></div>',
+            '건</dd></div>',
             "</dl>",
-            '<span id="ready-for-review" class="visually-hidden">',
-            _text(localized_status(model.get("display_status", model.get("status")))),
-            "</span>",
+            (
+                '<section id="summary-attention" aria-labelledby="summary-attention-heading">'
+                '<h3 id="summary-attention-heading">추가 확인이 필요한 항목</h3><ul>'
+                + "".join(f"<li>{_text(item)}</li>" for item in attention_items)
+                + "</ul></section>"
+                if attention_items
+                else ""
+            ),
             "</section>",
         )
     )

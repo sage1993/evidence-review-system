@@ -33,6 +33,8 @@ def render_decision_form(model: Mapping[str, object], *, initially_hidden: bool 
         "CONDITIONAL": "조건 충족 시 동의",
         "ADDITIONAL_REVIEW_REQUIRED": "추가 자료 검토 필요",
     }
+    recorded_decision = decision.get("human_decision", model.get("human_decision"))
+    recorded_label = labels.get(str(recorded_decision), str(recorded_decision))
     option_html = "".join(
         '<label class="decision-option"><input type="radio" name="decision" '
         f'value="{_text(option)}" required><strong>'
@@ -49,7 +51,7 @@ def render_decision_form(model: Mapping[str, object], *, initially_hidden: bool 
             '<span class="visually-hidden">최종 결정</span>',
             '<div class="decision-panel-heading"><h2 id="decision-heading">검토자 의견</h2></div>',
             '<div class="persisted-decision" data-persisted-decision hidden>',
-            '<h3>저장된 검토 결정</h3>',
+            '<h3>기록된 사람의 결정</h3>',
             '<dl>',
             '<div><dt>검토자</dt><dd data-persisted-reviewer></dd></div>',
             '<div><dt>검토 시각</dt><dd data-persisted-reviewed-at></dd></div>',
@@ -62,6 +64,12 @@ def render_decision_form(model: Mapping[str, object], *, initially_hidden: bool 
             icon_svg("lock", size=14),
             ' 기존 기록은 수정하지 않고 새 검토 기록을 추가합니다.</p>',
             '</div>',
+            (
+                '<p class="recorded-human-decision">기록된 사람의 결정: '
+                f'{_text(recorded_label)}</p>'
+                if recorded_decision is not None
+                else ""
+            ),
             '<form action="./decision" method="post">',
             '<div data-decision-editor>',
             '<fieldset class="decision-choices"><legend>판정</legend>',

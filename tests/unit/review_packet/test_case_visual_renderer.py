@@ -233,7 +233,7 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert 'data-case-zoom-out' in html
     assert 'data-case-overlay-mode="selected"' in html
     assert "focusSubjectFinding" in script
-    assert "마우스 휠 Zoom" in html
+    assert "마우스 휠 확대" in html
     assert "http://" not in html
     assert "https://" not in html
 

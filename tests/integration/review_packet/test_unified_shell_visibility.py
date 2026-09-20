@@ -45,6 +45,12 @@ def test_unified_regions_are_visible_and_reachable(
         visual = (_visual_model() if mode == "subject-only" else _typed_reference_model())[
             "case_visual_review"
         ]
+        if mode == "subject-only":
+            first = visual["findings"][0]
+            visual["findings"] = [
+                {**first, "finding_id": f"VF-{index}", "title": f"Observation {index}"}
+                for index in range(1, 9)
+            ]
         model["case_visual_review"] = visual
     html = render_review_html(model, tmp_path)
     script = r'''
@@ -65,6 +71,23 @@ process.stdin.on('end', async () => {
         visible: node.checkVisibility(), height: node.getBoundingClientRect().height})));
     if (results.length !== 5 || results.some(item => !item.visible || item.height <= 0))
       throw new Error(JSON.stringify(results));
+    const decision = page.locator('#decision-form');
+    if (await decision.getAttribute('aria-hidden') === 'true')
+      throw new Error('Visible human decision is hidden from assistive technology');
+    if (data.mode === 'subject-only') {
+      const findings = page.locator('[data-case-finding]');
+      if (await findings.count() !== 8) throw new Error('Missing finding');
+      for (let i = 0; i < 8; i++) {
+        const finding = findings.nth(i);
+        await finding.click();
+        if (!(await finding.isVisible())) throw new Error('Unreachable finding ' + i);
+        const clipped = await finding.evaluate(n => n.scrollHeight > n.clientHeight + 1);
+        if (clipped) throw new Error('Clipped finding ' + i);
+      }
+      const geometry = page.locator('.case-visual-overlay.is-active .case-visual-geometry');
+      if (await geometry.first().evaluate(n => getComputedStyle(n).stroke) !== 'rgb(217, 45, 32)')
+        throw new Error('Selected geometry not highlighted');
+    }
     await page.screenshot({path: data.screenshot});
     const audit = page.locator('[data-review-shell-region="audit"]');
     await audit.scrollIntoViewIfNeeded();
@@ -89,6 +112,7 @@ process.stdin.on('end', async () => {
     completed = subprocess.run(
         ["node", "-e", script, module], input=json.dumps({
             "html": html, "viewport": viewport, "screenshot": str(tmp_path / "review.png"),
+            "mode": mode,
         }),
         text=True, encoding="utf-8", capture_output=True, check=False,
     )
