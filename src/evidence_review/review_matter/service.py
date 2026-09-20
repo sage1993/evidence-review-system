@@ -56,6 +56,7 @@ def _issue(
     question: object,
     work_state: object,
     depends_on: Sequence[object],
+    required_facet_ids: Sequence[object],
 ) -> MatterIssue:
     if isinstance(depends_on, (str, bytes, bytearray)):
         raise ValueError("depends_on must be a sequence")
@@ -66,6 +67,10 @@ def _issue(
         depends_on=tuple(
             validate_identifier(item, f"depends_on[{index}]")
             for index, item in enumerate(depends_on)
+        ),
+        required_facet_ids=tuple(
+            validate_identifier(item, f"required_facet_ids[{index}]")
+            for index, item in enumerate(required_facet_ids)
         ),
     )
     if issue.issue_id in issue.depends_on:
@@ -169,6 +174,7 @@ class ReviewMatterService:
         question: str,
         work_state: MatterIssueState,
         depends_on: Sequence[str] = (),
+        required_facet_ids: Sequence[str] = (),
     ) -> ReviewMatter:
         """Append one revision-checked issue event and return its new projection."""
         validated_matter_id = self._validated_matter_id(matter_id)
@@ -177,6 +183,7 @@ class ReviewMatterService:
             question=question,
             work_state=work_state,
             depends_on=depends_on,
+            required_facet_ids=required_facet_ids,
         )
         with self._existing_store() as store:
             matter = store.load(validated_matter_id)
@@ -202,6 +209,7 @@ class ReviewMatterService:
                         "question": issue.question,
                         "work_state": issue.work_state,
                         "depends_on": list(issue.depends_on),
+                        "required_facet_ids": list(issue.required_facet_ids),
                     },
                 ),
             )

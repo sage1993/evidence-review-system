@@ -62,8 +62,9 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
     if event.kind == "ISSUE_ADDED":
         payload = expect_mapping(event.payload, "ISSUE_ADDED.payload")
         required = {"issue_id", "question", "work_state", "depends_on"}
+        allowed = required | {"required_facet_ids"}
         require_fields(payload, required, "ISSUE_ADDED.payload")
-        reject_unknown(payload, required, "ISSUE_ADDED.payload")
+        reject_unknown(payload, allowed, "ISSUE_ADDED.payload")
         issue_id = validate_identifier(payload.get("issue_id"), "issue_id")
         if issue_id in {issue.issue_id for issue in matter.issues}:
             raise ValueError("ISSUE_ADDED duplicate issue")
@@ -74,6 +75,12 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
             depends_on=tuple(
                 validate_identifier(item, "depends_on")
                 for item in expect_sequence(payload.get("depends_on"), "depends_on")
+            ),
+            required_facet_ids=tuple(
+                validate_identifier(item, "required_facet_ids")
+                for item in expect_sequence(
+                    payload.get("required_facet_ids", []), "required_facet_ids"
+                )
             ),
         )
         updated = ReviewMatter(

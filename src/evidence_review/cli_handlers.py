@@ -498,6 +498,7 @@ def _review_matter_dispatch(args: argparse.Namespace) -> int:
                         question=args.question,
                         work_state=args.work_state,
                         depends_on=args.depends_on,
+                        required_facet_ids=args.required_facet_id,
                     ),
                 )
             )

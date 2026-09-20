@@ -109,6 +109,7 @@ class MatterIssue:
     question: str
     work_state: MatterIssueState
     depends_on: tuple[str, ...]
+    required_facet_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +164,7 @@ def _decode_issue(value: object, index: int) -> MatterIssue:
     payload = expect_mapping(value, field)
     required = {"issue_id", "question", "work_state", "depends_on"}
     require_fields(payload, required, field)
-    reject_unknown(payload, required, field)
+    reject_unknown(payload, required | {"required_facet_ids"}, field)
     state = expect_string(payload.get("work_state"), f"{field}.work_state")
     if state in _FORMAL_ISSUE_STATUSES:
         raise ValueError(f"{field}.work_state uses formal issue status vocabulary")
@@ -172,6 +173,9 @@ def _decode_issue(value: object, index: int) -> MatterIssue:
         question=expect_string(payload.get("question"), f"{field}.question"),
         work_state=decode_matter_issue_state(payload.get("work_state"), f"{field}.work_state"),
         depends_on=_unique_identifiers(payload.get("depends_on"), f"{field}.depends_on"),
+        required_facet_ids=_unique_identifiers(
+            payload.get("required_facet_ids", []), f"{field}.required_facet_ids"
+        ),
     )
 
 
@@ -300,6 +304,11 @@ def review_matter_document(matter: ReviewMatter) -> dict[str, object]:
                 "question": issue.question,
                 "work_state": issue.work_state,
                 "depends_on": list(issue.depends_on),
+                **(
+                    {"required_facet_ids": list(issue.required_facet_ids)}
+                    if issue.required_facet_ids
+                    else {}
+                ),
             }
             for issue in matter.issues
         ],

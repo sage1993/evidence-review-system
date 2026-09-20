@@ -390,18 +390,19 @@ def expected_final_review_packet_from_snapshot(
     validated_a = validate_track_a_output(track_a_output, bundle)
     validate_track_a_integrity(validated_a, bundle)
     track_b_output = snapshot.document("track-b-output.json")
+    required_facets = required_facets_from_inputs(bundle.inputs)
     audit = validate_track_b_output(
         track_b_output,
         validated_a,
         expected_question=bundle.question,
         expected_facet_completeness=(
             None
-            if required_facets_from_inputs(bundle.inputs)
+            if required_facets
             else required_facet_completeness_status(
                 bundle.inputs.get("facet_coverage")
             )
         ),
-        required_facets_by_issue=required_facets_from_inputs(bundle.inputs),
+        required_facets_by_issue=required_facets or None,
     )
     confidence_inputs = _finalizer_confidence_factors(
         _decode_confidence_inputs(snapshot.document("confidence-input.json")),

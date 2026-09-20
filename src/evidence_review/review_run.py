@@ -795,18 +795,19 @@ def submit_track_b(
     bundle = _track_a_bundle_for_run(run_directory)
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
+    required_facets = required_facets_from_inputs(bundle.inputs)
     audit = validate_track_b_output(
         output,
         validated_a,
         expected_question=bundle.question,
         expected_facet_completeness=(
             None
-            if required_facets_from_inputs(bundle.inputs)
+            if required_facets
             else required_facet_completeness_status(
                 bundle.inputs.get("facet_coverage")
             )
         ),
-        required_facets_by_issue=required_facets_from_inputs(bundle.inputs),
+        required_facets_by_issue=required_facets or None,
     )
     _publish_validated_track_b(track_b_output, bound_track_b, output)
     _write_json_or_identical(
@@ -838,18 +839,19 @@ def validate_track_b_submission(
     bundle = _track_a_bundle_for_run(run_directory)
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
+    required_facets = required_facets_from_inputs(bundle.inputs)
     validate_track_b_output(
         _json(track_b_output),
         validated_a,
         expected_question=bundle.question,
         expected_facet_completeness=(
             None
-            if required_facets_from_inputs(bundle.inputs)
+            if required_facets
             else required_facet_completeness_status(
                 bundle.inputs.get("facet_coverage")
             )
         ),
-        required_facets_by_issue=required_facets_from_inputs(bundle.inputs),
+        required_facets_by_issue=required_facets or None,
     )
 
 

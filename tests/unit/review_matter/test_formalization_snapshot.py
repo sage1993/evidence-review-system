@@ -80,6 +80,7 @@ def _matter_store(
                 question="Does the exact source support the review?",
                 work_state=state,
                 depends_on=(),
+                required_facet_ids=("source_support",),
             ),
         ),
         source_bindings=(

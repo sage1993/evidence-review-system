@@ -59,8 +59,10 @@ def test_review_matter_cli_flow_keeps_work_state_and_formal_identities_distinct(
             "ISSUE-001",
             "--question",
             "Does the exact source support the review?",
-            "--work-state",
-            "READY_TO_FORMALIZE",
+                "--work-state",
+                "READY_TO_FORMALIZE",
+                "--required-facet-id",
+                "source_support",
         ],
         capsys,
     )

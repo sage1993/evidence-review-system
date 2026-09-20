@@ -79,6 +79,7 @@ def review_scope_from_explicit_input(
             issues=tuple(issues),
             legal_anchors=tuple(legal_anchors),
             search_requests=tuple(search_requests),
+            version=(3 if all(issue.required_facet_ids for issue in issues) else 2),
         )
     )
     return _scope_from_plan(
