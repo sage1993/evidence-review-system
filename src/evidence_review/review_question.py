@@ -513,12 +513,20 @@ def _existing_finalized_run(
         return None
     packet = verify_finalized_run(run_directory)
     workspace = run_directory.parent.parent
+    existing_html = html_path.read_text(encoding="utf-8")
+    protected_entry = '<p>PROTECTED_REVIEW_REQUIRED</p>' in existing_html
     view_model = build_review_view_model(
         packet_path.read_bytes(),
         _evidence_database(workspace),
+        embed_rasters=not protected_entry,
     )
-    expected_html = render_review_html(view_model, workspace / "page-images")
-    if html_path.read_text(encoding="utf-8") != expected_html:
+    if protected_entry:
+        from evidence_review.review_packet.html_renderer import render_protected_review_entry
+
+        expected_html = render_protected_review_entry(view_model, workspace / "page-images")
+    else:
+        expected_html = render_review_html(view_model, workspace / "page-images")
+    if existing_html != expected_html:
         raise ValueError("review HTML does not match the verified final packet")
     return FinalizedReviewRun(
         run_id=run_directory.name,

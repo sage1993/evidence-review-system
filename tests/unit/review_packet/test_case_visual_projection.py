@@ -201,6 +201,26 @@ def test_projection_embeds_verified_case_raster_and_candidate(
     assert result["reference_pages"][0]["asset_key"] == "reference-page-1"
 
 
+def test_metadata_projection_never_encodes_raster_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import evidence_review.review_packet.case_visual_projection as projection
+
+    view_model, workspace = _fixture(tmp_path)
+
+    def forbidden_encode(*args: object, **kwargs: object) -> bytes:
+        raise AssertionError("metadata projection encoded raster bytes")
+
+    monkeypatch.setattr(projection.base64, "b64encode", forbidden_encode)
+    result = build_case_visual_projection(
+        view_model, workspace_root=workspace, embed_rasters=False,
+    )
+    assert result is not None
+    assert "data_uri" not in result["pages"][0]
+    assert result["pages"][0]["image_sha256"]
+    assert result["pages"][0]["candidates"][0]["candidate_id"] == "CAND-VISUAL-1"
+
+
 def test_projection_keeps_ruleless_visual_observation_blue(tmp_path: Path) -> None:
     view_model, workspace = _fixture(tmp_path, with_rule=False)
 

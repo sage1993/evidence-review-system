@@ -419,6 +419,7 @@ def test_view_model_passes_verified_case_related_citations_to_visual_projection(
         *,
         workspace_root: Path,
         supplemental_reference_citations: object,
+        embed_rasters: bool,
     ) -> None:
         captured["workspace_root"] = workspace_root
         captured["supplemental_reference_citations"] = supplemental_reference_citations

@@ -116,9 +116,9 @@ The write is create-only. The machine packet and HTML remain unchanged, includin
 
 ## 7. Archival HTML
 
-A retained `review.html` opened with `file:` has no protected local server and therefore cannot persist a decision through POST.
+New RUNs store a lightweight `review.html` entry without raster payloads. Direct file opening displays `PROTECTED_REVIEW_REQUIRED`, with no review or decision form. Existing self-contained archives remain readable and cannot persist a decision through POST.
 
-The archival page is an explicit static presentation. A protected-only projection opened with `file:` shows a launcher warning instead of silently attempting to load protected raster routes. Start the protected viewer with:
+Start the protected viewer for page images, inspection and decision submission with:
 
 ```powershell
 evidence-review review-run serve `
@@ -127,7 +127,7 @@ evidence-review review-run serve `
   --reviewer-id <REVIEWER-ID>
 ```
 
-Use **결정 JSON 다운로드** only after reviewer ID, decision, and notes are valid. The archival page uses the same visible reviewer-ID form field; it does not open a prompt dialog. The downloaded envelope contains exactly:
+In retained legacy archives, use **결정 JSON 다운로드** only after reviewer ID, decision, and notes are valid. The archival page uses the same visible reviewer-ID form field; it does not open a prompt dialog. The downloaded envelope contains exactly:
 
 ```json
 {

@@ -948,3 +948,39 @@ def write_review_html(
     with output.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(render_review_html(view_model, page_image_root))
     return output
+
+
+def render_protected_review_entry(
+    view_model: Mapping[str, object],
+    page_image_root: Path,
+) -> str:
+    """Render a payload-free entry; inspection requires the protected server."""
+    from evidence_review.review_packet.protected_projection import (
+        build_protected_review_projection,
+    )
+
+    projection = build_protected_review_projection(view_model, page_image_root)
+    return (
+        '<!doctype html><html lang="ko"><meta charset="utf-8">'
+        '<title>Formal Review</title><body>'
+        '<main><h1>Formal Review</h1>'
+        '<p>기계 평가는 최종 판정이 아닙니다.</p>'
+        '<p>보호된 검토 서버에서 이 RUN을 여세요.</p>'
+        '<p>PROTECTED_REVIEW_REQUIRED</p></main>'
+        '<script id="review-model" type="application/json">'
+        + _model_json(projection.model)
+        + '</script></body></html>'
+    )
+
+
+def write_protected_review_entry(
+    view_model: Mapping[str, object],
+    page_image_root: Path,
+    output: Path,
+) -> Path:
+    """Exclusively persist the protected entry for one finalized RUN."""
+    html = render_protected_review_entry(view_model, page_image_root)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("x", encoding="utf-8", newline="\n") as stream:
+        stream.write(html)
+    return output

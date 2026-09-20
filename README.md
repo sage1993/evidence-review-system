@@ -183,9 +183,9 @@ ERS에는 정식 검토 과정을 우회하는 **Quick Answer** 또는 **문장 
 
 보호된 Browser Route는 Token 기반으로 동작하며 **Loopback 통신만 허용**합니다.
 
-보관용 `review.html`은 일반 파일로 열 수 있습니다.
+새 RUN의 `review.html`은 이미지 바이트를 포함하지 않는 경량 진입 문서입니다. 파일로 열면 보호된 서버에서 검토하라는 안내가 표시됩니다. 실제 검토에는 `review-run serve`를 사용합니다.
 
-다만 `review.html`에서 다운로드한 Decision Envelope를 영구 저장하려면 반드시 승인된 Import 경로를 사용해야 하며, 이를 통해 Append-only Decision Record로 저장해야 합니다.
+기존 보관용 HTML에서 다운로드한 Decision Envelope는 승인된 Import 경로를 통해 Append-only Decision Record로 저장합니다. 기존 RUN 파일은 새 형식으로 덮어쓰지 않습니다.
 
 다음과 같은 내부 감사 정보는 접힌 Audit Detail 영역에서 확인할 수 있습니다.
 
