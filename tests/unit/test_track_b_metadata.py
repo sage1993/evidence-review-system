@@ -121,9 +121,37 @@ def test_track_b_validation_records_v3_audit_status_and_obligations(tmp_path: Pa
         ),
     )
 
+    assert document["version"] == 3
     assert document["required_facet_completeness"] == {
         "status": "INCOMPLETE",
         "required_facets_by_issue": {
             "I1": ["basic_far", "contribution_delivery_method"]
         },
     }
+
+
+def test_track_b_validation_keeps_legacy_metadata_at_version_two(tmp_path: Path) -> None:
+    summary = {
+        "status": "NOT_APPLICABLE",
+        "covered_issue_count": 0,
+        "total_issue_count": 0,
+    }
+    (tmp_path / "track-b-bundle.json").write_bytes(
+        dump_bytes({"question": "Legacy review", "required_facet_completeness": summary})
+    )
+    track_b_path = tmp_path / "track-b-output.json"
+    track_b_path.write_bytes(dump_bytes({"run_id": "RUN-1"}))
+
+    document = _track_b_validation_document(
+        tmp_path,
+        "RUN-1",
+        track_b_path,
+        TrackBAudit(
+            run_id="RUN-1",
+            claim_audits=(),
+            overall_disposition="INCOMPLETE",
+        ),
+    )
+
+    assert document["version"] == 2
+    assert document["required_facet_completeness"] == summary

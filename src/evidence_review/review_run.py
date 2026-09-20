@@ -716,7 +716,7 @@ def _track_b_validation_document(
     )
     return {
         "format": "evidence-review/track-b-validation",
-        "version": 2,
+        "version": 3 if required_facets is not None else 2,
         "run_id": run_id,
         "status": "VALIDATED",
         "input_bundle_sha256": _sha256(bundle_path),
