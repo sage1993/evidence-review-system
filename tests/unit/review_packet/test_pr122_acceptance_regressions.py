@@ -1,4 +1,7 @@
-from evidence_review.review_packet.render_summary import render_additional_review
+from evidence_review.review_packet.render_summary import (
+    render_additional_review,
+    visual_shell_css,
+)
 from evidence_review.review_packet.visual_findings import build_semantic_visual_findings
 
 
@@ -67,13 +70,13 @@ def test_semantic_finding_drops_question_plan_text_from_subject_value() -> None:
     assert findings[0]["subject_value"] == "2.4m"
 
 
-def test_visual_decision_drawer_neutralizes_hover_and_focus_open_states() -> None:
-    html = render_additional_review(_visual_model())
+def test_visual_decision_uses_the_shared_document_flow() -> None:
+    css = visual_shell_css()
 
-    assert "#decision-form:hover" in html
-    assert "#decision-form:focus-within" in html
-    assert "pointer-events:none!important" in html
-    assert 'body[data-visual-decision-open="true"]' in html
+    assert "#decision-form:hover" not in css
+    assert "#decision-form:focus-within" not in css
+    assert "pointer-events:none!important" not in css
+    assert 'body[data-visual-decision-open="true"]' not in css
 
 
 def test_visual_workspace_html_does_not_embed_case_raster_bytes() -> None:

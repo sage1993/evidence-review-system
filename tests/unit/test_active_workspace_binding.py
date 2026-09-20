@@ -111,6 +111,27 @@ def test_active_binding_fails_closed_after_evidence_snapshot_changes(tmp_path: P
         resolve_active_workspace(repository_root)
 
 
+def test_active_binding_distinguishes_permission_denied_from_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import evidence_review.workspace_binding as binding_module
+    _format, bind_active_workspace, resolve_active_workspace = _workspace_api()
+
+    repository_root = tmp_path / "repo"
+    repository_root.mkdir()
+    workspace = _ready_workspace(tmp_path / "workspace")
+    bind_active_workspace(repository_root, workspace)
+    monkeypatch.setattr(
+        binding_module,
+        "_binding_for_workspace",
+        lambda _workspace: (_ for _ in ()).throw(PermissionError("access denied")),
+    )
+
+    with pytest.raises(ValueError, match="PERMISSION_DENIED"):
+        resolve_active_workspace(repository_root)
+
+
 def test_missing_active_binding_does_not_guess_from_available_databases(tmp_path: Path) -> None:
     _binding_format, _bind_active_workspace, resolve_active_workspace = _workspace_api()
     repository_root = tmp_path / "repo"

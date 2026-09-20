@@ -35,7 +35,7 @@ def formula_manifest_hash(specs: Sequence[FormulaSpec]) -> str:
 
 def calculation_result_payload(result: CalculationResult) -> dict[str, object]:
     """Return the canonical payload used for result hashing."""
-    return {
+    payload: dict[str, object] = {
         "calculation_result_id": result.calculation_result_id,
         "status": result.status,
         "formula_id": result.formula_id,
@@ -48,6 +48,17 @@ def calculation_result_payload(result: CalculationResult) -> dict[str, object]:
         "formula_manifest_hash": result.formula_manifest_hash,
         "error_codes": list(result.error_codes),
     }
+    if result.input_sources:
+        payload["input_sources"] = dict(sorted(result.input_sources.items()))
+    if result.input_units:
+        payload["input_units"] = dict(sorted(result.input_units.items()))
+    if result.precision is not None:
+        payload["precision"] = result.precision
+    if result.rounding is not None:
+        payload["rounding"] = result.rounding
+    if result.intermediate_rounding_policy is not None:
+        payload["intermediate_rounding_policy"] = result.intermediate_rounding_policy
+    return payload
 
 
 def finalize_result(result: CalculationResult, manifest_hash: str) -> CalculationResult:

@@ -6,7 +6,6 @@ import os
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any
 
 from evidence_review.contracts.attachments import AttachmentRole
@@ -31,6 +30,7 @@ from evidence_review.parsing.source_states import (
     SourceState,
     evaluate_source_readiness,
 )
+from evidence_review.runtime_filesystem import create_inherited_temp_directory
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _PARSER_SOURCE_SHA256_OPTION = "source_sha256"
@@ -316,7 +316,7 @@ def _source_records(
                     "page_id": f"{source.revision_id}-P{table.page_number:04d}",
                     "bbox": table.bbox,
                     "raw_json": table.raw_payload,
-                    "normalized_json": None,
+                    "normalized_json": table.searchable_document(),
                 }
             )
         for visual in contribution.visuals:
@@ -410,11 +410,11 @@ def import_source_batch(
         visuals=visuals,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(
-        dir=output.parent,
+    with create_inherited_temp_directory(
+        output.parent,
         prefix=f".{output.name}.tmp-",
     ) as temporary_directory:
-        temporary_db = Path(temporary_directory) / output.name
+        temporary_db = temporary_directory / output.name
         with EvidenceStore(temporary_db, create=True) as store:
             ingest_snapshot(store, snapshot)
             finalized = finalize_evidence_database(store)

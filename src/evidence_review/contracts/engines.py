@@ -47,6 +47,11 @@ class CalculationResult:
     formula_manifest_hash: str | None = None
     result_hash: str | None = None
     error_codes: tuple[str, ...] = ()
+    input_sources: dict[str, str] = field(default_factory=dict)
+    input_units: dict[str, str] = field(default_factory=dict)
+    precision: int | None = None
+    rounding: str | None = None
+    intermediate_rounding_policy: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

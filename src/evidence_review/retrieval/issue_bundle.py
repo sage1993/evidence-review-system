@@ -387,8 +387,9 @@ def _bucket_candidates(
             query_candidates.append(original_question)
 
         result: FallbackResult | None = None
+        successful_results: list[FallbackResult] = []
         raw_traces: list[FallbackTrace] = []
-        for query_index, query_text in enumerate(query_candidates):
+        for query_text in query_candidates:
             relevance_overrides: dict[str, IssueRelevanceDecision] = {}
 
             def issue_relevance_filter(
@@ -420,24 +421,26 @@ def _bucket_candidates(
                 fact_texts=fact_texts,
                 limit=policy.per_issue_role_limit,
                 hit_filter=issue_relevance_filter,
-                allow_heading_scoped=query_index == 0,
+                allow_heading_scoped=query_text == request.text,
+                allow_derived_fallback=query_text != original_question,
             )
             raw_traces.extend(result.traces)
-            traces.extend(
-                _bind_fallback_trace(
-                    issue,
-                    request,
-                    trace,
-                    relevance_overrides,
+            if query_text != original_question or result.success_stage is not None:
+                traces.extend(
+                    _bind_fallback_trace(
+                        issue,
+                        request,
+                        trace,
+                        relevance_overrides,
+                    )
+                    for trace in result.traces
                 )
-                for trace in result.traces
-            )
             if result.success_stage is not None and result.successful_query is not None:
-                break
+                successful_results.append(result)
 
         if result is None:
             raise RuntimeError("fallback query candidates must not be empty")
-        if result.success_stage is None or result.successful_query is None:
+        if not successful_results:
             legacy_queries = _legacy_queries_from_fallback(
                 request,
                 tuple(raw_traces),
@@ -512,24 +515,32 @@ def _bucket_candidates(
                     else _merge_candidate(current, candidate)
                 )
             continue
-        for clause_hit in result.hits:
-            candidate = IssueClauseCandidate(
-                clause=clause_hit,
-                matches=(
-                    IssueCandidateMatch(
-                        search_request_id=request.id,
-                        issue_id=issue.id,
-                        role=role,
-                        query_text=request.text,
-                        retrieval_query=result.successful_query,
-                        fallback_stage=result.success_stage,
+        for successful_result in successful_results:
+            if (
+                successful_result.successful_query is None
+                or successful_result.success_stage is None
+            ):
+                continue
+            for clause_hit in successful_result.hits:
+                candidate = IssueClauseCandidate(
+                    clause=clause_hit,
+                    matches=(
+                        IssueCandidateMatch(
+                            search_request_id=request.id,
+                            issue_id=issue.id,
+                            role=role,
+                            query_text=request.text,
+                            retrieval_query=successful_result.successful_query,
+                            fallback_stage=successful_result.success_stage,
+                        ),
                     ),
-                ),
-            )
-            current = by_clause.get(clause_hit.clause_id)
-            by_clause[clause_hit.clause_id] = (
-                candidate if current is None else _merge_candidate(current, candidate)
-            )
+                )
+                current = by_clause.get(clause_hit.clause_id)
+                by_clause[clause_hit.clause_id] = (
+                    candidate
+                    if current is None
+                    else _merge_candidate(current, candidate)
+                )
     candidates = tuple(
         sorted(
             by_clause.values(),

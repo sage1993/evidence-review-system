@@ -76,18 +76,94 @@ class ParsedElement:
 
 
 @dataclass(frozen=True, slots=True)
+class ParsedTableCell:
+    """One searchable table cell with explicit row/column provenance."""
+
+    row_number: int
+    column_number: int
+    row_span: int
+    column_span: int
+    raw_payload: dict[str, Any]
+    raw_payload_hash: str
+    text: str | None
+    bbox: BBoxValue | None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.row_number, bool) or self.row_number < 1:
+            raise ValueError("table cell row_number must be positive")
+        if isinstance(self.column_number, bool) or self.column_number < 1:
+            raise ValueError("table cell column_number must be positive")
+        if isinstance(self.row_span, bool) or self.row_span < 1:
+            raise ValueError("table cell row_span must be positive")
+        if isinstance(self.column_span, bool) or self.column_span < 1:
+            raise ValueError("table cell column_span must be positive")
+        _require_hash(self.raw_payload_hash, "table cell raw_payload_hash")
+        if self.text is not None and not isinstance(self.text, str):
+            raise ValueError("table cell text must be a string or null")
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedTableRow:
+    """One table row whose cells retain their source column positions."""
+
+    row_number: int
+    cells: tuple[ParsedTableCell, ...]
+
+    def __post_init__(self) -> None:
+        if isinstance(self.row_number, bool) or self.row_number < 1:
+            raise ValueError("table row row_number must be positive")
+        columns = [cell.column_number for cell in self.cells]
+        if len(columns) != len(set(columns)):
+            raise ValueError("table row contains duplicate column numbers")
+
+
+@dataclass(frozen=True, slots=True)
 class ParsedTable:
     table_key: str
     page_number: int
     raw_payload: dict[str, Any]
     raw_payload_hash: str
     bbox: BBoxValue | None
+    rows: tuple[ParsedTableRow, ...] = ()
+    search_text: str = ""
 
     def __post_init__(self) -> None:
         _require_key(self.table_key, "table_key")
         _require_hash(self.raw_payload_hash, "raw_payload_hash")
         if isinstance(self.page_number, bool) or self.page_number < 1:
             raise ValueError("page_number must be positive")
+        row_numbers = [row.row_number for row in self.rows]
+        if len(row_numbers) != len(set(row_numbers)):
+            raise ValueError("table contains duplicate row numbers")
+        if not isinstance(self.search_text, str):
+            raise ValueError("table search_text must be a string")
+
+    def searchable_document(self) -> dict[str, Any]:
+        """Return deterministic row-aware text and provenance for indexing."""
+        return {
+            "table_key": self.table_key,
+            "page_number": self.page_number,
+            "rows": [
+                {
+                    "row_number": row.row_number,
+                    "cells": [
+                        {
+                            "row_number": cell.row_number,
+                            "column_number": cell.column_number,
+                            "row_span": cell.row_span,
+                            "column_span": cell.column_span,
+                            "text": cell.text,
+                            "bbox": None if cell.bbox is None else list(cell.bbox),
+                            "raw_payload": cell.raw_payload,
+                            "raw_payload_hash": cell.raw_payload_hash,
+                        }
+                        for cell in row.cells
+                    ],
+                }
+                for row in self.rows
+            ],
+            "search_text": self.search_text,
+        }
 
 
 @dataclass(frozen=True, slots=True)

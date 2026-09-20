@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import sys
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -13,7 +12,6 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from math import ceil, floor, isfinite
 from pathlib import Path
-from tempfile import mkdtemp
 from typing import Protocol
 
 import pypdfium2 as pdfium  # type: ignore[import-untyped]
@@ -30,6 +28,7 @@ from evidence_review.canonical_json import dump_bytes
 from evidence_review.contracts.legacy_formats import LEGACY_PAGE_IMAGE_FORMAT
 from evidence_review.parsing.pdf_page_geometry import PdfPageGeometry, read_pdf_page_geometries
 from evidence_review.parsing.source_manifest import sha256_file
+from evidence_review.runtime_filesystem import create_inherited_temp_directory
 
 _RENDER_SCALE = 2.0
 _PAGE_IMAGE_FORMAT = "evidence-review/page-image"
@@ -125,9 +124,14 @@ def _load_existing(
         raise ValueError("page image cache has incomplete artifacts")
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except PermissionError as error:
+        raise ValueError("CACHE_NOT_READABLE: page image cache metadata") from error
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("page image cache metadata is invalid") from error
-    image = image_path.read_bytes()
+    try:
+        image = image_path.read_bytes()
+    except PermissionError as error:
+        raise ValueError("CACHE_NOT_READABLE: page image cache image") from error
     expected = _metadata(source, page, image, render_scale=render_scale)
     if metadata.get("format") == LEGACY_PAGE_IMAGE_FORMAT:
         expected["format"] = LEGACY_PAGE_IMAGE_FORMAT
@@ -246,8 +250,10 @@ def _cache_source(
         destination = root / source.revision_id
         if destination.exists():
             raise ValueError("page image cache has incomplete artifacts")
-        temporary_root = Path(mkdtemp(prefix=f".{source.revision_id}.tmp-", dir=root))
-        try:
+        with create_inherited_temp_directory(
+            root,
+            prefix=f".{source.revision_id}.tmp-",
+        ) as temporary_root:
             for page in pages:
                 temporary_image = temporary_root / f"page-{page.page_number:04d}.png"
                 image = _render_page(
@@ -277,9 +283,6 @@ def _cache_source(
                 finally:
                     os.close(directory_descriptor)
             return tuple(path for path in destination.iterdir() if path.is_file())
-        except Exception:
-            shutil.rmtree(temporary_root, ignore_errors=True)
-            raise
 
 
 def cache_page_images(

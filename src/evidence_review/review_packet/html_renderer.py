@@ -27,13 +27,17 @@ from evidence_review.review_packet.render_audit import (
     render_citation_audit,
     render_item_audit,
 )
-from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
+from evidence_review.review_packet.render_case_visual_lazy import (
+    case_visual_css,
+    render_case_visual_review,
+)
 from evidence_review.review_packet.render_decision import render_decision_form
 from evidence_review.review_packet.render_issue_results import render_issue_results
 from evidence_review.review_packet.render_summary import (
     render_additional_review,
     render_status_band,
     render_summary,
+    visual_shell_css,
 )
 from evidence_review.review_packet.render_workspace import render_workspace
 
@@ -567,18 +571,46 @@ def _render_rule_calculation_panel(
         )
         blocks.append(f'<div class="deterministic-block"><h4>규칙 검토</h4><ul>{rows}</ul></div>')
     if calculations:
-        rows = "".join(
-            "".join(
-                (
-                    "<li><strong>계산 결과</strong><span>",
-                    _text(calculation.get("display_result")),
-                    "</span><small>",
-                    _text(calculation.get("substitution")),
-                    "</small></li>",
+        calculation_rows: list[str] = []
+        for calculation in calculations:
+            raw_inputs = calculation.get("inputs")
+            inputs = (
+                cast(Mapping[str, object], raw_inputs)
+                if isinstance(raw_inputs, Mapping)
+                else {}
+            )
+            raw_units = calculation.get("input_units")
+            input_units = (
+                cast(Mapping[str, object], raw_units)
+                if isinstance(raw_units, Mapping)
+                else {}
+            )
+            input_summary = " · ".join(
+                f"{key}={value}" + (f" {input_units[key]}" if input_units.get(key) else "")
+                for key, value in sorted(inputs.items())
+            )
+            calculation_rows.append(
+                "".join(
+                    (
+                        "<li><strong>계산 결과</strong><span>",
+                        _text(calculation.get("display_result")),
+                        "</span><small>",
+                        _text(calculation.get("substitution")),
+                        "</small><small class=\"calculation-authority\">",
+                        _text(input_summary),
+                        "</small><small class=\"calculation-policy\">원시 결과 ",
+                        _text(calculation.get("raw_result")),
+                        " · precision ",
+                        _text(calculation.get("precision")),
+                        " · ",
+                        _text(calculation.get("rounding")),
+                        " · ",
+                        _text(calculation.get("intermediate_rounding_policy")),
+                        "</small></li>",
+                    )
                 )
             )
-            for calculation in calculations
-        )
+        rows = "".join(calculation_rows)
         blocks.append(f'<div class="deterministic-block"><h4>계산</h4><ul>{rows}</ul></div>')
     return "".join(blocks)
 
@@ -740,7 +772,10 @@ def _render_presentation_guidance(
                 "<h2>보호된 검토기는 파일로 열 수 없습니다</h2>",
                 "<p>보호된 도면은 파일 경로가 아니라 로컬 보호 서버에서만 표시됩니다. ",
                 "아래 명령으로 검토기를 실행하십시오.</p>",
+                '<details class="presentation-advanced">',
+                "<summary>고급 실행 정보</summary>",
                 f"<code>{serve_command}</code>",
+                "</details>",
                 "</aside>",
             )
         )
@@ -751,7 +786,10 @@ def _render_presentation_guidance(
             "<h2>보관용 정적 HTML</h2>",
             "<p>이 파일은 보관·인쇄용 정적 검토 화면입니다. 결정은 이 HTML에 저장되지 않으며, ",
             "보호된 검토기에서 기록해야 합니다.</p>",
+            '<details class="presentation-advanced">',
+            "<summary>고급 실행 정보</summary>",
             f"<p>보호된 검토기 실행: <code>{serve_command}</code></p>",
+            "</details>",
             "</aside>",
         )
     )
@@ -766,14 +804,33 @@ def _render_review_html(
     """Render archive or protected Review Workspace from an explicit model."""
     model = _mapping(view_model, "view_model")
     assets_path = Path(__file__).with_name("assets")
-    css = (assets_path / "review.css").read_text(encoding="utf-8")
-    responsive_css = (assets_path / "review_responsive.css").read_text(encoding="utf-8")
+    tokens_css = (assets_path / "tokens.css").read_text(encoding="utf-8")
+    css_modules = tuple(
+        (
+            name,
+            (assets_path / name).read_text(encoding="utf-8"),
+        )
+        for name in (
+            "shell.css",
+            "viewer.css",
+            "issues.css",
+            "decision.css",
+            "audit.css",
+            "responsive.css",
+        )
+    )
     css_bundle = (
-        css
-        + "\n/* review_responsive.css */\n"
-        + responsive_css
+        "\n".join(
+            f"/* {name} */\n{module_css}" for name, module_css in css_modules
+        )
         + "\n/* shared presentation tokens */\n"
         + review_presentation_css()
+        + "\n/* case visual workspace */\n"
+        + case_visual_css()
+        + "\n/* case visual shell */\n"
+        + visual_shell_css()
+        + "\n/* Review Workspace v2 tokens */\n"
+        + tokens_css
     )
     script = (assets_path / "review.js").read_text(encoding="utf-8")
     claims = _sequence(model.get("claims", []), "claims")
@@ -853,7 +910,7 @@ def _render_review_html(
                 ),
                 evidence_workspace=evidence_workspace,
                 detail_issue_results=detail_issue_results,
-                human_decision=render_decision_form(model, initially_hidden=bool(visual_review)),
+                human_decision=render_decision_form(model, initially_hidden=False),
                 audit=render_audit_details(model),
             ),
             _render_process_footer(model),

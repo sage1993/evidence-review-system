@@ -370,6 +370,7 @@ def _project_reference_anchors(
     related_references: Sequence[Mapping[str, object]],
     *,
     page_root: Path,
+    supplemental_reference_citations: Sequence[Mapping[str, object]] = (),
 ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
     if "reference_citations" not in view_model:
         return (
@@ -386,6 +387,20 @@ def _project_reference_anchors(
         )
 
     citation_index = _reference_citation_index(view_model)
+    for index, raw_citation in enumerate(supplemental_reference_citations):
+        citation = _mapping(
+            raw_citation,
+            f"supplemental_reference_citations[{index}]",
+        )
+        citation_id = _string(
+            citation.get("citation_id"),
+            f"supplemental_reference_citations[{index}].citation_id",
+        )
+        prior = citation_index.get(citation_id)
+        if prior is not None and dict(prior) != dict(citation):
+            raise ValueError("conflicting reference citation payload")
+        citation_index.setdefault(citation_id, citation)
+
     related_by_evidence: dict[str, Mapping[str, object]] = {}
     for index, raw_reference in enumerate(related_references):
         reference = _mapping(raw_reference, f"related_references[{index}]")
@@ -469,6 +484,7 @@ def build_case_visual_projection(
     view_model: Mapping[str, object],
     *,
     workspace_root: Path,
+    supplemental_reference_citations: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object] | None:
     """Project immutable visual evidence into a self-contained reviewer model."""
     run_id = validate_identifier(view_model.get("run_id"), "view_model.run_id")
@@ -676,6 +692,7 @@ def build_case_visual_projection(
         findings,
         related_references,
         page_root=workspace_root / "page-images",
+        supplemental_reference_citations=supplemental_reference_citations,
     )
     return {
         "status": "VISUAL_ANALYSIS_VALIDATED",

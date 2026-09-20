@@ -5,12 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from tempfile import mkdtemp
 from typing import cast
 
 from PIL import Image, ImageOps
@@ -25,6 +23,7 @@ from evidence_review.filesystem_trust import verified_regular_file_below
 from evidence_review.parsing.drawing_source import verify_visual_source_decoder_binding
 from evidence_review.parsing.page_image_cache import cache_pdf_page_images
 from evidence_review.parsing.source_manifest import sha256_file
+from evidence_review.runtime_filesystem import create_inherited_temp_directory
 
 _VISUAL_PAGE_FORMAT = "evidence-review/case-visual-page"
 _VISUAL_TILE_FORMAT = "evidence-review/case-visual-tile-manifest"
@@ -402,9 +401,10 @@ def ensure_visual_page_tiles(
 
     parent = directory.parent
     parent.mkdir(parents=True, exist_ok=True)
-    temporary = Path(mkdtemp(prefix=f".{directory.name}.tmp-", dir=parent))
     records: list[dict[str, object]] = []
-    try:
+    with create_inherited_temp_directory(
+        parent, prefix=f".{directory.name}.tmp-"
+    ) as temporary:
         with Image.open(page.image_path) as opened:
             image = opened.convert("RGB")
             image_width, image_height = image.size
@@ -443,11 +443,8 @@ def ensure_visual_page_tiles(
         try:
             os.rename(temporary, directory)
         except FileExistsError:
-            shutil.rmtree(temporary, ignore_errors=True)
+            return load_visual_page_tiles(workspace, page)
         return load_visual_page_tiles(workspace, page)
-    except Exception:
-        shutil.rmtree(temporary, ignore_errors=True)
-        raise
 
 
 def prepare_visual_page_assets(

@@ -1,0 +1,12 @@
+/* Audit projection contract. */
+.review-workspace[data-review-shell="unified"]
+  > [data-review-region="audit"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-workspace[data-review-shell="unified"]
+  > [data-review-region="audit"]
+  .audit-details {
+  max-width: 100%;
+}

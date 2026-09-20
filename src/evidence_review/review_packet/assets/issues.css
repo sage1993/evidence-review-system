@@ -1,0 +1,12 @@
+/* Issue-first navigation contract. */
+.review-workspace[data-review-shell="unified"]
+  > [data-review-region="detail-issue-results"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-workspace[data-review-shell="unified"]
+  > [data-review-region="detail-issue-results"]
+  .review-item {
+  scroll-margin-block: var(--space-lg, 16px);
+}

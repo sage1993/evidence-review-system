@@ -177,6 +177,9 @@ def test_c20_track_b_cannot_accept_malformed_claim_lineage() -> None:
     )
     track_b = {
         "run_id": "RUN-REGRESSION",
+        "audited_question": "이슈 1 검토",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [
             {
                 "claim_id": "CL-I3-1",
@@ -228,6 +231,9 @@ def test_korean_ordinal_category_claim_reaches_track_b_without_numeric_tokens() 
     audit = validate_track_b_output(
         {
             "run_id": "RUN-REGRESSION",
+            "audited_question": "대상지는 제2종일반주거지역이다.",
+            "question_responsiveness": "PASS",
+            "required_facet_completeness": "NOT_APPLICABLE",
             "claim_audits": [
                 {
                     "claim_id": "CL-I1-1",

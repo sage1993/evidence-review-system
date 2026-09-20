@@ -99,6 +99,9 @@ def write_valid_finalized_run(
         dump_bytes(
             {
                 "run_id": prepared.run_id,
+                "audited_question": "Release fixture final packet",
+                "question_responsiveness": "NOT_VERIFIED",
+                "required_facet_completeness": "NOT_APPLICABLE",
                 "claim_audits": [],
                 "overall_disposition": "INCOMPLETE",
             }

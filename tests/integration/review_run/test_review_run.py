@@ -219,9 +219,12 @@ def _track_a(run_id: str) -> dict[str, object]:
     }
 
 
-def _track_b(run_id: str) -> dict[str, object]:
+def _track_b(run_id: str, question: str = "접면 기준 충족 여부") -> dict[str, object]:
     return {
         "run_id": run_id,
+        "audited_question": question,
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "NOT_APPLICABLE",
         "claim_audits": [
             {
                 "claim_id": "CL1",
@@ -234,12 +237,16 @@ def _track_b(run_id: str) -> dict[str, object]:
     }
 
 
-def _write_tracks(root: Path, run_id: str) -> tuple[Path, Path]:
+def _write_tracks(
+    root: Path,
+    run_id: str,
+    question: str = "접면 기준 충족 여부",
+) -> tuple[Path, Path]:
     root.mkdir(parents=True, exist_ok=True)
     track_a = root / "track-a-output.json"
     track_b = root / "track-b-output.json"
     track_a.write_bytes(dump_bytes(_track_a(run_id)))
-    track_b.write_bytes(dump_bytes(_track_b(run_id)))
+    track_b.write_bytes(dump_bytes(_track_b(run_id, question)))
     return track_a, track_b
 
 
@@ -442,7 +449,9 @@ def test_finalize_publish_keeps_two_run_packets_isolated(tmp_path: Path) -> None
         workspace,
         _write_request(tmp_path / "first.json", "첫 번째 검토"),
     )
-    first_a, first_b = _write_tracks(tmp_path / "first-tracks", first.run_id)
+    first_a, first_b = _write_tracks(
+        tmp_path / "first-tracks", first.run_id, "첫 번째 검토"
+    )
     first_result = finalize_review_run(
         workspace,
         first.run_id,
@@ -456,7 +465,9 @@ def test_finalize_publish_keeps_two_run_packets_isolated(tmp_path: Path) -> None
         _write_request(tmp_path / "second.json", "두 번째 검토"),
     )
     first_packet = first_result.packet_path.read_bytes()
-    second_a, second_b = _write_tracks(tmp_path / "second-tracks", second.run_id)
+    second_a, second_b = _write_tracks(
+        tmp_path / "second-tracks", second.run_id, "두 번째 검토"
+    )
     second_result = finalize_review_run(
         workspace,
         second.run_id,

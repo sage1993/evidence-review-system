@@ -88,6 +88,42 @@ def _insert_table(
     connection.commit()
 
 
+def _insert_structured_table(
+    connection: sqlite3.Connection,
+    *,
+    evidence_id: str,
+    normalized: dict[str, object] | None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO tables(id, page_id, bbox_json, raw_json, normalized_json)
+        VALUES(?, 'PAGE1', ?, ?, ?)
+        """,
+        (
+            evidence_id,
+            dumps([10.0, 20.0, 200.0, 100.0]),
+            dumps(
+                {
+                    "type": "table",
+                    "rows": [
+                        {
+                            "row number": 1,
+                            "cells": [
+                                {
+                                    "column number": 1,
+                                    "kids": [{"content": "표 검색 근거"}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+            None if normalized is None else dumps(normalized),
+        ),
+    )
+    connection.commit()
+
+
 def _insert_visual(
     connection: sqlite3.Connection,
     *,
@@ -150,6 +186,35 @@ def test_bboxless_table_is_lexically_retrievable() -> None:
         assert [hit.evidence_id for hit in hits] == ["T-PAGE"]
         assert hits[0].evidence_type == "table"
         assert hits[0].bbox is None
+    finally:
+        connection.close()
+
+
+def test_structured_table_with_text_requires_searchable_projection() -> None:
+    connection = _connection()
+    try:
+        _insert_structured_table(connection, evidence_id="T-QUALITY", normalized=None)
+
+        with pytest.raises(RuntimeError, match="TABLE_SEARCH_TEXT_MISSING"):
+            build_fts_index(connection)
+    finally:
+        connection.close()
+
+
+def test_structured_table_search_uses_row_aware_projection() -> None:
+    connection = _connection()
+    try:
+        _insert_structured_table(
+            connection,
+            evidence_id="T-QUALITY",
+            normalized={"search_text": "행 1 열 1: 표 검색 근거"},
+        )
+        build_fts_index(connection)
+
+        hits = search_fts(connection, "표 검색 근거")
+
+        assert [hit.evidence_id for hit in hits] == ["T-QUALITY"]
+        assert hits[0].text == "행 1 열 1: 표 검색 근거"
     finally:
         connection.close()
 

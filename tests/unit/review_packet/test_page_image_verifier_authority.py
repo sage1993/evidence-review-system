@@ -43,6 +43,29 @@ def test_html_renderer_contains_no_page_image_verifier_copy() -> None:
     assert "hashlib" not in imported_modules
 
 
+def test_page_cache_permission_is_not_reported_as_missing_or_stale(
+    monkeypatch: object,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        page_image_verifier,
+        "verified_regular_file_below",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("access denied")),
+    )
+
+    try:
+        page_image_verifier.read_verified_page_image(
+            tmp_path,
+            "REV-1",
+            1,
+            "a" * 64,
+        )
+    except ValueError as error:
+        assert str(error).startswith("CACHE_NOT_READABLE:")
+    else:
+        raise AssertionError("permission-denied cache must fail with CACHE_NOT_READABLE")
+
+
 def test_verify_review_page_images_reads_each_identity_once_in_first_use_order(
     monkeypatch: object,
     tmp_path: Path,

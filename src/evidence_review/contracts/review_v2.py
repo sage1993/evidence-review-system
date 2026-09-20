@@ -152,6 +152,7 @@ def _confidence_document(result: ConfidenceResult) -> dict[str, object]:
                 "weight": factor.weight,
                 "contribution": factor.contribution,
                 "source": factor.source,
+                "state": factor.state,
             }
             for factor in result.factors
         ],

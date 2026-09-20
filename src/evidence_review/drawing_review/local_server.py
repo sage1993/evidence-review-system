@@ -234,7 +234,7 @@ def _calculation_manifest_hash() -> str:
 
 
 def _calculation_document(result: CalculationResult) -> dict[str, object]:
-    return {
+    document: dict[str, object] = {
         "calculation_result_id": result.calculation_result_id,
         "status": result.status,
         "formula_id": result.formula_id,
@@ -248,6 +248,17 @@ def _calculation_document(result: CalculationResult) -> dict[str, object]:
         "result_hash": result.result_hash,
         "error_codes": list(result.error_codes),
     }
+    if result.input_sources:
+        document["input_sources"] = dict(result.input_sources)
+    if result.input_units:
+        document["input_units"] = dict(result.input_units)
+    if result.precision is not None:
+        document["precision"] = result.precision
+    if result.rounding is not None:
+        document["rounding"] = result.rounding
+    if result.intermediate_rounding_policy is not None:
+        document["intermediate_rounding_policy"] = result.intermediate_rounding_policy
+    return document
 
 
 def _entry_document(entry: CaseManifestEntry | None) -> dict[str, object] | None:

@@ -168,7 +168,7 @@ def test_abstain_state_surfaces_additional_review_without_selecting_decision(
 
     html = render_review_html(model, tmp_path / "pages")
 
-    assert "추가 자료 필요" in html
+    assert "현재 자료로 판정할 수 없음" in html
     assert 'id="additional-review"' in html
     assert "MISSING REQUIRED EVIDENCE" in html
     assert " checked" not in _decision_form(html)

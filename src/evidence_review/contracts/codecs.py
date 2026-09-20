@@ -17,6 +17,7 @@ from evidence_review.contracts.engines import (
 from evidence_review.contracts.review import (
     Claim,
     ConfidenceFactor,
+    ConfidenceFactorState,
     ConfidenceLevel,
     ConfidenceResult,
     FinalizerStatus,
@@ -225,6 +226,11 @@ def decode_calculation_result(value: object) -> CalculationResult:
         "formula_manifest_hash",
         "result_hash",
         "error_codes",
+        "input_sources",
+        "input_units",
+        "precision",
+        "rounding",
+        "intermediate_rounding_policy",
     }
     _reject_unknown(payload, allowed, "calculation")
     status = _expect_literal(
@@ -252,6 +258,14 @@ def decode_calculation_result(value: object) -> CalculationResult:
                 ),
             ),
         )
+    precision_value = payload.get("precision")
+    precision = (
+        None
+        if precision_value is None
+        else _expect_int(precision_value, "precision")
+    )
+    if precision is not None and precision < 1:
+        raise ValueError("precision must be a positive integer")
     return CalculationResult(
         calculation_result_id=_expect_string(
             payload.get("calculation_result_id"), "calculation_result_id"
@@ -269,6 +283,16 @@ def decode_calculation_result(value: object) -> CalculationResult:
         ),
         result_hash=_expect_optional_string(payload.get("result_hash"), "result_hash"),
         error_codes=_expect_string_tuple(payload.get("error_codes", []), "error_codes"),
+        input_sources=_expect_string_dict(
+            payload.get("input_sources", {}), "input_sources"
+        ),
+        input_units=_expect_string_dict(payload.get("input_units", {}), "input_units"),
+        precision=precision,
+        rounding=_expect_optional_string(payload.get("rounding"), "rounding"),
+        intermediate_rounding_policy=_expect_optional_string(
+            payload.get("intermediate_rounding_policy"),
+            "intermediate_rounding_policy",
+        ),
     )
 
 
@@ -324,8 +348,13 @@ def decode_confidence_result(value: object) -> ConfidenceResult:
         factor = _expect_mapping(item, f"factors[{index}]")
         _reject_unknown(
             factor,
-            {"name", "value", "weight", "contribution", "source"},
+            {"name", "value", "weight", "contribution", "source", "state"},
             f"factors[{index}]",
+        )
+        state = _expect_literal(
+            factor.get("state", "VERIFIED"),
+            f"factors[{index}].state",
+            ("VERIFIED", "FAILED", "NOT_VERIFIED", "NOT_APPLICABLE"),
         )
         factors.append(
             ConfidenceFactor(
@@ -336,6 +365,7 @@ def decode_confidence_result(value: object) -> ConfidenceResult:
                     factor.get("contribution"), f"factors[{index}].contribution"
                 ),
                 source=_expect_string(factor.get("source"), f"factors[{index}].source"),
+                state=cast(ConfidenceFactorState, state),
             )
         )
     level = _expect_literal(payload.get("level"), "level", ("HIGH", "MEDIUM", "LOW"))

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from evidence_review.filesystem_trust import (
     verified_regular_file_below,
 )
 from evidence_review.review_matter.formal_run_binding import verify_formal_run_authority
+from evidence_review.runtime_filesystem import create_inherited_temp_file
 
 CURRENT_REVIEW_BINDING_FORMAT = "evidence-review/current-review-binding"
 CURRENT_REVIEW_BINDING_VERSION = 1
@@ -93,17 +93,14 @@ def _write_binding(path: Path, binding: CurrentReviewBinding) -> None:
         pass
     temporary_path: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=path.parent,
+        with create_inherited_temp_file(
+            path.parent,
             prefix=".current-review-",
-            suffix=".tmp",
             delete=False,
-        ) as stream:
+        ) as (temporary_path, stream):
             stream.write(dump_bytes(binding.to_document()))
             stream.flush()
             os.fsync(stream.fileno())
-            temporary_path = Path(stream.name)
         os.replace(temporary_path, path)
         temporary_path = None
     finally:

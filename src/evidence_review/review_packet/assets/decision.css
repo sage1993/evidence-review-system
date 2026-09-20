@@ -1,0 +1,18 @@
+/* Human Decision contract, kept separate from mutable work regions. */
+.review-workspace[data-review-shell="unified"]
+  > [data-review-region="human-decision"] {
+  min-width: 0;
+}
+
+.review-workspace[data-review-shell="unified"]
+  > [data-review-region="human-decision"]
+  #decision-form {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-workspace[data-review-shell="unified"]
+  > [data-review-region="human-decision"]
+  [name="reviewer_id"] {
+  max-width: 100%;
+}

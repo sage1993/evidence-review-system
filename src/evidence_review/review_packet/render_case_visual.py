@@ -7,7 +7,6 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import cast
 
-_FINDINGS_PER_PAGE = 3
 _STATUS_META = {
     "mismatch": ("불일치", "mismatch"),
     "needs_check": ("확인 필요", "needs-check"),
@@ -661,7 +660,7 @@ def _icon(name: str) -> str:
         return (
             '<svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">'
             '<text x="12" y="15" text-anchor="middle" fill="currentColor" '
-            'font-family="ui-monospace,monospace" font-size="9" font-weight="700">1:1</text></svg>'
+            'font-family="ui-monospace,monospace" font-size="12" font-weight="700">1:1</text></svg>'
         )
     paths = {
         "prev": '<path d="M15 18l-6-6 6-6"/>',
@@ -912,12 +911,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
         for key, label, count in filters
     )
     initial_reference_width = 42 if any_direct else 30
-    total_pages = max(1, math.ceil(len(findings) / _FINDINGS_PER_PAGE))
-
     _strip_case_raster_payload(model)
     return "".join(
         (
-            f"<style>{CASE_VISUAL_CSS}{ISSUE_152_CASE_VISUAL_CSS}</style>",
             '<section id="case-visual-review" class="visual-review-workspace" '
             f'data-overlay-mode="all" data-reference-available="{"true" if any_direct else "false"}" '
             'aria-label="기준 근거와 사용자 파일 대조 Workspace">',
@@ -935,7 +931,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
                 else ""
             ),
             '<div class="workspace-grid">',
-            f'<div class="comparison-workspace" data-case-split style="--reference-width:{initial_reference_width}%">',
+            f'<div class="comparison-workspace" data-case-split data-reference-width="{initial_reference_width}">',
             (
                 '<section class="reference-viewer" aria-label="기준 근거 Viewer"><header>'
                 '<strong>기준 근거</strong><span>Reference</span></header><div class="reference-body">'
@@ -967,23 +963,47 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             '</div></header><div class="subject-body">',
             "".join(page_html),
             "</div></section></div>",
-            '<aside class="findings-panel" aria-label="대조 결과"><header>'
-            '<strong>대조 결과</strong><span>Findings</span></header>',
+            '<aside class="findings-panel" aria-label="쟁점 탐색"><header>'
+            '<strong>쟁점 탐색</strong><span>Issues</span></header>',
             f'<div class="finding-filters">{filter_html}</div>',
             '<div class="findings-body">',
             "".join(finding_html),
-            '</div><footer class="finding-pagination">',
-            '<button type="button" data-finding-prev aria-label="이전 결과 페이지">‹</button>',
-            f'<span><b data-finding-page-number>1</b> / <b data-finding-page-total>{total_pages}</b></span>',
-            '<button type="button" data-finding-next aria-label="다음 결과 페이지">›</button>',
-            f'<button type="button" class="decision-open" data-case-decision-open>{_icon("decision")} 검토 판정</button>',
-            '</footer></aside></div>',
+            '</div></aside></div>',
             '<p class="case-visual-help">마우스 휠 Zoom · 좌클릭 Drag Pan · 더블클릭 Fit · 중앙 Divider 드래그로 Viewer 폭 조절</p>',
-            '<button class="case-decision-backdrop" type="button" data-case-decision-backdrop '
-            'aria-label="검토 판정 닫기" hidden></button>',
-            f"<script>{CASE_VISUAL_SCRIPT}</script>",
             "</section>",
         )
+    )
+
+
+def case_visual_css() -> str:
+    """Return the shared CASE_VISUAL stylesheet for the document shell."""
+    return (
+        f"{CASE_VISUAL_CSS}{ISSUE_152_CASE_VISUAL_CSS}"
+        .replace(
+            "body[data-visual-decision-open=\"true\"] .case-decision-backdrop{display:block!important}",
+            "",
+        )
+        .replace(
+            ".case-decision-backdrop{position:fixed;inset:0;z-index:29;border:0;background:rgba(16,24,40,.22)}",
+            "",
+        )
+        .replace(
+            ".finding-pagination{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid var(--line);background:#f8fafc;font-size:10px}",
+            "",
+        )
+        .replace(
+            ".finding-pagination>button:not(.decision-open){width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff}",
+            "",
+        )
+        .replace(
+            ".decision-open{margin-left:auto;height:30px;padding:0 9px;border:1px solid #1570ef;border-radius:6px;background:#1570ef;color:#fff;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700}",
+            "",
+        )
+        .replace("font-size:10.5px", "font-size:12px")
+        .replace("font:600 10px", "font:600 12px")
+        .replace("font-size:9px", "font-size:12px")
+        .replace("font-size:10px", "font-size:12px")
+        .replace("font-size:11px", "font-size:12px")
     )
 
 
@@ -1002,41 +1022,9 @@ ISSUE_152_CASE_VISUAL_CSS = r"""
 #case-visual-review[data-reference-available="false"] .related-reference-fallback .reference-empty{display:block;min-height:0;text-align:left}
 #case-visual-review .viewer-controls button{width:40px;height:40px;min-height:0;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:0}
 #case-visual-review .finding-filter{height:32px;min-height:0;padding:0 8px;font-size:12px}
-.finding-pagination{font-size:12px}
+#case-visual-review .findings-panel{grid-template-rows:42px 38px minmax(0,1fr)}
+#case-visual-review .findings-body{grid-template-rows:none;grid-auto-rows:minmax(110px,auto);overflow:auto}
 .case-visual-help{margin:0;padding:8px 12px;font-size:12px}
 .toolbar-icon{display:block}
 """
-
-
-CASE_VISUAL_SCRIPT = r"""
-(()=>{const root=document.getElementById('case-visual-review');if(!root||root.dataset.bound==='1')return;root.dataset.bound='1';const pages=[...root.querySelectorAll('[data-case-page]')],cards=[...root.querySelectorAll('[data-case-finding]')],refs=[...root.querySelectorAll('[data-case-reference]')],overlays=[...root.querySelectorAll('[data-case-overlay]')],filterButtons=[...root.querySelectorAll('[data-case-filter]')];let pageIndex=0,activeCardIndex=cards.length?0:-1,filter='all',resultPage=0;const PAGE_SIZE=3,states=new WeakMap(),pageNo=root.querySelector('[data-case-page-number]'),zoomLabel=root.querySelector('[data-case-zoom]'),resultPageNo=root.querySelector('[data-finding-page-number]'),resultPageTotal=root.querySelector('[data-finding-page-total]');let tileFrame=0;function state(stage){let s=states.get(stage);if(!s){s={scale:1,x:0,y:0,drag:false,px:0,py:0};states.set(stage,s)}return s}function pageDimensions(page){return [Number(page?.dataset.pageWidth||0),Number(page?.dataset.pageHeight||0)]}function apply(stage){const s=state(stage),t=stage.querySelector('[data-case-transform]');if(t)t.style.transform=`translate(${s.x}px,${s.y}px) scale(${s.scale})`;if(zoomLabel&&pages[pageIndex]?.contains(stage))zoomLabel.textContent=`${Math.round(s.scale*100)}%`;scheduleVisibleTiles(pages[pageIndex])}function reset(stage){states.set(stage,{scale:1,x:0,y:0,drag:false,px:0,py:0});apply(stage)}function ensurePageRaster(page){if(!page)return;const full=page.querySelector('[data-case-page-image]');if(full&&!full.getAttribute('href'))full.setAttribute('href',full.dataset.casePageSrc||'');scheduleVisibleTiles(page)}function scheduleVisibleTiles(page){if(!page||tileFrame)return;tileFrame=requestAnimationFrame(()=>{tileFrame=0;ensureVisibleTiles(page)})}function ensureVisibleTiles(page){const stage=page?.querySelector('[data-case-stage]');if(!stage)return;const tiles=[...page.querySelectorAll('[data-case-tile]')];if(!tiles.length)return;const [pw,ph]=pageDimensions(page),rect=stage.getBoundingClientRect();if(!(pw>0&&ph>0&&rect.width>0&&rect.height>0))return;const fit=Math.min(rect.width/pw,rect.height/ph),ox=(rect.width-pw*fit)/2,oy=(rect.height-ph*fit)/2,s=state(stage),margin=Math.max(160,Math.min(rect.width,rect.height)*.25);tiles.forEach(tile=>{if(tile.getAttribute('href'))return;const x=Number(tile.dataset.tileX||0),y=Number(tile.dataset.tileY||0),w=Number(tile.dataset.tileWidth||0),h=Number(tile.dataset.tileHeight||0),left=s.x+(ox+x*fit)*s.scale,top=s.y+(oy+y*fit)*s.scale,right=left+w*fit*s.scale,bottom=top+h*fit*s.scale;if(right>=-margin&&bottom>=-margin&&left<=rect.width+margin&&top<=rect.height+margin)tile.setAttribute('href',tile.dataset.caseTileSrc||'')})}function showPage(key){const idx=pages.findIndex(p=>p.dataset.casePage===key);if(idx<0)return;pageIndex=idx;pages.forEach((p,i)=>{p.hidden=i!==idx;p.classList.toggle('is-active',i===idx)});if(pageNo)pageNo.textContent=String(idx+1);ensurePageRaster(pages[idx]);const stage=pages[idx].querySelector('[data-case-stage]');if(stage)apply(stage)}function candidateIds(card){return new Set((card?.dataset.caseCandidateIds||'').split('|').filter(Boolean))}function focusSubjectFinding(card){if(!card)return;showPage(card.dataset.casePageKey||'');requestAnimationFrame(()=>{const page=pages[pageIndex],stage=page?.querySelector('[data-case-stage]');if(!page||!stage)return;const bbox=(card.dataset.caseFocusBbox||'').split(',').map(Number);if(bbox.length!==4||bbox.some(v=>!Number.isFinite(v)))return;const [pw,ph]=pageDimensions(page),rect=stage.getBoundingClientRect();if(!(pw>0&&ph>0&&rect.width>0&&rect.height>0))return;const fit=Math.min(rect.width/pw,rect.height/ph),ox=(rect.width-pw*fit)/2,oy=(rect.height-ph*fit)/2,[l,t,r,b]=bbox,bw=Math.max(1,(r-l)*fit),bh=Math.max(1,(b-t)*fit),target=Math.min(5,Math.max(1,Math.min(rect.width*.58/bw,rect.height*.58/bh))),cx=ox+((l+r)/2)*fit,cy=oy+((t+b)/2)*fit,s=state(stage);s.scale=target;s.x=rect.width/2-cx*target;s.y=rect.height/2-cy*target;apply(stage)})}function activateCard(index,{focus=true}={}){if(index<0||index>=cards.length)return;activeCardIndex=index;const card=cards[index],id=card.dataset.caseFinding||'',ids=candidateIds(card);cards.forEach((item,i)=>item.classList.toggle('is-active',i===index));refs.forEach(ref=>{const on=ref.dataset.caseReference===id;ref.hidden=!on;ref.classList.toggle('is-active',on);if(on){const direct=ref.querySelector('[data-direct-reference], [data-direct-reference-empty]');direct?.scrollIntoView({block:'nearest'})}});overlays.forEach(overlay=>overlay.classList.toggle('is-active',ids.has(overlay.dataset.caseOverlay||'')));if(focus)focusSubjectFinding(card)}function filteredCardIndexes(){return cards.map((card,index)=>({card,index})).filter(({card})=>filter==='all'||card.dataset.findingStatus===filter).map(({index})=>index)}function renderResultPage({activate=true}={}){const indexes=filteredCardIndexes(),total=Math.max(1,Math.ceil(indexes.length/PAGE_SIZE));resultPage=Math.max(0,Math.min(resultPage,total-1));const slice=new Set(indexes.slice(resultPage*PAGE_SIZE,(resultPage+1)*PAGE_SIZE));cards.forEach((card,index)=>{card.hidden=!slice.has(index)});if(resultPageNo)resultPageNo.textContent=String(resultPage+1);if(resultPageTotal)resultPageTotal.textContent=String(total);if(activate&&indexes.length){const preferred=slice.has(activeCardIndex)?activeCardIndex:indexes[resultPage*PAGE_SIZE];activateCard(preferred,{focus:true})}}cards.forEach((card,index)=>card.addEventListener('click',()=>activateCard(index,{focus:true})));filterButtons.forEach(button=>button.addEventListener('click',()=>{filter=button.dataset.caseFilter||'all';filterButtons.forEach(item=>item.classList.toggle('is-active',item===button));resultPage=0;renderResultPage({activate:true})}));root.querySelector('[data-finding-prev]')?.addEventListener('click',()=>{resultPage--;renderResultPage({activate:true})});root.querySelector('[data-finding-next]')?.addEventListener('click',()=>{resultPage++;renderResultPage({activate:true})});root.querySelector('[data-case-prev]')?.addEventListener('click',()=>showPage(pages[(pageIndex-1+pages.length)%pages.length]?.dataset.casePage||''));root.querySelector('[data-case-next]')?.addEventListener('click',()=>showPage(pages[(pageIndex+1)%pages.length]?.dataset.casePage||''));root.querySelectorAll('[data-case-overlay-mode]').forEach(button=>button.addEventListener('click',()=>{const mode=button.dataset.caseOverlayMode||'all';root.dataset.overlayMode=mode;root.querySelectorAll('[data-case-overlay-mode]').forEach(item=>item.classList.toggle('is-active',item===button))}));function zoom(factor,clientX,clientY){const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(!stage)return;const s=state(stage),rect=stage.getBoundingClientRect(),cx=clientX??rect.left+rect.width/2,cy=clientY??rect.top+rect.height/2,lx=(cx-rect.left-s.x)/s.scale,ly=(cy-rect.top-s.y)/s.scale,next=Math.min(5,Math.max(.5,s.scale*factor));s.x=cx-rect.left-lx*next;s.y=cy-rect.top-ly*next;s.scale=next;apply(stage)}root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-reset]')?.addEventListener('click',()=>{const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(stage)reset(stage)});pages.forEach(page=>{const stage=page.querySelector('[data-case-stage]');if(!stage)return;stage.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.12:.89,e.clientX,e.clientY)},{passive:false});stage.addEventListener('dblclick',()=>reset(stage));stage.addEventListener('pointerdown',e=>{if(e.button!==0)return;const s=state(stage);s.drag=true;s.px=e.clientX;s.py=e.clientY;stage.setPointerCapture(e.pointerId);stage.classList.add('is-dragging')});stage.addEventListener('pointermove',e=>{const s=state(stage);if(!s.drag)return;s.x+=e.clientX-s.px;s.y+=e.clientY-s.py;s.px=e.clientX;s.py=e.clientY;apply(stage)});const stop=e=>{state(stage).drag=false;stage.classList.remove('is-dragging');try{stage.releasePointerCapture(e.pointerId)}catch(_){}};stage.addEventListener('pointerup',stop);stage.addEventListener('pointercancel',stop)});const split=root.querySelector('[data-case-split]'),divider=root.querySelector('[data-case-divider]');function setSplit(percent){if(!split||!divider)return;const value=Math.min(70,Math.max(26,percent));split.style.setProperty('--reference-width',`${value}%`);divider.setAttribute('aria-valuenow',String(Math.round(value)))}if(split&&divider){let dragging=false;divider.addEventListener('pointerdown',e=>{if(e.button!==0)return;dragging=true;divider.setPointerCapture(e.pointerId)});divider.addEventListener('pointermove',e=>{if(!dragging)return;const rect=split.getBoundingClientRect();setSplit((e.clientX-rect.left)/rect.width*100)});const stop=e=>{dragging=false;try{divider.releasePointerCapture(e.pointerId)}catch(_){}};divider.addEventListener('pointerup',stop);divider.addEventListener('pointercancel',stop);divider.addEventListener('dblclick',()=>setSplit(cards.some(card=>card.dataset.findingStatus!=='not_comparable')?42:30));divider.addEventListener('keydown',e=>{const now=Number(divider.getAttribute('aria-valuenow')||42);if(e.key==='ArrowLeft'){e.preventDefault();setSplit(now-2)}if(e.key==='ArrowRight'){e.preventDefault();setSplit(now+2)}})}function setDecision(open){document.body.dataset.visualDecisionOpen=open?'true':'false';const backdrop=root.querySelector('[data-case-decision-backdrop]');if(backdrop)backdrop.hidden=!open;const form=document.getElementById('decision-form');if(form){form.setAttribute('aria-hidden',open?'false':'true');if(open){let close=form.querySelector('[data-visual-decision-close]');if(!close){close=document.createElement('button');close.type='button';close.dataset.visualDecisionClose='';close.className='visual-decision-close';close.textContent='닫기';form.prepend(close);close.addEventListener('click',()=>setDecision(false))}form.querySelector('input,textarea,button')?.focus()}}}root.querySelector('[data-case-decision-open]')?.addEventListener('click',()=>setDecision(true));root.querySelector('[data-case-decision-backdrop]')?.addEventListener('click',()=>setDecision(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.dataset.visualDecisionOpen==='true')setDecision(false)});showPage(pages[0]?.dataset.casePage||'');renderResultPage({activate:false});if(cards.length)activateCard(0,{focus:false})})();
-"""
-
-
-CASE_VISUAL_SCRIPT = (
-    CASE_VISUAL_SCRIPT.replace(
-        "function activateCard(index,{focus=true}={}){",
-        "function ensureReferenceRaster(scope){if(!scope)return;scope.querySelectorAll('[data-reference-page-image]').forEach(image=>{if(image.getAttribute('href'))return;const src=image.dataset.referencePageSrc||'';if(src)image.setAttribute('href',src)})}const referenceStates=new WeakMap();function referenceState(stage){let s=referenceStates.get(stage);if(!s){s={scale:1,x:0,y:0,drag:false,px:0,py:0};referenceStates.set(stage,s)}return s}function applyReference(stage){const s=referenceState(stage),t=stage.querySelector('[data-reference-transform]');if(t)t.style.transform=`translate(${s.x}px,${s.y}px) scale(${s.scale})`}function resetReference(stage){referenceStates.set(stage,{scale:1,x:0,y:0,drag:false,px:0,py:0});applyReference(stage)}function preferredReferenceItem(scope){return scope.querySelector('[data-reference-role=\"direct\"]')||scope.querySelector('[data-reference-role=\"related\"]')}function focusReferenceFinding(scope){if(!scope)return;const item=preferredReferenceItem(scope);if(!item)return;const details=item.closest('details');if(details)details.open=true;const stage=item.querySelector('[data-reference-stage]'),anchor=item.querySelector('[data-reference-anchor]');if(!stage||!anchor)return;requestAnimationFrame(()=>{const pw=Number(stage.dataset.pageWidth||0),ph=Number(stage.dataset.pageHeight||0),rect=stage.getBoundingClientRect(),x=Number(anchor.getAttribute('x')),y=Number(anchor.getAttribute('y')),w=Number(anchor.getAttribute('width')),h=Number(anchor.getAttribute('height'));if(!(pw>0&&ph>0&&rect.width>0&&rect.height>0&&[x,y,w,h].every(Number.isFinite)))return;const fit=Math.min(rect.width/pw,rect.height/ph),ox=(rect.width-pw*fit)/2,oy=(rect.height-ph*fit)/2,bw=Math.max(1,w*fit),bh=Math.max(1,h*fit),target=Math.min(5,Math.max(1,Math.min(rect.width*.58/bw,rect.height*.58/bh))),cx=ox+(x+w/2)*fit,cy=oy+(y+h/2)*fit,s=referenceState(stage);s.scale=target;s.x=rect.width/2-cx*target;s.y=rect.height/2-cy*target;applyReference(stage)})}function referenceZoom(stage,factor,clientX,clientY){if(!stage)return;const s=referenceState(stage),rect=stage.getBoundingClientRect(),cx=clientX??rect.left+rect.width/2,cy=clientY??rect.top+rect.height/2,lx=(cx-rect.left-s.x)/s.scale,ly=(cy-rect.top-s.y)/s.scale,next=Math.min(5,Math.max(.5,s.scale*factor));s.x=cx-rect.left-lx*next;s.y=cy-rect.top-ly*next;s.scale=next;applyReference(stage)}function activateCard(index,{focus=true}={}){",
-    ).replace(
-        "ref.classList.toggle('is-active',on);if(on){const direct=",
-        "ref.classList.toggle('is-active',on);if(on){const item=preferredReferenceItem(ref);ref.querySelectorAll('[data-reference-role]').forEach(candidate=>candidate.classList.toggle('is-active',candidate===item));if(item){ensureReferenceRaster(item);if(focus)focusReferenceFinding(ref)}const direct=",
-    ).replace(
-        "root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-reset]')?.addEventListener('click',()=>{const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(stage)reset(stage)});pages.forEach(page=>{const stage=page.querySelector('[data-case-stage]');",
-        "root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-reset]')?.addEventListener('click',()=>{const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(stage)reset(stage)});root.querySelectorAll('[data-reference-stage]').forEach(stage=>{stage.addEventListener('wheel',e=>{e.preventDefault();referenceZoom(stage,e.deltaY<0?1.12:.89,e.clientX,e.clientY)},{passive:false});stage.addEventListener('dblclick',()=>resetReference(stage));stage.addEventListener('pointerdown',e=>{if(e.button!==0)return;const s=referenceState(stage);s.drag=true;s.px=e.clientX;s.py=e.clientY;stage.setPointerCapture(e.pointerId);stage.classList.add('is-dragging')});stage.addEventListener('pointermove',e=>{const s=referenceState(stage);if(!s.drag)return;s.x+=e.clientX-s.px;s.y+=e.clientY-s.py;s.px=e.clientX;s.py=e.clientY;applyReference(stage)});const stop=e=>{referenceState(stage).drag=false;stage.classList.remove('is-dragging');try{stage.releasePointerCapture(e.pointerId)}catch(_){}};stage.addEventListener('pointerup',stop);stage.addEventListener('pointercancel',stop)});pages.forEach(page=>{const stage=page.querySelector('[data-case-stage]');",
-    ).replace(
-        "function reset(stage){states.set(stage,{scale:1,x:0,y:0,drag:false,px:0,py:0});apply(stage)}",
-        "function pageFit(stage){if(!stage)return null;const page=pages.find(page=>page.contains(stage)),[pw,ph]=pageDimensions(page),rect=stage.getBoundingClientRect(),screen=Math.min(rect.width/pw,rect.height/ph);if(!(pw>0&&ph>0&&rect.width>0&&rect.height>0&&screen>0))return null;return{pw,ph,rect,screen,baseX:(rect.width-pw*screen)/2,baseY:(rect.height-ph*screen)/2}}function setPageFit(stage,targetFit){const fit=pageFit(stage);if(!fit||!(targetFit>0))return;const scale=targetFit/fit.screen,x=(fit.rect.width-fit.pw*targetFit)/2-fit.baseX*scale,y=(fit.rect.height-fit.ph*targetFit)/2-fit.baseY*scale;states.set(stage,{scale,x,y,drag:false,px:0,py:0});apply(stage)}function reset(stage){fitScreen(stage)}function fitScreen(stage){const fit=pageFit(stage);if(fit)setPageFit(stage,fit.screen)}function fitWidth(stage){const fit=pageFit(stage);if(fit)setPageFit(stage,fit.rect.width/fit.pw)}function originalSize(stage){setPageFit(stage,1)}",
-    ).replace(
-        "root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-reset]')?.addEventListener('click',()=>{const stage=pages[pageIndex]?.querySelector('[data-case-stage]');if(stage)reset(stage)});",
-        "root.querySelector('[data-case-zoom-in]')?.addEventListener('click',()=>zoom(1.2));root.querySelector('[data-case-zoom-out]')?.addEventListener('click',()=>zoom(.8333));root.querySelector('[data-case-fit-screen]')?.addEventListener('click',()=>fitScreen(pages[pageIndex]?.querySelector('[data-case-stage]')));root.querySelector('[data-case-fit-width]')?.addEventListener('click',()=>fitWidth(pages[pageIndex]?.querySelector('[data-case-stage]')));root.querySelector('[data-case-original-size]')?.addEventListener('click',()=>originalSize(pages[pageIndex]?.querySelector('[data-case-stage]')));",
-    ).replace(
-        "showPage(pages[0]?.dataset.casePage||'');renderResultPage({activate:false});",
-        "showPage(pages[0]?.dataset.casePage||'');fitWidth(pages[0]?.querySelector('[data-case-stage]'));renderResultPage({activate:false});",
-    ).replace(
-        "function setDecision(open){document.body.dataset.visualDecisionOpen=open?'true':'false';const backdrop=root.querySelector('[data-case-decision-backdrop]');if(backdrop)backdrop.hidden=!open;const form=document.getElementById('decision-form');if(form){form.setAttribute('aria-hidden',open?'false':'true');if(open){let close=form.querySelector('[data-visual-decision-close]');if(!close){close=document.createElement('button');close.type='button';close.dataset.visualDecisionClose='';close.className='visual-decision-close';close.textContent='닫기';form.prepend(close);close.addEventListener('click',()=>setDecision(false))}form.querySelector('input,textarea,button')?.focus()}}}root.querySelector('[data-case-decision-open]')?.addEventListener('click',()=>setDecision(true));root.querySelector('[data-case-decision-backdrop]')?.addEventListener('click',()=>setDecision(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.dataset.visualDecisionOpen==='true')setDecision(false)});",
-        "let decisionTrigger=null;function setDecision(open,trigger){document.body.dataset.visualDecisionOpen=open?'true':'false';const backdrop=root.querySelector('[data-case-decision-backdrop]');if(backdrop)backdrop.hidden=!open;const form=document.getElementById('decision-form');if(!form)return;if(open){decisionTrigger=trigger||root.querySelector('[data-case-decision-open]');form.setAttribute('aria-hidden','false');let close=form.querySelector('[data-visual-decision-close]');if(!close){close=document.createElement('button');close.type='button';close.dataset.visualDecisionClose='';close.className='visual-decision-close';close.textContent='닫기';form.prepend(close);close.addEventListener('click',()=>setDecision(false))}form.querySelector('input,textarea,button')?.focus();return}form.setAttribute('aria-hidden','true');decisionTrigger?.focus();decisionTrigger=null}const decisionForm=document.getElementById('decision-form');if(decisionForm)decisionForm.setAttribute('aria-hidden','true');root.querySelector('[data-case-decision-open]')?.addEventListener('click',event=>setDecision(true,event.currentTarget));root.querySelector('[data-case-decision-backdrop]')?.addEventListener('click',()=>setDecision(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.dataset.visualDecisionOpen==='true')setDecision(false)});",
-    )
-)
-
-
 __all__ = ["render_case_visual_review"]

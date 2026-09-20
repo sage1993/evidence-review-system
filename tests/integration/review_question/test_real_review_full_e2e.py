@@ -11,6 +11,7 @@ from evidence_review.contracts.question_plan import decode_question_plan
 from evidence_review.evidence.finalization import finalize_evidence_database
 from evidence_review.evidence.ingest import EvidenceSnapshot, ingest_snapshot
 from evidence_review.evidence.store import EvidenceStore
+from evidence_review.llm_layer.track_b import required_facet_completeness_status
 from evidence_review.planned_review_question import prepare_planned_review_question
 from evidence_review.rule_engine.operators import apply_operator, decode_input
 
@@ -186,11 +187,16 @@ def _track_a_output(
     }
 
 
-def _track_b_output(track_a: dict[str, object], run_id: str) -> dict[str, object]:
+def _track_b_output(track_a: dict[str, object], run_directory: Path) -> dict[str, object]:
     claims = track_a["claims"]
     assert isinstance(claims, list)
+    bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
+    facet_status = required_facet_completeness_status(bundle["inputs"].get("facet_coverage"))
     return {
-        "run_id": run_id,
+        "run_id": run_directory.name,
+        "audited_question": bundle["question"],
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": facet_status,
         "claim_audits": [
             {
                 "claim_id": str(claim["claim_id"]),
@@ -246,7 +252,7 @@ def test_real_review_full_pipeline_reaches_finalizer_with_issue_safe_claims(
 ) -> None:
     plan, evidence_fixture, run_directory = _prepare_workspace(tmp_path)
     track_a = _track_a_output(run_directory, evidence_fixture)
-    track_b = _track_b_output(track_a, run_directory.name)
+    track_b = _track_b_output(track_a, run_directory)
     _write_manifest_bound_outputs(run_directory, track_a, track_b)
 
     packet = finalize_run(run_directory)
@@ -322,12 +328,15 @@ def test_real_review_partial_issue_gap_preserves_resolved_claims(
         omit_issue_ids=frozenset({"I7"}),
     )
     track_a = _track_a_output(run_directory, evidence_fixture)
-    track_b = _track_b_output(track_a, run_directory.name)
+    track_b = _track_b_output(track_a, run_directory)
     _write_manifest_bound_outputs(run_directory, track_a, track_b)
 
     packet = finalize_run(run_directory)
 
-    assert packet.status == "PARTIALLY_RESOLVED"
+    # An unresolved required facet is a Track B semantic gate failure; it must
+    # not be presented as a review-ready partial result.
+    assert packet.status == "ABSTAIN"
+    assert "TRACK_B_REJECTION" in packet.abstention_reasons
     assert len(packet.claims) == 6
     by_issue = {item.issue_id: item for item in packet.issue_results}
     assert by_issue["I7"].status == "UNRESOLVED"

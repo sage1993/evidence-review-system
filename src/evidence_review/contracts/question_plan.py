@@ -19,6 +19,7 @@ SearchKind = Literal["phrase", "legal_anchor", "concept_relation", "counterfactu
 AnchorSource = Literal["user", "planner"]
 Polarity = Literal["positive", "negative"]
 EvidenceRole = Literal["supporting_fact", "rule"]
+ProvenanceSource = Literal["document", "planner"]
 
 _NUMERIC_LITERAL = re.compile(
     r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
@@ -70,6 +71,14 @@ class LegalAnchor:
 
 
 @dataclass(frozen=True, slots=True)
+class QuestionProvenance:
+    """A planner context statement whose authority is explicit."""
+
+    text: str
+    source: ProvenanceSource
+
+
+@dataclass(frozen=True, slots=True)
 class SearchRequest:
     """A bounded evidence search request tied to one or more issues."""
 
@@ -91,6 +100,10 @@ class QuestionPlan:
     issues: tuple[QuestionIssue, ...]
     legal_anchors: tuple[LegalAnchor, ...]
     search_requests: tuple[SearchRequest, ...]
+    raw_user_question: str | None = None
+    normalized_question: str | None = None
+    document_context: tuple[QuestionProvenance, ...] = ()
+    planner_inference: tuple[QuestionProvenance, ...] = ()
 
 
 def _normalize_text(value: str) -> str:
@@ -117,6 +130,15 @@ def _expect_string(value: object, field: str) -> str:
         raise ValueError(f"{field} must be a string")
     normalized = _normalize_text(value)
     if not normalized:
+        raise ValueError(f"{field} must not be empty")
+    return normalized
+
+
+def _expect_raw_question(value: object, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    normalized = unicodedata.normalize("NFC", value)
+    if not normalized.strip():
         raise ValueError(f"{field} must not be empty")
     return normalized
 
@@ -215,6 +237,32 @@ def _decode_legal_anchor(value: object, field: str) -> LegalAnchor:
             _expect_literal(payload.get("source"), f"{field}.source", ("user", "planner")),
         ),
     )
+
+
+def _decode_provenance(
+    value: object,
+    field: str,
+    source: ProvenanceSource,
+) -> tuple[QuestionProvenance, ...]:
+    if value is None:
+        return ()
+    values = _expect_sequence(value, field)
+    result: list[QuestionProvenance] = []
+    for index, item in enumerate(values):
+        payload = _expect_mapping(item, f"{field}[{index}]")
+        _reject_unknown(payload, {"text", "source"}, f"{field}[{index}]")
+        actual_source = _expect_literal(
+            payload.get("source"),
+            f"{field}[{index}].source",
+            (source,),
+        )
+        result.append(
+            QuestionProvenance(
+                text=_expect_string(payload.get("text"), f"{field}[{index}].text"),
+                source=actual_source,
+            )
+        )
+    return tuple(result)
 
 
 def _decode_search_request(value: object, field: str, *, version: int) -> SearchRequest:
@@ -388,6 +436,10 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
         "issues",
         "legal_anchors",
         "search_requests",
+        "raw_user_question",
+        "normalized_question",
+        "document_context",
+        "planner_inference",
     }
     _reject_unknown(payload, allowed, "question_plan")
 
@@ -403,6 +455,33 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
     normalized_original = _expect_string(payload.get("original_question"), "original_question")
     if normalized_original != normalized_expected:
         raise ValueError("original_question does not match expected question")
+
+    raw_user_question_value = payload.get("raw_user_question")
+    raw_user_question = (
+        None
+        if raw_user_question_value is None
+        else _expect_raw_question(raw_user_question_value, "raw_user_question")
+    )
+    if raw_user_question is not None and _normalize_text(raw_user_question) != normalized_expected:
+        raise ValueError("raw_user_question does not match expected question")
+    normalized_question_value = payload.get("normalized_question")
+    normalized_question = (
+        None
+        if normalized_question_value is None
+        else _expect_string(normalized_question_value, "normalized_question")
+    )
+    if normalized_question is not None and normalized_question != normalized_expected:
+        raise ValueError("normalized_question does not match expected question")
+    document_context = _decode_provenance(
+        payload.get("document_context"),
+        "document_context",
+        "document",
+    )
+    planner_inference = _decode_provenance(
+        payload.get("planner_inference"),
+        "planner_inference",
+        "planner",
+    )
 
     fact_values = _expect_sequence(payload.get("facts"), "facts")
     assumption_values = _expect_sequence(payload.get("assumptions"), "assumptions")
@@ -494,12 +573,16 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
         issues=issues,
         legal_anchors=legal_anchors,
         search_requests=search_requests,
+        raw_user_question=raw_user_question,
+        normalized_question=normalized_question,
+        document_context=document_context,
+        planner_inference=planner_inference,
     )
 
 
 def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
     """Encode a validated plan as its canonical JSON-compatible v2 document."""
-    return {
+    document: dict[str, object] = {
         "format": QUESTION_PLAN_FORMAT,
         "version": QUESTION_PLAN_VERSION,
         "original_question": plan.original_question,
@@ -534,3 +617,17 @@ def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
             for item in plan.search_requests
         ],
     }
+    if plan.raw_user_question is not None:
+        document["raw_user_question"] = plan.raw_user_question
+    if plan.normalized_question is not None:
+        document["normalized_question"] = plan.normalized_question
+    if plan.document_context:
+        document["document_context"] = [
+            {"text": item.text, "source": item.source} for item in plan.document_context
+        ]
+    if plan.planner_inference:
+        document["planner_inference"] = [
+            {"text": item.text, "source": item.source}
+            for item in plan.planner_inference
+        ]
+    return document
