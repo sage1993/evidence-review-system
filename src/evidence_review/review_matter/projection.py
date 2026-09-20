@@ -144,6 +144,7 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
                         question=issue.question,
                         work_state=work_state,
                         depends_on=issue.depends_on,
+                        required_facet_ids=issue.required_facet_ids,
                     )
                 )
             else:
@@ -233,6 +234,7 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
                     question=issue.question,
                     work_state="STALE",
                     depends_on=issue.depends_on,
+                    required_facet_ids=issue.required_facet_ids,
                 )
                 for issue in bound_issues
             )
@@ -323,6 +325,7 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
                 question=issue.question,
                 work_state="STALE" if issue.issue_id in issue_ids else issue.work_state,
                 depends_on=issue.depends_on,
+                required_facet_ids=issue.required_facet_ids,
             )
             for issue in matter.issues
         )
