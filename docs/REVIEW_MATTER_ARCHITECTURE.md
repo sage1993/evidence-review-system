@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document freezes the authority boundaries for the persistent review-work migration. It describes the target architecture; a command or module is current only after it exists and passes the exact checked-out acceptance gates.
+This document defines the authority boundaries for the merged persistent ReviewMatter architecture on current `main`. The architecture is executable and was accepted through the migration program; dated migration acceptance records remain historical evidence rather than current runtime authority. Future commands or modules are current only after they exist at the exact checked-out HEAD and pass the applicable acceptance gates.
 
 ## Identity and authority
 
@@ -42,6 +42,8 @@ Review readers reject unfinalized databases, stale retrieval indexes, logical sn
 
 If a source hash changes, every known dependent issue is invalidated. Unknown or unmodelled impact is treated as affected and becomes stale; heuristics must not claim that work is unaffected. A stale required issue cannot be formalized.
 
-## Formal Review compatibility
+## Formal Review entrypoints
 
-`QuestionPlan` and `ReviewScope` are control inputs, not evidence. During migration, the existing `review-question prepare-plan → prepare → Track A → Track B` flow remains the current formal path until an accepted replacement exists at the exact HEAD. Finalizer statuses, deterministic engine authority, packet validation, protected review and packet-bound Human Decision remain unchanged unless a dedicated migration contract explicitly changes them.
+`QuestionPlan` and `ReviewScope` are control inputs, not evidence. Current `main` supports both persistent ReviewMatter Formalization and the direct `review-question prepare-plan → prepare → Track A → Track B` Formal Review entrypoint. ReviewMatter `formalize` is the only promotion from mutable Matter work into Formal Review; the direct question path does not create or mutate Matter work.
+
+Both paths converge on the same Formal Review authority: immutable prepared inputs, deterministic retrieval/math/rule artifacts, validated Track A and Track B, finalizer-owned machine status, protected Review Workspace, and a separate packet-bound append-only Human Decision.

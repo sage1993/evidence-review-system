@@ -12,7 +12,7 @@ Use local evidence only. Project Python code does not call a model or remote API
 
 Shared status and contract governance is documented in `docs/CONTRACT_GOVERNANCE.md`. Question planning and its trust boundary are documented in `docs/question-planning.md`.
 
-The repository is incrementally migrating toward the ReviewMatter architecture. `ReviewMatter` and `matter_id` are target mutable-work identities, distinct from drawing `CaseManifest` and `case_id`. Do not use a target Matter command or module unless it exists at the exact checked-out HEAD. Until the corresponding migration boundary is merged and verified, the existing `review-question prepare-plan → prepare → Track A → Track B` path remains the current formal workflow. See [`REVIEW_MATTER_ARCHITECTURE.md`](REVIEW_MATTER_ARCHITECTURE.md).
+The ReviewMatter architecture is merged and executable on current `main`. `ReviewMatter` and `matter_id` identify mutable reviewer work and remain distinct from drawing `CaseManifest` / `case_id` semantics. Evidence Navigation and Workbench state are non-authoritative; Formalization is the only promotion boundary from Matter work into the immutable Formal Review core. The direct `review-question prepare-plan → prepare → Track A → Track B` path also remains a supported Formal Review entrypoint. See [`REVIEW_MATTER_ARCHITECTURE.md`](REVIEW_MATTER_ARCHITECTURE.md).
 
 ## 0. Prove runtime provenance before business commands
 
@@ -71,6 +71,30 @@ SHM, and journal sidecars, and never repair it.
 Re-prepare an old workspace through `$ERS_PDF` instead of adding a review-time
 repair step.
 
+### 1.1 Persistent ReviewMatter work
+
+For persistent reviewer work, use the merged `review-matter` interface:
+
+Pass the current `revision` returned by the preceding mutating command to
+each `--expected-revision` option. The values below show one fresh sequential
+flow: `create` returns revision 1, `add-issue` returns revision 2,
+`bind-evidence` returns revision 3, `search` does not change the revision,
+`select-evidence` returns revision 4, and `formalize` consumes revision 4.
+These numbers are illustrative, not constants. Set `READY_TO_FORMALIZE` on
+the issue when the flow continues through `formalize`.
+
+```powershell
+evidence-review review-matter create --workspace <workspace> --matter-id <MATTER-ID> --title "<title>"
+evidence-review review-matter status --workspace <workspace> --matter-id <MATTER-ID>
+evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 1 --issue-id <ISSUE-ID> --question "<question>" --work-state READY_TO_FORMALIZE
+evidence-review review-matter bind-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 2
+evidence-review review-matter search --workspace <workspace> --matter-id <MATTER-ID> --query "<query>"
+evidence-review review-matter select-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 3 --evidence-id <EVIDENCE-ID> --query "<query>"
+evidence-review review-matter formalize --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 4
+```
+
+Search/navigation and Workbench actions do not create a compliance conclusion or Human Decision. The direct `review-question` path requires the Question Planner handoff before formal retrieval. The `review-matter formalize` path instead freezes an exact Matter revision and explicit `ReviewScope` assembled from promoted Matter inputs; it does not require a Planner handoff before preparing the immutable Formal Review run.
+
 ## 2. Formal Review for review questions
 
 The current user-facing workflow is `review-question`. Do not use a separate quick retrieval mode and do not ask the user to hand-author intermediate JSON.
@@ -116,6 +140,7 @@ Codex must read the bundle and instructions before writing `question-plan-output
 
 The QuestionPlan must:
 
+- preserve the exact NFC-normalized raw user wording separately from the normalized question;
 - preserve the normalized original question;
 - preserve user-stated facts, assumptions, numbers, negations, exceptions, names, and explicit citations;
 - split issues only when independent evidence is required;
@@ -197,7 +222,7 @@ A failed validation keeps the workflow at Track A. Correct Track A and retry. Do
 
 ### 2.4 Produce Track B exactly once over the validated claims
 
-Track B independently audits every validated Track A claim. It may accept/reject claims according to its contract but does not rewrite Track A or make the human decision.
+Track B independently audits every validated Track A claim. It also declares the immutable audited question, question responsiveness, and required-facet completeness. Runtime validation binds those fields to the prepared question and facet coverage before the semantic gate can pass. Track B may accept/reject claims according to its contract but does not rewrite Track A or make the human decision.
 
 ```powershell
 evidence-review review-question submit-track-b `
@@ -387,6 +412,6 @@ py -3.13 -m pytest -v tests/unit/review_packet
 
 Packaging/release acceptance additionally requires a Python 3.13 wheel/runtime smoke test and confirmation that `evidence_review.llm_layer/templates/question-planner.md` is included as package data.
 
-Current release acceptance uses Python 3.13 only. It requires three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 3840×2160, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
+Current release acceptance uses Python 3.13 only. It requires three simple-question timing samples with p50/p95, browser QA at 1366×768 / 1920×1080 / 2560×1440 / 3840×2160 / 768×1024 / 390×844, protected decision, archival envelope/import, browser-open failure, and server status/stop evidence.
 
 Record unexecuted gates as `NOT_RUN`. GitHub Actions must be reported separately as its actual observed state; it is not replaced by local validation.

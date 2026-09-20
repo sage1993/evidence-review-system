@@ -41,6 +41,7 @@ release validator or builder.
 
 ## Architecture and contracts
 
+- [ReviewMatter Architecture](REVIEW_MATTER_ARCHITECTURE.md) — current persistent review-work authority boundaries.
 - [Contract Governance](CONTRACT_GOVERNANCE.md)
 - [AI Question Planning](question-planning.md)
 - [Source Batch v2 and Parser Registry](SOURCE_BATCH_V2.md)
@@ -71,6 +72,7 @@ not replace the current `$ERS_PDF` / `$ERS_REVIEW` workflow.
 These documents are commit/date-specific verification records. They are
 evidence of the scope they name, not current runtime authority.
 
+- [ReviewMatter migration acceptance — 2026-09-08](REVIEW_MATTER_ACCEPTANCE_2026-09-08.md) — historical MIG-20 exact-candidate acceptance record.
 - [Reference Viewer v2 cold-cache acceptance — 2026-09-03](REFERENCE_VIEWER_V2_COLD_CACHE_ACCEPTANCE_2026-09-03.md)
 - [Stabilization Closure Round 2 — 2026-09](STABILIZATION_CLOSURE_2026-09.md) — historical exact-main and inherited acceptance evidence.
 
@@ -90,7 +92,7 @@ current workflow documents above.
   the active `.agents/skills` instructions are current material.
 - `docs/plans/` contains tracked `HISTORICAL_PLAN` records retained as repository documentation.
 - `.superpowers/` and `docs/superpowers/` are local or agent-generated work-product paths excluded by `.gitignore`; they are not repository documentation authority.
-- The dated cold-cache document is an `ACCEPTANCE_RECORD`.
+- The dated ReviewMatter MIG-20 report and cold-cache document are `ACCEPTANCE_RECORD` history, not current runtime authority.
 - `docs/EVIDENCE_SCHEMA_MIGRATION.md`, `docs/LEGACY_LINEAGE_MIGRATION.md`,
   `docs/LEGACY_VISUALS.md`, and the legacy skill pointer are
   `MIGRATION_COMPATIBILITY` material.
