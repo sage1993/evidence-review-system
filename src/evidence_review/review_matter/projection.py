@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -92,6 +94,28 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         )
         decode_review_matter(review_matter_document(updated))
         return MatterProjection(updated)
+    if event.kind == "ISSUE_REQUIRED_FACETS_SET":
+        payload = expect_mapping(event.payload, "ISSUE_REQUIRED_FACETS_SET.payload")
+        fields = {"issue_id", "required_facet_ids"}
+        require_fields(payload, fields, "ISSUE_REQUIRED_FACETS_SET.payload")
+        reject_unknown(payload, fields, "ISSUE_REQUIRED_FACETS_SET.payload")
+        issue_id = validate_identifier(payload.get("issue_id"), "issue_id")
+        facet_ids = tuple(validate_identifier(item, "required_facet_ids") for item in expect_sequence(payload.get("required_facet_ids"), "required_facet_ids"))
+        if not facet_ids or len(facet_ids) != len(set(facet_ids)):
+            raise ValueError("ISSUE_REQUIRED_FACETS_SET requires unique non-empty facet ids")
+        issues = []
+        found = False
+        for issue in matter.issues:
+            if issue.issue_id != issue_id:
+                issues.append(issue)
+            elif issue.required_facet_ids:
+                raise ValueError("ISSUE_REQUIRED_FACETS_SET issue already has facet ids")
+            else:
+                issues.append(replace(issue, required_facet_ids=facet_ids))
+                found = True
+        if not found:
+            raise ValueError("ISSUE_REQUIRED_FACETS_SET unknown issue")
+        return MatterProjection(replace(matter, revision=matter.revision + 1, issues=tuple(issues)))
     if event.kind == "TITLE_CHANGED":
         payload = expect_mapping(event.payload, "TITLE_CHANGED.payload")
         reject_unknown(payload, {"title"}, "TITLE_CHANGED.payload")

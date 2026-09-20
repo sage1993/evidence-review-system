@@ -215,6 +215,33 @@ class ReviewMatterService:
             )
         return projection.matter
 
+    def set_required_facets(
+        self,
+        *,
+        matter_id: str,
+        expected_revision: int,
+        issue_id: str,
+        required_facet_ids: Sequence[str],
+    ) -> ReviewMatter:
+        """Append explicit facet IDs to one legacy Matter issue."""
+        facets = tuple(
+            validate_identifier(item, f"required_facet_ids[{index}]")
+            for index, item in enumerate(required_facet_ids)
+        )
+        if not facets or len(facets) != len(set(facets)):
+            raise ValueError("required_facet_ids must be unique and non-empty")
+        with self._existing_store() as store:
+            projection = append_matter_event(
+                store,
+                self._validated_matter_id(matter_id),
+                _expected_revision(expected_revision),
+                MatterEvent(
+                    kind="ISSUE_REQUIRED_FACETS_SET",
+                    payload={"issue_id": validate_identifier(issue_id, "issue_id"), "required_facet_ids": list(facets)},
+                ),
+            )
+        return projection.matter
+
     def bind_evidence(
         self, *, matter_id: str, expected_revision: int
     ) -> ReviewMatter:

@@ -197,6 +197,11 @@ def build_parser() -> argparse.ArgumentParser:
     matter_issue.add_argument("--work-state", default="DRAFT")
     matter_issue.add_argument("--depends-on", action="append", default=[])
     matter_issue.add_argument("--required-facet-id", action="append", default=[])
+    matter_set_facets = matter_stages.add_parser("set-required-facets")
+    matter_workspace_and_id(matter_set_facets)
+    matter_set_facets.add_argument("--expected-revision", required=True, type=int)
+    matter_set_facets.add_argument("--issue-id", required=True)
+    matter_set_facets.add_argument("--required-facet-id", action="append", required=True)
     matter_bind = matter_stages.add_parser(
         "bind-evidence", help="bind the workspace's exact finalized evidence"
     )
