@@ -78,9 +78,7 @@ def _v1_payload() -> dict[str, object]:
             {"id": "F2", "text": "부지 면적은 1,500㎡이다.", "polarity": "positive"},
         ],
         "assumptions": [],
-        "issues": [
-            {"id": "I1", "question": "역세권 거리 기준을 충족하는가?", "depends_on": []}
-        ],
+        "issues": [{"id": "I1", "question": "역세권 거리 기준을 충족하는가?", "depends_on": []}],
         "legal_anchors": [],
         "search_requests": [
             {
@@ -94,8 +92,22 @@ def _v1_payload() -> dict[str, object]:
     }
 
 
-def test_current_question_plan_contract_is_v2() -> None:
-    assert QUESTION_PLAN_VERSION == 2
+def test_current_question_plan_contract_is_v3() -> None:
+    assert QUESTION_PLAN_VERSION == 3
+
+
+def test_v3_requires_nonempty_unique_explicit_issue_facets() -> None:
+    payload = _v2_payload()
+    payload["version"] = 3
+    issues = payload["issues"]
+    assert isinstance(issues, list)
+    issues[0]["required_facet_ids"] = ["basic_far"]
+    issues[1]["required_facet_ids"] = ["contribution_rate"]
+    plan = decode_question_plan(payload, QUESTION)
+    assert plan.issues[0].required_facet_ids == ("basic_far",)
+    del issues[1]["required_facet_ids"]
+    with pytest.raises(ValueError, match="required_facet_ids must be an array"):
+        decode_question_plan(payload, QUESTION)
 
 
 def test_v2_decodes_issue_required_roles_and_search_role() -> None:
@@ -114,12 +126,8 @@ def test_question_plan_preserves_raw_question_and_separates_context_sources() ->
     payload = _v2_payload()
     payload["raw_user_question"] = "  " + QUESTION + "\n"
     payload["normalized_question"] = QUESTION
-    payload["document_context"] = [
-        {"text": "서울특별시 안심주택 운영기준", "source": "document"}
-    ]
-    payload["planner_inference"] = [
-        {"text": "용도지역 변경 기준을 확인한다", "source": "planner"}
-    ]
+    payload["document_context"] = [{"text": "서울특별시 안심주택 운영기준", "source": "document"}]
+    payload["planner_inference"] = [{"text": "용도지역 변경 기준을 확인한다", "source": "planner"}]
 
     plan = decode_question_plan(payload, QUESTION)
     document = question_plan_document(plan)

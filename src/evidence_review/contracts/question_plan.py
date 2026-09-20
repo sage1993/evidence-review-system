@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from typing import Literal, cast
 
 QUESTION_PLAN_FORMAT = "evidence-review/question-plan"
-QUESTION_PLAN_VERSION = 2
+QUESTION_PLAN_VERSION = 3
+LEGACY_QUESTION_PLAN_V2_VERSION = 2
 LEGACY_QUESTION_PLAN_VERSION = 1
 MAX_ISSUES = 8
 MAX_SEARCH_REQUESTS = 24
@@ -60,6 +61,7 @@ class QuestionIssue:
     question: str
     depends_on: tuple[str, ...]
     required_evidence_roles: tuple[EvidenceRole, ...]
+    required_facet_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +106,7 @@ class QuestionPlan:
     normalized_question: str | None = None
     document_context: tuple[QuestionProvenance, ...] = ()
     planner_inference: tuple[QuestionProvenance, ...] = ()
+    version: int = LEGACY_QUESTION_PLAN_V2_VERSION
 
 
 def _normalize_text(value: str) -> str:
@@ -170,9 +173,7 @@ def _decode_fact(value: object, field: str) -> QuestionFact:
         text=_expect_string(payload.get("text"), f"{field}.text"),
         polarity=cast(
             Polarity,
-            _expect_literal(
-                payload.get("polarity"), f"{field}.polarity", ("positive", "negative")
-            ),
+            _expect_literal(payload.get("polarity"), f"{field}.polarity", ("positive", "negative")),
         ),
     )
 
@@ -202,7 +203,7 @@ def _decode_issue(value: object, field: str, *, version: int) -> QuestionIssue:
     if version == LEGACY_QUESTION_PLAN_VERSION:
         _reject_unknown(payload, {"id", "question", "depends_on"}, field)
         required_evidence_roles: tuple[EvidenceRole, ...] = ("rule",)
-    else:
+    elif version == LEGACY_QUESTION_PLAN_V2_VERSION:
         _reject_unknown(
             payload,
             {"id", "question", "depends_on", "required_evidence_roles"},
@@ -212,6 +213,22 @@ def _decode_issue(value: object, field: str, *, version: int) -> QuestionIssue:
             payload.get("required_evidence_roles"),
             f"{field}.required_evidence_roles",
         )
+        required_facet_ids: tuple[str, ...] = ()
+    else:
+        _reject_unknown(
+            payload,
+            {"id", "question", "depends_on", "required_evidence_roles", "required_facet_ids"},
+            field,
+        )
+        required_evidence_roles = _decode_evidence_roles(
+            payload.get("required_evidence_roles"),
+            f"{field}.required_evidence_roles",
+        )
+        required_facet_ids = _decode_required_facet_ids(
+            payload.get("required_facet_ids"), f"{field}.required_facet_ids"
+        )
+    if version == LEGACY_QUESTION_PLAN_VERSION:
+        required_facet_ids = ()
     dependency_values = _expect_sequence(payload.get("depends_on"), f"{field}.depends_on")
     dependencies = tuple(
         _expect_string(item, f"{field}.depends_on[{index}]")
@@ -224,7 +241,18 @@ def _decode_issue(value: object, field: str, *, version: int) -> QuestionIssue:
         question=_expect_string(payload.get("question"), f"{field}.question"),
         depends_on=dependencies,
         required_evidence_roles=required_evidence_roles,
+        required_facet_ids=required_facet_ids,
     )
+
+
+def _decode_required_facet_ids(value: object, field: str) -> tuple[str, ...]:
+    values = _expect_sequence(value, field)
+    if not values:
+        raise ValueError(f"{field} must not be empty")
+    result = tuple(_expect_string(item, f"{field}[{index}]") for index, item in enumerate(values))
+    if len(result) != len(set(result)):
+        raise ValueError(f"{field} contains duplicates")
+    return result
 
 
 def _decode_legal_anchor(value: object, field: str) -> LegalAnchor:
@@ -381,9 +409,7 @@ def _validate_user_legal_citations(
     if not required:
         return
     user_anchor_keys = {
-        _legal_citation_key(anchor.text)
-        for anchor in legal_anchors
-        if anchor.source == "user"
+        _legal_citation_key(anchor.text) for anchor in legal_anchors if anchor.source == "user"
     }
     missing = sorted(
         citation
@@ -391,9 +417,7 @@ def _validate_user_legal_citations(
         if not any(citation in anchor for anchor in user_anchor_keys)
     )
     if missing:
-        raise ValueError(
-            "question_plan drops explicit user legal citation: " + ", ".join(missing)
-        )
+        raise ValueError("question_plan drops explicit user legal citation: " + ", ".join(missing))
 
 
 def _validate_numeric_preservation(
@@ -419,9 +443,7 @@ def _validate_numeric_preservation(
     present = _numeric_literals(structured_text)
     missing = sorted(required - present)
     if missing:
-        raise ValueError(
-            "question_plan drops user numeric literal: " + ", ".join(missing)
-        )
+        raise ValueError("question_plan drops user numeric literal: " + ", ".join(missing))
 
 
 def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
@@ -446,7 +468,11 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
     if _expect_string(payload.get("format"), "format") != QUESTION_PLAN_FORMAT:
         raise ValueError("unsupported question plan format")
     version = _expect_int(payload.get("version"), "version")
-    if version not in (LEGACY_QUESTION_PLAN_VERSION, QUESTION_PLAN_VERSION):
+    if version not in (
+        LEGACY_QUESTION_PLAN_VERSION,
+        LEGACY_QUESTION_PLAN_V2_VERSION,
+        QUESTION_PLAN_VERSION,
+    ):
         raise ValueError("unsupported question plan version")
 
     normalized_expected = _normalize_text(expected_question)
@@ -502,8 +528,7 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
 
     facts = tuple(_decode_fact(item, f"facts[{index}]") for index, item in enumerate(fact_values))
     assumptions = tuple(
-        _decode_fact(item, f"assumptions[{index}]")
-        for index, item in enumerate(assumption_values)
+        _decode_fact(item, f"assumptions[{index}]") for index, item in enumerate(assumption_values)
     )
     issues = tuple(
         _decode_issue(item, f"issues[{index}]", version=version)
@@ -534,9 +559,7 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
     for request in search_requests:
         unknown = sorted(set(request.issue_ids) - issue_ids)
         if unknown:
-            raise ValueError(
-                f"search request {request.id} references unknown issue: {unknown[0]}"
-            )
+            raise ValueError(f"search request {request.id} references unknown issue: {unknown[0]}")
         for issue_id in request.issue_ids:
             issue = issues_by_id[issue_id]
             if request.role not in issue.required_evidence_roles:
@@ -577,6 +600,9 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
         normalized_question=normalized_question,
         document_context=document_context,
         planner_inference=planner_inference,
+        version=(
+            LEGACY_QUESTION_PLAN_V2_VERSION if version == LEGACY_QUESTION_PLAN_VERSION else version
+        ),
     )
 
 
@@ -584,7 +610,7 @@ def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
     """Encode a validated plan as its canonical JSON-compatible v2 document."""
     document: dict[str, object] = {
         "format": QUESTION_PLAN_FORMAT,
-        "version": QUESTION_PLAN_VERSION,
+        "version": plan.version,
         "original_question": plan.original_question,
         "facts": [
             {"id": item.id, "text": item.text, "polarity": item.polarity} for item in plan.facts
@@ -599,6 +625,11 @@ def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
                 "question": item.question,
                 "depends_on": list(item.depends_on),
                 "required_evidence_roles": list(item.required_evidence_roles),
+                **(
+                    {"required_facet_ids": list(item.required_facet_ids)}
+                    if plan.version == QUESTION_PLAN_VERSION
+                    else {}
+                ),
             }
             for item in plan.issues
         ],
@@ -627,7 +658,6 @@ def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
         ]
     if plan.planner_inference:
         document["planner_inference"] = [
-            {"text": item.text, "source": item.source}
-            for item in plan.planner_inference
+            {"text": item.text, "source": item.source} for item in plan.planner_inference
         ]
     return document

@@ -46,6 +46,7 @@ class Claim:
     citation_ids: tuple[str, ...]
     numeric_tokens: tuple[str, ...] = ()
     issue_ids: tuple[str, ...] = ()
+    fulfilled_facet_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

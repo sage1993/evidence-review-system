@@ -114,8 +114,7 @@ def _string(value: object, field: str, *, allow_empty: bool = False) -> str:
 
 def _string_tuple(value: object, field: str) -> tuple[str, ...]:
     return tuple(
-        _string(item, f"{field}[{index}]")
-        for index, item in enumerate(_sequence(value, field))
+        _string(item, f"{field}[{index}]") for index, item in enumerate(_sequence(value, field))
     )
 
 
@@ -139,9 +138,7 @@ def _planned_issue_ids(inputs: Mapping[str, object]) -> tuple[str, ...]:
             _mapping(item, f"inputs.question_plan.issues[{index}]").get("id"),
             f"inputs.question_plan.issues[{index}].id",
         )
-        for index, item in enumerate(
-            _sequence(issues_value, "inputs.question_plan.issues")
-        )
+        for index, item in enumerate(_sequence(issues_value, "inputs.question_plan.issues"))
     )
     if len(issue_ids) != len(set(issue_ids)):
         raise ValueError("inputs.question_plan.issues must contain unique ids")
@@ -336,9 +333,7 @@ def _validate_claim_issue_relevance(
     planned_issue_ids: tuple[str, ...],
 ) -> None:
     evidence_issue_ids = {
-        issue_id
-        for evidence in evidence_by_citation.values()
-        for issue_id in evidence.issue_ids
+        issue_id for evidence in evidence_by_citation.values() for issue_id in evidence.issue_ids
     }
     if not evidence_issue_ids and not planned_issue_ids:
         return
@@ -347,9 +342,7 @@ def _validate_claim_issue_relevance(
     authoritative_issue_ids = set(planned_issue_ids) or evidence_issue_ids
     unknown_issue_ids = sorted(set(claim_issue_ids) - authoritative_issue_ids)
     if unknown_issue_ids:
-        raise ValueError(
-            f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}"
-        )
+        raise ValueError(f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}")
     validate_claim_id_issue_binding(
         claim_id,
         claim_issue_ids,
@@ -411,6 +404,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
     seen_claim_ids: set[str] = set()
     used_citations: set[str] = set()
     used_calculations: set[str] = set()
+    required_facets_by_issue = _required_facets_by_issue(bundle.inputs)
     for index, item in enumerate(_sequence(payload.get("claims"), "claims")):
         claim_payload = _mapping(item, f"claims[{index}]")
         allowed = {
@@ -422,6 +416,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
             "calculation_result_ids",
             "rule_references",
             "drawing_candidate_ids",
+            "fulfilled_facet_ids",
         }
         claim_unknown = sorted(set(claim_payload) - allowed)
         if claim_unknown:
@@ -450,6 +445,16 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
             citation_ids=citation_ids,
             evidence_by_citation=evidence_by_citation,
             planned_issue_ids=planned_issue_ids,
+        )
+        fulfilled_facet_ids = _unique_string_tuple(
+            claim_payload.get("fulfilled_facet_ids", []),
+            f"claims[{index}].fulfilled_facet_ids",
+        )
+        _validate_claim_facets(
+            claim_id=claim_id,
+            claim_issue_ids=issue_ids,
+            fulfilled_facet_ids=fulfilled_facet_ids,
+            required_facets_by_issue=required_facets_by_issue,
         )
         drawing_candidate_ids = _unique_string_tuple(
             claim_payload.get("drawing_candidate_ids", []),
@@ -486,6 +491,7 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
                 citation_ids=citation_ids,
                 numeric_tokens=numeric_tokens,
                 issue_ids=issue_ids,
+                fulfilled_facet_ids=fulfilled_facet_ids,
             )
         )
         claim_references.append(
@@ -514,6 +520,61 @@ def validate_track_a_output(value: object, bundle: TrackABundle) -> ValidatedTra
         calculation_result_ids=tuple(sorted(used_calculations)),
         claim_references=tuple(claim_references),
     )
+
+
+def _required_facets_by_issue(inputs: Mapping[str, object]) -> dict[str, frozenset[str]]:
+    """Read explicit v3 planner obligations without consulting retrieval hints."""
+    question_plan = inputs.get("question_plan")
+    if not isinstance(question_plan, Mapping):
+        return {}
+    issues = question_plan.get("issues")
+    if not isinstance(issues, Sequence) or isinstance(issues, (str, bytes, bytearray)):
+        return {}
+    result: dict[str, frozenset[str]] = {}
+    for item in issues:
+        if not isinstance(item, Mapping) or "required_facet_ids" not in item:
+            continue
+        issue_id = item.get("id")
+        facet_ids = item.get("required_facet_ids")
+        if not isinstance(issue_id, str) or not issue_id:
+            raise ValueError("question_plan issue id must be non-empty")
+        if not isinstance(facet_ids, Sequence) or isinstance(facet_ids, (str, bytes, bytearray)):
+            raise ValueError(f"question_plan issue {issue_id} required_facet_ids must be an array")
+        facets = frozenset(
+            _string(facet, f"question_plan issue {issue_id} required_facet_ids")
+            for facet in facet_ids
+        )
+        if not facets or len(facets) != len(facet_ids):
+            raise ValueError(
+                f"question_plan issue {issue_id} required_facet_ids must be unique and non-empty"
+            )
+        result[issue_id] = facets
+    return result
+
+
+def _validate_claim_facets(
+    *,
+    claim_id: str,
+    claim_issue_ids: tuple[str, ...],
+    fulfilled_facet_ids: tuple[str, ...],
+    required_facets_by_issue: Mapping[str, frozenset[str]],
+) -> None:
+    if not required_facets_by_issue:
+        if fulfilled_facet_ids:
+            raise ValueError(
+                f"claim {claim_id} declares facets without explicit planner obligations"
+            )
+        return
+    for facet_id in fulfilled_facet_ids:
+        matching_issues = [
+            issue_id
+            for issue_id in claim_issue_ids
+            if facet_id in required_facets_by_issue.get(issue_id, frozenset())
+        ]
+        if len(matching_issues) != 1:
+            raise ValueError(
+                f"claim {claim_id} references unknown or ambiguous fulfilled facet: {facet_id}"
+            )
 
 
 def _citation_document(citation: Citation) -> dict[str, object]:

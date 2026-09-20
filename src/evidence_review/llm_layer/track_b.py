@@ -88,6 +88,59 @@ def required_facet_completeness_status(value: object) -> RequiredFacetCompletene
     return "COMPLETE"
 
 
+def required_facets_from_inputs(inputs: Mapping[str, object]) -> dict[str, frozenset[str]]:
+    """Return planner-declared answer obligations; retrieval coverage is not consulted."""
+    plan = inputs.get("question_plan")
+    if not isinstance(plan, Mapping):
+        return {}
+    issue_values = plan.get("issues")
+    if not isinstance(issue_values, Sequence) or isinstance(issue_values, (str, bytes, bytearray)):
+        return {}
+    result: dict[str, frozenset[str]] = {}
+    for item in issue_values:
+        if not isinstance(item, Mapping) or "required_facet_ids" not in item:
+            continue
+        issue_id = item.get("id")
+        facets = item.get("required_facet_ids")
+        if not isinstance(issue_id, str) or not issue_id:
+            raise ValueError("question_plan issue id must be non-empty")
+        if not isinstance(facets, Sequence) or isinstance(facets, (str, bytes, bytearray)):
+            raise ValueError(f"question_plan issue {issue_id} required_facet_ids must be an array")
+        if not facets or not all(isinstance(facet, str) and facet for facet in facets):
+            raise ValueError(f"question_plan issue {issue_id} required_facet_ids must be non-empty")
+        if len(set(facets)) != len(facets):
+            raise ValueError(f"question_plan issue {issue_id} required_facet_ids must be unique")
+        result[issue_id] = frozenset(cast(str, facet) for facet in facets)
+    return result
+
+
+def required_facet_completeness_for_audit(
+    track_a: ValidatedTrackA,
+    audits: Sequence[ClaimAudit],
+    required_facets_by_issue: Mapping[str, frozenset[str]],
+) -> RequiredFacetCompleteness:
+    """Derive answer completeness from accepted cited claims, never retrieval similarity."""
+    if not required_facets_by_issue:
+        return "NOT_APPLICABLE"
+    accepted = {audit.claim_id for audit in audits if audit.disposition == "ACCEPT"}
+    fulfilled: dict[str, set[str]] = {issue_id: set() for issue_id in required_facets_by_issue}
+    for claim in track_a.draft.claims:
+        if claim.claim_id not in accepted or not claim.citation_ids:
+            continue
+        for issue_id in claim.issue_ids:
+            required = required_facets_by_issue.get(issue_id)
+            if required is not None:
+                fulfilled[issue_id].update(set(claim.fulfilled_facet_ids) & required)
+    return (
+        "COMPLETE"
+        if all(
+            required <= fulfilled[issue_id]
+            for issue_id, required in required_facets_by_issue.items()
+        )
+        else "INCOMPLETE"
+    )
+
+
 def track_b_semantic_gate_status(audit: TrackBAudit) -> TrackBSemanticGateStatus:
     """Return the final semantic acceptance state for the independent audit."""
     if audit.overall_disposition == "REJECT" or audit.question_responsiveness == "FAIL":
@@ -109,6 +162,7 @@ def validate_track_b_output(
     *,
     expected_question: str | None = None,
     expected_facet_completeness: RequiredFacetCompleteness | None = None,
+    required_facets_by_issue: Mapping[str, frozenset[str]] | None = None,
 ) -> TrackBAudit:
     """Validate an independent audit covering every Track A claim exactly once."""
     payload = _mapping(value, "track_b")
@@ -138,9 +192,7 @@ def validate_track_b_output(
         payload.get("question_responsiveness"), "question_responsiveness"
     )
     if question_responsiveness_value not in _ALLOWED_QUESTION_RESPONSIVENESS:
-        raise ValueError(
-            "unsupported question_responsiveness: " + question_responsiveness_value
-        )
+        raise ValueError("unsupported question_responsiveness: " + question_responsiveness_value)
     facet_value = _string(
         payload.get("required_facet_completeness"),
         "required_facet_completeness",
@@ -151,9 +203,7 @@ def validate_track_b_output(
         if audited_question != expected_question and question_responsiveness_value != "FAIL":
             raise ValueError("audited_question does not match the immutable review question")
     if expected_facet_completeness is not None and facet_value != expected_facet_completeness:
-        raise ValueError(
-            "required_facet_completeness does not match immutable facet coverage"
-        )
+        raise ValueError("required_facet_completeness does not match immutable facet coverage")
     for claim in track_a.draft.claims:
         validate_claim_id_issue_binding(claim.claim_id, claim.issue_ids)
     expected_claim_ids = {claim.claim_id for claim in track_a.draft.claims}
@@ -224,6 +274,14 @@ def validate_track_b_output(
     if unaudited:
         raise ValueError(f"unaudited claims: {', '.join(unaudited)}")
     audits.sort(key=lambda audit: audit.claim_id)
+    if required_facets_by_issue is not None:
+        expected_facet_completeness = required_facet_completeness_for_audit(
+            track_a, audits, required_facets_by_issue
+        )
+        if facet_value != expected_facet_completeness:
+            raise ValueError(
+                "required_facet_completeness does not match cited accepted claim facets"
+            )
     expected_overall = _derive_overall(audits)
     overall_value = _string(payload.get("overall_disposition"), "overall_disposition")
     if overall_value not in _ALLOWED_DISPOSITIONS:

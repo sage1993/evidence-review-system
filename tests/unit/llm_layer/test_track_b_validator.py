@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from evidence_review.contracts.common import BBox, Citation
@@ -13,19 +15,13 @@ from evidence_review.llm_layer.track_b import validate_track_b_output
 
 
 def _track_a():
-    citation = Citation(
-        "C1", "DOC1", "REV1", 1, "E1", BBox(0, 0, 1, 1), "a" * 64
-    )
+    citation = Citation("C1", "DOC1", "REV1", 1, "E1", BBox(0, 0, 1, 1), "a" * 64)
     bundle = build_track_a_bundle(
         run_id="RUN-0123456789ABCDEF0123",
         question="검토",
         inputs={},
         evidence=(EvidenceExcerpt(citation, "근거 1,500㎡"),),
-        rules=(
-            RuleResult(
-                "RULE1", "R1", "1.0.0", "SATISFIED", result_hash="b" * 64
-            ),
-        ),
+        rules=(RuleResult("RULE1", "R1", "1.0.0", "SATISFIED", result_hash="b" * 64),),
         calculations=(
             CalculationResult(
                 "CALC1",
@@ -227,3 +223,29 @@ def test_track_b_accepts_incomplete_for_empty_track_a_claim_set() -> None:
 
     assert audit.claim_audits == ()
     assert audit.overall_disposition == "INCOMPLETE"
+
+
+def test_required_facets_need_accepted_cited_claims_for_each_obligation() -> None:
+    track_a = _track_a()
+    claims = (
+        replace(track_a.draft.claims[0], issue_ids=("I1",), fulfilled_facet_ids=("basic_far",)),
+        replace(track_a.draft.claims[1], issue_ids=("I1",), fulfilled_facet_ids=("maximum_far",)),
+    )
+    track_a = replace(track_a, draft=replace(track_a.draft, claims=claims))
+    payload = {
+        "run_id": track_a.draft.run_id,
+        "audited_question": "검토",
+        "question_responsiveness": "PASS",
+        "required_facet_completeness": "INCOMPLETE",
+        "claim_audits": [
+            {"claim_id": "CL1", "disposition": "ACCEPT", "finding_codes": [], "notes": ""},
+            {"claim_id": "CL2", "disposition": "ACCEPT", "finding_codes": [], "notes": ""},
+        ],
+        "overall_disposition": "ACCEPT",
+    }
+    audit = validate_track_b_output(
+        payload,
+        track_a,
+        required_facets_by_issue={"I1": frozenset({"basic_far", "maximum_far", "delivery_method"})},
+    )
+    assert audit.required_facet_completeness == "INCOMPLETE"

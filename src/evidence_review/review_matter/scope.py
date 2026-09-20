@@ -17,7 +17,8 @@ from evidence_review.contracts.question_plan import (
 )
 from evidence_review.question_planning import question_plan_sha256
 
-REVIEW_SCOPE_VERSION = 1
+REVIEW_SCOPE_VERSION = 2
+LEGACY_REVIEW_SCOPE_VERSION = 1
 ReviewScopeOrigin = Literal["PLANNER", "EXPLICIT_USER"]
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -32,6 +33,7 @@ _FIELDS = {
     "search_requests",
     "origin",
     "question_plan_sha256",
+    "question_plan_version",
 }
 
 
@@ -47,6 +49,8 @@ class ReviewScope:
     search_requests: tuple[SearchRequest, ...]
     origin: ReviewScopeOrigin
     question_plan_sha256: str | None
+    question_plan_version: int = 2
+    version: int = REVIEW_SCOPE_VERSION
 
 
 def _expect_mapping(value: object) -> Mapping[str, object]:
@@ -58,7 +62,7 @@ def _expect_mapping(value: object) -> Mapping[str, object]:
 def _expect_version(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError("version must be an integer")
-    if value != REVIEW_SCOPE_VERSION:
+    if value not in (LEGACY_REVIEW_SCOPE_VERSION, REVIEW_SCOPE_VERSION):
         raise ValueError("unsupported review scope version")
     return value
 
@@ -84,15 +88,16 @@ def _expect_provenance(value: object, origin: ReviewScopeOrigin) -> str | None:
 def decode_review_scope(value: object) -> ReviewScope:
     """Decode a canonical scope while retaining QuestionPlan validation semantics."""
     payload = _expect_mapping(value)
-    unknown = sorted(set(payload) - _FIELDS)
-    missing = sorted(_FIELDS - set(payload))
+    version = _expect_version(payload.get("version"))
+    fields = _FIELDS if version == REVIEW_SCOPE_VERSION else _FIELDS - {"question_plan_version"}
+    unknown = sorted(set(payload) - fields)
+    missing = sorted(fields - set(payload))
     if unknown:
         raise ValueError("review_scope has unknown fields: " + ", ".join(unknown))
     if missing:
         raise ValueError("review_scope is missing fields: " + ", ".join(missing))
     if payload["format"] != REVIEW_SCOPE_FORMAT:
         raise ValueError("unsupported review scope format")
-    _expect_version(payload["version"])
     origin = _expect_origin(payload["origin"])
     provenance_sha256 = _expect_provenance(payload["question_plan_sha256"], origin)
     question = payload["question"]
@@ -104,7 +109,7 @@ def decode_review_scope(value: object) -> ReviewScope:
     plan = decode_question_plan(
         {
             "format": "evidence-review/question-plan",
-            "version": 2,
+            "version": payload.get("question_plan_version", 2),
             "original_question": payload["question"],
             "facts": payload["facts"],
             "assumptions": payload["assumptions"],
@@ -125,6 +130,8 @@ def decode_review_scope(value: object) -> ReviewScope:
         search_requests=plan.search_requests,
         origin=origin,
         question_plan_sha256=provenance_sha256,
+        question_plan_version=cast(int, payload.get("question_plan_version", 2)),
+        version=version,
     )
 
 
@@ -132,7 +139,7 @@ def review_scope_document(scope: ReviewScope) -> dict[str, object]:
     """Encode a scope into its deterministic JSON-compatible document."""
     return {
         "format": REVIEW_SCOPE_FORMAT,
-        "version": REVIEW_SCOPE_VERSION,
+        "version": scope.version,
         "question": scope.question,
         "facts": [
             {"id": item.id, "text": item.text, "polarity": item.polarity} for item in scope.facts
@@ -147,6 +154,11 @@ def review_scope_document(scope: ReviewScope) -> dict[str, object]:
                 "question": item.question,
                 "depends_on": list(item.depends_on),
                 "required_evidence_roles": list(item.required_evidence_roles),
+                **(
+                    {"required_facet_ids": list(item.required_facet_ids)}
+                    if scope.question_plan_version >= 3
+                    else {}
+                ),
             }
             for item in scope.issues
         ],
@@ -166,4 +178,9 @@ def review_scope_document(scope: ReviewScope) -> dict[str, object]:
         ],
         "origin": scope.origin,
         "question_plan_sha256": scope.question_plan_sha256,
+        **(
+            {"question_plan_version": scope.question_plan_version}
+            if scope.version == REVIEW_SCOPE_VERSION
+            else {}
+        ),
     }

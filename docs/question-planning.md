@@ -36,7 +36,15 @@ Planner output is untrusted input. The deterministic core rejects a QuestionPlan
 
 Planner-inferred legal anchors use `source=planner`. They are search hypotheses only and do not become authority until matching evidence is retrieved from the finalized evidence store.
 
-## QuestionPlan v2
+## QuestionPlan v3
+
+Current external Question Planner output uses v3. Each issue declares a nonempty
+`required_facet_ids` list of atomic answer obligations. Track A must explicitly
+bind a fulfilled facet ID to a cited claim, and Track B derives completeness only
+from accepted cited claims that cover every required facet. Retrieval
+`facet_coverage` remains a retrieval diagnostic and cannot establish answer
+completeness. v1/v2 plans remain legacy compatibility inputs; their immutable
+RUN artifacts retain their original hash verification semantics.
 
 The current contract is:
 
