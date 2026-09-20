@@ -83,7 +83,7 @@ def test_cli_main_runs_prepare_plan_then_validated_plan_retrieval(
         json.dumps(
             {
                 "format": "evidence-review/question-plan",
-                "version": 1,
+                "version": 3,
                 "original_question": question,
                 "facts": [],
                 "assumptions": [],
@@ -92,6 +92,8 @@ def test_cli_main_runs_prepare_plan_then_validated_plan_retrieval(
                         "id": "I1",
                         "question": "에어컨 실외기 설치조건은 무엇인가",
                         "depends_on": [],
+                        "required_evidence_roles": ["rule"],
+                        "required_facet_ids": ["installation_criteria"],
                     }
                 ],
                 "legal_anchors": [],
@@ -102,6 +104,7 @@ def test_cli_main_runs_prepare_plan_then_validated_plan_retrieval(
                         "text": "에어컨 실외기 설치",
                         "kind": "phrase",
                         "source": "planner",
+                        "role": "rule",
                     }
                 ],
             },

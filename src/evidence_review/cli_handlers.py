@@ -498,6 +498,21 @@ def _review_matter_dispatch(args: argparse.Namespace) -> int:
                         question=args.question,
                         work_state=args.work_state,
                         depends_on=args.depends_on,
+                        required_facet_ids=args.required_facet_id,
+                    ),
+                )
+            )
+            return 0
+        if stage == "set-required-facets":
+            _write_stdout(
+                _matter_document(
+                    "set-required-facets",
+                    "MATTER_UPDATED",
+                    service.set_required_facets(
+                        matter_id=args.matter_id,
+                        expected_revision=args.expected_revision,
+                        issue_id=args.issue_id,
+                        required_facet_ids=args.required_facet_id,
                     ),
                 )
             )

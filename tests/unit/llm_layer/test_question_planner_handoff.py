@@ -20,7 +20,7 @@ QUESTION = "에어컨 등 가전제품 설치기준 알려줘"
 def _plan() -> dict[str, object]:
     return {
         "format": "evidence-review/question-plan",
-        "version": 2,
+        "version": 3,
         "original_question": QUESTION,
         "facts": [],
         "assumptions": [],
@@ -30,6 +30,7 @@ def _plan() -> dict[str, object]:
                 "question": "설치기준은 무엇인가",
                 "depends_on": [],
                 "required_evidence_roles": ["rule"],
+                "required_facet_ids": ["installation_criteria"],
             }
         ],
         "legal_anchors": [],
@@ -56,7 +57,7 @@ def test_build_question_planner_bundle_contains_only_question_and_contract_metad
         "raw_user_question": "  에어컨 등   가전제품 설치기준 알려줘  ",
         "normalized_question": QUESTION,
         "question_plan_format": "evidence-review/question-plan",
-        "question_plan_version": 2,
+        "question_plan_version": 3,
     }
     assert "evidence" not in bundle
     assert "answer" not in bundle
@@ -138,7 +139,7 @@ def test_current_external_planner_rejects_legacy_v1_output() -> None:
     issues[0].pop("required_evidence_roles")
     requests[0].pop("role")
 
-    with pytest.raises(ValueError, match="must use question plan version 2"):
+    with pytest.raises(ValueError, match="must use question plan version 3"):
         validate_question_planner_output(raw, QUESTION)
 
 

@@ -266,7 +266,8 @@ evidence-review review-matter add-issue `
   --expected-revision 1 `
   --issue-id <ISSUE-ID> `
   --question "<question>" `
-  --work-state READY_TO_FORMALIZE
+  --work-state READY_TO_FORMALIZE `
+  --required-facet-id <FACET-ID>
 
 evidence-review review-matter bind-evidence `
   --workspace <workspace> `

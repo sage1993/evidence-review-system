@@ -264,9 +264,12 @@ def _scope_for_matter(matter: ReviewMatter) -> ReviewScope:
             question=issue.question,
             depends_on=issue.depends_on,
             required_evidence_roles=("supporting_fact",),
+            required_facet_ids=issue.required_facet_ids,
         )
         for issue in matter.issues
     )
+    if any(not issue.required_facet_ids for issue in matter.issues):
+        raise ValueError("FORMALIZATION_REQUIRED_FACETS_REQUIRED")
     return review_scope_from_explicit_input(
         question=matter.title,
         issues=issues,

@@ -21,6 +21,11 @@ that claim. Do not cite evidence from another issue merely because the citation
 is valid or topically adjacent. A claim without issue lineage, an unknown issue,
 or a cross-issue citation is invalid.
 
+When `inputs.question_plan.issues` declares `required_facet_ids`, each claim that
+fulfills an obligation must include `fulfilled_facet_ids`. Each ID must belong to
+exactly one of that claim's `issue_ids`; declare only facets that this exact cited
+claim supports. Do not use retrieval similarity as a substitute for this binding.
+
 When `inputs.retrieval_lineage` is present, use it only to understand which
 validated issue/search request led to each cited evidence item. Lineage does not
 increase evidence authority or permit citation IDs outside the supplied bundle.

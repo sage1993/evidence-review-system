@@ -56,9 +56,12 @@ def _issue(
     question: object,
     work_state: object,
     depends_on: Sequence[object],
+    required_facet_ids: Sequence[object],
 ) -> MatterIssue:
     if isinstance(depends_on, (str, bytes, bytearray)):
         raise ValueError("depends_on must be a sequence")
+    if isinstance(required_facet_ids, (str, bytes, bytearray)):
+        raise ValueError("required_facet_ids must be a sequence")
     issue = MatterIssue(
         issue_id=validate_identifier(issue_id, "issue_id"),
         question=expect_string(question, "question"),
@@ -66,6 +69,10 @@ def _issue(
         depends_on=tuple(
             validate_identifier(item, f"depends_on[{index}]")
             for index, item in enumerate(depends_on)
+        ),
+        required_facet_ids=tuple(
+            validate_identifier(item, f"required_facet_ids[{index}]")
+            for index, item in enumerate(required_facet_ids)
         ),
     )
     if issue.issue_id in issue.depends_on:
@@ -169,6 +176,7 @@ class ReviewMatterService:
         question: str,
         work_state: MatterIssueState,
         depends_on: Sequence[str] = (),
+        required_facet_ids: Sequence[str] = (),
     ) -> ReviewMatter:
         """Append one revision-checked issue event and return its new projection."""
         validated_matter_id = self._validated_matter_id(matter_id)
@@ -177,6 +185,7 @@ class ReviewMatterService:
             question=question,
             work_state=work_state,
             depends_on=depends_on,
+            required_facet_ids=required_facet_ids,
         )
         with self._existing_store() as store:
             matter = store.load(validated_matter_id)
@@ -202,6 +211,39 @@ class ReviewMatterService:
                         "question": issue.question,
                         "work_state": issue.work_state,
                         "depends_on": list(issue.depends_on),
+                        "required_facet_ids": list(issue.required_facet_ids),
+                    },
+                ),
+            )
+        return projection.matter
+
+    def set_required_facets(
+        self,
+        *,
+        matter_id: str,
+        expected_revision: int,
+        issue_id: str,
+        required_facet_ids: Sequence[str],
+    ) -> ReviewMatter:
+        """Append explicit facet IDs to one legacy Matter issue."""
+        if isinstance(required_facet_ids, (str, bytes, bytearray)):
+            raise ValueError("required_facet_ids must be a sequence")
+        facets = tuple(
+            validate_identifier(item, f"required_facet_ids[{index}]")
+            for index, item in enumerate(required_facet_ids)
+        )
+        if not facets or len(facets) != len(set(facets)):
+            raise ValueError("required_facet_ids must be unique and non-empty")
+        with self._existing_store() as store:
+            projection = append_matter_event(
+                store,
+                self._validated_matter_id(matter_id),
+                _expected_revision(expected_revision),
+                MatterEvent(
+                    kind="ISSUE_REQUIRED_FACETS_SET",
+                    payload={
+                        "issue_id": validate_identifier(issue_id, "issue_id"),
+                        "required_facet_ids": list(facets),
                     },
                 ),
             )

@@ -38,10 +38,11 @@ def _scope_from_plan(
     document.update(
         {
             "format": "evidence-review/review-scope",
-            "version": 1,
+            "version": 2,
             "question": document.pop("original_question"),
             "origin": origin,
             "question_plan_sha256": question_plan_sha256_value,
+            "question_plan_version": plan.version,
         }
     )
     return decode_review_scope(document)
@@ -78,6 +79,7 @@ def review_scope_from_explicit_input(
             issues=tuple(issues),
             legal_anchors=tuple(legal_anchors),
             search_requests=tuple(search_requests),
+            version=(3 if all(issue.required_facet_ids for issue in issues) else 2),
         )
     )
     return _scope_from_plan(
@@ -106,7 +108,7 @@ def question_plan_from_review_scope(scope: ReviewScope) -> QuestionPlan:
     return decode_question_plan(
         {
             "format": "evidence-review/question-plan",
-            "version": 2,
+            "version": canonical_scope.question_plan_version,
             "original_question": document["question"],
             "facts": document["facts"],
             "assumptions": document["assumptions"],
