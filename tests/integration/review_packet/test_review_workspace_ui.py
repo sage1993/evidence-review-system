@@ -45,7 +45,7 @@ def test_decision_form_exposes_validated_reviewer_id_with_decision_inputs(tmp_pa
 
     assert 'name="decision"' in form
     assert 'name="notes"' in form
-    assert 'type="hidden" name="packet_sha256"' in form
+    assert 'name="packet_sha256"' not in form
     assert 'name="reviewer_id"' in form
     assert 'pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}"' in form
     assert 'name="reviewed_at"' not in form
@@ -56,7 +56,7 @@ def test_decision_form_exposes_validated_reviewer_id_with_decision_inputs(tmp_pa
     assert "checked" not in form
 
 
-def test_browser_request_v2_and_archival_envelope_contract_are_distinct(tmp_path: Path) -> None:
+def test_browser_intent_and_archival_envelope_contract_are_distinct(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
     html = render_review_html(_model(), tmp_path / "pages")
 
@@ -73,7 +73,6 @@ def test_browser_request_v2_and_archival_envelope_contract_are_distinct(tmp_path
     assert request is not None and envelope is not None
     assert re.findall(r"^      ([a-z_]+):", request.group("fields"), re.MULTILINE) == [
         "reviewer_id",
-        "packet_hash",
         "decision",
         "notes",
     ]

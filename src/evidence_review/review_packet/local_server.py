@@ -31,9 +31,10 @@ from evidence_review.local_http_transport import (
 )
 from evidence_review.review_packet.decision_record import (
     HumanDecisionRecord,
-    build_human_decision_envelope,
+    build_server_human_decision_envelope,
+    human_decision_binding_status,
     load_latest_valid_human_decision,
-    validate_human_decision_request,
+    validate_human_decision_intent,
     write_human_decision,
 )
 from evidence_review.review_packet.html_renderer import render_protected_review_html
@@ -50,7 +51,7 @@ from evidence_review.review_packet.protected_projection import (
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-_REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
+_REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "decision", "notes"})
 _CSP = (
     "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
@@ -326,6 +327,19 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         self.run_tokens = dict(run_tokens)
         self.reviewer_ids = dict(reviewer_ids)
         self.protected_projections = dict(protected_projections)
+        self.presented_packet_hashes: dict[str, str] = {}
+        for run_id in run_tokens:
+            packet_path = _regular_child(
+                workspace_root, "runs", run_id, "final-review-packet.json", final_is_file=True,
+            )
+            if packet_path is not None:
+                digest = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+                projection = protected_projections.get(run_id)
+                metadata = None if projection is None else projection.model.get("metadata")
+                declared = metadata.get("packet_sha256") if isinstance(metadata, Mapping) else None
+                self.presented_packet_hashes[run_id] = (
+                    declared if isinstance(declared, str) else digest
+                )
         self.run_asset_allowlists = dict(run_asset_allowlists)
         self.max_body_bytes = max_body_bytes
         self.idle_timeout_seconds = idle_timeout_seconds
@@ -549,6 +563,9 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                     "reviewer_id": self.state.reviewer_ids.get(route.run_id),
                     "packet_hash": packet_hash,
                     "decision_record": decision_record,
+                    "decision_binding_status": human_decision_binding_status(
+                        self.state.workspace_root / "runs" / route.run_id, packet_hash,
+                    ),
                 },
             )
             return
@@ -605,7 +622,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         if not isinstance(decoded, dict) or set(decoded) != _REQUIRED_DECISION_FIELDS:
             raise ValueError("invalid decision JSON")
         try:
-            request = validate_human_decision_request(decoded)
+            request = validate_human_decision_intent(decoded)
         except ValueError as error:
             raise ValueError("invalid decision JSON") from error
         configured = self.state.reviewer_ids.get(run_id)
@@ -644,11 +661,13 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
         packet_hash = hashlib.sha256(packet_bytes).hexdigest()
-        if not secrets.compare_digest(payload["packet_hash"], packet_hash):
-            self._reject(HTTPStatus.BAD_REQUEST, "PACKET_HASH_MISMATCH")
+        if not secrets.compare_digest(
+            self.state.presented_packet_hashes.get(route.run_id, ""), packet_hash,
+        ):
+            self._reject(HTTPStatus.CONFLICT, "STALE_PACKET")
             return
         try:
-            envelope = build_human_decision_envelope(payload)
+            envelope = build_server_human_decision_envelope(payload, packet_bytes)
             output = write_human_decision(run_directory, **envelope)
         except ValueError:
             self._reject(HTTPStatus.BAD_REQUEST, "INVALID_DECISION")

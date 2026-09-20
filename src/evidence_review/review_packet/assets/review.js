@@ -94,7 +94,6 @@
     const reviewerId = resolveReviewerId(form);
     return {
       reviewer_id: reviewerId,
-      packet_hash: decisionContext.packet_hash || values.get("packet_sha256") || "",
       decision: values.get("decision") || "",
       notes: values.get("notes") || ""
     };
@@ -121,7 +120,6 @@
   function validDecisionRequest(request) {
     return Boolean(
       validReviewerId(request.reviewer_id) &&
-      /^[0-9a-f]{64}$/.test(request.packet_hash) &&
       ALLOWED_DECISIONS.has(request.decision) &&
       (!notesRequired(request.decision) || request.notes.trim())
     );
@@ -130,10 +128,12 @@
   function decisionEnvelope(form) {
     const request = decisionRequest(form);
     if (!validDecisionRequest(request)) return null;
+    const packetHash = decisionContext.packet_hash || "";
+    if (!/^[0-9a-f]{64}$/.test(packetHash)) return null;
     return {
       reviewer_id: request.reviewer_id,
       reviewed_at: new Date().toISOString(),
-      packet_hash: request.packet_hash,
+      packet_hash: packetHash,
       decision: request.decision,
       notes: request.notes
     };
@@ -222,6 +222,9 @@
       }
       updateReviewerField();
       renderPersistedDecision(payload.decision_record);
+      if (payload.decision_binding_status === "STALE") {
+        formStatus("기존 결정은 이전 packet에 결속되어 있습니다. 현재 자료를 다시 검토하세요. (STALE)");
+      }
       updateReviewerSession();
       return payload;
     } catch (_) {

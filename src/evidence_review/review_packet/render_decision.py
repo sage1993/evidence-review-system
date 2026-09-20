@@ -39,7 +39,6 @@ def render_decision_form(model: Mapping[str, object], *, initially_hidden: bool 
         f'{_text(labels.get(str(option), str(option)))}</strong></label>'
         for option in options
     )
-    packet_hash = _text(decision.get("packet_sha256"))
     return "".join(
         (
             '<section id="decision-form"',
@@ -64,7 +63,6 @@ def render_decision_form(model: Mapping[str, object], *, initially_hidden: bool 
             ' 기존 기록은 수정하지 않고 새 검토 기록을 추가합니다.</p>',
             '</div>',
             '<form action="./decision" method="post">',
-            f'<input type="hidden" name="packet_sha256" value="{packet_hash}">',
             '<div data-decision-editor>',
             '<fieldset class="decision-choices"><legend>판정</legend>',
             option_html or '<p class="empty-state">허용된 결정 값이 없습니다.</p>',

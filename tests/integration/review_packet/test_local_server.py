@@ -78,7 +78,6 @@ def test_server_supplies_reviewer_hash_and_server_controlled_timestamp(tmp_path:
             base + "/decision",
             body={
                 "reviewer_id": REVIEWER_ID,
-                "packet_hash": packet_hash,
                 "decision": "SATISFIED",
                 "notes": "근거 확인 완료",
             },
@@ -118,7 +117,6 @@ def test_server_rejects_client_timestamp_extra_field_and_packet_mismatch(tmp_pat
         base = f"/runs/{RUN_ID}/{TOKEN}/decision"
         valid = {
             "reviewer_id": REVIEWER_ID,
-            "packet_hash": hashlib.sha256(packet).hexdigest(),
             "decision": "SATISFIED",
             "notes": "확인",
         }
@@ -132,7 +130,7 @@ def test_server_rejects_client_timestamp_extra_field_and_packet_mismatch(tmp_pat
             base,
             body={**valid, "packet_hash": "0" * 64},
         )
-        assert code == 400 and document["error"] == "PACKET_HASH_MISMATCH"
+        assert code == 400 and document["error"] == "INVALID_DECISION"
     finally:
         server.shutdown()
         server.server_close()
@@ -155,7 +153,6 @@ def test_configured_reviewer_id_is_readonly_for_post(tmp_path: Path) -> None:
             f"/runs/{RUN_ID}/{TOKEN}/decision",
             body={
                 "reviewer_id": "different-reviewer",
-                "packet_hash": hashlib.sha256(packet).hexdigest(),
                 "decision": "SATISFIED",
                 "notes": "확인",
             },

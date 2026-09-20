@@ -325,18 +325,17 @@ The companion endpoints use the same protected prefix:
 
 The final review route is unavailable until both final packet and HTML exist.
 
-The browser decision request v2 has exactly four string fields:
+The protected browser decision intent has exactly three string fields:
 
 ```json
 {
   "reviewer_id": "reviewer-01",
-  "packet_hash": "<sha256>",
   "decision": "SATISFIED",
   "notes": "review notes"
 }
 ```
 
-When `--reviewer-id` is configured, the browser receives it as read-only session context and a different submitted reviewer ID is rejected. The status endpoint also supplies the current immutable packet hash. The server rechecks that hash at POST time and generates `reviewed_at` itself as an offset-aware ISO-8601 timestamp.
+When `--reviewer-id` is configured, the browser receives it as read-only session context and a different submitted reviewer ID is rejected. The server computes the packet hash from exact packet bytes and generates `reviewed_at` itself. Client hash fields are rejected. A packet changed since the bound presentation causes `STALE_PACKET`; status reads recompute the hash and report `VALID`, `STALE`, or `MISSING` decision binding. Existing archival envelopes retain their hash field and are validated through import.
 
 A successful decision creates a new append-only JSON record under `human-decisions/`. It does not modify `final-review-packet.json`, `review.html`, finalizer status, or evidence. A valid decision may cause the UI to project `REVIEW_COMPLETED`.
 
