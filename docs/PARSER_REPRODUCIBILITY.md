@@ -18,6 +18,8 @@ parser-output/
 
 `parser-run.json` is immutable execution authority. It records the source SHA-256, source byte size, source page count, document and revision identity, parser version, adapter version, parser configuration, and platform family.
 
+`parser.log` is read-only input and remains byte-for-byte unchanged. Warning extraction accepts `WARN`, `WARNING`, `ERROR`, `SEVERE`, and `FATAL` severity lines, including timestamped Python log lines (`YYYY-MM-DD HH:MM:SS,mmm - LEVEL - message`) and `LEVEL: message` lines. On Korean Windows, OpenDataLoader's Java logger can localize `WARNING` as `경고` and `SEVERE` as `심각`; these exact aliases map to the corresponding canonical severity. The Java timestamp header line is ignored, and the following severity line is parsed. `INFO`, `DEBUG`, `TRACE`, `정보`, progress output, status headers, and blank lines are excluded. For timestamped Python lines, only the allowlisted timestamp and severity wrapper are removed from the warning fingerprint; the exact raw line is retained in the warning record.
+
 ## Reproducibility validation
 
 ```powershell

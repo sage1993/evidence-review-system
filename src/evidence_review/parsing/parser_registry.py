@@ -17,13 +17,14 @@ SourceBindingAuthority = Literal["DIRECT", "SOURCE_BATCH_MANIFEST"]
 
 @dataclass(frozen=True, slots=True)
 class ParserContext:
-    """Immutable parser inputs resolved below a source-batch root."""
+    """Immutable parser inputs and source identities resolved by the importer."""
 
     source_path: Path
     parser_artifact_path: Path
     options: Mapping[str, object]
     binding_authority: SourceBindingAuthority = "DIRECT"
     source_sha256: str | None = None
+    source_revision_id: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -36,6 +37,8 @@ class ParserContext:
             and self.source_sha256 is None
         ):
             raise ValueError("SOURCE_BATCH_MANIFEST binding requires source_sha256")
+        if self.source_revision_id is not None and not self.source_revision_id.strip():
+            raise ValueError("source_revision_id must not be empty")
 
 
 class ParserAdapter(Protocol):

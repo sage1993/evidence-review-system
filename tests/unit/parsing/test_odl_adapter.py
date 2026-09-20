@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import evidence_review.parsing.odl_adapter as odl_adapter
 from evidence_review.canonical_json import sha256_json
 from evidence_review.parsing.odl_adapter import (
     OpenDataLoaderJsonAdapter,
@@ -46,7 +47,11 @@ def test_load_parsed_tables_preserves_rows_columns_spans_and_search_text() -> No
     assert first == second
     assert len(first) == 1
     table = first[0]
-    assert table.table_key == "T608"
+    assert table.table_key == table.canonical_table_id
+    assert table.table_key.startswith("T-")
+    assert table.raw_parser_table_id == 608
+    assert table.source_revision_id == "LAW1-abc123"
+    assert table.structural_path == ("kids", 0)
     assert table.page_number == 1
     assert table.bbox == (10.0, 20.0, 110.0, 180.0)
     assert [(row.row_number, len(row.cells)) for row in table.rows] == [(1, 3), (2, 3)]
@@ -61,6 +66,129 @@ def test_load_parsed_tables_preserves_rows_columns_spans_and_search_text() -> No
     element = load_raw_elements(fixture, document_id="LAW1", revision_id="LAW1-abc123")[0]
     assert element.element_type == "table"
     assert "행 1 열 2: 기존 용도지역" in element.raw_text
+
+
+def test_reused_raw_table_id_on_different_pages_gets_distinct_table_keys(
+    tmp_path: Path,
+) -> None:
+    parser = tmp_path / "parser.json"
+    parser.write_text(
+        json.dumps(
+            {
+                "kids": [
+                    {"type": "table", "id": 1, "page number": 93, "rows": []},
+                    {"type": "table", "id": 1, "page number": 95, "rows": []},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    tables = load_parsed_tables(
+        parser,
+        document_id="LAW1",
+        revision_id="LAW1-abc123",
+    )
+
+    assert [table.page_number for table in tables] == [93, 95]
+    assert tables[0].canonical_table_id != tables[1].canonical_table_id
+
+
+def test_reused_raw_table_id_on_same_page_uses_structural_path(
+    tmp_path: Path,
+) -> None:
+    parser = tmp_path / "parser.json"
+    parser.write_text(
+        json.dumps(
+            {
+                "kids": [
+                    {"type": "table", "id": 1, "page number": 93, "rows": []},
+                    {"type": "table", "id": 1, "page number": 93, "rows": []},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    tables = load_parsed_tables(parser, "LAW1", "LAW1-abc123")
+
+    assert tables[0].canonical_table_id != tables[1].canonical_table_id
+    assert tables[0].structural_path != tables[1].structural_path
+
+
+def test_canonical_table_id_is_deterministic_and_revision_bound(
+    tmp_path: Path,
+) -> None:
+    parser = tmp_path / "parser.json"
+    parser.write_text(
+        json.dumps(
+            {"kids": [{"type": "table", "id": "1", "page number": 93, "rows": []}]}
+        ),
+        encoding="utf-8",
+    )
+
+    first = load_parsed_tables(parser, "LAW1", "LAW1-revision-a")[0]
+    repeated = load_parsed_tables(parser, "LAW1", "LAW1-revision-a")[0]
+    other_revision = load_parsed_tables(parser, "LAW1", "LAW1-revision-b")[0]
+
+    assert first.canonical_table_id == repeated.canonical_table_id
+    assert first.canonical_table_id != other_revision.canonical_table_id
+
+
+def test_raw_parser_table_id_and_structural_provenance_are_preserved(
+    tmp_path: Path,
+) -> None:
+    parser = tmp_path / "parser.json"
+    parser_bytes = json.dumps(
+        {"kids": [{"type": "table", "id": 1, "page number": 93, "rows": []}]}
+    ).encode("utf-8")
+    parser.write_bytes(parser_bytes)
+
+    table = load_parsed_tables(parser, "LAW1", "LAW1-revision-a")[0]
+
+    assert table.raw_parser_table_id == 1
+    assert table.raw_payload["id"] == 1
+    assert table.searchable_document()["raw_parser_table_id"] == 1
+    assert table.searchable_document()["structural_path"] == list(table.structural_path)
+    assert parser.read_bytes() == parser_bytes
+
+
+def test_canonical_table_identity_collision_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parser = tmp_path / "parser.json"
+    parser.write_text(
+        json.dumps(
+            {
+                "kids": [
+                    {
+                        "type": "table",
+                        "id": 1,
+                        "page number": 93,
+                        "content": "first representation",
+                        "rows": [],
+                    },
+                    {
+                        "type": "table",
+                        "id": 1,
+                        "page number": 95,
+                        "content": "second representation",
+                        "rows": [],
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        odl_adapter,
+        "_canonical_table_id",
+        lambda **_kwargs: "T-FORCED-COLLISION",
+    )
+
+    with pytest.raises(ValueError, match="PARSER_TABLE_IDENTITY_COLLISION"):
+        load_parsed_tables(parser, "LAW1", "LAW1-revision-a")
 
 
 def test_missing_parser_dimensions_are_absent_not_a4() -> None:
