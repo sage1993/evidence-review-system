@@ -67,10 +67,32 @@ def test_track_b_bundle_uses_v3_planner_obligations_not_retrieval_coverage(tmp_p
         {"claims": [{"citation_ids": ["C1"]}]},
     )
 
+    assert bundle["version"] == 2
     assert bundle["required_facets_by_issue"] == {
         "I1": ["basic_far", "contribution_delivery_method"]
     }
     assert "required_facet_completeness" not in bundle
+
+
+def test_track_b_bundle_keeps_legacy_retrieval_summary_at_version_one(tmp_path: Path) -> None:
+    (tmp_path / "review-request.json").write_bytes(
+        dump_bytes(
+            {
+                "question": "Legacy review",
+                "inputs": {"facet_coverage": []},
+                "evidence": [],
+            }
+        )
+    )
+
+    bundle = _track_b_bundle_document(tmp_path, "RUN-1", {"claims": []})
+
+    assert bundle["version"] == 1
+    assert bundle["required_facet_completeness"] == {
+        "status": "NOT_APPLICABLE",
+        "covered_issue_count": 0,
+        "total_issue_count": 0,
+    }
 
 
 def test_track_b_validation_records_v3_audit_status_and_obligations(tmp_path: Path) -> None:

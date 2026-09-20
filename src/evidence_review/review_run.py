@@ -656,7 +656,7 @@ def _track_b_bundle_document(
         )
     document: dict[str, object] = {
         "format": "evidence-review/track-b-bundle",
-        "version": 1,
+        "version": 2 if required_facets else 1,
         "run_id": run_id,
         "question": question,
         "claims": claims,
