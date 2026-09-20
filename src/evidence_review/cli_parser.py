@@ -295,6 +295,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review_prepare.add_argument("--workspace", required=True, type=Path)
     review_prepare.add_argument("--request", required=True, type=Path)
+    review_response = review_stages.add_parser(
+        "response", help="emit or validate an exact packet-bound formal response"
+    )
+    review_response.add_argument("--workspace", required=True, type=Path)
+    review_response.add_argument("--run-id", required=True)
+    review_response.add_argument("--response-input", type=Path)
     review_finalize = review_stages.add_parser(
         "finalize", help="bind external Track outputs and finalize the review packet"
     )

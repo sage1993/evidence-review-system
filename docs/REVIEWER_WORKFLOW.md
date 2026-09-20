@@ -116,6 +116,21 @@ The write is create-only. The machine packet and HTML remain unchanged, includin
 
 ## 7. Archival HTML
 
+Before presenting a final user answer, obtain the read-only packet projection:
+
+```powershell
+evidence-review review-run response --workspace <workspace> --run-id <RUN-ID>
+```
+
+The response retains the exact packet byte SHA, machine status, missing inputs,
+abstention reasons and claim text. Every `FORMAL_FINDING` traces to its packet
+claim and manifest-verified citation/evidence identity. Adding
+`--response-input <response.json>` validates an existing response against that
+exact projection and rejects expanded prose, substituted citations or stale hashes.
+External checks belong in a separately labeled `SUPPLEMENTARY_EXTERNAL_CHECK`
+section (`추가 확인 — Formal Review packet 외 자료`). Neither external checks nor
+`UNBOUND_ANALYSIS` belong in the default Formal response artifact.
+
 New RUNs store a lightweight `review.html` entry without raster payloads. Direct file opening displays `PROTECTED_REVIEW_REQUIRED`, with no review or decision form. Existing self-contained archives remain readable and cannot persist a decision through POST.
 
 Start the protected viewer for page images, inspection and decision submission with:

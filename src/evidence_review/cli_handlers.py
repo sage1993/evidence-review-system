@@ -892,6 +892,27 @@ def dispatch(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "review-run" and args.review_stage == "prepare":
         return _review_run_prepare(args.workspace, args.request)
+    if args.command == "review-run" and args.review_stage == "response":
+        from evidence_review.review_packet.formal_response import (
+            build_formal_response,
+            validate_formal_response,
+        )
+
+        try:
+            if args.response_input is None:
+                response = build_formal_response(args.workspace, args.run_id)
+            else:
+                source = verified_regular_file(args.response_input, field="response input")
+                response = validate_formal_response(
+                    json.loads(source.read_text(encoding="utf-8")),
+                    args.workspace,
+                    args.run_id,
+                )
+            _write_stdout(response)
+            return 0
+        except (OSError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return 2
     if args.command == "review-run" and args.review_stage == "finalize":
         return _review_run_finalize(
             args.workspace,

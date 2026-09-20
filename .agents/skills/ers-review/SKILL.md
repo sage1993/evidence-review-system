@@ -193,6 +193,20 @@ After Track A validation, the run is `WAITING_TRACK_B` and Track A must not be r
 
 ## 6. Review Workspace와 사람 결정
 
+사용자에게 최종 답변을 작성하기 전에 packet에 결속된 응답을 가져온다.
+
+```powershell
+evidence-review review-run response --workspace <workspace> --run-id <RUN-ID>
+```
+
+기본 Formal Review 답변의 사실 문장은 반환된 `FORMAL_FINDING`의 `text`와
+claim/citation/evidence 연결만 사용한다. 임의 요약으로 새 사실을 추가하지 않는다.
+상태·missing input·ABSTAIN 이유도 반환된 packet metadata를 유지한다.
+`--response-input <response.json>`은 이 정확한 projection과 다른 문장·근거·hash를 거부한다.
+외부 자료를 별도로 확인했다면 `SUPPLEMENTARY_EXTERNAL_CHECK`로 분류하고
+`[추가 확인 — Formal Review packet 외 자료]` 아래에 분리한다.
+`UNBOUND_ANALYSIS`와 외부 확인은 기본 Formal 응답 artifact에 포함하지 않는다.
+
 시각자료가 있는 경우 Review Workspace는 실제 source page/image와 validated geometry overlay를 함께 보여준다. 법규 citation viewer와 case drawing viewer는 구분하되 같은 claim/finding에서 연결할 수 있다. 시각자료가 없는 질문에서는 drawing viewer를 만들지 않는다.
 
 보호 브라우저:
