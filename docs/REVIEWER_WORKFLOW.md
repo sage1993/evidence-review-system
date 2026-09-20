@@ -89,19 +89,20 @@ When a reviewer ID is supplied at server start, the browser treats it as read-on
 
 ## 6. Record the human decision
 
-The reviewer should normally enter only:
+The Human Decision form always includes a reviewer-ID field in addition to decision and notes.
 
-- decision;
-- notes.
+- If the protected server was started with `--reviewer-id`, that field is populated from the protected session and is read-only.
+- If no reviewer ID is bound to the protected session, the reviewer enters it directly in the form. The accepted syntax is `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`.
+- Decision and notes remain the reviewer-authored decision content; notes are required only for the decision states that require explanation.
 
 Allowed decisions:
 
 | Value | Display label |
 |---|---|
-| `SATISFIED` | 내용 확인 완료 |
-| `NOT_SATISFIED` | 내용에 오류 있음 |
-| `CONDITIONAL` | 조건부 확인 |
-| `ADDITIONAL_REVIEW_REQUIRED` | 추가 자료 필요 |
+| `SATISFIED` | 검토 결과에 동의 |
+| `NOT_SATISFIED` | 검토 결과에 오류 있음 |
+| `CONDITIONAL` | 조건 충족 시 동의 |
+| `ADDITIONAL_REVIEW_REQUIRED` | 추가 자료 검토 필요 |
 
 The protected browser request contains four fields: `reviewer_id`, `packet_hash`, `decision`, and `notes`. Reviewer ID is supplied from the protected session when configured; packet hash is supplied from the current immutable packet. The server independently revalidates both and creates `reviewed_at` as an offset-aware ISO-8601 server timestamp.
 
@@ -126,7 +127,7 @@ evidence-review review-run serve `
   --reviewer-id <REVIEWER-ID>
 ```
 
-Use **결정 JSON 다운로드** only after decision and notes are complete. If reviewer ID is not already known, the archival page asks for it once. The downloaded envelope contains exactly:
+Use **결정 JSON 다운로드** only after reviewer ID, decision, and notes are valid. The archival page uses the same visible reviewer-ID form field; it does not open a prompt dialog. The downloaded envelope contains exactly:
 
 ```json
 {
@@ -155,8 +156,8 @@ Import recomputes the current packet SHA-256, rejects mismatch, validates the en
 
 Static CSS/unit tests do not replace reviewer browser QA. On the exact acceptance commit verify:
 
-- 1366×768, 1920×1080, 3840×2160;
-- responsive layouts at 1366×768, 1920×1080, and 3840×2160 where applicable;
+- 1366×768, 1920×1080, 2560×1440, 3840×2160, 768×1024, and 390×844;
+- responsive layout behavior across all six required viewports;
 - keyboard navigation and visible focus;
 - evidence link focuses the correct page/overlay;
 - print output contains result, evidence, additional review when present, and decision area without developer audit clutter;

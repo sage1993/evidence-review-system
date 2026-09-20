@@ -2,9 +2,9 @@
 
 ## 0. Architecture status and rule of execution
 
-This repository is migrating from a question-run-centered workflow toward a persistent review-work workflow while preserving the existing Formal Review authority. The target mutable work domain is named **ReviewMatter**. Do not introduce a second persistent domain called `ReviewCase`: `case_id` and `CaseManifest` already identify drawing/case artifacts and are separate semantics.
+The persistent review-work architecture is merged and executable on current `main`. The mutable work domain is **ReviewMatter**, while the existing Formal Review core remains the authority for immutable review packets and packet-bound Human Decisions. Do not introduce a second persistent domain called `ReviewCase`: `case_id` and `CaseManifest` already identify drawing/case artifacts and are separate semantics.
 
-Always distinguish **target architecture** from **currently merged executable behavior**. Never invoke, document as current, or claim PASS for a target command/module that is not present at the exact checked-out HEAD. During migration, the issue/PR being implemented defines which target capability is active. Existing formal-review paths remain authoritative until their replacement façade is actually merged and verified.
+Always document and execute the behavior that exists at the exact checked-out HEAD. The current runtime includes Evidence Navigation, ReviewMatter mutation/search/selection, Workbench serving, Formalization, and the direct `review-question` Formal Review path. Future commands or modules that are not yet merged must still be treated as target-only and must never be documented as current or reported as PASS.
 
 The repository-level acceptance authority is local exact-HEAD verification. GitHub Actions is not used by policy: `GITHUB_ACTIONS = NOT_USED_BY_POLICY`. Never add or enable a workflow, require an Actions check, or report an unexecuted Actions workflow as a local PASS.
 
@@ -135,7 +135,7 @@ Downstream retrieval/formalization should consume ReviewScope rather than spread
 
 Question Planner remains evidence-free and conclusion-free. It may structure issues/search requests, but it must not answer, decide compliance/eligibility/legality, assign confidence, invent evidence, or produce rule status.
 
-During migration, if the checked-out HEAD does not yet contain the explicit-scope ReviewScope path, the existing `review-question prepare-plan → prepare → Track A → Track B` path remains the current formal path. Do not bypass it by hand-authoring internal artifacts.
+Current `main` contains the canonical ReviewScope adapters and ReviewMatter Formalization path. Downstream formal review must consume the validated canonical scope rather than reinterpreting Matter drafts. The direct `review-question prepare-plan → prepare → Track A → Track B` path remains a supported Formal Review entrypoint when persistent Matter work is not being used. Do not bypass either path by hand-authoring internal artifacts.
 
 ## 8. Formal Review core - protected boundary
 
@@ -244,21 +244,60 @@ evidence-review review-run serve `
 
 Question Planner handoff remains mandatory before formal retrieval on this HEAD. `QuestionPlan` is evidence-free and conclusion-free. A missing or invalid plan is `PLANNER_FAILED`; a validated plan with no evidence is `RETRIEVAL_NO_EVIDENCE`. Do not bypass the planner by hand-authoring internal artifacts.
 
-### 12.2 Migration target vocabulary
+### 12.2 Current ReviewMatter workflow
 
-The target Matter interface is planned and is **not yet executable** at this HEAD. Its vocabulary is intentionally written as interface notation rather than copy-paste shell commands:
+The ReviewMatter interface is executable on current `main`. Use the canonical CLI rather than treating these operations as future interface notation:
 
-- `review-matter / create`
-- `review-matter / status`
-- `review-matter / add-issue`
-- `review-matter / bind-evidence`
-- `review-matter / search`
-- `review-matter / select-evidence`
-- `review-matter / formalize`
+```powershell
+evidence-review review-matter create `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID> `
+  --title "<title>"
 
-Do not claim these target interfaces exist before their migration issue is merged and verified.
+evidence-review review-matter status `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID>
 
-Existing `review-question` / `review-run` commands remain compatibility and direct-formal interfaces unless a later accepted migration explicitly deprecates them.
+evidence-review review-matter add-issue `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID> `
+  --expected-revision <N> `
+  --issue-id <ISSUE-ID> `
+  --question "<question>"
+
+evidence-review review-matter bind-evidence `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID> `
+  --expected-revision <N>
+
+evidence-review review-matter search `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID> `
+  --query "<query>"
+
+evidence-review review-matter select-evidence `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID> `
+  --expected-revision <N> `
+  --evidence-id <EVIDENCE-ID> `
+  --query "<query>"
+
+evidence-review review-matter formalize `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID> `
+  --expected-revision <N>
+```
+
+The protected Workbench is also current:
+
+```powershell
+evidence-review review-matter workbench serve `
+  --workspace <workspace> `
+  --matter-id <MATTER-ID> `
+  --reviewer-id <REVIEWER-ID>
+```
+
+Evidence Navigation and Workbench state remain non-authoritative. Only `formalize` freezes an exact Matter revision and prepares the immutable Formal Review run. The direct `review-question` / `review-run` interfaces remain supported Formal Review entrypoints and compatibility surfaces.
 
 ## 13. Commit / Push / PR policy
 
