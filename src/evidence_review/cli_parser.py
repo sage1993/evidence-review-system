@@ -13,6 +13,13 @@ def build_parser() -> argparse.ArgumentParser:
         prog="evidence-review",
         description="Evidence-first regulatory review for arbitrary documents",
     )
+    parser.add_argument(
+        "--runtime-mode", choices=("auto", "development", "installed"), default="auto",
+        help="runtime authority: installed wheel or development checkout",
+    )
+    parser.add_argument(
+        "--expected-package-sha256", help="pin installed package content to a candidate digest",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     workspace = subparsers.add_parser(
