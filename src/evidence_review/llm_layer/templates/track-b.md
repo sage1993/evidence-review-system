@@ -26,7 +26,7 @@ Rules:
 
 - Copy the immutable input question exactly into `audited_question`; do not answer a different question.
 - Set `question_responsiveness` to `PASS` only when the audit actually addresses that exact question. Use `FAIL` when it addresses another question or otherwise does not answer the requested question. Use `NOT_VERIFIED` when responsiveness cannot be established.
-- Derive required-facet status from accepted Track A claims: every planner-required facet must be explicitly declared by an accepted claim with an exact citation. `NOT_APPLICABLE` is allowed only when the bundle declares no required facet obligation. `INCOMPLETE` must never be reported as a complete acceptance.
+- When the bundle contains `required_facets_by_issue`, derive required-facet status from accepted Track A claims: every listed planner-required facet must be explicitly declared by an accepted claim with an exact citation. `NOT_APPLICABLE` is allowed only when that mapping is absent. The legacy `required_facet_completeness` field is a retrieval diagnostic, not claim-completeness proof.
 - Audit every Track A `claim_id` exactly once. Do not omit, duplicate, invent, or rename claim IDs.
 - `run_id` must exactly match the input bundle.
 - Allowed dispositions are `ACCEPT`, `REJECT`, and `INCOMPLETE`.

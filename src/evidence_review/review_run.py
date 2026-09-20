@@ -621,6 +621,7 @@ def _track_b_bundle_document(
     request = _mapping(_json(_run_file(run_directory, "review-request.json")), "review_request")
     question = _string(request.get("question"), "review_request.question")
     request_inputs = _mapping(request.get("inputs", {}), "review_request.inputs")
+    required_facets = required_facets_from_inputs(request_inputs)
     facet_values = request_inputs.get("facet_coverage", [])
     facet_coverage = [
         dict(_mapping(item, f"review_request.inputs.facet_coverage[{index}]"))
@@ -653,15 +654,21 @@ def _track_b_bundle_document(
             "validated Track A references unavailable immutable evidence: "
             + ", ".join(missing)
         )
-    return {
+    document: dict[str, object] = {
         "format": "evidence-review/track-b-bundle",
         "version": 1,
         "run_id": run_id,
         "question": question,
         "claims": claims,
         "evidence_support": [support_by_id[item] for item in sorted(cited_ids)],
-        "required_facet_completeness": _required_facet_completeness(facet_coverage),
     }
+    if required_facets:
+        document["required_facets_by_issue"] = {
+            issue_id: sorted(facets) for issue_id, facets in sorted(required_facets.items())
+        }
+    else:
+        document["required_facet_completeness"] = _required_facet_completeness(facet_coverage)
+    return document
 
 
 def _required_facet_completeness(
