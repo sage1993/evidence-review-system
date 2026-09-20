@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_python_support_policy_is_313_only() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert data["project"]["version"] == "0.2.0"
+    assert data["project"]["version"] == "0.2.1"
     assert __version__ == data["project"]["version"]
     assert canonical_version == data["project"]["version"]
     assert not Version(data["project"]["version"]).is_prerelease
@@ -97,13 +97,13 @@ def test_release_state_documents_match_source_version() -> None:
     docs_index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "## [0.2.0] - 2026-09-12" in changelog
+    assert "## [0.2.1] - 2026-09-20" in changelog
     assert "published GitHub Release and exact validated tag" in changelog
-    assert "Current source metadata version: `0.2.0`" in readme
+    assert "Current source metadata version: `0.2.1`" in readme
     assert "The source version does not establish publication status" in readme
-    assert "`0.2.0` source requires" in security
+    assert "`0.2.1` source requires" in security
     assert "latest official release" not in security.lower()
-    assert 'version = "0.2.0"' in pyproject
+    assert 'version = "0.2.1"' in pyproject
     assert "Unreleased PEP 440 release candidate; not an official release." not in pyproject
     assert "pyproject.toml" in release_policy
     assert (

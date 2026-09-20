@@ -70,7 +70,7 @@ ERS는 다음 원칙을 보장하도록 설계되어 있습니다.
 
 ## 설치
 
-Current source metadata version: `0.2.0`
+Current source metadata version: `0.2.1`
 
 The source version does not establish publication status. Check [GitHub
 Releases](https://github.com/sage1993/evidence-review-system/releases) for the

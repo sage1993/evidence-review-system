@@ -4,6 +4,28 @@ All notable changes to Evidence Review System are documented here.
 
 The project follows semantic versioning for public releases where practical.
 
+## [0.2.1] - 2026-09-20
+
+This patch release candidate contains the corrective, governance, and
+repository-hardening work merged after v0.2.0. Public release status is
+determined by the published GitHub Release and exact validated tag, not by
+this source version or changelog entry alone.
+
+### Fixed
+
+- Corrected raw-question authority, confidence initialization/formalization, Track B semantic validation, Windows runtime filesystem handling, and unified Review Workspace behavior from the post-audit remediation under #233.
+- Reworked OpenDataLoader table identity so the raw parser table ID remains provenance while the persisted canonical table ID is deterministically bound to source revision, page, raw parser ID, and structural path. Cross-page raw-ID reuse now ingests correctly, while true canonical identity collisions still fail closed under #237.
+- Corrected parser warning classification so INFO/progress output is excluded, actual warning/error severities are retained, Korean Java logger severity aliases are recognized, and raw logs remain unchanged under #237.
+
+### Changed
+
+- Hardened public repository governance and exact-SHA repository/package/issue/PR evidence checks under #227.
+- Removed tracked local review/agent work products and synchronized current-authority documentation with the merged ReviewMatter and post-audit implementation under #229 and #235.
+
+### Security
+
+- Re-verified the release dependency floors on 2026-09-20. The configured floors remain `pypdf>=6.18.1,<7`, `pypdfium2>=5.12.1,<6`, and `Pillow>=12.3,<13`; no dependency floor change is required for this patch candidate.
+
 ## [0.2.0] - 2026-09-12
 
 This source version contains the stabilized 0.2.0 scope. Public release status
