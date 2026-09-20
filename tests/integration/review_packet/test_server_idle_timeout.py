@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import http.client
 import json
@@ -139,7 +140,7 @@ def test_detached_server_exits_after_idle_timeout_and_cleans_state(tmp_path: Pat
     try:
         port = _read_port(process)
         assert _get(port, RUN_ID, TOKEN) == 200
-        state_path = workspace / "runs" / RUN_ID / "review-server.json"
+        state_path = workspace / ".review-runtime" / RUN_ID / "review-server.json"
         assert state_path.is_file()
 
         assert _wait_for_exit(process) == 0
@@ -191,7 +192,7 @@ def test_idle_timeout_state_records_configured_value(tmp_path: Path) -> None:
     process = _start_server(workspace, 2.5)
     try:
         _read_port(process)
-        state_path = workspace / "runs" / RUN_ID / "review-server.json"
+        state_path = workspace / ".review-runtime" / RUN_ID / "review-server.json"
         state = json.loads(state_path.read_text(encoding="utf-8"))
         assert state["idle_timeout_seconds"] == 2.5
     finally:
@@ -222,7 +223,7 @@ def test_explicit_stop_terminates_verified_server_and_cleans_state(tmp_path: Pat
     process = _start_server(workspace, 30.0)
     try:
         _read_port(process)
-        state_path = workspace / "runs" / RUN_ID / "review-server.json"
+        state_path = workspace / ".review-runtime" / RUN_ID / "review-server.json"
         assert state_path.is_file()
         from evidence_review.review_packet.browser_launcher import stop_review_server
 
@@ -238,7 +239,8 @@ def test_explicit_stop_terminates_verified_server_and_cleans_state(tmp_path: Pat
 
 def test_unrelated_live_pid_state_is_removed_without_signaling_process(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path)
-    state_path = workspace / "runs" / RUN_ID / "review-server.json"
+    state_path = workspace / ".review-runtime" / RUN_ID / "review-server.json"
+    state_path.parent.mkdir(parents=True)
     state_path.write_text(
         json.dumps(
             {
@@ -256,3 +258,42 @@ def test_unrelated_live_pid_state_is_removed_without_signaling_process(tmp_path:
         "run_id": RUN_ID,
     }
     assert not state_path.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows RUN directory ACL acceptance")
+def test_detached_server_reads_write_denied_run_without_mutation(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    run = workspace / "runs" / RUN_ID
+    before = {path.name: path.read_bytes() for path in run.iterdir() if path.is_file()}
+    identity = subprocess.run(
+        ["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True, text=True, check=True,
+    )
+    sid = next(csv.reader([identity.stdout.strip()]))[1]
+    denied = subprocess.run(
+        ["icacls", str(run), "/deny", f"*{sid}:(OI)(CI)(WD,AD,WEA,WA)"],
+        capture_output=True, text=True, check=False,
+    )
+    assert denied.returncode == 0, denied.stdout + denied.stderr
+    process = None
+    try:
+        with pytest.raises(PermissionError):
+            (run / "write-probe.txt").write_bytes(b"must be denied")
+        process = _start_server(workspace, 2.0)
+        port = _read_port(process)
+        assert _get(port, RUN_ID, TOKEN) == 200
+        assert _get(port, RUN_ID, "b" * 43) == 403
+        state = workspace / ".review-runtime" / RUN_ID / "review-server.json"
+        assert state.is_file()
+        assert _wait_for_exit(process) == 0
+        assert not state.exists()
+        after = {path.name: path.read_bytes() for path in run.iterdir() if path.is_file()}
+        assert after == before
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            process.wait(timeout=5)
+        restored = subprocess.run(
+            ["icacls", str(run), "/remove:d", f"*{sid}"],
+            capture_output=True, text=True, check=False,
+        )
+        assert restored.returncode == 0, restored.stdout + restored.stderr

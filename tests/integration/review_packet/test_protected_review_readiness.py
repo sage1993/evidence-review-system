@@ -256,7 +256,7 @@ def test_real_server_protected_readiness_decodes_and_hashes_tiled_and_untiled_ca
                 image.verify()
                 assert image.format == "PNG"
 
-        state_path = tmp_path / "runs" / RUN_ID / "review-server.json"
+        state_path = tmp_path / ".review-runtime" / RUN_ID / "review-server.json"
         assert state_path.is_file()
         assert _wait_for_exit(process) == 0
         assert not state_path.exists()

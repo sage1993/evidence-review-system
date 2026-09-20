@@ -30,6 +30,7 @@ from evidence_review.observability.run_metrics import append_stage, finish_stage
 from evidence_review.review_packet.protected_projection import load_archive_review_model
 from evidence_review.review_packet.server_runtime import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
+    review_runtime_directory,
     validate_idle_timeout,
 )
 
@@ -183,6 +184,17 @@ def _required_artifacts(workspace_root: Path, run_id: str) -> Path:
 
 def _server_state_path(workspace_root: Path, run_id: str) -> Path | None:
     try:
+        runtime = review_runtime_directory(workspace_root, run_id)
+        return verified_regular_file_below(
+            runtime, ("review-server.json",), field="review server state",
+        )
+    except FileNotFoundError:
+        return _legacy_server_state_path(workspace_root, run_id)
+
+
+def _legacy_server_state_path(workspace_root: Path, run_id: str) -> Path | None:
+    # Observe a live pre-migration server, but never rewrite its immutable RUN.
+    try:
         workspace = verified_regular_directory(workspace_root, field="workspace root")
         runs_root = verified_regular_directory(workspace / "runs", field="runs root")
         run_directory = verified_regular_directory(
@@ -196,6 +208,11 @@ def _server_state_path(workspace_root: Path, run_id: str) -> Path | None:
         )
     except FileNotFoundError:
         return None
+
+
+def _remove_mutable_server_state(path: Path, workspace_root: Path, run_id: str) -> None:
+    if path.parent == workspace_root.resolve() / ".review-runtime" / run_id:
+        path.unlink(missing_ok=True)
 
 
 def _server_key(workspace_root: Path, run_id: str) -> tuple[Path, str]:
@@ -277,6 +294,20 @@ def _wait_for_protected_http_ready(
         time.sleep(min(0.05, remaining))
 
 
+def _server_environment() -> dict[str, str]:
+    from evidence_review.diagnostics import collect_runtime_diagnostics
+
+    runtime = collect_runtime_diagnostics()
+    if runtime.status not in {"OK", "NOT_A_CHECKOUT"}:
+        raise OSError(f"protected review runtime is unverifiable: {runtime.status}")
+    environment = dict(os.environ)
+    if runtime.runtime_mode == "development":
+        environment["PYTHONPATH"] = (
+            str(Path(__file__).parents[2]) + os.pathsep + environment.get("PYTHONPATH", "")
+        )
+    return environment
+
+
 def _start_review_server(
     workspace_root: Path,
     run_id: str,
@@ -308,9 +339,7 @@ def _start_review_server(
     )
     if validated_reviewer_id is not None:
         command += ("--reviewer-id", validated_reviewer_id)
-    child_python_path = str(Path(__file__).parents[2]) + os.pathsep + os.environ.get(
-        "PYTHONPATH", ""
-    )
+    child_environment = _server_environment()
     creationflags = (
         getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
         if os.name == "nt"
@@ -324,7 +353,7 @@ def _start_review_server(
         text=True,
         start_new_session=True,
         creationflags=creationflags,
-        env={**os.environ, "PYTHONPATH": child_python_path},
+        env=child_environment,
     )
     try:
         assert process.stdout is not None
@@ -365,6 +394,16 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
     validated_run_id = validate_identifier(run_id, "run_id")
     try:
         path = _server_state_path(workspace_root, validated_run_id)
+        if path is None:
+            return {"running": False, "run_id": validated_run_id}
+        status = _read_server_status(path, workspace_root, validated_run_id)
+        if status["running"]:
+            return status
+        if path.parent == workspace_root.resolve() / ".review-runtime" / validated_run_id:
+            legacy = _legacy_server_state_path(workspace_root, validated_run_id)
+            if legacy is not None:
+                return _read_server_status(legacy, workspace_root, validated_run_id)
+        return status
     except PermissionError:
         return {
             "running": False,
@@ -372,28 +411,35 @@ def review_server_status(workspace_root: Path, run_id: str) -> dict[str, object]
             "reason_code": "PERMISSION_DENIED",
         }
     except ValueError:
-        return {"running": False, "run_id": validated_run_id}
+        return {
+            "running": False,
+            "run_id": validated_run_id,
+            "reason_code": "SOURCE_MISMATCH",
+        }
     except OSError:
         return {
             "running": False,
             "run_id": validated_run_id,
             "reason_code": "SOURCE_MISMATCH",
         }
-    if path is None:
-        return {"running": False, "run_id": validated_run_id}
+
+
+def _read_server_status(
+    path: Path, workspace_root: Path, validated_run_id: str,
+) -> dict[str, object]:
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {"running": False, "run_id": validated_run_id}
     except (OSError, json.JSONDecodeError):
-        path.unlink(missing_ok=True)
+        _remove_mutable_server_state(path, workspace_root, validated_run_id)
         return {"running": False, "run_id": validated_run_id}
     pid = state.get("pid") if isinstance(state, dict) else None
     if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1:
-        path.unlink(missing_ok=True)
+        _remove_mutable_server_state(path, workspace_root, validated_run_id)
         return {"running": False, "run_id": validated_run_id}
     if not _verified_process_is_alive(pid, validated_run_id, state.get("token_sha256")):
-        path.unlink(missing_ok=True)
+        _remove_mutable_server_state(path, workspace_root, validated_run_id)
         return {"running": False, "run_id": validated_run_id}
     return {
         "running": True,
@@ -482,7 +528,7 @@ def stop_review_server(workspace_root: Path, run_id: str) -> None:
         and current.get("pid") == pid
         and current.get("token_sha256") == state.get("token_sha256")
     ):
-        state_path.unlink(missing_ok=True)
+        _remove_mutable_server_state(state_path, workspace_root, validated_run_id)
 
 
 def serve_review_server(
@@ -494,6 +540,8 @@ def serve_review_server(
 ) -> str:
     validated_run_id = validate_identifier(run_id, "run_id")
     stale = review_server_status(workspace_root, validated_run_id)
+    if stale.get("reason_code"):
+        raise OSError(f"protected review server state is unverifiable: {stale['reason_code']}")
     if stale["running"]:
         raise RuntimeError("protected review server is already running")
     server = _start_review_server(
@@ -515,11 +563,14 @@ def open_protected_review_workspace(
     validated_run_id = validate_identifier(run_id, "run_id")
     workspace = verified_regular_directory(workspace_root, field="workspace root")
     runs_root = verified_regular_directory(workspace / "runs", field="runs root")
-    run_directory = verified_regular_directory(
+    verified_regular_directory(
         runs_root / validated_run_id,
         field="run directory",
     )
+    runtime_directory = review_runtime_directory(workspace, validated_run_id, create=True)
     stale = review_server_status(workspace_root, validated_run_id)
+    if stale.get("reason_code"):
+        raise OSError(f"protected review server state is unverifiable: {stale['reason_code']}")
     if stale["running"]:
         raise RuntimeError("protected review server is already running")
 
@@ -532,7 +583,7 @@ def open_protected_review_workspace(
         )
     except Exception as error:
         append_stage(
-            run_directory,
+            runtime_directory,
             finish_stage(
                 "protected-server-start",
                 server_timer,
@@ -541,7 +592,7 @@ def open_protected_review_workspace(
             ),
         )
         raise
-    append_stage(run_directory, finish_stage("protected-server-start", server_timer))
+    append_stage(runtime_directory, finish_stage("protected-server-start", server_timer))
 
     readiness_timer = start_stage()
     readiness_status = _wait_for_protected_http_ready(server.url)
@@ -549,7 +600,7 @@ def open_protected_review_workspace(
     if readiness_status != "HTTP_READY":
         server.close()
         append_stage(
-            run_directory,
+            runtime_directory,
             finish_stage(
                 "protected-http-readiness",
                 readiness_timer,
@@ -559,7 +610,7 @@ def open_protected_review_workspace(
         )
         raise OSError("protected review did not become HTTP ready")
     append_stage(
-        run_directory,
+        runtime_directory,
         finish_stage("protected-http-readiness", readiness_timer),
     )
 
@@ -571,7 +622,7 @@ def open_protected_review_workspace(
     except Exception as error:
         server.close()
         append_stage(
-            run_directory,
+            runtime_directory,
             finish_stage(
                 "browser-dispatch",
                 browser_timer,
@@ -582,7 +633,7 @@ def open_protected_review_workspace(
         if isinstance(error, OSError):
             raise
         raise OSError("browser failed to open protected review URL") from error
-    append_stage(run_directory, finish_stage("browser-dispatch", browser_timer))
+    append_stage(runtime_directory, finish_stage("browser-dispatch", browser_timer))
 
     key = _server_key(workspace_root, validated_run_id)
     with _ACTIVE_SERVERS_LOCK:
