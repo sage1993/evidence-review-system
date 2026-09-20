@@ -221,5 +221,7 @@ def test_server_status_rejects_linked_state_file(
 
     status = browser_launcher.review_server_status(tmp_path, run_id)
 
-    assert status == {"running": False, "run_id": run_id}
+    assert status == {
+        "running": False, "run_id": run_id, "reason_code": "SOURCE_MISMATCH",
+    }
     assert external.is_file()
