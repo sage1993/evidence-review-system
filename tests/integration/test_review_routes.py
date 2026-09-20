@@ -140,7 +140,6 @@ def _oversized_decision_headers(base: str, content_length: int) -> bytes:
 def _decision(packet: bytes, **changes: object) -> bytes:
     payload: dict[str, object] = {
         "reviewer_id": "kim.sh",
-        "packet_hash": hashlib.sha256(packet).hexdigest(),
         "decision": "SATISFIED",
         "notes": "reviewed locally",
     }
@@ -592,6 +591,7 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
             "reviewer_id": None,
             "packet_hash": packet_hash,
             "decision_record": None,
+            "decision_binding_status": "STALE",
         }
         response = _request(
             f"{base}/runs/RUN-001/{TOKEN}/decision",
