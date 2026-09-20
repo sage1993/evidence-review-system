@@ -349,9 +349,9 @@ Allowed decisions:
 
 ## 7. Archival HTML decision handoff
 
-`review.html` is also a self-contained archival artifact. When opened with `file:`, it cannot call the protected decision endpoint.
+New RUNs store a lightweight `review.html` entry and a raster-free review model. Opening it with `file:` displays `PROTECTED_REVIEW_REQUIRED`; use `review-run serve` for inspection and lazy protected page delivery. It does not provide a direct-file review or decision form. Existing self-contained archives remain supported without rewriting their bytes.
 
-The **결정 JSON 다운로드** control validates decision, notes, reviewer ID, and packet hash locally, then creates a five-field envelope containing `reviewed_at: new Date().toISOString()`.
+In retained legacy archives, the **결정 JSON 다운로드** control validates decision, notes, reviewer ID, and packet hash locally, then creates a five-field envelope containing `reviewed_at: new Date().toISOString()`.
 
 Import the envelope through the approved validator path:
 

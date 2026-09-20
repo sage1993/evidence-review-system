@@ -54,7 +54,7 @@ from evidence_review.review_packet.browser_launcher import (
 )
 from evidence_review.review_packet.builder import build_review_view_model
 from evidence_review.review_packet.external_launcher import open_external_url
-from evidence_review.review_packet.html_renderer import write_review_html
+from evidence_review.review_packet.html_renderer import write_protected_review_entry
 from evidence_review.review_packet.page_image_verifier import verify_review_page_images
 from evidence_review.review_packet.server_runtime import DEFAULT_IDLE_TIMEOUT_SECONDS
 from evidence_review.workflow.artifact_ownership import TRACK_A_DERIVED
@@ -1007,7 +1007,9 @@ def finalize_review_run(
         evidence_db = _evidence_database(workspace_root)
         view_model_timer = start_stage()
         try:
-            view_model = build_review_view_model(packet_path.read_bytes(), evidence_db)
+            view_model = build_review_view_model(
+                packet_path.read_bytes(), evidence_db, embed_rasters=False,
+            )
         except Exception as error:
             _record_stage_failure(run_directory, "view-model-build", view_model_timer, error)
             raise
@@ -1031,7 +1033,7 @@ def finalize_review_run(
 
         html_timer = start_stage()
         try:
-            write_review_html(
+            write_protected_review_entry(
                 view_model,
                 workspace_root / "page-images",
                 html_path,

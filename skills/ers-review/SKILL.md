@@ -217,7 +217,7 @@ evidence-review review-run serve `
 
 결정은 append-only human-decision record로 저장하고 machine packet의 `human_decision`은 수정하지 않는다. 유효한 결정이 존재하면 화면 상태만 `REVIEW_COMPLETED`로 투영할 수 있다.
 
-보관용 `file:` HTML은 서버에 직접 저장할 수 없다. **결정 JSON 다운로드**는 유효한 envelope를 만들며 HTML 파일 저장과는 별개다. 다운로드한 envelope는 다음 승인 경로로 반영한다.
+새 RUN의 `review.html`은 raster payload 없는 경량 진입 문서다. `file:`로 열면 `PROTECTED_REVIEW_REQUIRED` 안내만 표시되므로 실제 검토에는 보호된 서버를 사용한다. 기존 보관용 HTML은 덮어쓰지 않는다. 기존 HTML의 **결정 JSON 다운로드**로 받은 envelope는 다음 승인 경로로 반영한다.
 
 ```powershell
 evidence-review review-run import-decision `

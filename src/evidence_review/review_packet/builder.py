@@ -423,7 +423,9 @@ def _summary(
     }
 
 
-def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, object]:
+def build_review_view_model(
+    packet: object, evidence_db: Path, *, embed_rasters: bool = True,
+) -> dict[str, object]:
     """Resolve display evidence from packet bytes or compatible packet objects."""
     document, packet_bytes = _packet_document(packet)
     if document.get("human_decision") is not None:
@@ -616,6 +618,7 @@ def build_review_view_model(packet: object, evidence_db: Path) -> dict[str, obje
         model,
         workspace_root=evidence_db.parent.parent,
         supplemental_reference_citations=case_visual_reference_citations,
+        embed_rasters=embed_rasters,
     )
     if case_visual_review is not None:
         model["case_visual_review"] = case_visual_review
