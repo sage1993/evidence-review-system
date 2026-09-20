@@ -60,6 +60,12 @@ def _source_version() -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    runtime_parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    runtime_parser.add_argument(
+        "--runtime-mode", choices=("auto", "development", "installed"), default="auto"
+    )
+    runtime_parser.add_argument("--expected-package-sha256")
+    runtime, arguments = runtime_parser.parse_known_args(arguments)
 
     if arguments == ["--version"]:
         print(_source_version())
@@ -73,12 +79,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if arguments and arguments[0] == "doctor":
         doctor = _doctor_parser().parse_args(arguments[1:])
-        result = collect_runtime_diagnostics(doctor.repository_root)
+        result = collect_runtime_diagnostics(
+            doctor.repository_root, runtime_mode=runtime.runtime_mode,
+            expected_package_sha256=runtime.expected_package_sha256,
+        )
         _write_json(result.to_document())
         return 0 if result.status in {"OK", "NOT_A_CHECKOUT"} else 2
 
-    result = preflight_runtime()
-    if result.status in {"SOURCE_MISMATCH", "DEPENDENCY_MISSING"}:
+    result = preflight_runtime(
+        runtime_mode=runtime.runtime_mode,
+        expected_package_sha256=runtime.expected_package_sha256,
+    )
+    if result.status not in {"OK", "NOT_A_CHECKOUT"}:
         _write_json(result.to_document())
         return 2
 

@@ -124,3 +124,55 @@ def test_doctor_reports_missing_runtime_dependency_without_traceback(
     assert version.returncode == 0
     assert version.stdout.strip()
     assert "Traceback" not in version.stderr
+
+
+def test_real_wheel_authority_and_shadow_rejection(tmp_path: Path) -> None:
+    """Exercise the installed console script; no source injection for normal runs."""
+    repo = Path(__file__).resolve().parents[3]
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    wheels = tmp_path / "wheels"
+    build = subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", str(repo), "--no-deps",
+         "--no-build-isolation", "--wheel-dir", str(wheels)],
+        cwd=tmp_path, env=env, text=True, capture_output=True, check=False,
+    )
+    assert build.returncode == 0, build.stdout + build.stderr
+    wheel, = wheels.glob("*.whl")
+    environment = tmp_path / "installed"
+    venv.EnvBuilder(with_pip=True).create(environment)
+    scripts = environment / ("Scripts" if sys.platform == "win32" else "bin")
+    python = scripts / ("python.exe" if sys.platform == "win32" else "python")
+    cli = scripts / ("evidence-review.exe" if sys.platform == "win32" else "evidence-review")
+    install = subprocess.run(
+        [str(python), "-m", "pip", "install", "--no-index", "--no-deps", str(wheel)],
+        cwd=tmp_path, env=env, text=True, capture_output=True, check=False,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+
+    def doctor(cwd: Path, process_env: dict[str, str], *extra: str) -> dict:
+        result = subprocess.run(
+            [str(cli), "--runtime-mode", "installed", *extra, "doctor"],
+            cwd=cwd, env=process_env, text=True, capture_output=True, check=False,
+        )
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "Traceback" not in result.stderr
+        return json.loads(result.stdout)
+
+    # Dependencies are deliberately absent: wheel provenance succeeds first,
+    # then dependency preflight fails. This is not full runtime acceptance.
+    outside = doctor(tmp_path, env)
+    nearby = doctor(repo, env)
+    assert outside["status"] == nearby["status"] == "DEPENDENCY_MISSING"
+    assert outside["runtime_mode"] == nearby["runtime_mode"] == "installed"
+    assert outside["repository_root"] is None
+    assert nearby["package_checkout_match"] is False
+    assert outside["package_source_sha256"] == nearby["package_source_sha256"]
+    assert Path(outside["package_root"]).is_relative_to(environment)
+    assert doctor(tmp_path, env, "--expected-package-sha256", "0" * 64)["status"] == (
+        "SOURCE_MISMATCH"
+    )
+    shadow = doctor(repo, {**env, "PYTHONPATH": str(repo / "src")})
+    assert shadow["status"] == "BYPASS_DETECTED"
+    assert Path(shadow["package_root"]).resolve() == repo / "src" / "evidence_review"
