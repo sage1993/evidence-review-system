@@ -242,11 +242,13 @@ evidence-review review-run serve `
   --run-id <RUN-ID>
 ```
 
-Question Planner handoff remains mandatory before formal retrieval on this HEAD. `QuestionPlan` is evidence-free and conclusion-free. A missing or invalid plan is `PLANNER_FAILED`; a validated plan with no evidence is `RETRIEVAL_NO_EVIDENCE`. Do not bypass the planner by hand-authoring internal artifacts.
+On the direct `review-question` path, Question Planner handoff remains mandatory before formal retrieval on this HEAD. `QuestionPlan` is evidence-free and conclusion-free. A missing or invalid plan is `PLANNER_FAILED`; a validated plan with no evidence is `RETRIEVAL_NO_EVIDENCE`. Do not bypass the planner by hand-authoring internal artifacts. The separate `review-matter formalize` path requires an exact Matter revision and an explicit `ReviewScope` assembled from promoted Matter inputs; it does not require a Question Planner handoff.
 
 ### 12.2 Current ReviewMatter workflow
 
 The ReviewMatter interface is executable on current `main`. Use the canonical CLI rather than treating these operations as future interface notation:
+
+Every mutating command must use the current `revision` returned by the immediately preceding command. The revision numbers below illustrate one fresh sequential flow; they are not constants to reuse for another Matter. A new Matter starts at revision 1, `search` does not change the revision, and `add-issue` must use `READY_TO_FORMALIZE` when the example continues through `formalize`.
 
 ```powershell
 evidence-review review-matter create `
@@ -261,14 +263,15 @@ evidence-review review-matter status `
 evidence-review review-matter add-issue `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision 0 `
+  --expected-revision 1 `
   --issue-id <ISSUE-ID> `
-  --question "<question>"
+  --question "<question>" `
+  --work-state READY_TO_FORMALIZE
 
 evidence-review review-matter bind-evidence `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision 0
+  --expected-revision 2
 
 evidence-review review-matter search `
   --workspace <workspace> `
@@ -278,14 +281,14 @@ evidence-review review-matter search `
 evidence-review review-matter select-evidence `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision 0 `
+  --expected-revision 3 `
   --evidence-id <EVIDENCE-ID> `
   --query "<query>"
 
 evidence-review review-matter formalize `
   --workspace <workspace> `
   --matter-id <MATTER-ID> `
-  --expected-revision 0
+  --expected-revision 4
 ```
 
 The protected Workbench is also current:

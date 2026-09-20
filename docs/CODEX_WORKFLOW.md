@@ -75,17 +75,25 @@ repair step.
 
 For persistent reviewer work, use the merged `review-matter` interface:
 
+Pass the current `revision` returned by the preceding mutating command to
+each `--expected-revision` option. The values below show one fresh sequential
+flow: `create` returns revision 1, `add-issue` returns revision 2,
+`bind-evidence` returns revision 3, `search` does not change the revision,
+`select-evidence` returns revision 4, and `formalize` consumes revision 4.
+These numbers are illustrative, not constants. Set `READY_TO_FORMALIZE` on
+the issue when the flow continues through `formalize`.
+
 ```powershell
 evidence-review review-matter create --workspace <workspace> --matter-id <MATTER-ID> --title "<title>"
 evidence-review review-matter status --workspace <workspace> --matter-id <MATTER-ID>
-evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0 --issue-id <ISSUE-ID> --question "<question>"
-evidence-review review-matter bind-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0
+evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 1 --issue-id <ISSUE-ID> --question "<question>" --work-state READY_TO_FORMALIZE
+evidence-review review-matter bind-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 2
 evidence-review review-matter search --workspace <workspace> --matter-id <MATTER-ID> --query "<query>"
-evidence-review review-matter select-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0 --evidence-id <EVIDENCE-ID> --query "<query>"
-evidence-review review-matter formalize --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 0
+evidence-review review-matter select-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 3 --evidence-id <EVIDENCE-ID> --query "<query>"
+evidence-review review-matter formalize --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 4
 ```
 
-Search/navigation and Workbench actions do not create a compliance conclusion or Human Decision. `formalize` freezes the exact Matter revision and finalized evidence identity before preparing the immutable Formal Review run.
+Search/navigation and Workbench actions do not create a compliance conclusion or Human Decision. The direct `review-question` path requires the Question Planner handoff before formal retrieval. The `review-matter formalize` path instead freezes an exact Matter revision and explicit `ReviewScope` assembled from promoted Matter inputs; it does not require a Planner handoff before preparing the immutable Formal Review run.
 
 ## 2. Formal Review for review questions
 
