@@ -297,7 +297,6 @@ def _packet_specific_human_decision(root: Path) -> None:
             f"/runs/{run_one}/{token_one}/decision",
             body={
                 "reviewer_id": "reviewer-01",
-                "packet_hash": packet_hash,
                 "decision": "SATISFIED",
                 "notes": "packet-specific acceptance",
             },
