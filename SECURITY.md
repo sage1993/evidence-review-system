@@ -4,14 +4,14 @@ Evidence Review System processes local documents, parser artifacts, evidence dat
 
 ## Supported versions
 
-The current source metadata version is `0.2.0` and its supported Python range
+The current source metadata version is `0.2.1` and its supported Python range
 is `>=3.13,<3.14`. Published support status follows actual [GitHub
 Releases](https://github.com/sage1993/evidence-review-system/releases), not
 source metadata alone.
 
 ## PDF parser dependency policy
 
-Re-verified on 2026-09-12, the `0.2.0` source requires
+Re-verified on 2026-09-20, the `0.2.1` source requires
 `pypdf>=6.18.1,<7`. The August 2026 advisories GHSA-fc8x-2rww-xw9m,
 GHSA-fwg2-594c-jp42, and GHSA-fp3f-mc75-235c affect versions `<6.15.0` and
 are patched in `>=6.15.0`. Three additional upstream advisories published on
@@ -28,7 +28,7 @@ before each future public release.
 
 ## PDF rendering dependency policy
 
-Re-verified on 2026-09-12, the source requires `pypdfium2>=5.12.1,<6`. PyPI
+Re-verified on 2026-09-20, the `0.2.1` source requires `pypdfium2>=5.12.1,<6`. PyPI
 has [yanked 5.12.0](https://pypi.org/project/pypdfium2/5.12.0/) because its
 setup broke system-search/fallback binding generation. The
 [5.12.1 release](https://github.com/pypdfium2-team/pypdfium2/releases/tag/5.12.1)
@@ -38,8 +38,8 @@ Recheck it against upstream release notes before each future public release.
 
 ## Pillow dependency policy
 
-The `0.2.0` source requires `Pillow>=12.3,<13`. Pillow is part of the
-visual-input runtime boundary. Re-verified on 2026-09-12, `12.3.0` remains the
+The `0.2.1` source requires `Pillow>=12.3,<13`. Pillow is part of the
+visual-input runtime boundary. Re-verified on 2026-09-20, `12.3.0` remains the
 current release and security floor. Its security fixes include protection
 against unbounded PDF-stream decompression
 ([CVE-2026-59200](https://github.com/advisories/GHSA-jjj6-mw9f-p565)) and
