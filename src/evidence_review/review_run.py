@@ -702,6 +702,18 @@ def _track_b_validation_document(
     """Record immutable runtime metadata for one validated Track B attempt."""
     bundle_path = _run_file(run_directory, "track-b-bundle.json")
     bundle = _mapping(_json(bundle_path), "track_b_bundle")
+    required_facets = bundle.get("required_facets_by_issue")
+    required_facet_completeness = (
+        {
+            "status": audit.required_facet_completeness,
+            "required_facets_by_issue": required_facets,
+        }
+        if required_facets is not None
+        else bundle.get(
+            "required_facet_completeness",
+            {"status": "NOT_APPLICABLE", "covered_issue_count": 0, "total_issue_count": 0},
+        )
+    )
     return {
         "format": "evidence-review/track-b-validation",
         "version": 2,
@@ -718,10 +730,7 @@ def _track_b_validation_document(
         "question_responsive": audit.question_responsiveness == "PASS",
         "question_responsiveness": audit.question_responsiveness,
         "semantic_gate_status": track_b_semantic_gate_status(audit),
-        "required_facet_completeness": bundle.get(
-            "required_facet_completeness",
-            {"status": "NOT_APPLICABLE", "covered_issue_count": 0, "total_issue_count": 0},
-        ),
+        "required_facet_completeness": required_facet_completeness,
     }
 
 

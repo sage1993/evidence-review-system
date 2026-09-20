@@ -1,7 +1,12 @@
 from pathlib import Path
 
 from evidence_review.canonical_json import dump_bytes
-from evidence_review.review_run import _required_facet_completeness, _track_b_bundle_document
+from evidence_review.contracts.review import TrackBAudit
+from evidence_review.review_run import (
+    _required_facet_completeness,
+    _track_b_bundle_document,
+    _track_b_validation_document,
+)
 
 
 def test_required_facet_completeness_is_a_non_authoritative_summary() -> None:
@@ -66,3 +71,37 @@ def test_track_b_bundle_uses_v3_planner_obligations_not_retrieval_coverage(tmp_p
         "I1": ["basic_far", "contribution_delivery_method"]
     }
     assert "required_facet_completeness" not in bundle
+
+
+def test_track_b_validation_records_v3_audit_status_and_obligations(tmp_path: Path) -> None:
+    (tmp_path / "track-b-bundle.json").write_bytes(
+        dump_bytes(
+            {
+                "question": "FAR and contribution review",
+                "required_facets_by_issue": {
+                    "I1": ["basic_far", "contribution_delivery_method"]
+                },
+            }
+        )
+    )
+    track_b_path = tmp_path / "track-b-output.json"
+    track_b_path.write_bytes(dump_bytes({"run_id": "RUN-1"}))
+
+    document = _track_b_validation_document(
+        tmp_path,
+        "RUN-1",
+        track_b_path,
+        TrackBAudit(
+            run_id="RUN-1",
+            claim_audits=(),
+            overall_disposition="INCOMPLETE",
+            required_facet_completeness="INCOMPLETE",
+        ),
+    )
+
+    assert document["required_facet_completeness"] == {
+        "status": "INCOMPLETE",
+        "required_facets_by_issue": {
+            "I1": ["basic_far", "contribution_delivery_method"]
+        },
+    }
