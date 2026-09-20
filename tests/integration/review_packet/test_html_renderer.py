@@ -258,6 +258,36 @@ def test_multiple_claims_use_evidence_card_labels(tmp_path: Path) -> None:
     assert "문서별 · 관련도순" in nav.group(0)
     assert ">C1<" not in nav.group(0) and ">ITEM-C1<" not in nav.group(0)
 
+
+def test_evidence_cards_show_document_location_without_parser_dump_or_internal_title(
+    tmp_path: Path,
+) -> None:
+    _write_page_assets(tmp_path / "pages")
+    model = _model()
+    claims = model["claims"]
+    assert isinstance(claims, list) and isinstance(claims[0], dict)
+    citations = claims[0]["citations"]
+    assert isinstance(citations, list) and isinstance(citations[0], dict)
+    citations[0].update(
+        {
+            "document_name": "서울특별시 안심주택 건립 및 운영기준",
+            "page_number": 3,
+            "title": "표 T-8B5CC0607EE5B7A0B3904F2A1DBE55E7939C6AF422F5C682D82C70D",
+            "quote": "행 1 열 1: 현재 용도지역 | 행 1 열 3: 자연 녹지 지역",
+        }
+    )
+
+    html = render_review_html(model, tmp_path / "pages")
+    nav = re.search(r'<nav id="review-items".*?</nav>', html, re.DOTALL)
+
+    assert nav is not None
+    assert "서울특별시 안심주택 건립 및 운영기준" in nav.group(0)
+    assert "p.3" in nav.group(0)
+    assert "원문 표의 강조 위치를 확인하세요." in nav.group(0)
+    assert "행 1 열 1:" not in nav.group(0)
+    assert "T-8B5CC0607EE5B7A0B3904F2A1DBE55E7939C6AF422F5C682D82C70D" not in nav.group(0)
+    assert "근거 내용 전체 보기" not in nav.group(0)
+
 def test_additional_review_renders_only_present_missing_and_conflict_items(tmp_path: Path) -> None:
     _write_page_assets(tmp_path / "pages")
     html = render_review_html(_complete_domain_model(), tmp_path / "pages")

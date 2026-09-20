@@ -14,9 +14,45 @@
 .raw-quote { margin: 10px 0; }
 .raw-quote blockquote { overflow-wrap: anywhere; }
 .review-shell-region[data-review-shell-region="evidence-workspace"] #case-visual-review {
-  height: auto; grid-template-rows: auto auto auto auto;
+  height: auto; grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
-#case-visual-review .workspace-grid { height: max(560px, 70vh); grid-row: 2; }
+#case-visual-review .workspace-grid { height: max(600px, 76vh); grid-row: 3; grid-template-columns: minmax(0, 1fr) 280px; }
+#case-visual-review .comparison-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #d0d5dd; }
+#case-visual-review .comparison-actions label { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-right: auto; }
+#case-visual-review .comparison-actions input { width: auto; margin: 0; }
+#case-visual-review:fullscreen { height: 100vh !important; padding: 8px; grid-template-rows: auto auto minmax(0, 1fr) auto !important; }
+#case-visual-review:fullscreen .workspace-grid { height: auto; min-height: 0; }
+#case-visual-review .comparison-workspace { --reference-width: 50%; grid-template-columns: minmax(0, var(--reference-width)) 10px minmax(0, 1fr); }
+#case-visual-review[data-findings-collapsed="true"] .workspace-grid { grid-template-columns: minmax(0, 1fr); }
+#case-visual-review[data-findings-collapsed="true"] .findings-panel { display: none; }
+#case-visual-review .reference-viewer { grid-template-rows: 42px minmax(0, 1fr); }
+#case-visual-review .reference-body { padding: 8px; }
+#case-visual-review .reference-focus { display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+#case-visual-review .reference-focus[hidden] { display: none; }
+#case-visual-review .reference-selector { display: grid; gap: 4px; font-size: 12px; }
+#case-visual-review .reference-selector select { width: 100%; min-width: 0; min-height: 36px; }
+#case-visual-review .reference-focus .direct-reference,
+#case-visual-review .reference-focus .related-reference,
+#case-visual-review .reference-focus .related-reference-list { display: contents; }
+#case-visual-review .reference-focus .related-reference summary { display: none; }
+#case-visual-review .reference-focus > .reference-kind,
+#case-visual-review .reference-focus .related-reference > .reference-kind { display: none; }
+#case-visual-review .reference-focus .reference-empty { min-height: 0; flex: 0 0 auto; text-align: left; font-size: 12px; }
+#case-visual-review .reference-focus .reference-empty p { display: none; }
+#case-visual-review .reference-focus .reference-viewer-item { min-height: 0; flex: 1; margin: 0; display: flex; flex-direction: column; padding: 6px; }
+#case-visual-review .reference-focus .reference-viewer-item[hidden] { display: none; }
+#case-visual-review .reference-focus .reference-anchor-content { max-height: 74px; overflow: auto; }
+#case-visual-review .reference-focus .reference-page-stage { flex: 1; height: auto; min-height: 160px; }
+#case-visual-review .reference-controls button { padding: 5px 8px; min-height: 34px; font-size: 12px; }
+#case-visual-review .subject-toolbar { align-content: start; }
+#case-visual-review .subject-viewer { grid-template-rows: auto minmax(0, 1fr); }
+#case-visual-review .viewer-divider { touch-action: none; }
+#case-visual-review .reference-selector { flex: 0 0 auto; }
+#case-visual-review .reference-focus .reference-anchor-source { flex-wrap: wrap; }
+#case-visual-review .reference-focus:has([data-reference-role]) .reference-empty { display: none; }
+#case-visual-review .reference-focus .reference-anchor-fixed { display: none; }
+#case-visual-review .reference-focus .reference-controls { margin: 0 0 6px; }
+#case-visual-review .reference-selector { gap: 2px; }
 #case-visual-review .visual-notices { display: grid; gap: 6px; padding: 8px 12px; }
 #case-visual-review .visual-notices:empty { display: none; }
 #case-visual-review .visual-abstain { flex-wrap: wrap; }
@@ -46,8 +82,13 @@
   #case-visual-review .subject-viewer { min-height: 520px; }
   #case-visual-review .findings-panel { position: static; width: 100%; height: auto; }
   #case-visual-review .findings-body { max-height: 520px; }
-  #case-visual-review .comparison-workspace { display: flex; flex-direction: column; }
+  #case-visual-review .comparison-workspace { display: grid; height: 620px; }
+  #case-visual-review .viewer-divider { display: grid; }
   #case-visual-review .reference-body { max-height: 440px; overflow: auto; }
+  #case-visual-review .reference-viewer { height: auto; }
+  #case-visual-review .reference-body { max-height: none; }
+  #case-visual-review .comparison-actions { flex-wrap: wrap; }
+  #case-visual-review .reference-controls button { font-size: 12px; padding: 4px; }
   .viewer-toolbar { gap: 8px; padding: 8px; }
   .pdf-page-controls { margin: 0; }
 }

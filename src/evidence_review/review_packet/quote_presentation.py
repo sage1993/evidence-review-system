@@ -4,22 +4,22 @@ from __future__ import annotations
 import re
 from html import escape
 
+_PARSER_CELL_DUMP = re.compile(r"행 \d+ 열 \d+:\s*.*", re.DOTALL)
+
+
+def _is_parser_cell_dump(quote: str) -> bool:
+    return bool(_PARSER_CELL_DUMP.match(quote))
+
+
+def quote_preview(quote: str) -> str:
+    """Return reviewer-facing preview text without leaking parser coordinates."""
+    if _is_parser_cell_dump(quote):
+        return "원문 표의 강조 위치를 확인하세요."
+    return quote
+
 
 def render_quote(quote: str) -> str:
-    """Show explicitly recorded row/column values, retaining the exact raw text."""
-    parts = quote.split(" | ")
-    cells = [re.fullmatch(r"행 (\d+) 열 (\d+):\s*(.*)", part, re.DOTALL) for part in parts]
-    if len(cells) > 1 and all(cells):
-        rows = "".join(
-            f"<tr><td>{cell[1]}</td><td>{cell[2]}</td><td>{escape(cell[3])}</td></tr>"
-            for cell in cells if cell is not None
-        )
-        return (
-            '<div class="extracted-table-scroll"><table class="extracted-table">'
-            '<caption>원문 표의 추출 셀 · 행과 열 번호는 원문 위치입니다</caption>'
-            '<thead><tr><th>행</th><th>열</th><th>내용</th></tr></thead>'
-            f'<tbody>{rows}</tbody></table></div>'
-            f'<details class="raw-quote"><summary>원시 추출문 보기</summary>'
-            f'<blockquote>{escape(quote)}</blockquote></details>'
-        )
+    """Present source text without turning parser coordinates into reviewer content."""
+    if _is_parser_cell_dump(quote):
+        return '<p class="reference-location-hint">원문에서 강조된 표 위치를 확인하세요.</p>'
     return f'<blockquote>{escape(quote)}</blockquote>'

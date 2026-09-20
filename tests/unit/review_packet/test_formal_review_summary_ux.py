@@ -51,8 +51,11 @@ def test_summary_prominently_lists_packet_backed_missing_facets_and_gaps() -> No
 
     assert 'id="summary-attention"' in html
     assert "I-1: 필수 검토 항목 미확인 (site-area)" in html
+    assert '<p class="summary-attention-primary">I-1: 필수 검토 항목 미확인 (site-area)</p>' in html
     assert "I-1: 필수 검토 항목 미확인 (parking-count)" in html
     assert "I-1: 참조 법령 원문 미수록" in html
+    assert '<details class="summary-attention-details">' in html
+    assert "추가 확인 항목 2건 보기" in html
     assert '<dt>인용 근거</dt><dd>2건</dd>' in html
     assert '<dt>추가 확인 항목</dt><dd>3건</dd>' in html
 

@@ -433,6 +433,8 @@ function node(dataset, rect) {
   return {
     dataset: dataset || {}, classList: classList(), listeners: {}, attributes: {},
     children: [], parent: null, hidden: false, style: {}, open: false,
+    append(child) { this.children.push(child); child.parent=this; },
+    prepend(child) { this.children.unshift(child); child.parent=this; },
     addEventListener(type, handler) { this.listeners[type] = handler; },
     setAttribute(name, value) { this.attributes[name] = String(value); },
     getAttribute(name) { return this.attributes[name] ?? null; },
@@ -494,6 +496,7 @@ const card2 = attach(root, node({caseFinding: "VF-2", casePageKey: "ATT-1-p1", c
 attach(root, node({caseOverlay: "CAND-1"}));
 global.window = { addEventListener() {}, prompt() { return ""; } };
 global.document = { body: { dataset: {} }, addEventListener() {},
+  createElement() { return node(); },
   getElementById(id) { return id === "case-visual-review" ? root : null; },
   querySelector() { return null; }, querySelectorAll() { return []; } };
 global.requestAnimationFrame = (callback) => { callback(); return 1; };

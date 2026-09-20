@@ -21,7 +21,8 @@ from .test_html_renderer import _write_page_assets
 
 
 @pytest.mark.parametrize("viewport", [None, {"width": 1366, "height": 768},
-                                       {"width": 1920, "height": 1080}])
+                                       {"width": 1920, "height": 1080},
+                                       {"width": 390, "height": 844}])
 @pytest.mark.parametrize(
     "mode", ["no-visual", "reference-only", "subject-only", "reference-subject"]
 )
@@ -74,6 +75,45 @@ process.stdin.on('end', async () => {
     const decision = page.locator('#decision-form');
     if (await decision.getAttribute('aria-hidden') === 'true')
       throw new Error('Visible human decision is hidden from assistive technology');
+    if (data.mode === 'subject-only' || data.mode === 'reference-subject') {
+      const left = await page.locator('.reference-viewer').boundingBox();
+      const right = await page.locator('.subject-viewer').boundingBox();
+      if (!left || !right || Math.abs(left.y-right.y)>1 || left.x+left.width>right.x)
+        throw new Error('References must stay beside the drawing');
+      const divider = page.locator('[data-case-divider]');
+      await divider.focus(); await divider.press('ArrowRight');
+      if (await divider.getAttribute('aria-valuenow') !== '52')
+        throw new Error('Divider keyboard adjustment failed');
+      const toggle = page.locator('[data-findings-toggle]');
+      await toggle.click();
+      if (await page.locator('.findings-panel').isVisible())
+        throw new Error('Panel did not collapse');
+      await toggle.click();
+    }
+    if (data.mode === 'reference-subject') {
+      const images = page.locator('[data-reference-page-image]');
+      await images.evaluateAll(nodes=>nodes.forEach(n=>n.dataset.referencePageSrc=
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAA'+
+        'C0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII='));
+      const selector = page.locator('.reference-focus.is-active select');
+      const count = await selector.locator('option').count();
+      await selector.selectOption(String(count-1));
+      const current = page.locator('.reference-focus.is-active .reference-viewer-item.is-active');
+      if (!(await current.isVisible()) || !(await current.locator('image').getAttribute('href')))
+        throw new Error('Selected second/related image was not loaded');
+      const shown = page.locator('.reference-focus.is-active .reference-viewer-item:visible');
+      if (await shown.count()!==1)
+        throw new Error('More than one reference consumes the pane');
+      const subject = page.locator('.case-visual-page.is-active [data-case-transform]');
+      const before = await subject.getAttribute('style');
+      await current.locator('[data-reference-zoom="in"]').click();
+      if (await subject.getAttribute('style') !== before)
+        throw new Error('Independent zoom moved the other pane');
+      await page.locator('[data-view-sync]').check();
+      await current.locator('[data-reference-zoom="in"]').click();
+      if (await subject.getAttribute('style') === before)
+        throw new Error('Opt-in synchronized movement failed');
+    }
     if (data.mode === 'subject-only') {
       const findings = page.locator('[data-case-finding]');
       if (await findings.count() !== 8) throw new Error('Missing finding');

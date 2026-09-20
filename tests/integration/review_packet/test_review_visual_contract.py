@@ -108,7 +108,7 @@ def test_reference_viewer_preserves_split_and_responsive_contract(tmp_path: Path
     html = render_case_visual_review(_typed_reference_model())
     css = case_visual_css() + visual_shell_css()
 
-    assert 'data-reference-width="42"' in html
+    assert 'data-reference-width="50"' in html
     assert 'aria-valuemin="26"' in html
     assert 'aria-valuemax="70"' in html
     assert "@media(max-width:720px)" in css

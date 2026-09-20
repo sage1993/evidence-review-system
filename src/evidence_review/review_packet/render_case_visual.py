@@ -7,12 +7,12 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import cast
 
-from evidence_review.review_packet.quote_presentation import render_quote
+from evidence_review.review_packet.quote_presentation import quote_preview, render_quote
 
 _STATUS_META = {
     "mismatch": ("불일치", "mismatch"),
     "needs_check": ("확인 필요", "needs-check"),
-    "not_comparable": ("비교 불가", "not-comparable"),
+    "not_comparable": ("대조 전", "not-comparable"),
     "match": ("일치", "match"),
 }
 
@@ -228,17 +228,17 @@ def _legacy_references_for_finding(
         )
     if related_cards:
         parts.append(
-            '<details class="related-reference"><summary>관련 근거 '
-            f'{len(related_cards)}건</summary><div class="related-reference-list">'
+            '<div class="related-reference"><span class="reference-kind">관련 근거 '
+            f'{len(related_cards)}건</span><div class="related-reference-list">'
             + "".join(related_cards)
-            + "</div></details>"
+            + "</div></div>"
         )
     elif not direct_cards:
         parts.append(
             '<p class="reference-related-empty">관련 근거도 연결되지 않았습니다.</p>'
         )
     criterion = direct_criteria[0] if direct_criteria else "직접 비교 가능한 기준 없음"
-    return "".join(parts), criterion
+    return "".join(parts), quote_preview(criterion)
 
 
 _REFERENCE_TYPE_LABELS = {
@@ -383,13 +383,11 @@ def _reference_anchor_content(
         f'<span>p.{_text(page_number)}</span></div>'
     )
     body: list[str] = [f'<span class="reference-type-label">{_text(label)}</span>']
-    if title:
+    if title and reference_type != "TABLE":
         body.append(f"<h4>{_text(title)}</h4>")
     if quote:
         body.append(render_quote(quote))
-    if reference_type == "TABLE":
-        body.append(_reference_table(anchor))
-    elif reference_type in {"IMAGE", "DIAGRAM", "DRAWING"} and visual_kind:
+    if reference_type in {"IMAGE", "DIAGRAM", "DRAWING"} and visual_kind:
         body.append(f'<p class="reference-visual-kind">{_text(visual_kind)}</p>')
     if reference_type == "PDF_PAGE" and not title and not quote:
         body.append('<p class="reference-page-only">페이지 전체 기준</p>')
@@ -512,10 +510,10 @@ def _typed_references_for_finding(
         )
     if related_anchors:
         parts.append(
-            '<details class="related-reference"><summary>관련 근거 '
-            f'{len(related_anchors)}건</summary><div class="related-reference-list">'
+            '<div class="related-reference"><span class="reference-kind">관련 근거 '
+            f'{len(related_anchors)}건</span><div class="related-reference-list">'
             + render_group(related_anchors, "related")
-            + "</div></details>"
+            + "</div></div>"
         )
     elif not direct_anchors:
         parts.append(
@@ -530,7 +528,7 @@ def _typed_references_for_finding(
             or _raw_text(first.get("document_name"))
             or criterion
         )
-    return "".join(parts), criterion
+    return "".join(parts), quote_preview(criterion)
 
 
 def _references_for_finding(
@@ -851,20 +849,21 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
     finding_html: list[str] = []
     status_counts = {key: 0 for key in _STATUS_META}
     any_direct = False
-    any_related = False
     for index, finding in enumerate(findings):
         finding_id = _raw_text(finding.get("finding_id")) or f"VF-{index + 1}"
         refs, criterion = _references_for_finding(
             finding, claims, reference_pages, related_reference_texts
         )
-        any_direct = any_direct or _has_direct_reference(finding, claims)
-        any_related = any_related or _has_related_reference(finding, claims)
+        has_direct = _has_direct_reference(finding, claims)
+        any_direct = any_direct or has_direct
         reference_html.append(
             f'<section class="reference-focus{" is-active" if index == 0 else ""}" '
             f'data-case-reference="{_text(finding_id)}"{"" if index == 0 else " hidden"}>{refs}</section>'
         )
         status = str(finding.get("status", "not_comparable"))
         status_label, status_class = _status_meta(status)
+        if not has_direct:
+            status_label = "기준 연결 전"
         if status in status_counts:
             status_counts[status] += 1
         candidate_ids = [str(item) for item in _sequence(finding.get("candidate_ids", []), "finding.candidate_ids")]
@@ -888,8 +887,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
                     f'<span class="finding-status">{_text(status_label)}</span></div>',
                     f'<h3>{_text(finding.get("title") or "도면 확인사항")}</h3>',
                     '<dl class="comparison-grid">',
-                    f'<div><dt>기준</dt><dd>{_text(criterion)}</dd></div>',
-                    f'<div><dt>사용자 파일</dt><dd>{_text(finding.get("subject_value"))}</dd></div>',
+                    (f'<div><dt>기준</dt><dd>{_text(criterion)}</dd></div>'
+                     if has_direct else '<div><dt>기준 연결</dt><dd>아직 연결되지 않음</dd></div>'),
+                    f'<div><dt>도면 관찰 내용</dt><dd>{_text(finding.get("subject_value"))}</dd></div>',
                     "</dl></button>",
                 )
             )
@@ -910,7 +910,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
         ("all", "전체", len(findings)),
         ("mismatch", "불일치", status_counts["mismatch"]),
         ("needs_check", "확인 필요", status_counts["needs_check"]),
-        ("not_comparable", "비교 불가", status_counts["not_comparable"]),
+        ("not_comparable", "대조 전", status_counts["not_comparable"]),
         ("match", "일치", status_counts["match"]),
     ]
     filter_html = "".join(
@@ -918,7 +918,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
         f'data-case-filter="{key}">{label} {count}</button>'
         for key, label, count in filters
     )
-    initial_reference_width = 42 if any_direct else 30
+    initial_reference_width = 50
     _strip_case_raster_payload(model)
     return "".join(
         (
@@ -930,29 +930,25 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             (
                 ""
                 if any_direct
-                else '<p class="reference-unavailable" role="status">직접 기준 근거가 없어 기준 비교 창을 숨겼습니다.</p>'
+                else '<p class="reference-unavailable" role="status">관련 자료 — 적용 기준 연결 전. 도면 관찰은 기준 대조 결과가 아닙니다.</p>'
             ),
             '</div>',
-            (
-                '<aside class="related-reference-fallback" aria-label="관련 근거">'
-                + "".join(reference_html)
-                + "</aside>"
-                if not any_direct and any_related
-                else ""
-            ),
+            '<div class="comparison-actions">'
+            '<label><input type="checkbox" data-view-sync> 확대·이동 동기화</label>'
+            '<button type="button" data-comparison-fullscreen>비교 화면 전체 보기</button>'
+            '<button type="button" data-findings-toggle aria-expanded="true" '
+            'aria-controls="visual-observations">관찰 목록 접기</button></div>',
             '<div class="workspace-grid">',
             f'<div class="comparison-workspace" data-case-split data-reference-width="{initial_reference_width}">',
             (
                 '<section class="reference-viewer" aria-label="기준 근거 Viewer"><header>'
-                '<strong>기준 근거</strong><span>Reference</span></header><div class="reference-body">'
+                '<strong>기준·관련 자료</strong><span>원문 위치</span></header><div class="reference-body">'
                 + "".join(reference_html)
                 + "</div></section>"
                 + '<button class="viewer-divider" type="button" role="separator" '
                 + 'aria-label="기준 근거와 사용자 파일 폭 조절" aria-orientation="vertical" '
                 + f'aria-valuemin="26" aria-valuemax="70" aria-valuenow="{initial_reference_width}" '
                 + 'data-case-divider><span></span></button>'
-                if any_direct
-                else ""
             ),
             '<section class="subject-viewer" aria-label="사용자 파일 Viewer">',
             '<header class="subject-toolbar"><div><strong>사용자 파일</strong><span>Subject</span></div>',
@@ -976,8 +972,8 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             '</div></header><div class="subject-body">',
             "".join(page_html),
             "</div></section></div>",
-            '<aside class="findings-panel" aria-label="쟁점 탐색"><header>'
-            '<strong>쟁점 탐색</strong><span>Issues</span></header>',
+            '<aside id="visual-observations" class="findings-panel" aria-label="도면 관찰 항목"><header>'
+            '<strong>도면 관찰 항목</strong><span>원문에서 추출 · 미확정 포함</span></header>',
             f'<div class="finding-filters">{filter_html}</div>',
             '<div class="findings-body">',
             "".join(finding_html),
@@ -1030,7 +1026,7 @@ CASE_VISUAL_CSS = r"""
 
 
 ISSUE_152_CASE_VISUAL_CSS = r"""
-#case-visual-review[data-reference-available="false"] .comparison-workspace{grid-template-columns:minmax(0,1fr)}
+
 #case-visual-review[data-reference-available="false"] .reference-unavailable{position:static;margin:0;border:1px solid #b9cde8;border-radius:7px;padding:7px 10px;background:rgba(242,247,255,.96);color:#18365f;font-size:12px;line-height:1.4}
 #case-visual-review[data-reference-available="false"] .related-reference-fallback{position:static;grid-row:3;max-width:100%;max-height:420px;overflow:auto;border:1px solid #b9cde8;border-radius:7px;padding:8px 10px;background:rgba(255,255,255,.96)}
 #case-visual-review[data-reference-available="false"] .related-reference-fallback .reference-focus{height:auto;overflow:visible}

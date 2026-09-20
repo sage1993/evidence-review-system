@@ -22,7 +22,7 @@ from evidence_review.review_packet.presentation import (
     localized_status,
     review_presentation_css,
 )
-from evidence_review.review_packet.quote_presentation import render_quote
+from evidence_review.review_packet.quote_presentation import quote_preview
 from evidence_review.review_packet.render_audit import (
     render_audit_details,
     render_citation_audit,
@@ -378,16 +378,13 @@ def _render_evidence_list(
                         " · p.",
                         _text(page_number),
                         "</span>",
-                        f'<span class="evidence-quote">{_text(citation.get("quote"))}</span>',
+                        '<span class="evidence-quote">',
+                        _text(quote_preview(str(citation.get("quote") or ""))),
+                        "</span>",
                         type_html,
                         "</span>",
                         f'<span class="evidence-doc-icon">{icon_svg("file-text", size=16)}</span>',
                         "</button>",
-                        '<details class="evidence-full-text">'
-                        '<summary>근거 내용 전체 보기</summary>',
-                        f'<p class="evidence-meta">{_text(citation.get("title"))}</p>',
-                        render_quote(str(citation.get("quote") or "")),
-                        "</details>",
                     )
                 )
             )

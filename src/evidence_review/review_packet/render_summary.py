@@ -165,17 +165,30 @@ def render_summary(model: Mapping[str, object]) -> str:
             _text(additional_count),
             '건</dd></div>',
             "</dl>",
-            (
-                '<section id="summary-attention" aria-labelledby="summary-attention-heading">'
-                '<h3 id="summary-attention-heading">추가 확인이 필요한 항목</h3><ul>'
-                + "".join(f"<li>{_text(item)}</li>" for item in attention_items)
-                + "</ul></section>"
-                if attention_items
-                else ""
-            ),
+            _summary_attention(attention_items),
             "</section>",
         )
     )
+
+
+def _summary_attention(items: tuple[str, ...]) -> str:
+    """Keep the first packet-backed blocker visible without burying the comparison."""
+    if not items:
+        return ""
+    primary, *remaining = items
+    content = (
+        '<section id="summary-attention" aria-labelledby="summary-attention-heading">'
+        '<h3 id="summary-attention-heading">추가 확인이 필요한 항목</h3>'
+        f'<p class="summary-attention-primary">{_text(primary)}</p>'
+    )
+    if remaining:
+        content += (
+            '<details class="summary-attention-details">'
+            f'<summary>추가 확인 항목 {len(remaining)}건 보기</summary><ul>'
+            + "".join(f"<li>{_text(item)}</li>" for item in remaining)
+            + "</ul></details>"
+        )
+    return content + "</section>"
 
 
 def render_additional_review(model: Mapping[str, object]) -> str:

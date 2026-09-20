@@ -1,4 +1,4 @@
-from evidence_review.review_packet.quote_presentation import render_quote
+from evidence_review.review_packet.quote_presentation import quote_preview, render_quote
 from evidence_review.review_packet.render_case_visual import (
     _reference_anchor_content,
     render_case_visual_review,
@@ -19,31 +19,36 @@ def test_reference_has_keyboard_operable_large_viewer():
     assert '원문 크게 보기' in html
 
 
-def test_table_quote_is_not_an_unstructured_wall_of_parser_text():
+def test_table_quote_uses_the_highlighted_original_instead_of_parser_coordinates():
     anchor = {
         "type": "TABLE", "document_name": "기준", "page": 1,
         "quote": "행 1 열 1: 항목 | 행 1 열 3: 기준 | 행 2 열 1: 면적 | 행 2 열 3: 20㎡",
     }
     html, _ = _reference_anchor_content(anchor, {})
-    assert '<table' in html
-    assert '<td>항목</td>' in html
-    assert '<td>20㎡</td>' in html
-    assert '<details' in html
+    assert '<table' not in html
+    assert '행 1 열 1:' not in html
+    assert '원문에서 강조된 표 위치를 확인하세요.' in html
 
 
-def test_table_presentation_preserves_untrusted_cells_as_text():
+def test_table_quote_preview_does_not_expose_parser_coordinates():
+    quote = "행 1 열 1: 항목 | 행 1 열 3: 기준 | 행 2 열 1: 면적 | 행 2 열 3: 20㎡"
+    assert quote_preview(quote) == "원문 표의 강조 위치를 확인하세요."
+
+
+def test_table_presentation_does_not_expose_untrusted_parser_cells():
     quote = '행 1 열 1: <img src=x onerror=alert(1)> | 행 2 열 1: 20㎡'
     html = render_quote(quote)
     assert '<img' not in html
-    assert '&lt;img src=x onerror=alert(1)&gt;' in html
-    assert '행 1 열 1:' in html
+    assert 'onerror' not in html
+    assert '행 1 열 1:' not in html
 
 
-def test_partial_cell_syntax_is_preserved_without_inventing_a_table():
+def test_partial_cell_syntax_uses_the_original_highlight_instead_of_parser_text():
     quote = '행 1 열 1: 항목 | 설명은 표 좌표가 아닙니다'
     html = render_quote(quote)
     assert '<table' not in html
-    assert quote in html
+    assert quote not in html
+    assert '원문에서 강조된 표 위치를 확인하세요.' in html
 
 
 def test_recorded_decision_cannot_hide_visual_abstention_notice():

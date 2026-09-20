@@ -260,8 +260,10 @@ def test_evidence_type_pill_uses_canonical_value_and_hides_unknown_types(tmp_pat
     known["claims"][0]["citations"][0]["evidence_type"] = "clause"
     _write_page_assets(tmp_path / "known-pages")
     known_html = render_review_html(known, tmp_path / "known-pages")
-    assert "조항 근거" in known_html
-    assert "직접 근거" not in known_html
+    known_nav = re.search(r'<nav id="review-items".*?</nav>', known_html, re.DOTALL)
+    assert known_nav is not None
+    assert "조항 근거" in known_nav.group(0)
+    assert "직접 근거" not in known_nav.group(0)
 
     unknown = _model()
     unknown["claims"][0]["citations"][0]["evidence_type"] = "unsupported"
