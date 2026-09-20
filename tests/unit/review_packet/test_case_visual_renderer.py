@@ -523,8 +523,14 @@ def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None
     assert 'style="grid-column:1/-1;width:100%;min-width:0"' not in html
     assert 'id="case-visual-review"' in html
     assert 'id="additional-review"' not in html
-    assert "body:has(#case-visual-review){overflow:hidden}" in css
-    assert ".review-workspace>:not(.visual-review-grid-span):not(#decision-form)" in css
+    assert (
+        'body:has(.review-workspace:not([data-review-shell="unified"]) '
+        '#case-visual-review){overflow:hidden}'
+    ) in css
+    assert (
+        ".review-workspace>:not(.review-shell-region)"
+        ":not(.visual-review-grid-span):not(#decision-form)"
+    ) in css
     assert 'body[data-visual-decision-open="true"]' not in css
     assert "#decision-form:hover" not in css
     assert "#decision-form:focus-within" not in css

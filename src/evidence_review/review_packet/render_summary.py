@@ -17,12 +17,12 @@ from evidence_review.review_packet.render_case_visual_lazy import render_case_vi
 
 
 _VISUAL_SHELL_STYLE = """
-body:has(#case-visual-review){overflow:hidden}
-body:has(#case-visual-review) .app-shell{width:100%;max-width:none;height:100vh;margin:0;padding:12px}
-body:has(#case-visual-review) .review-workspace{display:block;height:100%;padding:0}
-body:has(#case-visual-review) .review-workspace>.visual-review-grid-span{height:100%;width:100%;min-width:0}
-body:has(#case-visual-review) .review-workspace>:not(.visual-review-grid-span):not(#decision-form){display:none!important}
-body:has(#case-visual-review) #case-visual-review{height:100%;min-height:0;max-height:none;margin:0}
+body:has(.review-workspace:not([data-review-shell="unified"]) #case-visual-review){overflow:hidden}
+body:has(.review-workspace:not([data-review-shell="unified"]) #case-visual-review) .app-shell{width:100%;max-width:none;height:100vh;margin:0;padding:12px}
+body:has(#case-visual-review) .review-workspace:not([data-review-shell="unified"]){display:block;height:100%;padding:0}
+body:has(#case-visual-review) .review-workspace:not([data-review-shell="unified"])>.visual-review-grid-span{height:100%;width:100%;min-width:0}
+body:has(#case-visual-review) .review-workspace>:not(.review-shell-region):not(.visual-review-grid-span):not(#decision-form){display:none!important}
+body:has(#case-visual-review) .review-workspace:not([data-review-shell="unified"]) #case-visual-review{height:100%;min-height:0;max-height:none;margin:0}
 body:has(#case-visual-review) .process-strip{display:none!important}
 body:has(#case-visual-review) .case-visual-transform{user-select:none;-webkit-user-select:none}
 @media(min-width:2560px){
