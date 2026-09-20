@@ -39,7 +39,9 @@ def _write_or_identical(path: Path, content: bytes) -> None:
             raise FileExistsError(f"existing planner artifact differs: {path.name}") from None
 
 
-def _write_bundle_or_semantically_identical(path: Path, bundle: dict[str, object]) -> None:
+def _write_bundle_or_semantically_identical(
+    path: Path, bundle: dict[str, object]
+) -> None:
     """Write one immutable planner bundle for the exact raw user question."""
     path.parent.mkdir(parents=True, exist_ok=True)
     content = dump_bytes(bundle)
@@ -50,11 +52,17 @@ def _write_bundle_or_semantically_identical(path: Path, bundle: dict[str, object
         try:
             existing = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            raise FileExistsError(f"existing planner artifact differs: {path.name}") from None
+            raise FileExistsError(
+                f"existing planner artifact differs: {path.name}"
+            ) from None
         if not isinstance(existing, dict):
-            raise FileExistsError(f"existing planner artifact differs: {path.name}") from None
+            raise FileExistsError(
+                f"existing planner artifact differs: {path.name}"
+            ) from None
         if existing != bundle:
-            raise FileExistsError(f"existing planner artifact differs: {path.name}") from None
+            raise FileExistsError(
+                f"existing planner artifact differs: {path.name}"
+            ) from None
 
 
 def prepare_question_planner_handoff(workspace: Path, question: str) -> QuestionPlannerHandoff:
@@ -91,7 +99,9 @@ def bind_question_plan_to_review_request(
     if question != plan.original_question:
         raise ValueError("review request question does not match question plan")
     inputs_value = request.get("inputs")
-    if not isinstance(inputs_value, dict) or not all(isinstance(key, str) for key in inputs_value):
+    if not isinstance(inputs_value, dict) or not all(
+        isinstance(key, str) for key in inputs_value
+    ):
         raise ValueError("review request inputs must be an object")
     bound = dict(request)
     inputs = dict(inputs_value)
@@ -112,7 +122,8 @@ def bind_question_plan_to_review_request(
             for issue in plan.issues
         ],
         "facts": [
-            {"id": item.id, "text": item.text, "polarity": item.polarity} for item in plan.facts
+            {"id": item.id, "text": item.text, "polarity": item.polarity}
+            for item in plan.facts
         ],
         "assumptions": [
             {"id": item.id, "text": item.text, "polarity": item.polarity}
@@ -143,10 +154,12 @@ def bind_question_plan_to_review_request(
             "raw_user_question": plan.raw_user_question or plan.original_question,
             "normalized_question": plan.normalized_question or plan.original_question,
             "document_context": [
-                {"text": item.text, "source": item.source} for item in plan.document_context
+                {"text": item.text, "source": item.source}
+                for item in plan.document_context
             ],
             "planner_inference": [
-                {"text": item.text, "source": item.source} for item in plan.planner_inference
+                {"text": item.text, "source": item.source}
+                for item in plan.planner_inference
             ],
         }
     bound["inputs"] = inputs
@@ -197,7 +210,9 @@ def issue_retrieval_bundle_document(
     hit_documents: list[dict[str, object]] = []
     for hit in bundle.selected_evidence:
         candidates = candidate_by_evidence.get(hit.evidence_id, [])
-        match_documents: dict[tuple[str, str, str, str, str, str], dict[str, object]] = {}
+        match_documents: dict[
+            tuple[str, str, str, str, str, str], dict[str, object]
+        ] = {}
         issue_ids: set[str] = set()
         roles: set[str] = set()
         for candidate in candidates:
@@ -247,7 +262,8 @@ def issue_retrieval_bundle_document(
                 for request in plan.search_requests
             ],
             "attempted_terms": [
-                {"text": request.text, "origin": "llm"} for request in plan.search_requests
+                {"text": request.text, "origin": "llm"}
+                for request in plan.search_requests
             ],
             "derived_variants": {
                 "compound": list(derived_compound),
@@ -306,7 +322,9 @@ def bind_retrieval_lineage_to_review_request(
 ) -> dict[str, object]:
     """Expose deterministic retrieval lineage to Track A through request inputs."""
     inputs_value = request.get("inputs")
-    if not isinstance(inputs_value, dict) or not all(isinstance(key, str) for key in inputs_value):
+    if not isinstance(inputs_value, dict) or not all(
+        isinstance(key, str) for key in inputs_value
+    ):
         raise ValueError("review request inputs must be an object")
     hits = bundle.get("hits")
     if not isinstance(hits, list):
@@ -329,16 +347,22 @@ def bind_retrieval_lineage_to_review_request(
             raise ValueError(f"hits[{index}].citation must be an object")
         citation_id = citation.get("citation_id")
         if not isinstance(citation_id, str) or not citation_id:
-            raise ValueError(f"hits[{index}].citation.citation_id must be a non-empty string")
+            raise ValueError(
+                f"hits[{index}].citation.citation_id must be a non-empty string"
+            )
 
         matches: list[dict[str, object]] = []
         for match_index, match_value in enumerate(matches_value):
             if not isinstance(match_value, dict):
-                raise ValueError(f"hits[{index}].matches[{match_index}] must be an object")
+                raise ValueError(
+                    f"hits[{index}].matches[{match_index}] must be an object"
+                )
             required = {"search_request_id", "issue_ids", "query_text", "origin"}
             optional = {"role", "fallback_stage", "retrieval_query"}
             if not required.issubset(match_value) or set(match_value) - required - optional:
-                raise ValueError(f"hits[{index}].matches[{match_index}] has invalid fields")
+                raise ValueError(
+                    f"hits[{index}].matches[{match_index}] has invalid fields"
+                )
             search_request_id = match_value.get("search_request_id")
             issue_ids = match_value.get("issue_ids")
             query_text = match_value.get("query_text")

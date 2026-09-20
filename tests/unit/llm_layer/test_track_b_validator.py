@@ -249,3 +249,26 @@ def test_required_facets_need_accepted_cited_claims_for_each_obligation() -> Non
         required_facets_by_issue={"I1": frozenset({"basic_far", "maximum_far", "delivery_method"})},
     )
     assert audit.required_facet_completeness == "INCOMPLETE"
+    payload["required_facet_completeness"] = "COMPLETE"
+    with pytest.raises(ValueError, match="cited accepted claim facets"):
+        validate_track_b_output(payload, track_a, required_facets_by_issue={
+            "I1": frozenset({"basic_far", "maximum_far", "delivery_method"})
+        })
+    complete = validate_track_b_output(payload, track_a, required_facets_by_issue={
+        "I1": frozenset({"basic_far", "maximum_far"})
+    })
+    assert complete.required_facet_completeness == "COMPLETE"
+
+
+@pytest.mark.parametrize("reported", ["COMPLETE", "NOT_APPLICABLE"])
+def test_no_claim_cannot_satisfy_explicit_required_facets(reported) -> None:
+    track_a = _empty_track_a()
+    with pytest.raises(ValueError, match="cited accepted claim facets"):
+        validate_track_b_output({
+            "run_id": track_a.draft.run_id,
+            "audited_question": "근거가 없는 질문",
+            "question_responsiveness": "NOT_VERIFIED",
+            "required_facet_completeness": reported,
+            "claim_audits": [],
+            "overall_disposition": "INCOMPLETE",
+        }, track_a, required_facets_by_issue={"I1": frozenset({"source_support"})})

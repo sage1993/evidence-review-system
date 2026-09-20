@@ -139,7 +139,10 @@ def _decode_bundle(value: object) -> TrackABundle:
                 role=role,
             )
         )
-    rules = tuple(decode_rule_result(item) for item in _sequence(payload.get("rules"), "rules"))
+    rules = tuple(
+        decode_rule_result(item)
+        for item in _sequence(payload.get("rules"), "rules")
+    )
     calculations = tuple(
         decode_calculation_result(item)
         for item in _sequence(payload.get("calculations"), "calculations")
@@ -348,7 +351,9 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
         "calculations": [_calculation_document(result) for result in packet.calculations],
         "rules": [_rule_document(result) for result in packet.rules],
         "confidence": (
-            None if packet.confidence is None else _confidence_document(packet.confidence)
+            None
+            if packet.confidence is None
+            else _confidence_document(packet.confidence)
         ),
         "abstention_reasons": list(packet.abstention_reasons),
     }
@@ -371,7 +376,10 @@ def _issue_results_from_inputs(inputs: Mapping[str, object]) -> tuple[IssueResul
     value = inputs.get("issue_coverage")
     if value is None:
         return ()
-    results = tuple(decode_issue_result(item) for item in _sequence(value, "inputs.issue_coverage"))
+    results = tuple(
+        decode_issue_result(item)
+        for item in _sequence(value, "inputs.issue_coverage")
+    )
     issue_ids = [item.issue_id for item in results]
     if len(issue_ids) != len(set(issue_ids)):
         raise ValueError("inputs.issue_coverage must contain unique issue identifiers")
@@ -423,7 +431,9 @@ def expected_final_review_packet_from_snapshot(
     deterministic_rule_missing_inputs = {
         item for result in bundle.rules for item in result.missing_inputs
     }
-    missing_inputs = tuple(sorted(track_a_missing_inputs | deterministic_rule_missing_inputs))
+    missing_inputs = tuple(
+        sorted(track_a_missing_inputs | deterministic_rule_missing_inputs)
+    )
     issue_results = reconcile_issue_results(
         _issue_results_from_inputs(bundle.inputs),
         claims=validated_a.draft.claims,
@@ -442,12 +452,14 @@ def expected_final_review_packet_from_snapshot(
         else bool(missing_inputs)
     )
     issue_scoped_incomplete = audit.overall_disposition == "INCOMPLETE" or bool(
-        {"CITATION_MISMATCH", "UNSUPPORTED_CLAIM", "MISSING_EXCEPTION"} & finding_codes
+        {"CITATION_MISMATCH", "UNSUPPORTED_CLAIM", "MISSING_EXCEPTION"}
+        & finding_codes
     )
     context = AbstentionContext(
         confidence_score=confidence.score,
         missing_required_input=missing_required_input,
-        uncited_or_unresolved_claim=issue_scoped_incomplete and not partial_issue_resolution,
+        uncited_or_unresolved_claim=issue_scoped_incomplete
+        and not partial_issue_resolution,
         unapproved_rule=any(result.rule_result_id not in approved for result in bundle.rules),
         math_engine_error=any(result.status != "SUCCESS" for result in bundle.calculations)
         or any(result.status == "ENGINE_ERROR" for result in bundle.rules),

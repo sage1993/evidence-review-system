@@ -131,7 +131,9 @@ class SubmittedTrackA:
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, Mapping) or not all(
+        isinstance(key, str) for key in value
+    ):
         raise ValueError(f"{field} must be an object")
     return cast(Mapping[str, object], value)
 
@@ -329,9 +331,15 @@ def _decode_confidence_input(value: object) -> dict[str, object]:
             "value",
             "source",
         }:
-            raise ValueError(f"confidence factor {name} must contain value and source")
-        value_text = _string(factor.get("value"), f"confidence_input.factors.{name}.value")
-        source = _string(factor.get("source"), f"confidence_input.factors.{name}.source")
+            raise ValueError(
+                f"confidence factor {name} must contain value and source"
+            )
+        value_text = _string(
+            factor.get("value"), f"confidence_input.factors.{name}.value"
+        )
+        source = _string(
+            factor.get("source"), f"confidence_input.factors.{name}.source"
+        )
         state = factor.get("state", "VERIFIED")
         if state not in {"VERIFIED", "FAILED", "NOT_VERIFIED", "NOT_APPLICABLE"}:
             raise ValueError(f"unsupported confidence factor state: {name}")
@@ -345,9 +353,7 @@ def _decode_confidence_input(value: object) -> dict[str, object]:
     return {"factors": document}
 
 
-def _decode_request(
-    path: Path,
-) -> tuple[
+def _decode_request(path: Path) -> tuple[
     str,
     dict[str, object],
     tuple[EvidenceExcerpt, ...],
@@ -361,9 +367,13 @@ def _decode_request(
     unknown = sorted(set(payload) - _REQUEST_FIELDS)
     missing = sorted(_REQUEST_FIELDS - set(payload))
     if unknown:
-        raise ValueError(f"review_run_request has unknown fields: {', '.join(unknown)}")
+        raise ValueError(
+            f"review_run_request has unknown fields: {', '.join(unknown)}"
+        )
     if missing:
-        raise ValueError(f"review_run_request is missing fields: {', '.join(missing)}")
+        raise ValueError(
+            f"review_run_request is missing fields: {', '.join(missing)}"
+        )
     if payload.get("format") not in _REQUEST_FORMATS or payload.get("version") != 1:
         raise ValueError("unsupported review-run request")
 
@@ -374,11 +384,15 @@ def _decode_request(
     for index, item in enumerate(_sequence(payload.get("evidence"), "evidence")):
         excerpt = _mapping(item, f"evidence[{index}]")
         if set(excerpt) != {"citation", "text"}:
-            raise ValueError(f"evidence[{index}] must contain citation and text")
+            raise ValueError(
+                f"evidence[{index}] must contain citation and text"
+            )
         citation = decode_citation(excerpt.get("citation"))
         text = _string(excerpt.get("text"), f"evidence[{index}].text")
         evidence.append(EvidenceExcerpt(citation=citation, text=text))
-        evidence_documents.append({"citation": _citation_document(citation), "text": text})
+        evidence_documents.append(
+            {"citation": _citation_document(citation), "text": text}
+        )
 
     calculations = tuple(
         decode_calculation_result(item)
@@ -393,16 +407,22 @@ def _decode_request(
             or calculation_result.result_hash is None
         ):
             raise ValueError(
-                f"calculation result is not finalized: {calculation_result.calculation_result_id}"
+                "calculation result is not finalized: "
+                f"{calculation_result.calculation_result_id}"
             )
 
-    rules = tuple(decode_rule_result(item) for item in _sequence(payload.get("rules"), "rules"))
+    rules = tuple(
+        decode_rule_result(item)
+        for item in _sequence(payload.get("rules"), "rules")
+    )
     rule_ids = [item.rule_result_id for item in rules]
     if len(rule_ids) != len(set(rule_ids)):
         raise ValueError("rule_result_ids must be unique")
     for rule_result in rules:
         if rule_result.result_hash is None:
-            raise ValueError(f"rule result is not finalized: {rule_result.rule_result_id}")
+            raise ValueError(
+                f"rule result is not finalized: {rule_result.rule_result_id}"
+            )
 
     approved = tuple(
         sorted(
@@ -420,7 +440,8 @@ def _decode_request(
     unknown_approved = sorted(set(approved) - set(rule_ids))
     if unknown_approved:
         raise ValueError(
-            "approved_rule_result_ids reference unknown rules: " + ", ".join(unknown_approved)
+            "approved_rule_result_ids reference unknown rules: "
+            + ", ".join(unknown_approved)
         )
 
     confidence = _decode_confidence_input(payload.get("confidence_input"))
@@ -593,7 +614,9 @@ def _track_b_bundle_document(
         for citation_index, item in enumerate(
             _sequence(claim.get("citation_ids", []), f"track_a.claims[{index}].citation_ids")
         ):
-            cited_ids.add(_string(item, f"track_a.claims[{index}].citation_ids[{citation_index}]"))
+            cited_ids.add(
+                _string(item, f"track_a.claims[{index}].citation_ids[{citation_index}]")
+            )
 
     request = _mapping(_json(_run_file(run_directory, "review-request.json")), "review_request")
     question = _string(request.get("question"), "review_request.question")
@@ -608,7 +631,9 @@ def _track_b_bundle_document(
     support_by_id: dict[str, dict[str, object]] = {}
     for index, item in enumerate(_sequence(request.get("evidence", []), "review_request.evidence")):
         evidence = _mapping(item, f"review_request.evidence[{index}]")
-        citation = _mapping(evidence.get("citation"), f"review_request.evidence[{index}].citation")
+        citation = _mapping(
+            evidence.get("citation"), f"review_request.evidence[{index}].citation"
+        )
         citation_id = _string(
             citation.get("citation_id"),
             f"review_request.evidence[{index}].citation.citation_id",
@@ -617,13 +642,16 @@ def _track_b_bundle_document(
             continue
         support_by_id[citation_id] = {
             "citation": dict(citation),
-            "text": _string(evidence.get("text"), f"review_request.evidence[{index}].text"),
+            "text": _string(
+                evidence.get("text"), f"review_request.evidence[{index}].text"
+            ),
         }
 
     missing = sorted(cited_ids - set(support_by_id))
     if missing:
         raise ValueError(
-            "validated Track A references unavailable immutable evidence: " + ", ".join(missing)
+            "validated Track A references unavailable immutable evidence: "
+            + ", ".join(missing)
         )
     return {
         "format": "evidence-review/track-b-bundle",
@@ -973,7 +1001,10 @@ def finalize_review_run(
             _write_json(imported_a, track_a_document)
         if not bound_track_b:
             _write_json(imported_b, track_b_document)
-        artifacts = {name: _sha256(_run_file(run_directory, name)) for name in _FINALIZER_ARTIFACTS}
+        artifacts = {
+            name: _sha256(_run_file(run_directory, name))
+            for name in _FINALIZER_ARTIFACTS
+        }
         _write_json(
             manifest_path,
             {"run_id": run_id, "artifacts": artifacts},

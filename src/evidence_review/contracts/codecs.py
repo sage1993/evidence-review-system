@@ -262,7 +262,11 @@ def decode_calculation_result(value: object) -> CalculationResult:
             ),
         )
     precision_value = payload.get("precision")
-    precision = None if precision_value is None else _expect_int(precision_value, "precision")
+    precision = (
+        None
+        if precision_value is None
+        else _expect_int(precision_value, "precision")
+    )
     if precision is not None and precision < 1:
         raise ValueError("precision must be a positive integer")
     return CalculationResult(
@@ -282,7 +286,9 @@ def decode_calculation_result(value: object) -> CalculationResult:
         ),
         result_hash=_expect_optional_string(payload.get("result_hash"), "result_hash"),
         error_codes=_expect_string_tuple(payload.get("error_codes", []), "error_codes"),
-        input_sources=_expect_string_dict(payload.get("input_sources", {}), "input_sources"),
+        input_sources=_expect_string_dict(
+            payload.get("input_sources", {}), "input_sources"
+        ),
         input_units=_expect_string_dict(payload.get("input_units", {}), "input_units"),
         precision=precision,
         rounding=_expect_optional_string(payload.get("rounding"), "rounding"),
@@ -428,7 +434,9 @@ def decode_review_packet(value: object) -> ReviewPacket:
         if not _SHA256_PATTERN.fullmatch(snapshot_sha256):
             raise ValueError("snapshot_sha256 must be a lowercase SHA-256 digest")
     serialized_lineage_fields = tuple(
-        name for name in ("snapshot_sha256", "missing_inputs", "issue_results") if name in payload
+        name
+        for name in ("snapshot_sha256", "missing_inputs", "issue_results")
+        if name in payload
     )
     return ReviewPacket(
         run_id=_expect_string(payload.get("run_id"), "run_id"),

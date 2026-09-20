@@ -114,7 +114,8 @@ def _string(value: object, field: str, *, allow_empty: bool = False) -> str:
 
 def _string_tuple(value: object, field: str) -> tuple[str, ...]:
     return tuple(
-        _string(item, f"{field}[{index}]") for index, item in enumerate(_sequence(value, field))
+        _string(item, f"{field}[{index}]")
+        for index, item in enumerate(_sequence(value, field))
     )
 
 
@@ -138,7 +139,9 @@ def _planned_issue_ids(inputs: Mapping[str, object]) -> tuple[str, ...]:
             _mapping(item, f"inputs.question_plan.issues[{index}]").get("id"),
             f"inputs.question_plan.issues[{index}].id",
         )
-        for index, item in enumerate(_sequence(issues_value, "inputs.question_plan.issues"))
+        for index, item in enumerate(
+            _sequence(issues_value, "inputs.question_plan.issues")
+        )
     )
     if len(issue_ids) != len(set(issue_ids)):
         raise ValueError("inputs.question_plan.issues must contain unique ids")
@@ -333,7 +336,9 @@ def _validate_claim_issue_relevance(
     planned_issue_ids: tuple[str, ...],
 ) -> None:
     evidence_issue_ids = {
-        issue_id for evidence in evidence_by_citation.values() for issue_id in evidence.issue_ids
+        issue_id
+        for evidence in evidence_by_citation.values()
+        for issue_id in evidence.issue_ids
     }
     if not evidence_issue_ids and not planned_issue_ids:
         return
@@ -342,7 +347,9 @@ def _validate_claim_issue_relevance(
     authoritative_issue_ids = set(planned_issue_ids) or evidence_issue_ids
     unknown_issue_ids = sorted(set(claim_issue_ids) - authoritative_issue_ids)
     if unknown_issue_ids:
-        raise ValueError(f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}")
+        raise ValueError(
+            f"UNKNOWN_CLAIM_ISSUE: claim {claim_id}: {', '.join(unknown_issue_ids)}"
+        )
     validate_claim_id_issue_binding(
         claim_id,
         claim_issue_ids,

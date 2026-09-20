@@ -86,12 +86,14 @@ the issue when the flow continues through `formalize`.
 ```powershell
 evidence-review review-matter create --workspace <workspace> --matter-id <MATTER-ID> --title "<title>"
 evidence-review review-matter status --workspace <workspace> --matter-id <MATTER-ID>
-evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 1 --issue-id <ISSUE-ID> --question "<question>" --work-state READY_TO_FORMALIZE
+evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 1 --issue-id <ISSUE-ID> --question "<question>" --work-state READY_TO_FORMALIZE --required-facet-id <FACET-ID>
 evidence-review review-matter bind-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 2
 evidence-review review-matter search --workspace <workspace> --matter-id <MATTER-ID> --query "<query>"
 evidence-review review-matter select-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 3 --evidence-id <EVIDENCE-ID> --query "<query>"
 evidence-review review-matter formalize --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 4
 ```
+
+Every issue needs explicit required facet IDs before a new formalization. Repeat `--required-facet-id` for each atomic answer obligation. A legacy issue without IDs can receive them once with `review-matter set-required-facets --workspace <workspace> --matter-id <MATTER-ID> --expected-revision <CURRENT-REVISION> --issue-id <ISSUE-ID> --required-facet-id <FACET-ID>`. This appends a new revision; it does not rewrite earlier events or snapshots. Missing facets fail with `FORMALIZATION_REQUIRED_FACETS_REQUIRED`.
 
 Search/navigation and Workbench actions do not create a compliance conclusion or Human Decision. The direct `review-question` path requires the Question Planner handoff before formal retrieval. The `review-matter formalize` path instead freezes an exact Matter revision and explicit `ReviewScope` assembled from promoted Matter inputs; it does not require a Planner handoff before preparing the immutable Formal Review run.
 

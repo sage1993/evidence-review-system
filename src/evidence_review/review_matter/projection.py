@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from evidence_review.contracts.identifiers import validate_identifier
@@ -100,7 +98,10 @@ def project_event(matter: ReviewMatter, event: MatterEvent) -> MatterProjection:
         require_fields(payload, fields, "ISSUE_REQUIRED_FACETS_SET.payload")
         reject_unknown(payload, fields, "ISSUE_REQUIRED_FACETS_SET.payload")
         issue_id = validate_identifier(payload.get("issue_id"), "issue_id")
-        facet_ids = tuple(validate_identifier(item, "required_facet_ids") for item in expect_sequence(payload.get("required_facet_ids"), "required_facet_ids"))
+        facet_ids = tuple(
+            validate_identifier(item, "required_facet_ids")
+            for item in expect_sequence(payload.get("required_facet_ids"), "required_facet_ids")
+        )
         if not facet_ids or len(facet_ids) != len(set(facet_ids)):
             raise ValueError("ISSUE_REQUIRED_FACETS_SET requires unique non-empty facet ids")
         issues = []

@@ -60,6 +60,8 @@ def _issue(
 ) -> MatterIssue:
     if isinstance(depends_on, (str, bytes, bytearray)):
         raise ValueError("depends_on must be a sequence")
+    if isinstance(required_facet_ids, (str, bytes, bytearray)):
+        raise ValueError("required_facet_ids must be a sequence")
     issue = MatterIssue(
         issue_id=validate_identifier(issue_id, "issue_id"),
         question=expect_string(question, "question"),
@@ -224,6 +226,8 @@ class ReviewMatterService:
         required_facet_ids: Sequence[str],
     ) -> ReviewMatter:
         """Append explicit facet IDs to one legacy Matter issue."""
+        if isinstance(required_facet_ids, (str, bytes, bytearray)):
+            raise ValueError("required_facet_ids must be a sequence")
         facets = tuple(
             validate_identifier(item, f"required_facet_ids[{index}]")
             for index, item in enumerate(required_facet_ids)
@@ -237,7 +241,10 @@ class ReviewMatterService:
                 _expected_revision(expected_revision),
                 MatterEvent(
                     kind="ISSUE_REQUIRED_FACETS_SET",
-                    payload={"issue_id": validate_identifier(issue_id, "issue_id"), "required_facet_ids": list(facets)},
+                    payload={
+                        "issue_id": validate_identifier(issue_id, "issue_id"),
+                        "required_facet_ids": list(facets),
+                    },
                 ),
             )
         return projection.matter

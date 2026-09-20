@@ -9,7 +9,7 @@ The planner is **not an answer engine**. Its role is to preserve the user's ques
 ```text
 raw user question
   -> external AI Question Planner
-  -> QuestionPlan v2 validator
+  -> QuestionPlan v3 validator
   -> bounded retrieval adapter
   -> deterministic evidence retrieval
   -> review request
@@ -50,15 +50,15 @@ The current contract is:
 
 ```text
 format  = evidence-review/question-plan
-version = 2
+version = 3
 ```
 
-A representative v2 document is:
+A representative v3 document is:
 
 ```json
 {
   "format": "evidence-review/question-plan",
-  "version": 2,
+  "version": 3,
   "original_question": "안심주택 운영기준에서 조건 알려줘",
   "raw_user_question": "안심주택 운영기준에서  조건 알려줘",
   "normalized_question": "안심주택 운영기준에서 조건 알려줘",
@@ -77,7 +77,8 @@ A representative v2 document is:
       "id": "I1",
       "question": "어떤 기준이 적용되는가?",
       "depends_on": [],
-      "required_evidence_roles": ["rule"]
+      "required_evidence_roles": ["rule"],
+      "required_facet_ids": ["applicable_criteria"]
     }
   ],
   "legal_anchors": [],
@@ -100,7 +101,7 @@ Current hard limits:
 - search requests: 24
 - legal anchors: 20
 
-Evidence roles are `supporting_fact` and `rule`. Each v2 issue declares the roles it requires, and every search request declares which required role it is intended to retrieve.
+Evidence roles are `supporting_fact` and `rule`. Each issue declares the roles and atomic answer facets it requires, and every search request declares which required role it is intended to retrieve.
 
 There is no runtime SIMPLE/COMPOUND/COMPLEX classifier. A simple question should naturally produce a small plan; a complex question may produce multiple issues and dependency edges.
 
@@ -121,7 +122,7 @@ Document-derived context and planner inference must never be represented as if t
 
 QuestionPlan v1 is accepted only through the deterministic legacy adapter. It is not the current authoring contract.
 
-For a v1 input, the adapter supplies the current defaults required to decode it into the v2 runtime model. New planner outputs and new documentation examples must use version 2.
+For historical v1 input, the adapter supplies defaults for the v2 runtime model. Historical v1/v2 RUNs retain their original validation semantics. New planner outputs and `review-question prepare` require version 3 with explicit required facets; a legacy plan is `PLANNER_FAILED` before retrieval.
 
 ## External planner handoff
 

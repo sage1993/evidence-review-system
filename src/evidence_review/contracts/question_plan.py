@@ -173,7 +173,9 @@ def _decode_fact(value: object, field: str) -> QuestionFact:
         text=_expect_string(payload.get("text"), f"{field}.text"),
         polarity=cast(
             Polarity,
-            _expect_literal(payload.get("polarity"), f"{field}.polarity", ("positive", "negative")),
+            _expect_literal(
+                payload.get("polarity"), f"{field}.polarity", ("positive", "negative")
+            ),
         ),
     )
 
@@ -409,7 +411,9 @@ def _validate_user_legal_citations(
     if not required:
         return
     user_anchor_keys = {
-        _legal_citation_key(anchor.text) for anchor in legal_anchors if anchor.source == "user"
+        _legal_citation_key(anchor.text)
+        for anchor in legal_anchors
+        if anchor.source == "user"
     }
     missing = sorted(
         citation
@@ -417,7 +421,9 @@ def _validate_user_legal_citations(
         if not any(citation in anchor for anchor in user_anchor_keys)
     )
     if missing:
-        raise ValueError("question_plan drops explicit user legal citation: " + ", ".join(missing))
+        raise ValueError(
+            "question_plan drops explicit user legal citation: " + ", ".join(missing)
+        )
 
 
 def _validate_numeric_preservation(
@@ -443,7 +449,9 @@ def _validate_numeric_preservation(
     present = _numeric_literals(structured_text)
     missing = sorted(required - present)
     if missing:
-        raise ValueError("question_plan drops user numeric literal: " + ", ".join(missing))
+        raise ValueError(
+            "question_plan drops user numeric literal: " + ", ".join(missing)
+        )
 
 
 def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
@@ -528,7 +536,8 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
 
     facts = tuple(_decode_fact(item, f"facts[{index}]") for index, item in enumerate(fact_values))
     assumptions = tuple(
-        _decode_fact(item, f"assumptions[{index}]") for index, item in enumerate(assumption_values)
+        _decode_fact(item, f"assumptions[{index}]")
+        for index, item in enumerate(assumption_values)
     )
     issues = tuple(
         _decode_issue(item, f"issues[{index}]", version=version)
@@ -559,7 +568,9 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
     for request in search_requests:
         unknown = sorted(set(request.issue_ids) - issue_ids)
         if unknown:
-            raise ValueError(f"search request {request.id} references unknown issue: {unknown[0]}")
+            raise ValueError(
+                f"search request {request.id} references unknown issue: {unknown[0]}"
+            )
         for issue_id in request.issue_ids:
             issue = issues_by_id[issue_id]
             if request.role not in issue.required_evidence_roles:
@@ -607,7 +618,7 @@ def decode_question_plan(value: object, expected_question: str) -> QuestionPlan:
 
 
 def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
-    """Encode a validated plan as its canonical JSON-compatible v2 document."""
+    """Encode a validated plan without changing its contract version."""
     document: dict[str, object] = {
         "format": QUESTION_PLAN_FORMAT,
         "version": plan.version,
@@ -658,6 +669,7 @@ def question_plan_document(plan: QuestionPlan) -> dict[str, object]:
         ]
     if plan.planner_inference:
         document["planner_inference"] = [
-            {"text": item.text, "source": item.source} for item in plan.planner_inference
+            {"text": item.text, "source": item.source}
+            for item in plan.planner_inference
         ]
     return document

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from evidence_review.cli_parser import build_parser
 from evidence_review.question_planner_cli import dispatch_question_planning
 
@@ -111,7 +113,7 @@ def test_prepare_cli_reports_retrieval_no_evidence_after_valid_plan(
         json.dumps(
             {
                 "format": "evidence-review/question-plan",
-                    "version": 3,
+                "version": 3,
                 "original_question": "질문",
                 "facts": [],
                 "assumptions": [],
@@ -120,8 +122,8 @@ def test_prepare_cli_reports_retrieval_no_evidence_after_valid_plan(
                         "id": "I1",
                         "question": "무엇인가",
                         "depends_on": [],
-                            "required_evidence_roles": ["rule"],
-                            "required_facet_ids": ["review_result"],
+                        "required_evidence_roles": ["rule"],
+                        "required_facet_ids": ["review_result"],
                     }
                 ],
                 "legal_anchors": [],
@@ -225,3 +227,30 @@ def test_canonical_command_dispatch_handles_prepare_plan(
     document = json.loads(capsys.readouterr().out)
     assert document["stage"] == "prepare-plan"
     assert document["status"] == "WAITING_QUESTION_PLAN"
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_new_prepare_rejects_valid_legacy_plan_before_retrieval(
+    tmp_path, capsys, monkeypatch, version
+):
+    import evidence_review.question_planner_cli as planner_cli
+    from tests.unit.llm_layer.test_question_planner_handoff import QUESTION, _plan
+
+    plan = _plan()
+    plan["version"] = version
+    plan["issues"][0].pop("required_facet_ids")
+    if version == 1:
+        plan["issues"][0].pop("required_evidence_roles")
+        plan["search_requests"][0].pop("role")
+    output = tmp_path / "legacy.json"
+    output.write_text(json.dumps(plan), encoding="utf-8")
+    monkeypatch.setattr(planner_cli, "prepare_planned_review_question",
+                        lambda *a, **kw: pytest.fail("legacy plan reached retrieval"))
+    code = dispatch_question_planning([
+        "review-question", "prepare", "--workspace", str(tmp_path),
+        "--question", QUESTION, "--question-plan-output", str(output),
+    ])
+    captured = capsys.readouterr()
+    assert code == 2
+    assert json.loads(captured.out)["status"] == "PLANNER_FAILED"
+    assert "version 3" in captured.err
+    assert not (tmp_path / "runs").exists()

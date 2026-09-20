@@ -214,6 +214,12 @@ def validate_track_b_output(
         overall = _string(payload.get("overall_disposition"), "overall_disposition")
         if overall != "INCOMPLETE":
             raise ValueError("empty Track A claim set must be INCOMPLETE")
+        if required_facets_by_issue is not None:
+            expected = required_facet_completeness_for_audit(track_a, (), required_facets_by_issue)
+            if facet_value != expected:
+                raise ValueError(
+                    "required_facet_completeness does not match cited accepted claim facets"
+                )
         return TrackBAudit(
             run_id=run_id,
             claim_audits=(),
