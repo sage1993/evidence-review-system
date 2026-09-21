@@ -307,7 +307,8 @@ def test_finalize_publish_reports_the_run_local_packet(
     html = result.review_html.read_text(encoding="utf-8")
     assert "기계 평가는 최종 판정이 아닙니다." in html
     assert "9.375%" in html
-    assert "data:image/png;base64," in html
+    assert "data:image/" not in html
+    assert "PROTECTED_REVIEW_REQUIRED" in html
 
 
 def test_submit_track_b_finalizes_a_prevalidated_track_a(tmp_path: Path) -> None:

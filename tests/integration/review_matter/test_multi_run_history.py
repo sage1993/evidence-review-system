@@ -60,7 +60,12 @@ def _write_finalized_artifacts(run_directory: Path) -> tuple[str, str]:
         "run_id": bundle["run_id"],
         "audited_question": bundle["question"],
         "question_responsiveness": "NOT_VERIFIED",
-        "required_facet_completeness": "NOT_APPLICABLE",
+        "required_facet_completeness": (
+            "INCOMPLETE"
+            if any(issue.get("required_facet_ids") for issue in
+                   bundle["inputs"].get("question_plan", {}).get("issues", []))
+            else "NOT_APPLICABLE"
+        ),
         "claim_audits": [],
         "overall_disposition": "INCOMPLETE",
     }

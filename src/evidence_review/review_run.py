@@ -1,4 +1,5 @@
 """Staged offline orchestration for immutable evidence review runs."""
+
 from __future__ import annotations
 
 import hashlib
@@ -39,6 +40,7 @@ from evidence_review.llm_layer.track_a import (
 )
 from evidence_review.llm_layer.track_b import (
     required_facet_completeness_status,
+    required_facets_from_inputs,
     track_b_semantic_gate_status,
     validate_track_b_output,
 )
@@ -54,7 +56,7 @@ from evidence_review.review_packet.browser_launcher import (
 )
 from evidence_review.review_packet.builder import build_review_view_model
 from evidence_review.review_packet.external_launcher import open_external_url
-from evidence_review.review_packet.html_renderer import write_review_html
+from evidence_review.review_packet.html_renderer import write_protected_review_entry
 from evidence_review.review_packet.page_image_verifier import verify_review_page_images
 from evidence_review.review_packet.server_runtime import DEFAULT_IDLE_TIMEOUT_SECONDS
 from evidence_review.workflow.artifact_ownership import TRACK_A_DERIVED
@@ -619,6 +621,7 @@ def _track_b_bundle_document(
     request = _mapping(_json(_run_file(run_directory, "review-request.json")), "review_request")
     question = _string(request.get("question"), "review_request.question")
     request_inputs = _mapping(request.get("inputs", {}), "review_request.inputs")
+    required_facets = required_facets_from_inputs(request_inputs)
     facet_values = request_inputs.get("facet_coverage", [])
     facet_coverage = [
         dict(_mapping(item, f"review_request.inputs.facet_coverage[{index}]"))
@@ -651,15 +654,21 @@ def _track_b_bundle_document(
             "validated Track A references unavailable immutable evidence: "
             + ", ".join(missing)
         )
-    return {
+    document: dict[str, object] = {
         "format": "evidence-review/track-b-bundle",
-        "version": 1,
+        "version": 2 if required_facets else 1,
         "run_id": run_id,
         "question": question,
         "claims": claims,
         "evidence_support": [support_by_id[item] for item in sorted(cited_ids)],
-        "required_facet_completeness": _required_facet_completeness(facet_coverage),
     }
+    if required_facets:
+        document["required_facets_by_issue"] = {
+            issue_id: sorted(facets) for issue_id, facets in sorted(required_facets.items())
+        }
+    else:
+        document["required_facet_completeness"] = _required_facet_completeness(facet_coverage)
+    return document
 
 
 def _required_facet_completeness(
@@ -693,9 +702,21 @@ def _track_b_validation_document(
     """Record immutable runtime metadata for one validated Track B attempt."""
     bundle_path = _run_file(run_directory, "track-b-bundle.json")
     bundle = _mapping(_json(bundle_path), "track_b_bundle")
+    required_facets = bundle.get("required_facets_by_issue")
+    required_facet_completeness = (
+        {
+            "status": audit.required_facet_completeness,
+            "required_facets_by_issue": required_facets,
+        }
+        if required_facets is not None
+        else bundle.get(
+            "required_facet_completeness",
+            {"status": "NOT_APPLICABLE", "covered_issue_count": 0, "total_issue_count": 0},
+        )
+    )
     return {
         "format": "evidence-review/track-b-validation",
-        "version": 2,
+        "version": 3 if required_facets is not None else 2,
         "run_id": run_id,
         "status": "VALIDATED",
         "input_bundle_sha256": _sha256(bundle_path),
@@ -709,10 +730,7 @@ def _track_b_validation_document(
         "question_responsive": audit.question_responsiveness == "PASS",
         "question_responsiveness": audit.question_responsiveness,
         "semantic_gate_status": track_b_semantic_gate_status(audit),
-        "required_facet_completeness": bundle.get(
-            "required_facet_completeness",
-            {"status": "NOT_APPLICABLE", "covered_issue_count": 0, "total_issue_count": 0},
-        ),
+        "required_facet_completeness": required_facet_completeness,
     }
 
 
@@ -821,13 +839,19 @@ def submit_track_b(
     bundle = _track_a_bundle_for_run(run_directory)
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
+    required_facets = required_facets_from_inputs(bundle.inputs)
     audit = validate_track_b_output(
         output,
         validated_a,
         expected_question=bundle.question,
-        expected_facet_completeness=required_facet_completeness_status(
-            bundle.inputs.get("facet_coverage")
+        expected_facet_completeness=(
+            None
+            if required_facets
+            else required_facet_completeness_status(
+                bundle.inputs.get("facet_coverage")
+            )
         ),
+        required_facets_by_issue=required_facets or None,
     )
     _publish_validated_track_b(track_b_output, bound_track_b, output)
     _write_json_or_identical(
@@ -859,13 +883,19 @@ def validate_track_b_submission(
     bundle = _track_a_bundle_for_run(run_directory)
     validated_a = validate_track_a_output(_json(track_a_path), bundle)
     validate_track_a_integrity(validated_a, bundle)
+    required_facets = required_facets_from_inputs(bundle.inputs)
     validate_track_b_output(
         _json(track_b_output),
         validated_a,
         expected_question=bundle.question,
-        expected_facet_completeness=required_facet_completeness_status(
-            bundle.inputs.get("facet_coverage")
+        expected_facet_completeness=(
+            None
+            if required_facets
+            else required_facet_completeness_status(
+                bundle.inputs.get("facet_coverage")
+            )
         ),
+        required_facets_by_issue=required_facets or None,
     )
 
 
@@ -1007,7 +1037,9 @@ def finalize_review_run(
         evidence_db = _evidence_database(workspace_root)
         view_model_timer = start_stage()
         try:
-            view_model = build_review_view_model(packet_path.read_bytes(), evidence_db)
+            view_model = build_review_view_model(
+                packet_path.read_bytes(), evidence_db, embed_rasters=False,
+            )
         except Exception as error:
             _record_stage_failure(run_directory, "view-model-build", view_model_timer, error)
             raise
@@ -1031,7 +1063,7 @@ def finalize_review_run(
 
         html_timer = start_stage()
         try:
-            write_review_html(
+            write_protected_review_entry(
                 view_model,
                 workspace_root / "page-images",
                 html_path,

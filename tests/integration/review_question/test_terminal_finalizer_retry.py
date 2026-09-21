@@ -224,6 +224,19 @@ def test_partially_resolved_track_b_retry_is_terminal_and_idempotent(
     assert packet_path.read_bytes() == before_packet
     assert tuple(sorted(path.name for path in events_directory.iterdir())) == before_events
 
+    # Historical embedded archives still verify against the same immutable packet.
+    from evidence_review.review_packet.builder import build_review_view_model
+    from evidence_review.review_packet.html_renderer import render_review_html
+
+    entry_path = run_directory / "review.html"
+    model = build_review_view_model(before_packet, workspace / "evidence" / "evidence.sqlite")
+    entry_path.write_text(
+        render_review_html(model, workspace / "page-images"), encoding="utf-8",
+    )
+    legacy_retry = submit_question_track_b(workspace, prepared.run_id, track_b)
+    assert legacy_retry.packet.status == "PARTIALLY_RESOLVED"
+    assert packet_path.read_bytes() == before_packet
+
 
 def test_finalizing_recovery_returns_published_packet_when_requested(
     monkeypatch,

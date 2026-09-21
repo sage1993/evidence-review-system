@@ -160,7 +160,7 @@ def decode_claim(value: object) -> Claim:
     payload = _expect_mapping(value, "claim")
     _reject_unknown(
         payload,
-        {"claim_id", "text", "citation_ids", "numeric_tokens", "issue_ids"},
+        {"claim_id", "text", "citation_ids", "numeric_tokens", "issue_ids", "fulfilled_facet_ids"},
         "claim",
     )
     return Claim(
@@ -169,6 +169,9 @@ def decode_claim(value: object) -> Claim:
         citation_ids=_expect_string_tuple(payload.get("citation_ids"), "citation_ids"),
         numeric_tokens=_expect_string_tuple(payload.get("numeric_tokens", []), "numeric_tokens"),
         issue_ids=_expect_unique_string_tuple(payload.get("issue_ids", []), "issue_ids"),
+        fulfilled_facet_ids=_expect_unique_string_tuple(
+            payload.get("fulfilled_facet_ids", []), "fulfilled_facet_ids"
+        ),
     )
 
 

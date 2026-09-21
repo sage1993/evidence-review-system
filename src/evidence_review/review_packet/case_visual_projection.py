@@ -485,6 +485,7 @@ def build_case_visual_projection(
     *,
     workspace_root: Path,
     supplemental_reference_citations: Sequence[Mapping[str, object]] = (),
+    embed_rasters: bool = True,
 ) -> dict[str, object] | None:
     """Project immutable visual evidence into a self-contained reviewer model."""
     run_id = validate_identifier(view_model.get("run_id"), "view_model.run_id")
@@ -586,7 +587,7 @@ def build_case_visual_projection(
         }
         if tile_documents:
             page_record["tiles"] = tile_documents
-        else:
+        elif embed_rasters:
             image_bytes = image_path.read_bytes()
             page_record["data_uri"] = "data:image/png;base64," + base64.b64encode(
                 image_bytes

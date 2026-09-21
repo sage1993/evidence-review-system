@@ -273,19 +273,19 @@ def test_renderer_never_emits_opaque_unstyled_svg_helper_rect() -> None:
     assert 'fill="none"' in html
 
 
-def test_issue_152_renderer_collapses_reference_pane_without_direct_comparison() -> None:
+def test_renderer_retains_reference_context_without_direct_comparison() -> None:
     html = render_case_visual_review(_render_model(direct=False))
 
-    assert "직접 기준 근거가 없어 기준 비교 창을 숨겼습니다." in html
+    assert "관련 자료 — 적용 기준 연결 전. 도면 관찰은 기준 대조 결과가 아닙니다." in html
     assert 'data-reference-available="false"' in html
-    assert re.search(r'<section class="reference-viewer"', html) is None
-    assert "직접 비교 가능한 기준 없음" in html
+    assert re.search(r'<section class="reference-viewer"', html) is not None
+    assert "아직 연결되지 않음" in html
 
 
 def test_renderer_keeps_not_comparable_separate_from_needs_check() -> None:
     html = render_case_visual_review(_render_model(direct=False))
 
-    assert "비교 불가" in html
+    assert "기준 연결 전" in html
     assert 'data-finding-status="not_comparable"' in html
     assert 'data-case-filter="not_comparable"' in html
     assert 'data-case-filter="needs_check"' in html

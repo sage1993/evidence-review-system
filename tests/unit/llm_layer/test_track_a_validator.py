@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from evidence_review.contracts.common import BBox, Citation
@@ -104,6 +106,19 @@ def test_valid_track_a_output_is_reduced_to_claim_contract() -> None:
     assert result.draft.claims[0].claim_id == "CL1"
     assert result.citation_ids == ("C1",)
     assert result.calculation_result_ids == ("CALC1",)
+
+
+def test_track_a_rejects_unknown_explicit_required_facet() -> None:
+    bundle = _bundle()
+    bundle = replace(
+        bundle,
+        inputs={"question_plan": {"issues": [{"id": "I1", "required_facet_ids": ["basic_far"]}]}},
+    )
+    payload = _valid_output()
+    payload["claims"][0]["issue_ids"] = ["I1"]
+    payload["claims"][0]["fulfilled_facet_ids"] = ["unknown"]
+    with pytest.raises(ValueError, match="unknown or ambiguous fulfilled facet"):
+        validate_track_a_output(payload, bundle)
 
 
 def test_llm_authored_rounded_percentage_is_rejected() -> None:

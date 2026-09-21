@@ -85,6 +85,16 @@ http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
 
 The packet, packet-hash, decision, and decision-status endpoints share the protected prefix. The final review route must not be served before `final-review-packet.json` and `review.html` both exist.
 
+The server rebuilds the displayed review from the finalizer-verified packet and
+finalized evidence database. Archived HTML and its declared packet hash are not
+presentation authority. The manifest-verified Track A bundle must bind both the
+logical evidence snapshot and exact database SHA-256; request-only or missing
+provenance cannot supply this binding. An invalid binding at startup leaves the
+protected route unavailable. A changed binding during a session returns
+`STALE_PACKET` for review, asset and decision routes. Decision submission checks
+again after reading the request body. The server does not rewrite the archive,
+packet or evidence database to recover an invalid binding.
+
 When a reviewer ID is supplied at server start, the browser treats it as read-only session context. A POST using a different reviewer ID must be rejected.
 
 ## 6. Record the human decision
@@ -104,7 +114,7 @@ Allowed decisions:
 | `CONDITIONAL` | 조건 충족 시 동의 |
 | `ADDITIONAL_REVIEW_REQUIRED` | 추가 자료 검토 필요 |
 
-The protected browser request contains four fields: `reviewer_id`, `packet_hash`, `decision`, and `notes`. Reviewer ID is supplied from the protected session when configured; packet hash is supplied from the current immutable packet. The server independently revalidates both and creates `reviewed_at` as an offset-aware ISO-8601 server timestamp.
+The protected browser intent contains three fields: `reviewer_id`, `decision`, and `notes`. Client-supplied `packet_hash` or timestamps are rejected. The server computes SHA-256 from the exact packet bytes and creates an offset-aware `reviewed_at` timestamp. If the packet differs from the presentation bound to the server session, POST fails with `STALE_PACKET`; restart only after reviewing the correct packet. The status endpoint first revalidates the session binding, rejecting a changed authority with `STALE_PACKET`. For a valid current session it reports `decision_binding_status` as `VALID`, `STALE`, or `MISSING`. A stale decision never yields `REVIEW_COMPLETED`.
 
 A successful request creates a new JSON file under:
 
@@ -116,9 +126,24 @@ The write is create-only. The machine packet and HTML remain unchanged, includin
 
 ## 7. Archival HTML
 
-A retained `review.html` opened with `file:` has no protected local server and therefore cannot persist a decision through POST.
+Before presenting a final user answer, obtain the read-only packet projection:
 
-The archival page is an explicit static presentation. A protected-only projection opened with `file:` shows a launcher warning instead of silently attempting to load protected raster routes. Start the protected viewer with:
+```powershell
+evidence-review review-run response --workspace <workspace> --run-id <RUN-ID>
+```
+
+The response retains the exact packet byte SHA, machine status, missing inputs,
+abstention reasons and claim text. Every `FORMAL_FINDING` traces to its packet
+claim and manifest-verified citation/evidence identity. Adding
+`--response-input <response.json>` validates an existing response against that
+exact projection and rejects expanded prose, substituted citations or stale hashes.
+External checks belong in a separately labeled `SUPPLEMENTARY_EXTERNAL_CHECK`
+section (`추가 확인 — Formal Review packet 외 자료`). Neither external checks nor
+`UNBOUND_ANALYSIS` belong in the default Formal response artifact.
+
+New RUNs store a lightweight `review.html` entry without raster payloads. Direct file opening displays `PROTECTED_REVIEW_REQUIRED`, with no review or decision form. Existing self-contained archives remain readable and cannot persist a decision through POST.
+
+Start the protected viewer for page images, inspection and decision submission with:
 
 ```powershell
 evidence-review review-run serve `
@@ -127,7 +152,7 @@ evidence-review review-run serve `
   --reviewer-id <REVIEWER-ID>
 ```
 
-Use **결정 JSON 다운로드** only after reviewer ID, decision, and notes are valid. The archival page uses the same visible reviewer-ID form field; it does not open a prompt dialog. The downloaded envelope contains exactly:
+In retained legacy archives, use **결정 JSON 다운로드** only after reviewer ID, decision, and notes are valid. The archival page uses the same visible reviewer-ID form field; it does not open a prompt dialog. The downloaded envelope contains exactly:
 
 ```json
 {

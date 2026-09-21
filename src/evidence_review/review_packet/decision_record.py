@@ -1,6 +1,7 @@
 """Append-only human decision records separate from machine packets."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -107,6 +108,25 @@ def build_human_decision_envelope(
     )
 
 
+def validate_human_decision_intent(value: object) -> dict[str, str]:
+    """Validate protected POST intent; packet identity is never client-supplied."""
+    fields = _REQUEST_FIELDS - {"packet_hash"}
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise ValueError("invalid human decision intent")
+    validated = validate_human_decision_request({**value, "packet_hash": "0" * 64})
+    return {field: validated[field] for field in fields}
+
+
+def build_server_human_decision_envelope(
+    intent: object, packet_bytes: bytes,
+) -> dict[str, str]:
+    """Bind protected intent to the exact packet bytes read by the server."""
+    validated = validate_human_decision_intent(intent)
+    return build_human_decision_envelope({
+        **validated, "packet_hash": hashlib.sha256(packet_bytes).hexdigest(),
+    })
+
+
 def write_human_decision(
     run_directory: Path,
     *,
@@ -158,7 +178,7 @@ def _read_decision_record(
     candidate: Path,
     *,
     run_id: str,
-    packet_hash: str,
+    packet_hash: str | None,
 ) -> HumanDecisionRecord | None:
     try:
         if candidate.suffix != ".json":
@@ -177,7 +197,7 @@ def _read_decision_record(
         validated = validate_human_decision_envelope(envelope)
     except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
         return None
-    if validated["packet_hash"] != packet_hash:
+    if packet_hash is not None and validated["packet_hash"] != packet_hash:
         return None
     return HumanDecisionRecord(
         run_id=run_id,
@@ -263,6 +283,24 @@ def load_latest_valid_human_decision(
 def has_valid_human_decision(run_directory: Path, packet_hash: str) -> bool:
     """Return whether a valid active decision matches the packet hash."""
     return load_latest_valid_human_decision(run_directory, packet_hash) is not None
+
+
+def human_decision_binding_status(run_directory: Path, packet_hash: str) -> str:
+    """Distinguish a current decision from valid records bound to older bytes."""
+    if load_latest_valid_human_decision(run_directory, packet_hash) is not None:
+        return "VALID"
+    try:
+        run = verified_regular_directory(run_directory, field="run_directory")
+        directory = verified_regular_directory(run / "human-decisions", field="human-decisions")
+        candidates = tuple(directory.iterdir())
+    except (OSError, ValueError):
+        return "MISSING"
+    now = datetime.now(UTC)
+    for candidate in candidates:
+        record = _read_decision_record(candidate, run_id=run.name, packet_hash=None)
+        if record is not None and _eligible_for_latest(record, now=now):
+            return "STALE"
+    return "MISSING"
 
 
 __all__ = [

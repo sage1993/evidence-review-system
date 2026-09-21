@@ -86,12 +86,14 @@ the issue when the flow continues through `formalize`.
 ```powershell
 evidence-review review-matter create --workspace <workspace> --matter-id <MATTER-ID> --title "<title>"
 evidence-review review-matter status --workspace <workspace> --matter-id <MATTER-ID>
-evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 1 --issue-id <ISSUE-ID> --question "<question>" --work-state READY_TO_FORMALIZE
+evidence-review review-matter add-issue --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 1 --issue-id <ISSUE-ID> --question "<question>" --work-state READY_TO_FORMALIZE --required-facet-id <FACET-ID>
 evidence-review review-matter bind-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 2
 evidence-review review-matter search --workspace <workspace> --matter-id <MATTER-ID> --query "<query>"
 evidence-review review-matter select-evidence --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 3 --evidence-id <EVIDENCE-ID> --query "<query>"
 evidence-review review-matter formalize --workspace <workspace> --matter-id <MATTER-ID> --expected-revision 4
 ```
+
+Every issue needs explicit required facet IDs before a new formalization. Repeat `--required-facet-id` for each atomic answer obligation. A legacy issue without IDs can receive them once with `review-matter set-required-facets --workspace <workspace> --matter-id <MATTER-ID> --expected-revision <CURRENT-REVISION> --issue-id <ISSUE-ID> --required-facet-id <FACET-ID>`. This appends a new revision; it does not rewrite earlier events or snapshots. Missing facets fail with `FORMALIZATION_REQUIRED_FACETS_REQUIRED`.
 
 Search/navigation and Workbench actions do not create a compliance conclusion or Human Decision. The direct `review-question` path requires the Question Planner handoff before formal retrieval. The `review-matter formalize` path instead freezes an exact Matter revision and explicit `ReviewScope` assembled from promoted Matter inputs; it does not require a Planner handoff before preparing the immutable Formal Review run.
 
@@ -325,18 +327,17 @@ The companion endpoints use the same protected prefix:
 
 The final review route is unavailable until both final packet and HTML exist.
 
-The browser decision request v2 has exactly four string fields:
+The protected browser decision intent has exactly three string fields:
 
 ```json
 {
   "reviewer_id": "reviewer-01",
-  "packet_hash": "<sha256>",
   "decision": "SATISFIED",
   "notes": "review notes"
 }
 ```
 
-When `--reviewer-id` is configured, the browser receives it as read-only session context and a different submitted reviewer ID is rejected. The status endpoint also supplies the current immutable packet hash. The server rechecks that hash at POST time and generates `reviewed_at` itself as an offset-aware ISO-8601 timestamp.
+When `--reviewer-id` is configured, the browser receives it as read-only session context and a different submitted reviewer ID is rejected. The server computes the packet hash from exact packet bytes and generates `reviewed_at` itself. Client hash fields are rejected. A packet changed since the bound presentation causes `STALE_PACKET`; status reads recompute the hash and report `VALID`, `STALE`, or `MISSING` decision binding. Existing archival envelopes retain their hash field and are validated through import.
 
 A successful decision creates a new append-only JSON record under `human-decisions/`. It does not modify `final-review-packet.json`, `review.html`, finalizer status, or evidence. A valid decision may cause the UI to project `REVIEW_COMPLETED`.
 
@@ -349,9 +350,9 @@ Allowed decisions:
 
 ## 7. Archival HTML decision handoff
 
-`review.html` is also a self-contained archival artifact. When opened with `file:`, it cannot call the protected decision endpoint.
+New RUNs store a lightweight `review.html` entry and a raster-free review model. Opening it with `file:` displays `PROTECTED_REVIEW_REQUIRED`; use `review-run serve` for inspection and lazy protected page delivery. It does not provide a direct-file review or decision form. Existing self-contained archives remain supported without rewriting their bytes.
 
-The **결정 JSON 다운로드** control validates decision, notes, reviewer ID, and packet hash locally, then creates a five-field envelope containing `reviewed_at: new Date().toISOString()`.
+In retained legacy archives, the **결정 JSON 다운로드** control validates decision, notes, reviewer ID, and packet hash locally, then creates a five-field envelope containing `reviewed_at: new Date().toISOString()`.
 
 Import the envelope through the approved validator path:
 

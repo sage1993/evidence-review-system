@@ -52,6 +52,7 @@ from evidence_review.llm_layer.track_a import (
 )
 from evidence_review.llm_layer.track_b import (
     required_facet_completeness_status,
+    required_facets_from_inputs,
     track_b_semantic_gate_status,
     validate_track_b_output,
 )
@@ -338,6 +339,8 @@ def review_packet_document(packet: ReviewPacket) -> dict[str, object]:
         }
         if claim.issue_ids:
             claim_document["issue_ids"] = list(claim.issue_ids)
+        if claim.fulfilled_facet_ids:
+            claim_document["fulfilled_facet_ids"] = list(claim.fulfilled_facet_ids)
         claim_documents.append(claim_document)
     document: dict[str, object] = {
         "run_id": packet.run_id,
@@ -395,13 +398,19 @@ def expected_final_review_packet_from_snapshot(
     validated_a = validate_track_a_output(track_a_output, bundle)
     validate_track_a_integrity(validated_a, bundle)
     track_b_output = snapshot.document("track-b-output.json")
+    required_facets = required_facets_from_inputs(bundle.inputs)
     audit = validate_track_b_output(
         track_b_output,
         validated_a,
         expected_question=bundle.question,
-        expected_facet_completeness=required_facet_completeness_status(
-            bundle.inputs.get("facet_coverage")
+        expected_facet_completeness=(
+            None
+            if required_facets
+            else required_facet_completeness_status(
+                bundle.inputs.get("facet_coverage")
+            )
         ),
+        required_facets_by_issue=required_facets or None,
     )
     confidence_inputs = _finalizer_confidence_factors(
         _decode_confidence_inputs(snapshot.document("confidence-input.json")),

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from threading import Thread
 
@@ -20,9 +19,12 @@ from tests.integration.review_packet.test_protected_image_delivery import (
     _review_model_from_html,
     _run,
 )
+from tests.integration.review_packet.verified_transport_fixture import (
+    install_visual_authority,
+)
 
 
-def _case_only_review(run: Path, image_sha256: str) -> None:
+def _case_only_model(image_sha256: str) -> dict[str, object]:
     model = {
         "run_id": RUN_ID,
         "status": "READY_FOR_HUMAN_REVIEW",
@@ -58,26 +60,14 @@ def _case_only_review(run: Path, image_sha256: str) -> None:
             "related_references": [],
         },
     }
-    (run / "review.html").write_text(
-        '<div class="app-shell"></div>'
-        f'<figure class="case-visual-page" data-case-page="{CASE_ATTACHMENT_ID}-p1">'
-        '<image data-case-page-image data-case-page-src="data:image/png;base64,AAAA"/>'
-        "</figure>"
-        '<script id="review-model" type="application/json">'
-        + json.dumps(model, sort_keys=True, separators=(",", ":"))
-        + "</script>",
-        encoding="utf-8",
-    )
+    return model
 
 
 def test_create_review_server_builds_payload_free_untiled_case_projection(
     tmp_path: Path,
 ) -> None:
     image_sha256 = _case_page(tmp_path, VALID_MINIMAL_PNG)
-    run = tmp_path / "runs" / RUN_ID
-    run.mkdir(parents=True)
-    (run / "final-review-packet.json").write_bytes(b"{}")
-    _case_only_review(run, image_sha256)
+    install_visual_authority(tmp_path, _case_only_model(image_sha256))
 
     server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
     thread = Thread(target=server.serve_forever, daemon=True)

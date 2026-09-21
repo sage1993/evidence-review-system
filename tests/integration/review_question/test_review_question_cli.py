@@ -79,7 +79,7 @@ def _question_plan_output(
         json.dumps(
             {
                 "format": "evidence-review/question-plan",
-                "version": 1,
+                "version": 3,
                 "original_question": question,
                 "facts": [] if facts is None else facts,
                 "assumptions": [],
@@ -88,6 +88,8 @@ def _question_plan_output(
                         "id": "I1",
                         "question": issue_question or question,
                         "depends_on": [],
+                        "required_evidence_roles": ["rule"],
+                        "required_facet_ids": ["applicable_criteria"],
                     }
                 ],
                 "legal_anchors": [],
@@ -98,6 +100,7 @@ def _question_plan_output(
                         "text": search_text,
                         "kind": "phrase",
                         "source": "planner",
+                        "role": "rule",
                     }
                 ],
             },
@@ -698,6 +701,7 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
                 "text": "청소년수련관",
                 "kind": "phrase",
                 "source": "planner",
+                "role": "rule",
             },
             {
                 "id": "S3",
@@ -705,6 +709,7 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
                 "text": "1,500제곱미터",
                 "kind": "phrase",
                 "source": "planner",
+                "role": "rule",
             },
             {
                 "id": "S4",
@@ -712,6 +717,7 @@ def test_korean_formal_review_prepare_preserves_retrieval_and_snapshot_lineage(
                 "text": "청소년문화의집",
                 "kind": "phrase",
                 "source": "planner",
+                "role": "rule",
             },
         ]
     )

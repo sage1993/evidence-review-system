@@ -23,7 +23,7 @@ from evidence_review.review_packet.decision_record import write_human_decision
 from evidence_review.review_run import prepare_review_run
 
 
-def _finalize_prepared_run(run_directory: Path) -> Path:
+def _finalize_prepared_run(run_directory: Path, *, facets_required: bool = False) -> Path:
     bundle = json.loads((run_directory / "track-a-bundle.json").read_text(encoding="utf-8"))
     (run_directory / "track-a-output.json").write_bytes(
         dump_bytes(
@@ -44,7 +44,9 @@ def _finalize_prepared_run(run_directory: Path) -> Path:
                 "run_id": bundle["run_id"],
                 "audited_question": bundle["question"],
                 "question_responsiveness": "NOT_VERIFIED",
-                "required_facet_completeness": "NOT_APPLICABLE",
+                "required_facet_completeness": (
+                    "INCOMPLETE" if facets_required else "NOT_APPLICABLE"
+                ),
                 "claim_audits": [],
                 "overall_disposition": "INCOMPLETE",
             }
@@ -149,6 +151,7 @@ def _matter_store(path: Path, provenance: dict[str, object]) -> MatterStore:
                 question="Does the exact source support the review?",
                 work_state="READY_TO_FORMALIZE",
                 depends_on=(),
+                required_facet_ids=("source_support",),
             ),
         ),
         source_bindings=(
@@ -183,7 +186,7 @@ def _finalized_matter_run(tmp_path: Path) -> Path:
     store = _matter_store(workspace / "matter.sqlite", provenance)
     snapshot = create_formalization_snapshot(store, "MATTER-SNAP-1", 2, evidence_db)
     prepared = formalize_snapshot(workspace, snapshot)
-    return _finalize_prepared_run(workspace / "runs" / prepared.run_id)
+    return _finalize_prepared_run(workspace / "runs" / prepared.run_id, facets_required=True)
 
 
 def test_legacy_run_reference_does_not_invent_matter_history(tmp_path: Path) -> None:

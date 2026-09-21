@@ -17,7 +17,7 @@ def test_server_process_does_not_consume_linked_state_during_cleanup(
     run_id = "RUN-1234567890ABCDEF1234"
     run_directory = tmp_path / "runs" / run_id
     run_directory.mkdir(parents=True)
-    state_path = run_directory / "review-server.json"
+    state_path = tmp_path / ".review-runtime" / run_id / "review-server.json"
     external = tmp_path / "external-review-server.json"
     token = "test-token"
     external.write_text(

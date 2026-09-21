@@ -27,7 +27,7 @@ def test_summary_separates_answer_from_workflow_status(tmp_path: Path) -> None:
     answer = html.index("질문에 대한 실제 검토 결론입니다.")
 
     assert question < answer
-    assert "근거</dt><dd>1 건" in html
+    assert "인용 근거</dt><dd>1건" in html
     assert "최종 검토가 가능한 상태입니다." not in html
     assert status < html.index('id="review-summary"')
 

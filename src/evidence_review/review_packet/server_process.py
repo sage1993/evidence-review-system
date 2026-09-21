@@ -22,6 +22,7 @@ from evidence_review.review_packet.local_server import (
 )
 from evidence_review.review_packet.server_runtime import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
+    review_runtime_directory,
     validate_idle_timeout,
 )
 
@@ -43,10 +44,11 @@ def main(argv: list[str] | None = None) -> int:
         field="workspace root",
     )
     runs_root = verified_regular_directory(workspace / "runs", field="runs root")
-    run_directory = verified_regular_directory(
+    verified_regular_directory(
         runs_root / args.run_id,
         field="run directory",
     )
+    runtime_directory = review_runtime_directory(workspace, args.run_id, create=True)
     reviewer_ids = None if args.reviewer_id is None else {args.run_id: args.reviewer_id}
     server = create_review_server(
         workspace,
@@ -55,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         idle_timeout_seconds=args.idle_timeout_seconds,
     )
     configure_case_visual_server(server)
-    state_path = run_directory / "review-server.json"
+    state_path = runtime_directory / "review-server.json"
     try:
         port = server.server_address[1]
         state = {
@@ -83,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         trusted_state_path: Path | None = None
         try:
             trusted_state_path = verified_regular_file_below(
-                run_directory,
+                runtime_directory,
                 ("review-server.json",),
                 field="review server state",
             )

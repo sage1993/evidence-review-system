@@ -113,6 +113,11 @@ def bind_question_plan_to_review_request(
                 "question": issue.question,
                 "depends_on": list(issue.depends_on),
                 "required_evidence_roles": list(issue.required_evidence_roles),
+                **(
+                    {"required_facet_ids": list(issue.required_facet_ids)}
+                    if plan.version >= 3
+                    else {}
+                ),
             }
             for issue in plan.issues
         ],

@@ -212,7 +212,7 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
 
     assert "기준 근거" in html
     assert "사용자 파일" in html
-    assert "쟁점 탐색" in html
+    assert "도면 관찰 항목" in html
     assert "설계기준" in html
     assert "차량 출입구는 기준 위치를 확보해야 한다." in html
     assert 'data-case-page-src="data:image/png;base64,ZmFrZQ=="' in html
@@ -233,7 +233,7 @@ def test_renderer_builds_issue_119_reference_subject_findings_workspace() -> Non
     assert 'data-case-zoom-out' in html
     assert 'data-case-overlay-mode="selected"' in html
     assert "focusSubjectFinding" in script
-    assert "마우스 휠 Zoom" in html
+    assert "마우스 휠 확대" in html
     assert "http://" not in html
     assert "https://" not in html
 
@@ -277,8 +277,8 @@ def test_issue_152_case_visual_exposes_distinct_readable_view_controls() -> None
     assert ".case-visual-help{margin:0;padding:8px 12px" in css
 
 
-def test_issue_152_no_direct_reference_uses_subject_workspace_without_empty_pane() -> None:
-    """An unavailable direct comparison must not consume half of the drawing workspace."""
+def test_no_direct_reference_retains_side_by_side_context() -> None:
+    """A missing direct basis must remain explicit without removing the left pane."""
     model = _model()
     visual = model["case_visual_review"]
     assert isinstance(visual, dict)
@@ -291,12 +291,12 @@ def test_issue_152_no_direct_reference_uses_subject_workspace_without_empty_pane
 
     assert 'data-reference-available="false"' in html
     assert 'class="reference-unavailable"' in html
-    assert 'class="reference-viewer"' not in html
-    assert re.search(r'<button[^>]+data-case-divider', html) is None
+    assert 'class="reference-viewer"' in html
+    assert re.search(r'<button[^>]+data-case-divider', html) is not None
     assert (
         '#case-visual-review[data-reference-available="false"] '
         ".comparison-workspace{grid-template-columns:minmax(0,1fr)}"
-    ) in css
+    ) not in css
 
 
 def test_issue_152_full_renderers_share_named_review_shell_regions() -> None:
@@ -382,21 +382,13 @@ def test_renderer_exposes_all_six_reference_types() -> None:
     assert 'data-case-decision-open' not in html
 
 
-def test_renderer_marks_only_selected_reference_table_cells_as_targets() -> None:
+def test_renderer_points_to_original_table_instead_of_reconstructing_cells() -> None:
     html = render_case_visual_review(_typed_reference_model())
-
-    assert 'data-table-cell="0:0"' in html
-    assert 'data-table-cell="1:0"' in html
-    assert 'class="reference-table-cell is-target"' in html
-    assert "3.0m 이상" in html
-
-    table_start = html.index('data-reference-type="TABLE"')
-    table_end = html.index("</article>", table_start)
-    table_fragment = html[table_start:table_end]
-    assert 'class="reference-table-cell"' in table_fragment
-    assert 'data-table-cell="0:0"' in table_fragment
-    assert 'data-table-cell="1:0"' in table_fragment
-    assert 'class="reference-table-cell is-target"' in table_fragment
+    start = html.index('data-reference-type="TABLE"')
+    fragment = html[start:html.index("</article>", start)]
+    assert 'data-table-cell=' not in fragment
+    assert 'data-reference-anchor="CIT-TABLE"' in fragment
+    assert 'data-reference-page-image' in fragment
 
 
 def test_renderer_does_not_mark_unselected_reference_table_as_target() -> None:
@@ -474,14 +466,14 @@ def test_related_only_finding_keeps_not_comparable_status() -> None:
     html = render_case_visual_review(model)
 
     assert 'data-finding-status="not_comparable"' in html
-    assert "비교 불가" in html
-    assert "직접 기준 근거가 없어 기준 비교 창을 숨겼습니다." in html
+    assert "기준 연결 전" in html
+    assert "관련 자료 — 적용 기준 연결 전. 도면 관찰은 기준 대조 결과가 아닙니다." in html
     assert "직접 대조 가능한 기준을 찾지 못했습니다." in html
     assert "관련 근거 1건" in html
     assert "직접 인용문" in html
     assert 'data-reference-role="related"' in html
-    assert 'class="reference-viewer"' not in html
-    assert re.search(r'<button[^>]+data-case-divider', html) is None
+    assert 'class="reference-viewer"' in html
+    assert re.search(r'<button[^>]+data-case-divider', html) is not None
 
 
 def test_renderer_consumes_case_raster_payload_before_review_model_serialization() -> None:
@@ -523,8 +515,14 @@ def test_summary_flow_spans_visual_workspace_across_parent_review_grid() -> None
     assert 'style="grid-column:1/-1;width:100%;min-width:0"' not in html
     assert 'id="case-visual-review"' in html
     assert 'id="additional-review"' not in html
-    assert "body:has(#case-visual-review){overflow:hidden}" in css
-    assert ".review-workspace>:not(.visual-review-grid-span):not(#decision-form)" in css
+    assert (
+        'body:has(.review-workspace:not([data-review-shell="unified"]) '
+        '#case-visual-review){overflow:hidden}'
+    ) in css
+    assert (
+        ".review-workspace>:not(.review-shell-region)"
+        ":not(.visual-review-grid-span):not(#decision-form)"
+    ) in css
     assert 'body[data-visual-decision-open="true"]' not in css
     assert "#decision-form:hover" not in css
     assert "#decision-form:focus-within" not in css

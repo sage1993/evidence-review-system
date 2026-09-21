@@ -10,7 +10,7 @@ from evidence_review.presentation.tokens import presentation_css_variables
 _STATUS_LABELS = {
     "ABSTAIN": "현재 자료로 판정할 수 없음",
     "READY_FOR_HUMAN_REVIEW": "검토 준비 완료",
-    "REVIEW_COMPLETED": "검토 완료",
+    "REVIEW_COMPLETED": "검토 기록 있음",
     "INDETERMINATE": "판단 보류",
     "COMPLETE": "근거 연결 완료",
     "RESOLVED": "확인",
@@ -29,6 +29,7 @@ _ISSUE_LABELS = {
     "UNRESOLVED_CONFLICT": "해결되지 않은 근거 충돌이 있습니다.",
     "LOW_CONFIDENCE": "근거 신뢰도를 추가로 확인해야 합니다.",
     "TRACK_B_REJECTED": "교차 검증에서 추가 확인이 필요하다고 판단했습니다.",
+    "TRACK_B_REJECTION": "교차 검증에서 추가 확인이 필요하다고 판단했습니다.",
 }
 
 _GAP_LABELS = {
@@ -72,19 +73,28 @@ def localized_status(value: object) -> str:
     return _STATUS_LABELS.get(raw, raw.replace("_", " ") if raw else "상태 확인 필요")
 
 
+def machine_status(model: Mapping[str, object]) -> str:
+    """Return the packet's machine result without substituting decision-record state."""
+    return str(model.get("status", model.get("display_status", "")))
+
+
 def conclusion_text(model: Mapping[str, object]) -> str:
     """Return only an explicit reviewer-facing answer, never a workflow-status paraphrase."""
     value = model.get("answer_summary")
     if isinstance(value, str) and value.strip():
         return value.strip()
     if _sequence(model.get("issue_results")):
-        raw_status = str(model.get("display_status", model.get("status", "")))
+        raw_status = machine_status(model)
         return f"전체 검토 상태: {localized_status(raw_status)}"
     return _NO_ANSWER_FALLBACK
 
 
 def _human_issue(value: object) -> str:
-    raw = str(value)
+    if not isinstance(value, str):
+        return ""
+    raw = value.strip()
+    if not raw:
+        return ""
     return _ISSUE_LABELS.get(raw, raw.replace("_", " "))
 
 
@@ -137,6 +147,28 @@ def issue_result_gap_items(model: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(values)
 
 
+def issue_result_missing_facet_items(model: Mapping[str, object]) -> tuple[str, ...]:
+    """Expose exact packet-declared missing facets without inferring their meaning."""
+    values: list[str] = []
+    for raw_item in _sequence(model.get("issue_results")):
+        item = _mapping(raw_item)
+        issue_id = str(item.get("issue_id", ""))
+        for facet_id in _sequence(item.get("missing_facet_ids", [])):
+            description = f"{issue_id}: 필수 검토 항목 미확인 ({facet_id})"
+            if description not in values:
+                values.append(description)
+    return tuple(values)
+
+
+def summary_attention_items(model: Mapping[str, object]) -> tuple[str, ...]:
+    """Return packet-backed missing facets and gaps for the summary surface."""
+    values: list[str] = []
+    for item in (*issue_result_missing_facet_items(model), *additional_review_items(model)):
+        if item not in values:
+            values.append(item)
+    return tuple(values)
+
+
 def has_rules_or_calculations(model: Mapping[str, object]) -> bool:
     return bool(_sequence(model.get("rules")) or _sequence(model.get("calculations")))
 
@@ -174,6 +206,9 @@ __all__ = [
     "evidence_type_label",
     "has_rules_or_calculations",
     "issue_result_gap_items",
+    "issue_result_missing_facet_items",
     "localized_status",
+    "machine_status",
     "review_presentation_css",
+    "summary_attention_items",
 ]

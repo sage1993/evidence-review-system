@@ -16,7 +16,10 @@ from threading import Event, Lock, Thread
 from typing import Any, Literal, cast
 from urllib.parse import unquote, urlsplit
 
+from evidence_review.abstention.finalizer import verify_finalized_run_with_snapshot
+from evidence_review.contracts.codecs import decode_review_packet
 from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.evidence.snapshot import finalized_evidence_provenance
 from evidence_review.filesystem_trust import (
     verified_regular_directory,
     verified_regular_file_below,
@@ -29,11 +32,13 @@ from evidence_review.local_http_transport import (
     send_protected_response,
     validate_content_length,
 )
+from evidence_review.review_packet.builder import build_review_view_model
 from evidence_review.review_packet.decision_record import (
     HumanDecisionRecord,
-    build_human_decision_envelope,
+    build_server_human_decision_envelope,
+    human_decision_binding_status,
     load_latest_valid_human_decision,
-    validate_human_decision_request,
+    validate_human_decision_intent,
     write_human_decision,
 )
 from evidence_review.review_packet.html_renderer import render_protected_review_html
@@ -43,14 +48,13 @@ from evidence_review.review_packet.protected_projection import (
     ProtectedReviewProjection,
     ProtectedRouteIdentity,
     build_protected_review_projection,
-    load_archive_review_model,
     protected_route_identity,
 )
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-_REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "packet_hash", "decision", "notes"})
+_REQUIRED_DECISION_FIELDS = frozenset({"reviewer_id", "decision", "notes"})
 _CSP = (
     "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; "
     "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
@@ -84,6 +88,14 @@ class _Route:
     page_number: int | None = None
     source_hash: str | None = None
 
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedPresentation:
+    projection: ProtectedReviewProjection
+    packet_bytes: bytes
+    packet_sha256: str
+    evidence_db_sha256: str
+    artifact_hashes: tuple[tuple[str, str], ...]
 
 
 def _validated_workspace_root(workspace_root: Path) -> Path:
@@ -189,6 +201,112 @@ def _regular_child(root: Path, *parts: str, final_is_file: bool) -> Path | None:
         return candidate
     except (FileNotFoundError, OSError, ValueError):
         return None
+
+
+def _verified_packet_binding(
+    workspace_root: Path,
+    run_id: str,
+) -> tuple[bytes, str, str, Path, tuple[tuple[str, str], ...]]:
+    """Read the exact finalizer and evidence identities for one protected route."""
+    run_directory = _regular_child(
+        workspace_root,
+        "runs",
+        run_id,
+        final_is_file=False,
+    )
+    evidence_db = _regular_child(
+        workspace_root,
+        "evidence",
+        "evidence.sqlite",
+        final_is_file=True,
+    )
+    if run_directory is None or evidence_db is None:
+        raise ValueError("verified review inputs are missing")
+    # Keep the finalized-entry lifecycle boundary, but never trust its contents.
+    verified_regular_file_below(run_directory, ("review.html",), field="review entry")
+    packet, snapshot = verify_finalized_run_with_snapshot(run_directory)
+    if packet.run_id != run_id or snapshot.run_id != run_id:
+        raise ValueError("finalized run identity does not match route")
+    packet_path = verified_regular_file_below(
+        run_directory,
+        ("final-review-packet.json",),
+        field="final review packet",
+    )
+    packet_bytes = packet_path.read_bytes()
+    try:
+        decoded = decode_review_packet(json.loads(packet_bytes))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise ValueError("final review packet is invalid") from error
+    if decoded != packet:
+        raise ValueError("final review packet changed during verification")
+    try:
+        # Only manifest-verified inputs can bind the exact closed database.
+        # review-request.json is not a finalizer-verified artifact.
+        from evidence_review.review_question import _validated_snapshot_provenance
+
+        evidence = finalized_evidence_provenance(evidence_db)
+        bundle = snapshot.document("track-a-bundle.json")
+        if not isinstance(bundle, Mapping) or not isinstance(bundle.get("inputs"), Mapping):
+            raise ValueError("verified bundle inputs are missing")
+        inputs = bundle["inputs"]
+        snapshot_hash = inputs.get("snapshot_hash")
+        if not isinstance(snapshot_hash, str):
+            raise ValueError("verified bundle snapshot identity is missing")
+        bound = _validated_snapshot_provenance(
+            inputs.get("evidence_snapshot_provenance"), snapshot_hash,
+        )
+        if (
+            bound is None
+            or evidence["evidence_snapshot_hash"] != snapshot_hash
+            or bound["evidence_db_sha256"] != evidence["evidence_db_sha256"]
+        ):
+            raise ValueError("evidence does not match the manifest-bound bundle")
+    except Exception as error:
+        raise ValueError("finalized run evidence binding is invalid") from error
+    evidence_db_sha256 = evidence["evidence_db_sha256"]
+    if not isinstance(evidence_db_sha256, str):
+        raise ValueError("finalized evidence identity is invalid")
+    artifact_hashes = tuple((artifact.name, artifact.sha256) for artifact in snapshot.artifacts)
+    return (
+        packet_bytes, hashlib.sha256(packet_bytes).hexdigest(),
+        evidence_db_sha256, evidence_db, artifact_hashes,
+    )
+
+
+def _verified_presentation(
+    workspace_root: Path,
+    run_id: str,
+) -> _VerifiedPresentation:
+    """Build the protected view from the finalizer-verified packet, never review.html."""
+    packet_bytes, packet_sha256, evidence_db_sha256, evidence_db, artifact_hashes = (
+        _verified_packet_binding(workspace_root, run_id)
+    )
+    model = build_review_view_model(packet_bytes, evidence_db, embed_rasters=False)
+    metadata = model.get("metadata")
+    if (
+        not isinstance(metadata, Mapping)
+        or metadata.get("run_id") != run_id
+        or metadata.get("packet_sha256") != packet_sha256
+    ):
+        raise ValueError("protected review model identity is invalid")
+    projection = build_protected_review_projection(model, workspace_root / "page-images")
+    current_packet, current_packet_sha256, current_evidence_sha256, _current_db, current_hashes = (
+        _verified_packet_binding(workspace_root, run_id)
+    )
+    if (
+        current_packet != packet_bytes
+        or current_packet_sha256 != packet_sha256
+        or current_evidence_sha256 != evidence_db_sha256
+        or current_hashes != artifact_hashes
+    ):
+        raise ValueError("review authority changed during protected projection")
+    return _VerifiedPresentation(
+        projection=projection,
+        packet_bytes=packet_bytes,
+        packet_sha256=packet_sha256,
+        evidence_db_sha256=evidence_db_sha256,
+        artifact_hashes=artifact_hashes,
+    )
 
 
 def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -317,7 +435,7 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         workspace_root: Path,
         run_tokens: Mapping[str, str],
         reviewer_ids: Mapping[str, str],
-        protected_projections: Mapping[str, ProtectedReviewProjection],
+        verified_presentations: Mapping[str, _VerifiedPresentation],
         run_asset_allowlists: Mapping[str, frozenset[ProtectedRouteIdentity]],
         max_body_bytes: int,
         idle_timeout_seconds: float | None,
@@ -325,7 +443,11 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
         self.workspace_root = workspace_root
         self.run_tokens = dict(run_tokens)
         self.reviewer_ids = dict(reviewer_ids)
-        self.protected_projections = dict(protected_projections)
+        self.verified_presentations = dict(verified_presentations)
+        self.protected_projections = {
+            run_id: presentation.projection
+            for run_id, presentation in verified_presentations.items()
+        }
         self.run_asset_allowlists = dict(run_asset_allowlists)
         self.max_body_bytes = max_body_bytes
         self.idle_timeout_seconds = idle_timeout_seconds
@@ -343,6 +465,31 @@ class _ReviewHTTPServer(ThreadingHTTPServer):
             return False
         identity = protected_route_identity(cast(AssetKind, asset_kind), route_key)
         return identity in self.run_asset_allowlists.get(run_id, frozenset())
+
+    def current_presentation(self, run_id: str) -> _VerifiedPresentation | None:
+        """Return the startup binding only if current packet and evidence remain exact."""
+        expected = self.verified_presentations.get(run_id)
+        if expected is None:
+            return None
+        try:
+            binding = _verified_packet_binding(self.workspace_root, run_id)
+            packet_bytes, packet_sha256, evidence_db_sha256, _evidence_db, artifact_hashes = binding
+        except (OSError, ValueError, RuntimeError):
+            return None
+        if (
+            artifact_hashes != expected.artifact_hashes
+            or not secrets.compare_digest(packet_sha256, expected.packet_sha256)
+            or not secrets.compare_digest(
+                evidence_db_sha256,
+                expected.evidence_db_sha256,
+            )
+        ):
+            return None
+        if not secrets.compare_digest(
+            hashlib.sha256(packet_bytes).hexdigest(), expected.packet_sha256,
+        ):
+            return None
+        return expected
 
     def mark_activity(self) -> bool:
         with self._activity_lock:
@@ -429,6 +576,16 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _current_presentation(self, route: _Route) -> _VerifiedPresentation | None:
+        if route.run_id not in self.state.verified_presentations:
+            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return None
+        presentation = self.state.current_presentation(route.run_id)
+        if presentation is None:
+            self._reject(HTTPStatus.CONFLICT, "STALE_PACKET")
+            return None
+        return presentation
+
     def _run_directory(self, run_id: str) -> Path | None:
         return _regular_child(
             self.state.workspace_root,
@@ -509,10 +666,6 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         route = self._route()
         if route is None or not self._authorized(route, require_origin=False):
             return
-        self.state.mark_activity()
-        if route.endpoint == "page_image":
-            self._send_page_image(route)
-            return
         if route.endpoint == "confirmation":
             artifact = self._artifact(route.run_id, "machine", "drawing-confirmation.json")
             if artifact is None:
@@ -526,12 +679,18 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 )
             except OSError:
                 self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+                return
+            self.state.mark_activity()
+            return
+        presentation = self._current_presentation(route)
+        if presentation is None:
+            return
+        self.state.mark_activity()
+        if route.endpoint == "page_image":
+            self._send_page_image(route)
             return
         if route.endpoint == "decision_status":
-            packet_bytes = self._packet_and_html(route.run_id)
-            if packet_bytes is None:
-                self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
-                return
+            packet_bytes = presentation.packet_bytes
             packet_hash = hashlib.sha256(packet_bytes).hexdigest()
             record = self._latest_decision(route.run_id, packet_bytes)
             decision_record: dict[str, str] | None = None
@@ -549,24 +708,20 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                     "reviewer_id": self.state.reviewer_ids.get(route.run_id),
                     "packet_hash": packet_hash,
                     "decision_record": decision_record,
+                    "decision_binding_status": human_decision_binding_status(
+                        self.state.workspace_root / "runs" / route.run_id, packet_hash,
+                    ),
                 },
             )
             return
         if route.endpoint not in {"review", "packet", "packet_hash"}:
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
-        packet_bytes = self._packet_and_html(route.run_id)
-        if packet_bytes is None:
-            self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
-            return
+        packet_bytes = presentation.packet_bytes
         if route.endpoint == "review":
-            projection = self.state.protected_projections.get(route.run_id)
-            if projection is None:
-                self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
-                return
             try:
                 protected = render_protected_review_html(
-                    projection.model,
+                    presentation.projection.model,
                     self.state.workspace_root / "page-images",
                 ).encode("utf-8")
             except (OSError, ValueError):
@@ -605,7 +760,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         if not isinstance(decoded, dict) or set(decoded) != _REQUIRED_DECISION_FIELDS:
             raise ValueError("invalid decision JSON")
         try:
-            request = validate_human_decision_request(decoded)
+            request = validate_human_decision_intent(decoded)
         except ValueError as error:
             raise ValueError("invalid decision JSON") from error
         configured = self.state.reviewer_ids.get(run_id)
@@ -621,6 +776,9 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             return
         if route.endpoint != "decision":
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
+            return
+        presentation = self._current_presentation(route)
+        if presentation is None:
             return
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
         if content_type != "application/json":
@@ -638,17 +796,18 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._reject(HTTPStatus.BAD_REQUEST, "INVALID_DECISION")
             return
-        packet_bytes = self._packet_and_html(route.run_id)
+        # Reading the request body may block. Recheck authority immediately
+        # before appending a decision, not only when the request arrived.
+        presentation = self._current_presentation(route)
+        if presentation is None:
+            return
+        packet_bytes = presentation.packet_bytes
         run_directory = self._run_directory(route.run_id)
-        if packet_bytes is None or run_directory is None:
+        if run_directory is None:
             self._reject(HTTPStatus.NOT_FOUND, "NOT_FOUND")
             return
-        packet_hash = hashlib.sha256(packet_bytes).hexdigest()
-        if not secrets.compare_digest(payload["packet_hash"], packet_hash):
-            self._reject(HTTPStatus.BAD_REQUEST, "PACKET_HASH_MISMATCH")
-            return
         try:
-            envelope = build_human_decision_envelope(payload)
+            envelope = build_server_human_decision_envelope(payload, packet_bytes)
             output = write_human_decision(run_directory, **envelope)
         except ValueError:
             self._reject(HTTPStatus.BAD_REQUEST, "INVALID_DECISION")
@@ -696,37 +855,24 @@ def create_review_server(
     root = _validated_workspace_root(workspace_root)
     tokens = _validated_tokens(run_tokens)
     reviewers = _validated_reviewer_ids(tokens, reviewer_ids)
-    protected_projections: dict[str, ProtectedReviewProjection] = {}
+    verified_presentations: dict[str, _VerifiedPresentation] = {}
     for run_id in tokens:
-        archive = _regular_child(
-            root,
-            "runs",
-            run_id,
-            "review.html",
-            final_is_file=True,
-        )
-        if archive is None:
-            continue
         try:
-            model = load_archive_review_model(archive.read_bytes())
-            protected_projections[run_id] = build_protected_review_projection(
-                model,
-                root / "page-images",
-            )
-        except (FileNotFoundError, OSError, UnicodeError, ValueError):
+            verified_presentations[run_id] = _verified_presentation(root, run_id)
+        except (FileNotFoundError, OSError, RuntimeError, UnicodeError, ValueError):
             continue
     run_asset_allowlists = {
         run_id: frozenset(
             protected_route_identity(asset.asset_kind, asset.route_key)
-            for asset in projection.assets
+            for asset in presentation.projection.assets
         )
-        for run_id, projection in protected_projections.items()
+        for run_id, presentation in verified_presentations.items()
     }
     server = _ReviewHTTPServer(
         root,
         tokens,
         reviewers,
-        protected_projections,
+        verified_presentations,
         run_asset_allowlists,
         max_body_bytes,
         None if idle_timeout_seconds is None else float(idle_timeout_seconds),

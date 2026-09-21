@@ -7,10 +7,12 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import cast
 
+from evidence_review.review_packet.quote_presentation import quote_preview, render_quote
+
 _STATUS_META = {
     "mismatch": ("불일치", "mismatch"),
     "needs_check": ("확인 필요", "needs-check"),
-    "not_comparable": ("비교 불가", "not-comparable"),
+    "not_comparable": ("대조 전", "not-comparable"),
     "match": ("일치", "match"),
 }
 
@@ -226,17 +228,17 @@ def _legacy_references_for_finding(
         )
     if related_cards:
         parts.append(
-            '<details class="related-reference"><summary>관련 근거 '
-            f'{len(related_cards)}건</summary><div class="related-reference-list">'
+            '<div class="related-reference"><span class="reference-kind">관련 근거 '
+            f'{len(related_cards)}건</span><div class="related-reference-list">'
             + "".join(related_cards)
-            + "</div></details>"
+            + "</div></div>"
         )
     elif not direct_cards:
         parts.append(
             '<p class="reference-related-empty">관련 근거도 연결되지 않았습니다.</p>'
         )
     criterion = direct_criteria[0] if direct_criteria else "직접 비교 가능한 기준 없음"
-    return "".join(parts), criterion
+    return "".join(parts), quote_preview(criterion)
 
 
 _REFERENCE_TYPE_LABELS = {
@@ -381,13 +383,11 @@ def _reference_anchor_content(
         f'<span>p.{_text(page_number)}</span></div>'
     )
     body: list[str] = [f'<span class="reference-type-label">{_text(label)}</span>']
-    if title:
+    if title and reference_type != "TABLE":
         body.append(f"<h4>{_text(title)}</h4>")
     if quote:
-        body.append(f"<blockquote>{_text(quote)}</blockquote>")
-    if reference_type == "TABLE":
-        body.append(_reference_table(anchor))
-    elif reference_type in {"IMAGE", "DIAGRAM", "DRAWING"} and visual_kind:
+        body.append(render_quote(quote))
+    if reference_type in {"IMAGE", "DIAGRAM", "DRAWING"} and visual_kind:
         body.append(f'<p class="reference-visual-kind">{_text(visual_kind)}</p>')
     if reference_type == "PDF_PAGE" and not title and not quote:
         body.append('<p class="reference-page-only">페이지 전체 기준</p>')
@@ -410,6 +410,12 @@ def _reference_anchor_card(
         f'<article class="reference-viewer-item" data-reference-type="{_text(reference_type)}" '
         f'data-reference-role="{_text(role)}">'
         f'<div class="reference-anchor-fixed">{content}</div>'
+        '<div class="reference-controls">'
+        '<button type="button" data-reference-expand aria-expanded="false">원문 크게 보기</button>'
+        '<button type="button" data-reference-zoom="in" aria-label="기준 원문 확대">+</button>'
+        '<button type="button" data-reference-zoom="out" aria-label="기준 원문 축소">−</button>'
+        '<button type="button" data-reference-zoom="fit">기준 원문 맞춤</button>'
+        '</div>'
         f'<div class="reference-page-stage" data-reference-page="{_text(asset_key)}" '
         f'data-reference-asset-key="{_text(asset_key)}" '
         f'data-reference-image-sha256="{_text(image_sha256)}" '
@@ -504,10 +510,10 @@ def _typed_references_for_finding(
         )
     if related_anchors:
         parts.append(
-            '<details class="related-reference"><summary>관련 근거 '
-            f'{len(related_anchors)}건</summary><div class="related-reference-list">'
+            '<div class="related-reference"><span class="reference-kind">관련 근거 '
+            f'{len(related_anchors)}건</span><div class="related-reference-list">'
             + render_group(related_anchors, "related")
-            + "</div></details>"
+            + "</div></div>"
         )
     elif not direct_anchors:
         parts.append(
@@ -522,7 +528,7 @@ def _typed_references_for_finding(
             or _raw_text(first.get("document_name"))
             or criterion
         )
-    return "".join(parts), criterion
+    return "".join(parts), quote_preview(criterion)
 
 
 def _references_for_finding(
@@ -735,7 +741,7 @@ def _page_raster_svg(page: Mapping[str, object], width: float, height: float) ->
 
 
 def _abstain_summary(model: Mapping[str, object]) -> str:
-    status = str(model.get("display_status", model.get("status", ""))).upper()
+    status = str(model.get("status", model.get("display_status", ""))).upper()
     if status != "ABSTAIN":
         return ""
     reasons = [
@@ -843,20 +849,21 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
     finding_html: list[str] = []
     status_counts = {key: 0 for key in _STATUS_META}
     any_direct = False
-    any_related = False
     for index, finding in enumerate(findings):
         finding_id = _raw_text(finding.get("finding_id")) or f"VF-{index + 1}"
         refs, criterion = _references_for_finding(
             finding, claims, reference_pages, related_reference_texts
         )
-        any_direct = any_direct or _has_direct_reference(finding, claims)
-        any_related = any_related or _has_related_reference(finding, claims)
+        has_direct = _has_direct_reference(finding, claims)
+        any_direct = any_direct or has_direct
         reference_html.append(
             f'<section class="reference-focus{" is-active" if index == 0 else ""}" '
             f'data-case-reference="{_text(finding_id)}"{"" if index == 0 else " hidden"}>{refs}</section>'
         )
         status = str(finding.get("status", "not_comparable"))
         status_label, status_class = _status_meta(status)
+        if not has_direct:
+            status_label = "기준 연결 전"
         if status in status_counts:
             status_counts[status] += 1
         candidate_ids = [str(item) for item in _sequence(finding.get("candidate_ids", []), "finding.candidate_ids")]
@@ -880,8 +887,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
                     f'<span class="finding-status">{_text(status_label)}</span></div>',
                     f'<h3>{_text(finding.get("title") or "도면 확인사항")}</h3>',
                     '<dl class="comparison-grid">',
-                    f'<div><dt>기준</dt><dd>{_text(criterion)}</dd></div>',
-                    f'<div><dt>사용자 파일</dt><dd>{_text(finding.get("subject_value"))}</dd></div>',
+                    (f'<div><dt>기준</dt><dd>{_text(criterion)}</dd></div>'
+                     if has_direct else '<div><dt>기준 연결</dt><dd>아직 연결되지 않음</dd></div>'),
+                    f'<div><dt>도면 관찰 내용</dt><dd>{_text(finding.get("subject_value"))}</dd></div>',
                     "</dl></button>",
                 )
             )
@@ -902,7 +910,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
         ("all", "전체", len(findings)),
         ("mismatch", "불일치", status_counts["mismatch"]),
         ("needs_check", "확인 필요", status_counts["needs_check"]),
-        ("not_comparable", "비교 불가", status_counts["not_comparable"]),
+        ("not_comparable", "대조 전", status_counts["not_comparable"]),
         ("match", "일치", status_counts["match"]),
     ]
     filter_html = "".join(
@@ -910,39 +918,37 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
         f'data-case-filter="{key}">{label} {count}</button>'
         for key, label, count in filters
     )
-    initial_reference_width = 42 if any_direct else 30
+    initial_reference_width = 50
     _strip_case_raster_payload(model)
     return "".join(
         (
             '<section id="case-visual-review" class="visual-review-workspace" '
             f'data-overlay-mode="all" data-reference-available="{"true" if any_direct else "false"}" '
             'aria-label="기준 근거와 사용자 파일 대조 Workspace">',
+            '<div class="visual-notices">',
             _abstain_summary(model),
             (
                 ""
                 if any_direct
-                else '<p class="reference-unavailable" role="status">직접 기준 근거가 없어 기준 비교 창을 숨겼습니다.</p>'
+                else '<p class="reference-unavailable" role="status">관련 자료 — 적용 기준 연결 전. 도면 관찰은 기준 대조 결과가 아닙니다.</p>'
             ),
-            (
-                '<aside class="related-reference-fallback" aria-label="관련 근거">'
-                + "".join(reference_html)
-                + "</aside>"
-                if not any_direct and any_related
-                else ""
-            ),
+            '</div>',
+            '<div class="comparison-actions">'
+            '<label><input type="checkbox" data-view-sync> 확대·이동 동기화</label>'
+            '<button type="button" data-comparison-fullscreen>비교 화면 전체 보기</button>'
+            '<button type="button" data-findings-toggle aria-expanded="true" '
+            'aria-controls="visual-observations">관찰 목록 접기</button></div>',
             '<div class="workspace-grid">',
             f'<div class="comparison-workspace" data-case-split data-reference-width="{initial_reference_width}">',
             (
                 '<section class="reference-viewer" aria-label="기준 근거 Viewer"><header>'
-                '<strong>기준 근거</strong><span>Reference</span></header><div class="reference-body">'
+                '<strong>기준·관련 자료</strong><span>원문 위치</span></header><div class="reference-body">'
                 + "".join(reference_html)
                 + "</div></section>"
                 + '<button class="viewer-divider" type="button" role="separator" '
                 + 'aria-label="기준 근거와 사용자 파일 폭 조절" aria-orientation="vertical" '
                 + f'aria-valuemin="26" aria-valuemax="70" aria-valuenow="{initial_reference_width}" '
                 + 'data-case-divider><span></span></button>'
-                if any_direct
-                else ""
             ),
             '<section class="subject-viewer" aria-label="사용자 파일 Viewer">',
             '<header class="subject-toolbar"><div><strong>사용자 파일</strong><span>Subject</span></div>',
@@ -952,6 +958,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             '<div class="viewer-controls">',
             f'<button type="button" data-case-prev aria-label="이전 페이지">{_icon("prev")}</button>',
             f'<span><b data-case-page-number>1</b> / {len(pages)}</span>',
+            f'<input type="number" min="1" max="{len(pages)}" value="1" '
+            'data-case-page-jump aria-label="페이지 번호">',
+            '<button type="button" data-case-page-go>이동</button>',
             f'<button type="button" data-case-next aria-label="다음 페이지">{_icon("next")}</button>',
             '<span class="control-separator"></span>',
             f'<button type="button" data-case-zoom-out aria-label="축소">{_icon("minus")}</button>',
@@ -963,13 +972,15 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             '</div></header><div class="subject-body">',
             "".join(page_html),
             "</div></section></div>",
-            '<aside class="findings-panel" aria-label="쟁점 탐색"><header>'
-            '<strong>쟁점 탐색</strong><span>Issues</span></header>',
+            '<aside id="visual-observations" class="findings-panel" aria-label="도면 관찰 항목"><header>'
+            '<strong>도면 관찰 항목</strong><span>원문에서 추출 · 미확정 포함</span></header>',
             f'<div class="finding-filters">{filter_html}</div>',
             '<div class="findings-body">',
             "".join(finding_html),
+            '<p class="findings-empty" data-findings-empty hidden>선택한 조건에 해당하는 관찰 항목이 없습니다.</p>',
             '</div></aside></div>',
-            '<p class="case-visual-help">마우스 휠 Zoom · 좌클릭 Drag Pan · 더블클릭 Fit · 중앙 Divider 드래그로 Viewer 폭 조절</p>',
+            '<p class="case-visual-help">빨간 강조: 선택한 관찰 위치 · 위반 확정 표시가 아닙니다. '
+            '마우스 휠 확대 · 드래그 이동 · 더블클릭 화면 맞춤</p>',
             "</section>",
         )
     )
@@ -1008,22 +1019,22 @@ def case_visual_css() -> str:
 
 
 CASE_VISUAL_CSS = r"""
-#case-visual-review{--line:#d0d5dd;--muted:#667085;--panel:#fff;--canvas:#e9edf2;height:100%;min-height:0;background:#fff;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr) 30px;position:relative}.visual-abstain{position:absolute;z-index:12;left:12px;top:10px;max-width:min(520px,42vw);display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid #fedf89;border-radius:8px;background:rgba(255,250,235,.96);box-shadow:0 2px 8px rgba(16,24,40,.06);font-size:11px;color:#93370d}.visual-abstain strong{white-space:nowrap;color:#7a2e0e}.visual-abstain span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace-grid{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,326px)}.comparison-workspace{min-width:0;min-height:0;display:grid;grid-template-columns:var(--reference-width,42%) 10px minmax(0,1fr)}.reference-viewer,.subject-viewer,.findings-panel{min-width:0;min-height:0;background:var(--panel);display:grid}.reference-viewer,.subject-viewer{grid-template-rows:42px minmax(0,1fr)}.findings-panel{grid-template-rows:42px 38px minmax(0,1fr) 46px;border-left:1px solid var(--line)}.reference-viewer>header,.findings-panel>header,.subject-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);background:#f8fafc;font-size:12px}.reference-viewer header span,.findings-panel header span,.subject-toolbar span{font-size:10px;color:var(--muted)}.reference-body{min-height:0;overflow:hidden;padding:12px}.reference-focus{height:100%;overflow:auto;scrollbar-width:thin}.reference-kind{display:inline-flex;padding:3px 6px;border-radius:5px;background:#eef4ff;color:#3538cd;font-size:10px;font-weight:700;margin-bottom:7px}.reference-card{border:1px solid #e4e7ec;border-radius:9px;padding:12px;margin-bottom:9px;background:#fff}.reference-source{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}.reference-source strong{color:#344054}.reference-card blockquote{margin:10px 0 0;padding:0;font-size:13px;line-height:1.65;color:#101828}.reference-empty{display:grid;place-content:center;min-height:58%;text-align:center;color:var(--muted);font-size:12px}.reference-empty strong{color:#344054;font-size:13px}.reference-empty p{max-width:320px;line-height:1.55}.reference-viewer-item{border:1px solid #e4e7ec;border-radius:9px;padding:10px;margin-bottom:9px;background:#fff}.reference-page-stage{position:relative;min-height:150px;padding:10px;border:1px solid #f2f4f7;border-radius:7px;background:#fcfcfd;overflow:hidden}.reference-anchor-source{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}.reference-anchor-source strong{color:#344054}.reference-anchor-content{position:relative;z-index:1;padding-right:4px}.reference-type-label{display:inline-flex;margin:8px 0 2px;padding:3px 6px;border-radius:5px;background:#eef4ff;color:#3538cd;font-size:10px;font-weight:700}.reference-anchor-content h4{margin:5px 0;font-size:12px}.reference-anchor-content blockquote{margin:6px 0 0;padding:0;font-size:12px;line-height:1.55;color:#101828}.reference-visual-kind,.reference-page-only{margin:6px 0 0;color:var(--muted);font-size:10px}.reference-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.reference-anchor-box{fill:rgba(46,144,250,.12);stroke:#2e90fa;stroke-width:2;vector-effect:non-scaling-stroke}.reference-table{width:100%;margin-top:8px;border-collapse:collapse;background:#fff;font-size:10px}.reference-table-cell{padding:5px 6px;border:1px solid #d0d5dd;text-align:left;color:#344054}.reference-table-cell.is-target{background:#fff4e5;box-shadow:inset 0 0 0 2px #f79009;color:#7a2e0e}.related-reference{margin-top:12px;border-top:1px solid #e4e7ec;padding-top:10px}.related-reference summary{cursor:pointer;color:#475467;font-size:11px;font-weight:700}.related-reference-list{margin-top:8px;opacity:.82}.reference-related-empty{text-align:center;color:#98a2b3;font-size:10px}.viewer-divider{padding:0;border:0;border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec;background:#f2f4f7;cursor:col-resize;display:grid;place-items:center}.viewer-divider span{width:3px;height:42px;border-radius:2px;background:#98a2b3}.viewer-divider:hover,.viewer-divider:focus-visible{background:#e4e7ec;outline:none}.subject-toolbar{display:grid;grid-template-columns:auto auto 1fr}.subject-toolbar>div:first-child{display:flex;align-items:baseline;gap:7px}.overlay-modes{display:flex;gap:4px}.overlay-modes button{height:27px;padding:0 7px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;color:#475467;font-size:10px}.overlay-modes button.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.viewer-controls{display:flex;align-items:center;justify-self:end;gap:5px}.viewer-controls button{width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;display:grid;place-items:center;color:#344054}.toolbar-icon{width:15px;height:15px}.control-separator{width:1px;height:18px;background:#d0d5dd;margin:0 3px}.subject-body{position:relative;min-height:0;overflow:hidden;background:var(--canvas)}.case-visual-page{position:absolute;inset:0;margin:0;display:grid;grid-template-rows:minmax(0,1fr) 26px}.case-visual-stage{position:relative;overflow:hidden;cursor:grab;touch-action:none}.case-visual-stage.is-dragging{cursor:grabbing}.case-visual-transform{position:absolute;inset:0;transform-origin:0 0;will-change:transform}.case-raster-layer,.case-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}.case-visual-page figcaption{display:grid;place-items:center;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px}.case-visual-overlay{stroke-width:2.5;vector-effect:non-scaling-stroke}.case-visual-geometry{fill:none;stroke:currentColor;vector-effect:non-scaling-stroke}.case-visual-marker .marker-ring{stroke:#fff;stroke-width:4;vector-effect:non-scaling-stroke}.case-visual-marker .marker-core{fill:currentColor;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}.marker-text{fill:#fff;font-size:11px;font-weight:800;text-anchor:middle;dominant-baseline:central;stroke:none;pointer-events:none}.case-visual-overlay.tone-issue{color:#d92d20;stroke:#d92d20}.case-visual-overlay.tone-review{color:#f79009;stroke:#f79009}.case-visual-overlay.tone-observation{color:#2e90fa;stroke:#2e90fa}.case-visual-overlay.tone-compliant{color:#12b76a;stroke:#12b76a}.case-visual-overlay:not(.is-active) .case-visual-geometry{opacity:.18}.case-visual-overlay.is-active .case-visual-geometry{stroke-width:4;filter:drop-shadow(0 0 2px rgba(0,0,0,.18))}#case-visual-review[data-overlay-mode="selected"] .case-visual-overlay:not(.is-active){display:none}.finding-filters{display:flex;align-items:center;gap:4px;padding:5px 7px;border-bottom:1px solid var(--line);background:#fbfcfe;overflow:hidden}.finding-filter{height:27px;padding:0 6px;border:1px solid #e4e7ec;border-radius:6px;background:#fff;color:#475467;font-size:10px;white-space:nowrap}.finding-filter.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.findings-body{min-height:0;overflow:hidden;padding:8px;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:7px}.finding-card{min-height:0;overflow:hidden;padding:9px;border:1px solid #e4e7ec;border-radius:9px;background:#fff;text-align:left;color:#101828}.finding-card:hover{background:#fcfcfd}.finding-card.is-active{border-color:#84adff;box-shadow:inset 3px 0 0 #2e90fa;background:linear-gradient(90deg,#eff8ff,#fff 72%)}.finding-title-row{display:flex;align-items:center;justify-content:space-between}.finding-number{font:600 10px ui-monospace,monospace;color:var(--muted)}.finding-status{font-size:10px;font-weight:700;padding:3px 6px;border-radius:999px}.status-mismatch .finding-status{color:#b42318;background:#fef3f2}.status-match .finding-status{color:#027a48;background:#ecfdf3}.status-needs-check .finding-status{color:#b54708;background:#fffaeb}.status-not-comparable .finding-status{color:#175cd3;background:#eff8ff}.finding-card h3{font-size:13px;margin:7px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.comparison-grid{display:grid;gap:5px;margin:0}.comparison-grid div{padding:6px 7px;border-radius:6px;background:#f8fafc}.comparison-grid dt{font-size:9px;color:var(--muted);margin-bottom:2px}.comparison-grid dd{margin:0;font-size:10.5px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.findings-empty{grid-row:1/-1;display:grid;place-content:center;text-align:center;color:var(--muted)}.finding-pagination{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid var(--line);background:#f8fafc;font-size:10px}.finding-pagination>button:not(.decision-open){width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff}.decision-open{margin-left:auto;height:30px;padding:0 9px;border:1px solid #1570ef;border-radius:6px;background:#1570ef;color:#fff;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700}.case-visual-help{margin:0;padding:6px 12px;border-top:1px solid #e4e7ec;color:var(--muted);font-size:10px;background:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.case-decision-backdrop{position:fixed;inset:0;z-index:29;border:0;background:rgba(16,24,40,.22)}body[data-visual-decision-open="true"] .case-decision-backdrop{display:block!important}@media(max-width:900px){.workspace-grid{grid-template-columns:minmax(0,1fr) 292px}.comparison-workspace{--reference-width:38%}.visual-abstain{max-width:48vw}}@media(max-width:720px){.workspace-grid{grid-template-columns:1fr}.findings-panel{position:absolute;right:6px;top:46px;bottom:34px;width:min(86vw,310px);z-index:5;box-shadow:0 8px 28px rgba(16,24,40,.18)}.comparison-workspace{grid-template-columns:0 0 1fr}.reference-viewer,.viewer-divider{visibility:hidden}.visual-abstain{left:8px;top:6px;max-width:70vw}.subject-toolbar{grid-template-columns:auto 1fr}.overlay-modes{display:none}}
+#case-visual-review{--line:#d0d5dd;--muted:#667085;--panel:#fff;--canvas:#e9edf2;height:100%;min-height:0;background:#fff;overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr) auto;position:relative}.visual-abstain{position:static;max-width:100%;display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid #fedf89;border-radius:8px;background:rgba(255,250,235,.96);box-shadow:0 2px 8px rgba(16,24,40,.06);font-size:11px;color:#93370d}.visual-abstain strong{white-space:normal;color:#7a2e0e}.visual-abstain span{overflow-wrap:anywhere}.workspace-grid{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,326px)}.comparison-workspace{min-width:0;min-height:0;display:grid;grid-template-columns:var(--reference-width,42%) 10px minmax(0,1fr)}.reference-viewer,.subject-viewer,.findings-panel{min-width:0;min-height:0;background:var(--panel);display:grid}.reference-viewer,.subject-viewer{grid-template-rows:auto minmax(0,1fr)}.findings-panel{grid-template-rows:42px 38px minmax(0,1fr) 46px;border-left:1px solid var(--line)}.reference-viewer>header,.findings-panel>header,.subject-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);background:#f8fafc;font-size:12px}.reference-viewer header span,.findings-panel header span,.subject-toolbar span{font-size:10px;color:var(--muted)}.reference-body{min-height:0;overflow:hidden;padding:12px}.reference-focus{height:100%;overflow:auto;scrollbar-width:thin}.reference-kind{display:inline-flex;padding:3px 6px;border-radius:5px;background:#eef4ff;color:#3538cd;font-size:10px;font-weight:700;margin-bottom:7px}.reference-card{border:1px solid #e4e7ec;border-radius:9px;padding:12px;margin-bottom:9px;background:#fff}.reference-source{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}.reference-source strong{color:#344054}.reference-card blockquote{margin:10px 0 0;padding:0;font-size:13px;line-height:1.65;color:#101828}.reference-empty{display:grid;place-content:center;min-height:58%;text-align:center;color:var(--muted);font-size:12px}.reference-empty strong{color:#344054;font-size:13px}.reference-empty p{max-width:320px;line-height:1.55}.reference-viewer-item{border:1px solid #e4e7ec;border-radius:9px;padding:10px;margin-bottom:9px;background:#fff}.reference-page-stage{position:relative;min-height:150px;padding:10px;border:1px solid #f2f4f7;border-radius:7px;background:#fcfcfd;overflow:hidden}.reference-anchor-source{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}.reference-anchor-source strong{color:#344054}.reference-anchor-content{position:relative;z-index:1;padding-right:4px}.reference-type-label{display:inline-flex;margin:8px 0 2px;padding:3px 6px;border-radius:5px;background:#eef4ff;color:#3538cd;font-size:10px;font-weight:700}.reference-anchor-content h4{margin:5px 0;font-size:12px}.reference-anchor-content blockquote{margin:6px 0 0;padding:0;font-size:12px;line-height:1.55;color:#101828}.reference-visual-kind,.reference-page-only{margin:6px 0 0;color:var(--muted);font-size:10px}.reference-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.reference-anchor-box{fill:rgba(46,144,250,.12);stroke:#2e90fa;stroke-width:2;vector-effect:non-scaling-stroke}.reference-table{width:100%;margin-top:8px;border-collapse:collapse;background:#fff;font-size:10px}.reference-table-cell{padding:5px 6px;border:1px solid #d0d5dd;text-align:left;color:#344054}.reference-table-cell.is-target{background:#fff4e5;box-shadow:inset 0 0 0 2px #f79009;color:#7a2e0e}.related-reference{margin-top:12px;border-top:1px solid #e4e7ec;padding-top:10px}.related-reference summary{cursor:pointer;color:#475467;font-size:11px;font-weight:700}.related-reference-list{margin-top:8px;opacity:.82}.reference-related-empty{text-align:center;color:#98a2b3;font-size:10px}.viewer-divider{padding:0;border:0;border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec;background:#f2f4f7;cursor:col-resize;display:grid;place-items:center}.viewer-divider span{width:3px;height:42px;border-radius:2px;background:#98a2b3}.viewer-divider:hover,.viewer-divider:focus-visible{background:#e4e7ec;outline:none}.subject-toolbar{display:flex;flex-wrap:wrap;padding:8px;gap:8px}.subject-toolbar>div:first-child{display:flex;align-items:baseline;gap:7px}.overlay-modes{display:flex;gap:4px}.overlay-modes button{height:27px;padding:0 7px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;color:#475467;font-size:10px}.overlay-modes button.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.viewer-controls{display:flex;flex-wrap:wrap;align-items:center;gap:5px}.viewer-controls button{width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;display:grid;place-items:center;color:#344054}.toolbar-icon{width:15px;height:15px}.control-separator{width:1px;height:18px;background:#d0d5dd;margin:0 3px}.subject-body{position:relative;min-height:0;overflow:hidden;background:var(--canvas)}.case-visual-page{position:absolute;inset:0;margin:0;display:grid;grid-template-rows:minmax(0,1fr) 26px}.case-visual-stage{position:relative;overflow:hidden;cursor:grab;touch-action:none}.case-visual-stage.is-dragging{cursor:grabbing}.case-visual-transform{position:absolute;inset:0;transform-origin:0 0;will-change:transform}.case-raster-layer,.case-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}.case-visual-page figcaption{display:grid;place-items:center;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px}.case-visual-overlay{stroke-width:2.5;vector-effect:non-scaling-stroke}.case-visual-geometry{fill:none;stroke:currentColor;vector-effect:non-scaling-stroke}.case-visual-marker .marker-ring{stroke:#fff;stroke-width:4;vector-effect:non-scaling-stroke}.case-visual-marker .marker-core{fill:currentColor;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}.marker-text{fill:#fff;font-size:11px;font-weight:800;text-anchor:middle;dominant-baseline:central;stroke:none;pointer-events:none}.case-visual-overlay.tone-issue{color:#d92d20;stroke:#d92d20}.case-visual-overlay.tone-review{color:#f79009;stroke:#f79009}.case-visual-overlay.tone-observation{color:#2e90fa;stroke:#2e90fa}.case-visual-overlay.tone-compliant{color:#12b76a;stroke:#12b76a}.case-visual-overlay:not(.is-active) .case-visual-geometry{opacity:.18}.case-visual-overlay.is-active .case-visual-geometry{stroke-width:4;filter:drop-shadow(0 0 2px rgba(0,0,0,.18))}#case-visual-review[data-overlay-mode="selected"] .case-visual-overlay:not(.is-active){display:none}.finding-filters{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:5px 7px;border-bottom:1px solid var(--line);background:#fbfcfe;overflow:hidden}.finding-filter{height:27px;padding:0 6px;border:1px solid #e4e7ec;border-radius:6px;background:#fff;color:#475467;font-size:10px;white-space:nowrap}.finding-filter.is-active{border-color:#84adff;background:#eff4ff;color:#175cd3}.findings-body{min-height:0;overflow:hidden;padding:8px;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:7px}.finding-card{min-height:min-content;overflow:visible;padding:9px;border:1px solid #e4e7ec;border-radius:9px;background:#fff;text-align:left;color:#101828}.finding-card:hover{background:#fcfcfd}.finding-card.is-active{border-color:#84adff;box-shadow:inset 3px 0 0 #2e90fa;background:linear-gradient(90deg,#eff8ff,#fff 72%)}.finding-title-row{display:flex;align-items:center;justify-content:space-between}.finding-number{font:600 10px ui-monospace,monospace;color:var(--muted)}.finding-status{font-size:10px;font-weight:700;padding:3px 6px;border-radius:999px}.status-mismatch .finding-status{color:#b42318;background:#fef3f2}.status-match .finding-status{color:#027a48;background:#ecfdf3}.status-needs-check .finding-status{color:#b54708;background:#fffaeb}.status-not-comparable .finding-status{color:#175cd3;background:#eff8ff}.finding-card h3{font-size:13px;margin:7px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.comparison-grid{display:grid;gap:5px;margin:0}.comparison-grid div{padding:6px 7px;border-radius:6px;background:#f8fafc}.comparison-grid dt{font-size:9px;color:var(--muted);margin-bottom:2px}.comparison-grid dd{margin:0;font-size:10.5px;line-height:1.35;display:block;overflow-wrap:anywhere}.findings-empty{grid-row:1/-1;display:grid;place-content:center;text-align:center;color:var(--muted)}.finding-pagination{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid var(--line);background:#f8fafc;font-size:10px}.finding-pagination>button:not(.decision-open){width:28px;height:28px;border:1px solid #d0d5dd;border-radius:6px;background:#fff}.decision-open{margin-left:auto;height:30px;padding:0 9px;border:1px solid #1570ef;border-radius:6px;background:#1570ef;color:#fff;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700}.case-visual-help{margin:0;padding:6px 12px;border-top:1px solid #e4e7ec;color:var(--muted);font-size:10px;background:#fff;white-space:normal}.case-decision-backdrop{position:fixed;inset:0;z-index:29;border:0;background:rgba(16,24,40,.22)}body[data-visual-decision-open="true"] .case-decision-backdrop{display:block!important}@media(max-width:900px){.workspace-grid{grid-template-columns:minmax(0,1fr) 292px}.comparison-workspace{--reference-width:38%}.visual-abstain{max-width:48vw}}@media(max-width:720px){.workspace-grid{grid-template-columns:1fr}.findings-panel{position:static;width:100%;min-height:300px}.comparison-workspace{grid-template-columns:1fr}.reference-viewer{visibility:visible;min-height:360px}.viewer-divider{display:none}.visual-abstain{left:8px;top:6px;max-width:70vw}.subject-toolbar{grid-template-columns:auto 1fr}.overlay-modes{display:flex;flex-wrap:wrap}}
 .reference-raster-layer,.reference-overlay-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.reference-page-stage{cursor:grab;touch-action:none}.reference-page-stage.is-dragging{cursor:grabbing}.reference-page-transform{position:absolute;inset:0;transform-origin:0 0;will-change:transform}
 .case-visual-page[hidden]{display:none!important}
 """
 
 
 ISSUE_152_CASE_VISUAL_CSS = r"""
-#case-visual-review[data-reference-available="false"] .comparison-workspace{grid-template-columns:minmax(0,1fr)}
-#case-visual-review[data-reference-available="false"] .reference-unavailable{position:absolute;z-index:12;left:12px;top:10px;margin:0;border:1px solid #b9cde8;border-radius:7px;padding:7px 10px;background:rgba(242,247,255,.96);color:#18365f;font-size:12px;line-height:1.4}
-#case-visual-review[data-reference-available="false"] .related-reference-fallback{position:absolute;z-index:12;left:12px;top:54px;max-width:min(420px,42vw);max-height:calc(100% - 66px);overflow:auto;border:1px solid #b9cde8;border-radius:7px;padding:8px 10px;background:rgba(255,255,255,.96)}
+
+#case-visual-review[data-reference-available="false"] .reference-unavailable{position:static;margin:0;border:1px solid #b9cde8;border-radius:7px;padding:7px 10px;background:rgba(242,247,255,.96);color:#18365f;font-size:12px;line-height:1.4}
+#case-visual-review[data-reference-available="false"] .related-reference-fallback{position:static;grid-row:3;max-width:100%;max-height:420px;overflow:auto;border:1px solid #b9cde8;border-radius:7px;padding:8px 10px;background:rgba(255,255,255,.96)}
 #case-visual-review[data-reference-available="false"] .related-reference-fallback .reference-focus{height:auto;overflow:visible}
 #case-visual-review[data-reference-available="false"] .related-reference-fallback .reference-empty{display:block;min-height:0;text-align:left}
 #case-visual-review .viewer-controls button{width:40px;height:40px;min-height:0;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:0}
 #case-visual-review .finding-filter{height:32px;min-height:0;padding:0 8px;font-size:12px}
-#case-visual-review .findings-panel{grid-template-rows:42px 38px minmax(0,1fr)}
-#case-visual-review .findings-body{grid-template-rows:none;grid-auto-rows:minmax(110px,auto);overflow:auto}
+#case-visual-review .findings-panel{grid-template-rows:auto auto minmax(0,1fr)}
+#case-visual-review .findings-body{display:flex;flex-direction:column;overflow:auto}#case-visual-review .finding-card{flex:0 0 auto}
 .case-visual-help{margin:0;padding:8px 12px;font-size:12px}
 .toolbar-icon{display:block}
 """

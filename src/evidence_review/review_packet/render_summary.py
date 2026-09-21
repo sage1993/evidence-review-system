@@ -8,8 +8,9 @@ from evidence_review.review_packet.icons import icon_svg
 from evidence_review.review_packet.presentation import (
     additional_review_items,
     conclusion_text,
-    issue_result_gap_items,
     localized_status,
+    machine_status,
+    summary_attention_items,
 )
 from evidence_review.review_packet.render_case_visual_lazy import render_case_visual_review
 
@@ -17,12 +18,12 @@ from evidence_review.review_packet.render_case_visual_lazy import render_case_vi
 
 
 _VISUAL_SHELL_STYLE = """
-body:has(#case-visual-review){overflow:hidden}
-body:has(#case-visual-review) .app-shell{width:100%;max-width:none;height:100vh;margin:0;padding:12px}
-body:has(#case-visual-review) .review-workspace{display:block;height:100%;padding:0}
-body:has(#case-visual-review) .review-workspace>.visual-review-grid-span{height:100%;width:100%;min-width:0}
-body:has(#case-visual-review) .review-workspace>:not(.visual-review-grid-span):not(#decision-form){display:none!important}
-body:has(#case-visual-review) #case-visual-review{height:100%;min-height:0;max-height:none;margin:0}
+body:has(.review-workspace:not([data-review-shell="unified"]) #case-visual-review){overflow:hidden}
+body:has(.review-workspace:not([data-review-shell="unified"]) #case-visual-review) .app-shell{width:100%;max-width:none;height:100vh;margin:0;padding:12px}
+body:has(#case-visual-review) .review-workspace:not([data-review-shell="unified"]){display:block;height:100%;padding:0}
+body:has(#case-visual-review) .review-workspace:not([data-review-shell="unified"])>.visual-review-grid-span{height:100%;width:100%;min-width:0}
+body:has(#case-visual-review) .review-workspace>:not(.review-shell-region):not(.visual-review-grid-span):not(#decision-form){display:none!important}
+body:has(#case-visual-review) .review-workspace:not([data-review-shell="unified"]) #case-visual-review{height:100%;min-height:0;max-height:none;margin:0}
 body:has(#case-visual-review) .process-strip{display:none!important}
 body:has(#case-visual-review) .case-visual-transform{user-select:none;-webkit-user-select:none}
 @media(min-width:2560px){
@@ -109,14 +110,15 @@ def visual_shell_css() -> str:
 
 
 def render_status_band(model: Mapping[str, object]) -> str:
-    raw_status = str(model.get("display_status", model.get("status", "")))
+    raw_status = machine_status(model)
     return "".join(
         (
             '<header id="review-status" class="status-band">',
             '<div class="status-copy"><h1>정식 근거 검토</h1></div>',
             '<div class="header-actions">',
-            '<span class="status-label">검토 상태</span>',
-            '<span class="status-pill" data-display-status data-display-status-mode="localized">',
+            '<span class="status-label">기계 검토 결과</span>',
+            '<span class="status-pill" data-machine-status data-display-status '
+            'data-display-status-mode="localized">',
             _text(localized_status(raw_status)),
             "</span>",
             '<button type="button" data-print>', icon_svg("printer", size=16), ' 인쇄</button>',
@@ -133,9 +135,9 @@ def render_summary(model: Mapping[str, object]) -> str:
     missing = summary.get("missing_input_count", 0)
     conflicts = summary.get("conflict_count", 0)
     exceptions = summary.get("exception_count", 0)
-    issue_gaps = issue_result_gap_items(model)
+    attention_items = summary_attention_items(model)
     additional_count = (
-        len(issue_gaps)
+        len(attention_items)
         if model.get("issue_results")
         else sum(
             value
@@ -156,19 +158,37 @@ def render_summary(model: Mapping[str, object]) -> str:
             f'<p class="answer-summary">{_text(conclusion_text(model))}</p>',
             "</div>",
             '<dl class="result-facts">',
-            '<div><dt>근거</dt><dd>',
+            '<div><dt>인용 근거</dt><dd>',
             _text(citation_count),
-            ' 건</dd></div>',
-            '<div><dt>추가 확인</dt><dd>',
+            '건</dd></div>',
+            '<div><dt>추가 확인 항목</dt><dd>',
             _text(additional_count),
-            ' 건</dd></div>',
+            '건</dd></div>',
             "</dl>",
-            '<span id="ready-for-review" class="visually-hidden">',
-            _text(localized_status(model.get("display_status", model.get("status")))),
-            "</span>",
+            _summary_attention(attention_items),
             "</section>",
         )
     )
+
+
+def _summary_attention(items: tuple[str, ...]) -> str:
+    """Keep the first packet-backed blocker visible without burying the comparison."""
+    if not items:
+        return ""
+    primary, *remaining = items
+    content = (
+        '<section id="summary-attention" aria-labelledby="summary-attention-heading">'
+        '<h3 id="summary-attention-heading">추가 확인이 필요한 항목</h3>'
+        f'<p class="summary-attention-primary">{_text(primary)}</p>'
+    )
+    if remaining:
+        content += (
+            '<details class="summary-attention-details">'
+            f'<summary>추가 확인 항목 {len(remaining)}건 보기</summary><ul>'
+            + "".join(f"<li>{_text(item)}</li>" for item in remaining)
+            + "</ul></details>"
+        )
+    return content + "</section>"
 
 
 def render_additional_review(model: Mapping[str, object]) -> str:

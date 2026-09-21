@@ -69,6 +69,7 @@ def _matter_store(
     provenance: dict[str, object],
     *,
     state: str = "READY_TO_FORMALIZE",
+    required_facet_ids: tuple[str, ...] = ("source_support",),
 ) -> MatterStore:
     store = MatterStore(path)
     store.create(
@@ -80,6 +81,7 @@ def _matter_store(
                 question="Does the exact source support the review?",
                 work_state=state,
                 depends_on=(),
+                required_facet_ids=required_facet_ids,
             ),
         ),
         source_bindings=(
@@ -123,6 +125,28 @@ def test_formalization_snapshot_freezes_exact_matter_and_evidence_identity(tmp_p
     assert snapshot.review_scope.origin == "EXPLICIT_USER"
     assert snapshot.review_scope.search_requests[0].source == "user"
     assert not hasattr(snapshot, "final_status")
+
+
+def test_legacy_issue_requires_explicit_facet_event_before_new_snapshot(tmp_path: Path) -> None:
+    from evidence_review.review_matter.service import ReviewMatterService
+
+    evidence_db = tmp_path / "evidence.sqlite"
+    provenance = _evidence_database(evidence_db)
+    provenance["database_path"] = str(evidence_db)
+    store = _matter_store(tmp_path / "matter.sqlite", provenance, required_facet_ids=())
+    with pytest.raises(ValueError, match="FORMALIZATION_REQUIRED_FACETS_REQUIRED"):
+        _snapshot_module().create_formalization_snapshot(store, "MATTER-SNAP-1", 2, evidence_db)
+    service = ReviewMatterService.open(tmp_path)
+    updated = service.set_required_facets(
+        matter_id="MATTER-SNAP-1", expected_revision=2,
+        issue_id="ISSUE-SNAP-1", required_facet_ids=("source_support",),
+    )
+    snapshot = _snapshot_module().create_formalization_snapshot(
+        store, "MATTER-SNAP-1", updated.revision, evidence_db
+    )
+    assert snapshot.matter_revision == 3
+    assert snapshot.review_scope.question_plan_version == 3
+    assert snapshot.review_scope.issues[0].required_facet_ids == ("source_support",)
 
 
 def test_snapshot_blocks_non_ready_matter_issue_without_persisting(tmp_path: Path) -> None:

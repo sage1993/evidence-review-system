@@ -3,8 +3,25 @@ from __future__ import annotations
 
 import argparse
 import math
+from pathlib import Path
+
+from evidence_review.contracts.identifiers import validate_identifier
+from evidence_review.filesystem_trust import verified_regular_directory
 
 DEFAULT_IDLE_TIMEOUT_SECONDS = 1800
+
+
+def review_runtime_directory(workspace_root: Path, run_id: str, *, create: bool = False) -> Path:
+    """Resolve mutable operational state separately from immutable RUN artifacts."""
+    workspace = verified_regular_directory(workspace_root, field="workspace root")
+    validated_id = validate_identifier(run_id, "run_id")
+    directory = workspace
+    for part in (".review-runtime", validated_id):
+        candidate = directory / part
+        if create:
+            candidate.mkdir(exist_ok=True)
+        directory = verified_regular_directory(candidate, field="review runtime directory")
+    return directory
 
 
 def validate_idle_timeout(value: object) -> float:
@@ -31,4 +48,5 @@ __all__ = [
     "DEFAULT_IDLE_TIMEOUT_SECONDS",
     "idle_timeout_argument",
     "validate_idle_timeout",
+    "review_runtime_directory",
 ]

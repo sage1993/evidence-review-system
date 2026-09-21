@@ -303,6 +303,8 @@ class CaseVisualReviewHandler(local_server._ReviewHandler):
         )
         if not self._authorized(authorization_route, require_origin=False):
             return
+        if self._current_presentation(authorization_route) is None:
+            return
         asset_kind = "case-page" if case_route.kind == "page" else "case-tile"
         if case_route.kind == "page":
             route_key = (
