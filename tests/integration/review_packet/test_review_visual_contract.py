@@ -130,7 +130,7 @@ def test_print_hides_audit_navigation_and_interactive_controls(tmp_path: Path) -
         assert selector in print_css
     assert "display: none !important" in print_css
     assert "transform: none !important" in print_css
-    assert "질문 &lt;검토 질문&gt;" in html
+    assert "&lt;검토 질문&gt;" in html
 
 
 def test_target_desktop_viewports_remain_above_stacking_breakpoint(tmp_path: Path) -> None:

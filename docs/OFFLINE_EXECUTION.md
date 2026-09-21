@@ -200,14 +200,24 @@ Run the dependency-safe diagnostic surface with the exact supported interpreter 
 
 ```powershell
 $Workspace = "C:\evidence-review-workspace"
-py -3.13 -m evidence_review doctor --repository-root .
-py -3.13 -m evidence_review review-question prepare --workspace $Workspace --question "<question>"
+evidence-review --runtime-mode installed doctor
+evidence-review --runtime-mode installed review-question prepare-plan --workspace $Workspace --question "<question>"
 ```
 
-`SOURCE_MISMATCH` blocks business commands until the intended checkout is active. Use an interpreter-pinned editable install to remediate it:
+The direct question path must complete its validated Planner handoff before
+`review-question prepare`; diagnostics do not waive that boundary.
+
+Installed acceptance uses a clean Python 3.13 venv and candidate wheel, with
+`PYTHONPATH` unset. `SOURCE_MISMATCH` includes wheel ownership, package content
+and expected digest failures; nonempty `PYTHONPATH` is `BYPASS_DETECTED`.
+An editable install or source injection is not an installed-runtime remedy.
+See [Runtime Authority](runtime-authority.md) for the full identity contract.
+
+An interpreter-pinned editable install is supported for development only:
 
 ```powershell
 py -3.13 -m pip install -e ".[dev]"
+py -3.13 -m evidence_review --runtime-mode development doctor --repository-root .
 ```
 
 `DEPENDENCY_MISSING` is a structured diagnostic, not a traceback. Record the JSON output before changing the environment.

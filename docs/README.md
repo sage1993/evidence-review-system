@@ -12,8 +12,10 @@ release policy.
 does not itself create a Planner handoff, conclusion, packet, or decision. The
 Workbench stores **mutable ReviewMatter work state** separately from evidence.
 **Formalization** is the only promotion boundary into **Formal Review**;
-Formal Review keeps the validated Planner, deterministic engines, Track A/B,
-immutable packet, and append-only Human Decision authority.
+Formal Review keeps deterministic engines, Track A/B, immutable packet, and
+append-only Human Decision authority. The direct question path requires a
+validated Planner handoff; Matter formalization uses an explicit ReviewScope
+from promoted inputs without requiring a Planner handoff.
 
 ## Current authority
 
@@ -22,6 +24,7 @@ immutable packet, and append-only Human Decision authority.
 - [Release Version Policy](RELEASE_VERSION_POLICY.md) — current source-version and publication authority.
 - [Reviewer Workflow](REVIEWER_WORKFLOW.md) — current human review, protected browser, archival decision, and browser QA workflow.
 - [Codex Workflow](CODEX_WORKFLOW.md) — current `$ERS_PDF` / `$ERS_REVIEW` handoffs and runtime contracts.
+- [Runtime Authority](runtime-authority.md) — installed wheel identity, development checkout checks, and workspace control-directory binding.
 - [ChatGPT Web Workflow](CHATGPT_WEB_WORKFLOW.md) — current external handoff boundary for web-assisted review.
 - [Active Codex skills](../.agents/skills/README.md) — current user-facing `$ERS_PDF` and `$ERS_REVIEW` skill instructions.
 

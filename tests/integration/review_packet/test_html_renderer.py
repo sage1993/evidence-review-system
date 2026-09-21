@@ -213,7 +213,7 @@ def test_default_workspace_is_nondeveloper_first_and_traceable(tmp_path: Path) -
         "검토 준비 완료",
         "결론",
         "2. 판단 근거",
-        "질문 &lt;검토 질문&gt;",
+        "&lt;검토 질문&gt;",
         "정확한 &lt;인용문&gt;",
         "인용 좌표",
         "원문 위치 보기",

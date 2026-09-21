@@ -5,8 +5,9 @@
 **Evidence Navigation** may inspect finalized evidence without creating a
 Planner handoff or conclusion. The Workbench contains **mutable ReviewMatter
 work state** only. **Formalization** alone promotes an exact Matter revision
-and finalized snapshot to **Formal Review**, where the existing Planner,
-Track A/Track B, packet, and Human Decision contracts remain authoritative.
+and finalized snapshot to **Formal Review**, where Track A/Track B, packet,
+and Human Decision contracts remain authoritative. The direct question path
+requires a Planner handoff; Matter formalization uses the promoted ReviewScope.
 
 Use local evidence only. Project Python code does not call a model or remote API. Codex supplies the external Question Planner, Track A, and Track B reasoning at deterministic file handoffs; runtime code validates those outputs before the workflow can advance.
 
@@ -16,18 +17,29 @@ The ReviewMatter architecture is merged and executable on current `main`. `Revie
 
 ## 0. Prove runtime provenance before business commands
 
-Use the interpreter-pinned module entrypoint before every acceptance or review run. The stdlib-only diagnostic surface runs before heavy runtime imports and reports the checkout HEAD, package source path, and required dependency state.
+Use the intended Python 3.13 environment before every acceptance or review run.
+The stdlib-only diagnostic surface runs before heavy runtime imports and reports
+interpreter, package/distribution identity, nearby checkout and dependencies
+separately. A repository HEAD does not identify an installed wheel build.
 
 ```powershell
 $Workspace = "C:\evidence-review-workspace"
-py -3.13 -m evidence_review doctor --repository-root .
-py -3.13 -m evidence_review review-question prepare-plan --workspace $Workspace --question "<question>"
+evidence-review --runtime-mode installed doctor
+evidence-review --runtime-mode installed review-question prepare-plan --workspace $Workspace --question "<question>"
 ```
 
-`SOURCE_MISMATCH` means the active interpreter is importing project modules from a different checkout. Activate the intended interpreter and reinstall this checkout editable with that interpreter:
+For installed execution, use the verified candidate wheel in a clean venv with
+`PYTHONPATH` unset. `SOURCE_MISMATCH` can indicate missing wheel ownership,
+changed package files or a wrong expected content digest; nonempty `PYTHONPATH`
+is `BYPASS_DETECTED`. Do not repair installed acceptance with an editable install
+or source-path injection. See [Runtime Authority](runtime-authority.md).
+
+For repository development only, an interpreter-pinned editable install is
+supported; explicitly select development checks when diagnosing that checkout:
 
 ```powershell
 py -3.13 -m pip install -e ".[dev]"
+py -3.13 -m evidence_review --runtime-mode development doctor --repository-root .
 ```
 
 ## 1. Prepare source evidence

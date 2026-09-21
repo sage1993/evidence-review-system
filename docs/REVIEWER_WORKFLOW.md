@@ -30,12 +30,15 @@ Do not mix machine progress with a human decision.
 | Domain | Meaning |
 |---|---|
 | Workflow state | processing progress such as `WAITING_TRACK_A`, `WAITING_TRACK_B`, `FINALIZING`, `READY_FOR_REVIEW`, `BLOCKED` |
-| Finalizer status | `READY_FOR_HUMAN_REVIEW` or `ABSTAIN` |
+| Finalizer status | `READY_FOR_HUMAN_REVIEW`, `PARTIALLY_RESOLVED`, or `ABSTAIN` |
 | Rule status | one approved Rule Engine result |
 | Human decision | separate append-only reviewer record |
 | Display projection | may become `REVIEW_COMPLETED` after a valid human decision |
 
 `READY_FOR_HUMAN_REVIEW` means the packet can be inspected. It is not approval. `ABSTAIN` means the recorded reasons must remain visible and reviewed.
+
+`PARTIALLY_RESOLVED` means some issues remain unresolved; inspect their recorded
+gaps rather than treating the packet as a complete answer.
 
 ## 3. Review the non-developer workspace
 

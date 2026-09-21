@@ -50,7 +50,8 @@ def render_workspace(
         f"{evidence_workspace}</section>"
         '<section class="review-shell-region" data-review-shell-region="detail-issue-results" '
         'data-review-region="detail-issue-results">'
-        f"{detail_issue_results}</section>"
+        '<details id="review-details"><summary>검토 상세</summary>'
+        f"{detail_issue_results}</details></section>"
         '<section class="review-shell-region" data-review-shell-region="human-decision" '
         'data-review-region="human-decision">'
         f"{human_decision}</section>"

@@ -111,6 +111,7 @@ def visual_shell_css() -> str:
 
 def render_status_band(model: Mapping[str, object]) -> str:
     raw_status = machine_status(model)
+    status_tone = "warning" if raw_status == "ABSTAIN" else "neutral"
     return "".join(
         (
             '<header id="review-status" class="status-band">',
@@ -118,6 +119,7 @@ def render_status_band(model: Mapping[str, object]) -> str:
             '<div class="header-actions">',
             '<span class="status-label">기계 검토 결과</span>',
             '<span class="status-pill" data-machine-status data-display-status '
+            f'data-status-tone="{status_tone}" '
             'data-display-status-mode="localized">',
             _text(localized_status(raw_status)),
             "</span>",
@@ -151,9 +153,12 @@ def render_summary(model: Mapping[str, object]) -> str:
             '<div class="result-question-block">',
             '<span class="summary-label">질문</span>',
             f'<h2 id="summary-heading">{_text(model.get("question"))}</h2>',
-            f'<span class="visually-hidden">질문 {_text(model.get("question"))}</span>',
             "</div>",
-            '<div class="result-conclusion-block">',
+            (
+                '<div class="result-conclusion-block">'
+                if model.get("answer_summary")
+                else '<div class="result-conclusion-block visually-hidden">'
+            ),
             '<span class="summary-label">결론</span>',
             f'<p class="answer-summary">{_text(conclusion_text(model))}</p>',
             "</div>",

@@ -20,6 +20,63 @@ from .test_html_renderer import _model as _reference_model
 from .test_html_renderer import _write_page_assets
 
 
+@pytest.mark.parametrize("collapsed", [True, False])
+def test_print_keeps_all_observations_and_restores_screen_state(
+    tmp_path: Path, collapsed: bool,
+) -> None:
+    module = os.environ.get("ERS_PLAYWRIGHT_MODULE")
+    if not module:
+        pytest.skip("Browser QA requires ERS_PLAYWRIGHT_MODULE pointing to Playwright")
+    model = _generic_model()
+    visual = _visual_model()["case_visual_review"]
+    first = visual["findings"][0]
+    visual["findings"] = [
+        {**first, "finding_id": f"VF-{index}", "title": f"Observation {index}",
+         "subject_value": f"Observation detail {index}"}
+        for index in range(1, 9)
+    ]
+    model["case_visual_review"] = visual
+    script = r'''
+const {chromium} = require(process.argv[1]);
+let input = '';
+process.stdin.on('data', chunk => input += chunk);
+process.stdin.on('end', async () => {
+  const data = JSON.parse(input);
+  const browser = await chromium.launch({headless: true,
+    ...(process.env.ERS_PLAYWRIGHT_CHANNEL ? {channel: process.env.ERS_PLAYWRIGHT_CHANNEL} : {})});
+  try {
+    const page = await browser.newPage();
+    await page.setContent(data.html);
+    if (!data.collapsed) await page.locator('[data-findings-toggle]').click();
+    const panel = page.locator('.findings-panel');
+    const before = await panel.isVisible();
+    await page.emulateMedia({media: 'print'});
+    if (!(await panel.isVisible())) throw new Error('Print omits the observation panel');
+    const clipped = await page.locator('.findings-body').evaluate(n =>
+      n.scrollHeight > n.clientHeight + 1 && getComputedStyle(n).overflowY !== 'visible');
+    if (clipped) throw new Error('Printed observations are clipped');
+    await page.pdf({path: data.pdf, format: 'A4'});
+    await page.emulateMedia({media: 'screen'});
+    if (await panel.isVisible() !== before) throw new Error('Print changed screen collapse state');
+  } finally { await browser.close(); }
+});
+'''
+    pdf = tmp_path / "review.pdf"
+    result = subprocess.run(
+        ["node", "-e", script, module],
+        input=json.dumps({"html": render_review_html(model, tmp_path),
+                          "collapsed": collapsed, "pdf": str(pdf)}),
+        text=True, capture_output=True, timeout=90,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    from pypdf import PdfReader
+
+    printed = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
+    for index in range(1, 9):
+        assert f"Observation {index}" in printed
+        assert f"Observation detail {index}" in printed
+
+
 @pytest.mark.parametrize("viewport", [None, {"width": 1366, "height": 768},
                                        {"width": 1920, "height": 1080},
                                        {"width": 390, "height": 844}])
@@ -75,6 +132,20 @@ process.stdin.on('end', async () => {
     const decision = page.locator('#decision-form');
     if (await decision.getAttribute('aria-hidden') === 'true')
       throw new Error('Visible human decision is hidden from assistive technology');
+    const editor = page.locator('[data-decision-editor]');
+    if (await editor.isVisible()) throw new Error('Decision editor starts expanded');
+    await page.locator('[data-add-decision]').click();
+    if (!(await editor.isVisible())) throw new Error('Decision editor did not open');
+    await page.locator('[data-cancel-decision]').click();
+    if (await editor.isVisible()) throw new Error('Decision editor did not close');
+    if (!(await page.locator('[data-add-decision]').evaluate(n=>n===document.activeElement)))
+      throw new Error('Cancel failed to restore focus');
+    if (await page.locator('#review-details').getAttribute('open') !== null)
+      throw new Error('Secondary results start expanded');
+    await page.locator('#review-details > summary').click();
+    if (!(await page.locator('#review-issue-results').isVisible()))
+      throw new Error('Deferred issue results are inaccessible');
+    await page.locator('#review-details > summary').click();
     if (data.mode === 'subject-only' || data.mode === 'reference-subject') {
       const left = await page.locator('.reference-viewer').boundingBox();
       const right = await page.locator('.subject-viewer').boundingBox();
@@ -85,10 +156,14 @@ process.stdin.on('end', async () => {
       if (await divider.getAttribute('aria-valuenow') !== '52')
         throw new Error('Divider keyboard adjustment failed');
       const toggle = page.locator('[data-findings-toggle]');
+      if (await page.locator('.findings-panel').isVisible())
+        throw new Error('Panel must start collapsed for comparison');
+      await toggle.click();
+      if (!(await page.locator('.findings-panel').isVisible()))
+        throw new Error('Panel did not expand');
       await toggle.click();
       if (await page.locator('.findings-panel').isVisible())
         throw new Error('Panel did not collapse');
-      await toggle.click();
     }
     if (data.mode === 'reference-subject') {
       const images = page.locator('[data-reference-page-image]');
@@ -115,6 +190,7 @@ process.stdin.on('end', async () => {
         throw new Error('Opt-in synchronized movement failed');
     }
     if (data.mode === 'subject-only') {
+      await page.locator('[data-findings-toggle]').click();
       const findings = page.locator('[data-case-finding]');
       if (await findings.count() !== 8) throw new Error('Missing finding');
       for (let i = 0; i < 8; i++) {

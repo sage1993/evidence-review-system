@@ -4,6 +4,22 @@ All notable changes to Evidence Review System are documented here.
 
 The project follows semantic versioning for public releases where practical.
 
+## [Unreleased]
+
+Changes merged into `main` after the v0.2.1 release tag are not part of that
+published wheel. A later release requires its own exact-candidate acceptance.
+
+### Fixed
+
+- Separated installed-wheel authority from nearby development checkouts and rejected production `PYTHONPATH` bypasses (#241 / #244).
+- Restored Formal Review shell visibility, separated mutable protected-server state from immutable RUN artifacts, and added lightweight protected large-document presentation (#242, #243, #245 / #247).
+- Enforced supported required-facet coverage, packet-bound formal response projection, and current-packet Human Decision validation (#247).
+- Bound protected review presentation to the finalizer-verified packet and exact finalized evidence database, rejecting tampered or stale presentation authority (#247).
+
+### Changed
+
+- Added explicit multi-issue integration-manifest verification while retaining exact-SHA local gates and PR identity checks (#247).
+
 ## [0.2.1] - 2026-09-20
 
 This patch release candidate contains the corrective, governance, and
