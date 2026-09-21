@@ -31,7 +31,8 @@ def test_print_keeps_all_observations_and_restores_screen_state(
     visual = _visual_model()["case_visual_review"]
     first = visual["findings"][0]
     visual["findings"] = [
-        {**first, "finding_id": f"VF-{index}", "title": f"Observation {index}"}
+        {**first, "finding_id": f"VF-{index}", "title": f"Observation {index}",
+         "subject_value": f"Observation detail {index}"}
         for index in range(1, 9)
     ]
     model["case_visual_review"] = visual
@@ -73,6 +74,7 @@ process.stdin.on('end', async () => {
     printed = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
     for index in range(1, 9):
         assert f"Observation {index}" in printed
+        assert f"Observation detail {index}" in printed
 
 
 @pytest.mark.parametrize("viewport", [None, {"width": 1366, "height": 768},

@@ -191,4 +191,5 @@
   #case-visual-review[data-findings-collapsed="true"] .findings-panel { display: block; }
   #case-visual-review .findings-body { max-height: none; overflow: visible; }
   #case-visual-review .finding-card { break-inside: avoid; }
+  #case-visual-review .finding-card:not(.is-active) .comparison-grid { display: grid; }
 }
