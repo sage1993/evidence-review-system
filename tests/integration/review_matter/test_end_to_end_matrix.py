@@ -38,6 +38,9 @@ from tests.integration.review_matter.test_multi_run_history import (
     _second_snapshot,
 )
 from tests.integration.review_packet.test_local_server import _request
+from tests.integration.review_packet.verified_transport_fixture import (
+    install_visual_authority,
+)
 from tests.integration.review_question.test_real_review_full_e2e import (
     _assert_claim_issue_lineage,
     _prepare_workspace,
@@ -417,10 +420,8 @@ print("installed-wheel-runtime-ok")
 
 def _protected_case_visual_cache_identity(root: Path) -> None:
     """A case-scoped visual cache must be reachable through the protected route."""
-    import base64
     import http.client
 
-    from evidence_review.review_packet.html_renderer import render_review_html
     from tests.integration.review_packet.test_review_workspace_performance import (
         VALID_MINIMAL_PNG,
     )
@@ -432,11 +433,6 @@ def _protected_case_visual_cache_identity(root: Path) -> None:
     source_hash = "a" * 64
     image_hash = hashlib.sha256(VALID_MINIMAL_PNG).hexdigest()
     workspace = root / "workspace"
-    run_directory = workspace / "runs" / run_id
-    run_directory.mkdir(parents=True)
-    (run_directory / "final-review-packet.json").write_bytes(
-        b'{"human_decision":null,"run_id":"RUN-CASE-VISUAL-001"}'
-    )
     model = {
         "run_id": run_id,
         "status": "READY_FOR_HUMAN_REVIEW",
@@ -465,8 +461,6 @@ def _protected_case_visual_cache_identity(root: Path) -> None:
                     "height": 1.0,
                     "coordinate_system": "IMAGE_TOP_LEFT_PIXELS",
                     "image_sha256": image_hash,
-                    "data_uri": "data:image/png;base64,"
-                    + base64.b64encode(VALID_MINIMAL_PNG).decode("ascii"),
                     "candidates": [],
                 }
             ],
@@ -482,10 +476,7 @@ def _protected_case_visual_cache_identity(root: Path) -> None:
     )
     cache_directory.mkdir(parents=True)
     (cache_directory / "page-0001.png").write_bytes(VALID_MINIMAL_PNG)
-    (run_directory / "review.html").write_text(
-        render_review_html(model, workspace / "page-images"),
-        encoding="utf-8",
-    )
+    install_visual_authority(workspace, model, run_id=run_id)
 
     server = create_review_server(
         workspace,

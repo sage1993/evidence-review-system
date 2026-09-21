@@ -19,33 +19,9 @@ TOKEN = "a" * 43
 
 
 def _workspace(tmp_path: Path) -> Path:
-    run_directory = tmp_path / "runs" / RUN_ID
-    run_directory.mkdir(parents=True)
-    (run_directory / "final-review-packet.json").write_text(
-        '{"human_decision":null}', encoding="utf-8"
-    )
-    model = {
-        "run_id": RUN_ID,
-        "status": "READY_FOR_HUMAN_REVIEW",
-        "display_status": "READY_FOR_HUMAN_REVIEW",
-        "question": "idle-timeout protected review",
-        "claims": [],
-        "review_items": [],
-        "calculations": [],
-        "rules": [],
-        "exceptions": [],
-        "conflicts": [],
-        "abstention_reasons": [],
-        "summary": {},
-        "audit": {},
-    }
-    (run_directory / "review.html").write_text(
-        '<div class="app-shell"></div>'
-        '<script id="review-model" type="application/json">'
-        + json.dumps(model, sort_keys=True, separators=(",", ":"))
-        + "</script>",
-        encoding="utf-8",
-    )
+    from tests.integration.review_packet.test_local_server import _artifacts
+
+    _artifacts(tmp_path)
     return tmp_path
 
 

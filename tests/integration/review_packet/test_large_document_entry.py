@@ -15,14 +15,15 @@ from tests.integration.review_packet.test_protected_review_readiness import (
     _get,
     _read_port,
     _start_server,
-    _write_workspace,
+)
+from tests.integration.review_packet.verified_transport_fixture import (
+    install_visual_authority,
 )
 
 
 def test_130_page_entry_is_small_and_served_only_through_protected_route(
     tmp_path: Path,
 ) -> None:
-    _write_workspace(tmp_path)
     model = _case_model(hashlib.sha256(VALID_MINIMAL_PNG).hexdigest())
     visual = model["case_visual_review"]
     template = visual["pages"][0]
@@ -33,8 +34,13 @@ def test_130_page_entry_is_small_and_served_only_through_protected_route(
         page.pop("data_uri")
         pages.append(page)
     visual["pages"] = pages
+    page_directory = tmp_path / "case-page-images-hq-v1" / "ATT-UNTILED"
+    page_directory.mkdir(parents=True)
+    for number in range(1, 131):
+        (page_directory / f"page-{number:04d}.png").write_bytes(VALID_MINIMAL_PNG)
+    install_visual_authority(tmp_path, model)
     entry = tmp_path / "runs" / RUN_ID / "review.html"
-    entry.unlink()  # Replace only this synthetic fixture, never an existing real RUN.
+    entry.unlink()
     write_protected_review_entry(model, tmp_path / "page-images", entry)
     original = entry.read_bytes()
     assert len(original) <= 10 * 1024 * 1024

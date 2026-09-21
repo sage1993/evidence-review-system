@@ -85,6 +85,16 @@ http://127.0.0.1:<port>/runs/<RUN-ID>/<TOKEN>/review
 
 The packet, packet-hash, decision, and decision-status endpoints share the protected prefix. The final review route must not be served before `final-review-packet.json` and `review.html` both exist.
 
+The server rebuilds the displayed review from the finalizer-verified packet and
+finalized evidence database. Archived HTML and its declared packet hash are not
+presentation authority. The manifest-verified Track A bundle must bind both the
+logical evidence snapshot and exact database SHA-256; request-only or missing
+provenance cannot supply this binding. An invalid binding at startup leaves the
+protected route unavailable. A changed binding during a session returns
+`STALE_PACKET` for review, asset and decision routes. Decision submission checks
+again after reading the request body. The server does not rewrite the archive,
+packet or evidence database to recover an invalid binding.
+
 When a reviewer ID is supplied at server start, the browser treats it as read-only session context. A POST using a different reviewer ID must be rejected.
 
 ## 6. Record the human decision
@@ -104,7 +114,7 @@ Allowed decisions:
 | `CONDITIONAL` | 조건 충족 시 동의 |
 | `ADDITIONAL_REVIEW_REQUIRED` | 추가 자료 검토 필요 |
 
-The protected browser intent contains three fields: `reviewer_id`, `decision`, and `notes`. Client-supplied `packet_hash` or timestamps are rejected. The server computes SHA-256 from the exact packet bytes and creates an offset-aware `reviewed_at` timestamp. If the packet differs from the presentation bound to the server session, POST fails with `STALE_PACKET`; restart only after reviewing the correct packet. The status endpoint recomputes the current hash and reports `decision_binding_status` as `VALID`, `STALE`, or `MISSING`. A stale decision never yields `REVIEW_COMPLETED`.
+The protected browser intent contains three fields: `reviewer_id`, `decision`, and `notes`. Client-supplied `packet_hash` or timestamps are rejected. The server computes SHA-256 from the exact packet bytes and creates an offset-aware `reviewed_at` timestamp. If the packet differs from the presentation bound to the server session, POST fails with `STALE_PACKET`; restart only after reviewing the correct packet. The status endpoint first revalidates the session binding, rejecting a changed authority with `STALE_PACKET`. For a valid current session it reports `decision_binding_status` as `VALID`, `STALE`, or `MISSING`. A stale decision never yields `REVIEW_COMPLETED`.
 
 A successful request creates a new JSON file under:
 

@@ -21,33 +21,11 @@ TOKEN = "a" * 32
 
 
 def _review_artifacts(root: Path, *, html: bytes | None = None) -> tuple[Path, bytes]:
-    run_dir = root / "runs" / "RUN-001"
-    run_dir.mkdir(parents=True)
-    packet = b'{"human_decision":null,"run_id":"RUN-001"}'
-    (run_dir / "final-review-packet.json").write_bytes(packet)
-    if html is None:
-        model = {
-            "run_id": "RUN-001",
-            "status": "READY_FOR_HUMAN_REVIEW",
-            "display_status": "READY_FOR_HUMAN_REVIEW",
-            "question": "protected route fixture",
-            "claims": [],
-            "review_items": [],
-            "calculations": [],
-            "rules": [],
-            "exceptions": [],
-            "conflicts": [],
-            "abstention_reasons": [],
-            "summary": {},
-            "audit": {},
-        }
-        html = (
-            '<div class="app-shell"></div>'
-            '<script id="review-model" type="application/json">'
-            + json.dumps(model, sort_keys=True, separators=(",", ":"))
-            + "</script>"
-        ).encode("utf-8")
-    (run_dir / "review.html").write_bytes(html)
+    from tests.integration.review_packet.test_local_server import _artifacts
+
+    run_dir, packet = _artifacts(root)
+    if html is not None:
+        (run_dir / "review.html").write_bytes(html)
     return run_dir, packet
 
 
@@ -55,7 +33,7 @@ def _review_artifacts(root: Path, *, html: bytes | None = None) -> tuple[Path, b
 def _server(root: Path, *, max_body_bytes: int = 65536) -> Iterator[tuple[object, str]]:
     server = create_review_server(
         root,
-        run_tokens={"RUN-001": TOKEN},
+        run_tokens={"RUN-0123456789ABCDEF0123": TOKEN},
         max_body_bytes=max_body_bytes,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -128,7 +106,7 @@ def _read_http_response(
 def _oversized_decision_headers(base: str, content_length: int) -> bytes:
     host = urlsplit(base).netloc
     return (
-        f"POST /runs/RUN-001/{TOKEN}/decision HTTP/1.1\r\n"
+        f"POST /runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision HTTP/1.1\r\n"
         f"Host: {host}\r\n"
         f"Origin: {base}\r\n"
         "Content-Type: application/json\r\n"
@@ -150,30 +128,33 @@ def _decision(packet: bytes, **changes: object) -> bytes:
 def test_confirmation_route_requires_run_token_and_is_not_final_review_route(
     tmp_path: Path,
 ) -> None:
-    run_dir = tmp_path / "runs" / "RUN-001"
+    run_dir = tmp_path / "runs" / "RUN-0123456789ABCDEF0123"
     (run_dir / "machine").mkdir(parents=True)
     (run_dir / "machine" / "drawing-confirmation.json").write_text(
-        json.dumps({"run_id": "RUN-001", "workflow_state": "INPUT_CONFIRMATION_REQUIRED"}),
+        json.dumps({
+            "run_id": "RUN-0123456789ABCDEF0123",
+            "workflow_state": "INPUT_CONFIRMATION_REQUIRED",
+        }),
         encoding="utf-8",
     )
-    server = create_review_server(tmp_path, run_tokens={"RUN-001": TOKEN})
+    server = create_review_server(tmp_path, run_tokens={"RUN-0123456789ABCDEF0123": TOKEN})
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         with urlopen(
-            f"{base}/runs/RUN-001/{TOKEN}/confirmation", timeout=5
+            f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/confirmation", timeout=5
         ) as response:
             assert response.status == 200
             assert b"INPUT_CONFIRMATION_REQUIRED" in response.read()
         with pytest.raises(HTTPError) as error:
-            urlopen(f"{base}/runs/RUN-001/confirmation", timeout=5)
+            urlopen(f"{base}/runs/RUN-0123456789ABCDEF0123/confirmation", timeout=5)
         assert error.value.code == 404
         with pytest.raises(HTTPError) as error:
-            urlopen(f"{base}/runs/RUN-001/{'b' * 32}/confirmation", timeout=5)
+            urlopen(f"{base}/runs/RUN-0123456789ABCDEF0123/{'b' * 32}/confirmation", timeout=5)
         assert error.value.code == 403
         with pytest.raises(HTTPError) as error:
-            urlopen(f"{base}/runs/RUN-001/review", timeout=5)
+            urlopen(f"{base}/runs/RUN-0123456789ABCDEF0123/review", timeout=5)
         assert error.value.code == 404
     finally:
         server.shutdown()
@@ -187,15 +168,16 @@ def test_review_server_binds_loopback_and_serves_protected_read_only_artifacts(
     _, packet = _review_artifacts(tmp_path)
     with _server(tmp_path) as (server, base):
         assert server.server_address[0] == "127.0.0.1"
-        review = _request(f"{base}/runs/RUN-001/{TOKEN}/review")
+        review = _request(f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/review")
         assert b'data-protected-presentation="true"' in review
         assert b"data:image/" not in review
         assert b'<script id="review-model" type="application/json">' in review
-        assert _request(f"{base}/runs/RUN-001/{TOKEN}/packet") == packet
-        assert json.loads(_request(f"{base}/runs/RUN-001/{TOKEN}/packet/hash")) == {
+        assert _request(f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/packet") == packet
+        packet_hash_url = f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/packet/hash"
+        assert json.loads(_request(packet_hash_url)) == {
             "packet_hash": hashlib.sha256(packet).hexdigest()
         }
-        with urlopen(f"{base}/runs/RUN-001/{TOKEN}/review", timeout=5) as response:
+        with urlopen(f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/review", timeout=5) as response:
             assert response.headers["Cache-Control"] == "no-store"
             assert response.headers["X-Content-Type-Options"] == "nosniff"
             assert response.headers["Referrer-Policy"] == "no-referrer"
@@ -206,11 +188,11 @@ def test_review_server_binds_loopback_and_serves_protected_read_only_artifacts(
 @pytest.mark.parametrize(
     ("path", "status"),
     [
-        ("/runs/RUN-001/review", 404),
-        ("/runs/RUN-001/" + "b" * 32 + "/review", 403),
-        ("/runs/RUN-001/%2e%2e/review", 404),
-        ("/runs/RUN-001/" + TOKEN + "/review?ignored=1", 404),
-        ("/runs/RUN-001/" + TOKEN + "/review%2fpacket", 404),
+        ("/runs/RUN-0123456789ABCDEF0123/review", 404),
+        ("/runs/RUN-0123456789ABCDEF0123/" + "b" * 32 + "/review", 403),
+        ("/runs/RUN-0123456789ABCDEF0123/%2e%2e/review", 404),
+        ("/runs/RUN-0123456789ABCDEF0123/" + TOKEN + "/review?ignored=1", 404),
+        ("/runs/RUN-0123456789ABCDEF0123/" + TOKEN + "/review%2fpacket", 404),
     ],
 )
 def test_protected_routes_reject_missing_wrong_or_unsafe_paths(
@@ -226,7 +208,7 @@ def test_protected_routes_reject_missing_wrong_or_unsafe_paths(
 def test_protected_routes_require_exact_host_and_reject_foreign_origin(tmp_path: Path) -> None:
     _review_artifacts(tmp_path)
     with _server(tmp_path) as (_, base):
-        url = f"{base}/runs/RUN-001/{TOKEN}/review"
+        url = f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/review"
         with pytest.raises(HTTPError) as error:
             _request(url, headers={"Host": "localhost:1"})
         assert error.value.code == 403
@@ -244,7 +226,7 @@ def test_protected_routes_reject_duplicate_host_even_when_the_first_value_is_val
         response = _raw_request(
             base,
             (
-                f"GET /runs/RUN-001/{TOKEN}/review HTTP/1.1\r\n"
+                f"GET /runs/RUN-0123456789ABCDEF0123/{TOKEN}/review HTTP/1.1\r\n"
                 f"Host: {host}\r\n"
                 "Host: attacker.invalid\r\n"
                 "Connection: close\r\n\r\n"
@@ -263,7 +245,7 @@ def test_decision_rejects_duplicate_origin_even_when_the_first_value_is_valid(
         response = _raw_request(
             base,
             (
-                f"POST /runs/RUN-001/{TOKEN}/decision HTTP/1.1\r\n"
+                f"POST /runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision HTTP/1.1\r\n"
                 f"Host: {host}\r\n"
                 f"Origin: {base}\r\n"
                 "Origin: http://attacker.invalid\r\n"
@@ -278,12 +260,12 @@ def test_decision_rejects_duplicate_origin_even_when_the_first_value_is_valid(
 
 
 def test_review_route_requires_both_final_packet_and_html(tmp_path: Path) -> None:
-    run_dir = tmp_path / "runs" / "RUN-001"
+    run_dir = tmp_path / "runs" / "RUN-0123456789ABCDEF0123"
     run_dir.mkdir(parents=True)
     (run_dir / "final-review-packet.json").write_text("{}", encoding="utf-8")
     with _server(tmp_path) as (_, base):
         with pytest.raises(HTTPError) as error:
-            _request(f"{base}/runs/RUN-001/{TOKEN}/review")
+            _request(f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/review")
         assert error.value.code == 404
 
 
@@ -336,7 +318,7 @@ def test_decision_rejects_duplicate_or_unknown_json_without_writing(
     with _server(tmp_path) as (_, base):
         with pytest.raises(HTTPError) as error:
             _request(
-                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
                 method="POST",
                 body=body,
                 headers={
@@ -353,7 +335,7 @@ def test_decision_rejects_client_controlled_timestamp(tmp_path: Path) -> None:
     with _server(tmp_path) as (_, base):
         with pytest.raises(HTTPError) as error:
             _request(
-                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
                 method="POST",
                 body=_decision(packet, reviewed_at="2026-08-01T15:30:00+09:00"),
                 headers={"Content-Type": "application/json", "Origin": base},
@@ -367,7 +349,7 @@ def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_
     with _server(tmp_path, max_body_bytes=8) as (_, base):
         with pytest.raises(HTTPError) as error:
             _request(
-                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
                 method="POST",
                 body=_decision(packet),
                 headers={"Content-Type": "application/json", "Origin": base},
@@ -376,7 +358,7 @@ def test_decision_rejects_oversized_body_and_foreign_origin_without_writing(tmp_
     with _server(tmp_path) as (_, base):
         with pytest.raises(HTTPError) as error:
             _request(
-                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
                 method="POST",
                 body=_decision(packet),
                 headers={"Content-Type": "application/json", "Origin": "http://attacker.invalid"},
@@ -492,7 +474,7 @@ def test_decision_allows_blank_notes_for_satisfied(tmp_path: Path) -> None:
     run_dir, packet = _review_artifacts(tmp_path)
     with _server(tmp_path) as (_, base):
         response = _request(
-            f"{base}/runs/RUN-001/{TOKEN}/decision",
+            f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
             method="POST",
             body=_decision(packet, notes="  \t"),
             headers={"Content-Type": "application/json", "Origin": base},
@@ -509,7 +491,7 @@ def test_decision_rejects_blank_notes_for_non_satisfied_without_writing(
     with _server(tmp_path) as (_, base):
         with pytest.raises(HTTPError) as error:
             _request(
-                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
                 method="POST",
                 body=_decision(packet, decision="NOT_SATISFIED", notes="  \t"),
                 headers={"Content-Type": "application/json", "Origin": base},
@@ -531,7 +513,7 @@ def test_decision_rejects_unsupported_values_and_hash_mismatch_without_writing(
     with _server(tmp_path) as (_, base):
         with pytest.raises(HTTPError) as error:
             _request(
-                f"{base}/runs/RUN-001/{TOKEN}/decision",
+                f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
                 method="POST",
                 body=_decision(packet, **changes),
                 headers={"Content-Type": "application/json", "Origin": base},
@@ -545,7 +527,7 @@ def test_decision_appends_record_without_mutating_packet_or_html(tmp_path: Path)
     html_before = (run_dir / "review.html").read_bytes()
     with _server(tmp_path) as (_, base):
         response = _request(
-            f"{base}/runs/RUN-001/{TOKEN}/decision",
+            f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
             method="POST",
             body=_decision(packet),
             headers={"Content-Type": "application/json", "Origin": base},
@@ -573,7 +555,7 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
     (decision_directory / "foreign.json").write_text(
         json.dumps(
             {
-                "run_id": "RUN-001",
+                "run_id": "RUN-0123456789ABCDEF0123",
                 "reviewer_id": "other-reviewer",
                 "reviewed_at": "2026-08-01T15:30:00+09:00",
                 "packet_hash": "b" * 64,
@@ -585,7 +567,7 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
     )
     with _server(tmp_path) as (_, base):
         assert json.loads(
-            _request(f"{base}/runs/RUN-001/{TOKEN}/decision/status")
+            _request(f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision/status")
         ) == {
             "display_status": "READY_FOR_HUMAN_REVIEW",
             "reviewer_id": None,
@@ -594,14 +576,14 @@ def test_decision_projects_completed_display_status_without_mutating_machine_pac
             "decision_binding_status": "STALE",
         }
         response = _request(
-            f"{base}/runs/RUN-001/{TOKEN}/decision",
+            f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision",
             method="POST",
             body=_decision(packet),
             headers={"Content-Type": "application/json", "Origin": base},
         )
         assert json.loads(response)["display_status"] == "REVIEW_COMPLETED"
         completed_status = json.loads(
-            _request(f"{base}/runs/RUN-001/{TOKEN}/decision/status")
+            _request(f"{base}/runs/RUN-0123456789ABCDEF0123/{TOKEN}/decision/status")
         )
         assert completed_status["display_status"] == "REVIEW_COMPLETED"
         assert completed_status["reviewer_id"] is None

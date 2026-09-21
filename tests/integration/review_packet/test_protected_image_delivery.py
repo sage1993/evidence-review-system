@@ -4,16 +4,23 @@ import hashlib
 import http.client
 import json
 import re
+from io import BytesIO
 from pathlib import Path
 from threading import Thread
+
+from PIL import Image
 
 from evidence_review.review_packet.case_visual_asset_server import (
     configure_case_visual_server,
 )
 from evidence_review.review_packet.html_renderer import render_review_html
 from evidence_review.review_packet.local_server import create_review_server
+from tests.integration.review_packet.test_local_server import _artifacts
 from tests.integration.review_packet.test_review_workspace_performance import (
     VALID_MINIMAL_PNG,
+)
+from tests.integration.review_packet.verified_transport_fixture import (
+    install_visual_authority,
 )
 
 RUN_ID = "RUN-0123456789ABCDEF0123"
@@ -79,7 +86,7 @@ def _model() -> dict[str, object]:
 
 def _page(root: Path, image_bytes: bytes) -> None:
     directory = root / "page-images" / "REV1"
-    directory.mkdir(parents=True)
+    directory.mkdir(parents=True, exist_ok=True)
     image = directory / "page-0003.png"
     image.write_bytes(image_bytes)
     (directory / "page-0003.json").write_text(
@@ -122,11 +129,8 @@ def _reference_page(root: Path, image_bytes: bytes) -> None:
 
 
 def _run(root: Path, image_bytes: bytes) -> tuple[Path, bytes]:
+    run, packet = _artifacts(root)
     _page(root, image_bytes)
-    run = root / "runs" / RUN_ID
-    run.mkdir(parents=True)
-    packet = b'{"human_decision":null,"run_id":"RUN-0123456789ABCDEF0123"}'
-    (run / "final-review-packet.json").write_bytes(packet)
     archive_html = render_review_html(_model(), root / "page-images")
     (run / "review.html").write_text(archive_html, encoding="utf-8")
     return run, packet
@@ -198,17 +202,17 @@ def test_archive_stays_embedded_but_protected_review_is_lazy(tmp_path: Path) -> 
         assert len(protected) < 512_000
         assert b"data:image/png;base64," not in protected
         assert b'data-protected-presentation="true"' in protected
-        assert b'data-page-src="./page-images/REV1/3/' + SOURCE_HASH.encode() + b'"' in protected
+        assert b'data-page-src="./page-images/REV1/1/' + SOURCE_HASH.encode() + b'"' in protected
 
         status, headers, delivered = _get(
             server,
-            base + f"/page-images/REV1/3/{SOURCE_HASH}",
+            base + f"/page-images/REV1/1/{SOURCE_HASH}",
         )
         assert status == 200
         assert headers["content-type"] == "image/png"
         assert headers["cache-control"] == "no-store"
         assert headers["x-content-type-options"] == "nosniff"
-        assert delivered == image_bytes
+        assert delivered == VALID_MINIMAL_PNG
     finally:
         server.shutdown()
         server.server_close()
@@ -218,9 +222,6 @@ def test_archive_stays_embedded_but_protected_review_is_lazy(tmp_path: Path) -> 
 def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> None:
     image_bytes = VALID_MINIMAL_PNG
     image_sha256 = _case_page(tmp_path, image_bytes)
-    run = tmp_path / "runs" / RUN_ID
-    run.mkdir(parents=True)
-    (run / "final-review-packet.json").write_bytes(b"{}")
     model = {
         "run_id": RUN_ID,
         "status": "READY_FOR_HUMAN_REVIEW",
@@ -265,16 +266,7 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
             "related_references": [],
         },
     }
-    (run / "review.html").write_text(
-        '<div class="app-shell"></div>'
-        f'<figure class="case-visual-page" data-case-page="{CASE_ATTACHMENT_ID}-p1">'
-        '<image data-case-page-src="data:image/png;base64,AAAA">'
-        "</figure>"
-        '<script id="review-model" type="application/json">'
-        + json.dumps(model, sort_keys=True, separators=(",", ":"))
-        + "</script>",
-        encoding="utf-8",
-    )
+    install_visual_authority(tmp_path, model)
 
     server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
     configure_case_visual_server(server)
@@ -347,38 +339,11 @@ def test_protected_case_page_route_delivers_hash_bound_bytes(tmp_path: Path) -> 
 def test_protected_case_tile_route_uses_case_scoped_cache_identity(
     tmp_path: Path,
 ) -> None:
-    page_bytes = VALID_MINIMAL_PNG
+    output = BytesIO()
+    Image.new("RGB", (4100, 4100), "white").save(output, format="PNG")
+    page_bytes = output.getvalue()
     page_sha256 = hashlib.sha256(page_bytes).hexdigest()
-    tile_bytes = b"case-scoped-tile"
-    tile_sha256 = hashlib.sha256(tile_bytes).hexdigest()
-    cache_identity = f"{CASE_ID}--{CASE_ATTACHMENT_ID}--{SOURCE_HASH}"
-    tile_directory = (
-        tmp_path
-        / "case-page-tiles-v1"
-        / cache_identity
-        / "page-0001"
-    )
-    tile_directory.mkdir(parents=True)
-    tile_name = "tile-r000-c000.png"
-    (tile_directory / tile_name).write_bytes(tile_bytes)
-    (tile_directory / "manifest.json").write_text(
-        json.dumps(
-            {
-                "tiles": [
-                    {
-                        "x": 0,
-                        "y": 0,
-                        "filename": tile_name,
-                        "image_sha256": tile_sha256,
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    run = tmp_path / "runs" / RUN_ID
-    run.mkdir(parents=True)
-    (run / "final-review-packet.json").write_bytes(b"{}")
+    _case_page(tmp_path, page_bytes)
     model = {
         "run_id": RUN_ID,
         "status": "READY_FOR_HUMAN_REVIEW",
@@ -401,8 +366,8 @@ def test_protected_case_tile_route_uses_case_scoped_cache_identity(
                     "case_id": CASE_ID,
                     "attachment_id": CASE_ATTACHMENT_ID,
                     "page": 1,
-                    "width": 2048.0,
-                    "height": 2048.0,
+                        "width": 4100.0,
+                        "height": 4100.0,
                     "document_name": "case.png",
                     "source_sha256": SOURCE_HASH,
                     "image_sha256": page_sha256,
@@ -411,9 +376,9 @@ def test_protected_case_tile_route_uses_case_scoped_cache_identity(
                         {
                             "x": 0,
                             "y": 0,
-                            "width": 2048,
-                            "height": 2048,
-                            "image_sha256": tile_sha256,
+                                "width": 2048,
+                                "height": 2048,
+                                "image_sha256": "b" * 64,
                             "data_uri": "data:image/png;base64,BBBB",
                         }
                     ],
@@ -425,13 +390,7 @@ def test_protected_case_tile_route_uses_case_scoped_cache_identity(
             "related_references": [],
         },
     }
-    (run / "review.html").write_text(
-        '<div class="app-shell"></div>'
-        '<script id="review-model" type="application/json">'
-        + json.dumps(model, sort_keys=True, separators=(",", ":"))
-        + "</script>",
-        encoding="utf-8",
-    )
+    install_visual_authority(tmp_path, model)
 
     server = create_review_server(tmp_path, run_tokens={RUN_ID: TOKEN})
     configure_case_visual_server(server)
@@ -442,16 +401,22 @@ def test_protected_case_tile_route_uses_case_scoped_cache_identity(
         status, _, protected = _get(server, base + "/review")
         assert status == 200
         assert b"data:image/png;base64," not in protected
+        protected_model = _review_model_from_html(protected)
+        protected_page = protected_model["case_visual_review"]["pages"][0]
+        tile = protected_page["tiles"][0]
 
         status, headers, delivered = _get(
             server,
-            base + f"/case-tiles/{CASE_ATTACHMENT_ID}/1/0/0/{tile_sha256}",
+            base + (
+                f"/case-tiles/{CASE_ATTACHMENT_ID}/1/{tile['x']}/{tile['y']}/"
+                f"{tile['image_sha256']}"
+            ),
         )
         assert status == 200
         assert headers["content-type"] == "image/png"
         assert headers["cache-control"] == "no-store"
         assert headers["x-content-type-options"] == "nosniff"
-        assert delivered == tile_bytes
+        assert hashlib.sha256(delivered).hexdigest() == tile["image_sha256"]
     finally:
         server.shutdown()
         server.server_close()
@@ -466,13 +431,17 @@ def test_protected_page_image_route_rejects_wrong_identity_and_tampering(tmp_pat
     thread.start()
     try:
         base = f"/runs/{RUN_ID}/{TOKEN}"
-        status, _, _ = _get(server, base + f"/page-images/REV1/4/{SOURCE_HASH}")
+        status, _, delivered = _get(server, base + f"/page-images/REV1/1/{SOURCE_HASH}")
+        assert status == 200
+        assert delivered == VALID_MINIMAL_PNG
+
+        status, _, _ = _get(server, base + f"/page-images/REV1/2/{SOURCE_HASH}")
         assert status == 404
-        status, _, _ = _get(server, base + f"/page-images/REV1/3/{'0' * 64}")
+        status, _, _ = _get(server, base + f"/page-images/REV1/1/{'0' * 64}")
         assert status == 404
 
-        (tmp_path / "page-images" / "REV1" / "page-0003.png").write_bytes(b"tampered")
-        status, _, body = _get(server, base + f"/page-images/REV1/3/{SOURCE_HASH}")
+        (tmp_path / "page-images" / "REV1" / "page-0001.png").write_bytes(b"tampered")
+        status, _, body = _get(server, base + f"/page-images/REV1/1/{SOURCE_HASH}")
         assert status == 404
         assert b"tampered" not in body
     finally:
