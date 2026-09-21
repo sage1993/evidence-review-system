@@ -185,3 +185,10 @@
   .viewer-toolbar { gap: 8px; padding: 8px; }
   .pdf-page-controls { margin: 0; }
 }
+@media print {
+  #case-visual-review .workspace-grid { grid-template-columns: minmax(0, 1fr); }
+  #case-visual-review .findings-panel,
+  #case-visual-review[data-findings-collapsed="true"] .findings-panel { display: block; }
+  #case-visual-review .findings-body { max-height: none; overflow: visible; }
+  #case-visual-review .finding-card { break-inside: avoid; }
+}
