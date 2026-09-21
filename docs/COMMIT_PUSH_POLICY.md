@@ -95,6 +95,39 @@ after this pre-merge candidate boundary and are outside the local issue-branch
 acceptance range; a merge-shaped subject in that range is not treated as proof
 of platform provenance.
 
+## Explicit multi-issue integration workflow
+
+An integration candidate that combines more than one issue may use the
+separate `--integration-manifest` verifier mode. It is mutually exclusive with
+`--issue`; the issue-scoped mode above remains the required mode for a
+single-issue branch.
+
+The manifest is an absolute path outside the checkout. Its raw-byte SHA-256 is
+reported by the verifier and the PR body must contain this exact, unfenced
+line:
+
+```text
+Integration-Manifest-SHA256: <64-lowercase-or-uppercase-hex-digits>
+```
+
+The version-1 JSON object must have `format` equal to
+`evidence-review/integration-gate`, `version` equal to `1`, and exact
+`origin_url`, `base_sha`, `candidate_sha`, and `branch` values observed by the
+verifier. It declares a nonempty, duplicate-free list of positive `issues` and
+the exact ordered complete `base..candidate` commit inventory. Every commit
+entry contains its SHA, a meaningful description, and either one or more
+declared issue IDs or a named additional integration `scope`; duplicate,
+unknown, missing, or extra commit IDs fail closed.
+
+The PR must target `main`, have the exact candidate head SHA, and contain an
+unfenced `Closes`, `Fixes`, or `Resolves #N` reference for every declared
+issue. The verifier rereads and rehashes the external manifest after it writes
+the report, so a changed manifest holds readiness. This mode retains every
+local gate, clean-worktree check, package-evidence requirement, origin/main
+identity check, pushed-SHA check, and PR-head parity check. It does not accept
+an earlier candidate that was tested without this verifier code; adding the
+policy changes the candidate and requires verification of that new exact SHA.
+
 A contributor-authored issue-branch commit subject that omits the issue or
 change type is not eligible for issue acceptance. A later commit cannot change
 an earlier commit's subject. If found before push, correct the subject by
@@ -129,9 +162,10 @@ GITHUB_ACTIONS = NOT_USED_BY_POLICY
 The local verifier observes `.github/workflows/*.yml` and `.yaml` files. The
 value above is valid only when no workflow file is present; an observed
 workflow is reported as `POLICY_MISMATCH` and keeps merge readiness at `HOLD`.
-The verifier also requires an explicit `--issue N` binding and checks the
-issue-scoped branch, contributor commit subject, PR head branch, and a
-`Closes`, `Fixes`, or `Resolves #N` reference in the PR body.
+The verifier requires exactly one explicit binding: `--issue N`, which checks
+the issue-scoped branch and every contributor commit subject, or the strict
+multi-issue `--integration-manifest` contract above. Neither mode bypasses the
+executed local gates.
 
 `--json-report` outputs are external to the checkout. Package-affecting
 changes require an external exact-candidate package evidence record with
@@ -201,4 +235,10 @@ Run the local verifier before opening or updating a PR:
 
 ```powershell
 py -3.13 scripts/repository_gate.py --issue <N> --json-report "$env:TEMP\ers-repository-gate-<N>.json"
+```
+
+For a separately reviewed integration candidate, use an external manifest:
+
+```powershell
+py -3.13 scripts/repository_gate.py --integration-manifest <absolute-manifest.json> --json-report "$env:TEMP\ers-integration-gate.json"
 ```

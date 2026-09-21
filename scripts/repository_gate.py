@@ -8,6 +8,7 @@ fail-closed identity rule is directly testable without a GitHub connection.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -94,6 +95,8 @@ class GateVerdict:
     remote_base_sha: str = NOT_VERIFIED
     local_remote_base_sha: str = NOT_VERIFIED
     issue_binding: str = NOT_VERIFIED
+    verification_mode: str = NOT_VERIFIED
+    integration_manifest_sha256: str = NOT_APPLICABLE
 
 
 CommandRunner = Callable[[Sequence[str], Path], CommandResult]
@@ -232,6 +235,8 @@ def format_summary(verdict: GateVerdict) -> str:
         "SHA_PARITY": verdict.sha_parity,
         "GITHUB_ACTIONS": verdict.github_actions,
         "ISSUE_BINDING": verdict.issue_binding,
+        "VERIFICATION_MODE": verdict.verification_mode,
+        "INTEGRATION_MANIFEST_SHA256": verdict.integration_manifest_sha256,
         "MERGE_READINESS": verdict.merge_readiness,
     }
     lines = [f"{key} = {value}" for key, value in values.items()]
@@ -633,21 +638,212 @@ def _validate_issue_binding(
     return FAIL
 
 
+def _visible_pr_lines(body: str) -> tuple[str, ...]:
+    """Return PR body lines that are outside fenced code blocks."""
+
+    fence_pattern = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+    visible: list[str] = []
+    fence: tuple[str, int] | None = None
+    for line in body.splitlines():
+        fence_match = fence_pattern.match(line)
+        if fence_match:
+            marker = fence_match.group(1)
+            marker_state = (marker[0], len(marker))
+            if fence is None:
+                fence = marker_state
+            elif marker_state[0] == fence[0] and marker_state[1] >= fence[1]:
+                fence = None
+            continue
+        if fence is None:
+            visible.append(line)
+    return tuple(visible)
+
+
+def _closing_references(body: str, issues: Sequence[int]) -> set[int]:
+    """Return valid closing references outside fenced code blocks."""
+
+    closing_pattern = re.compile(
+        r"^[ \t]{0,3}(?:[-*][ \t]+)?(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b",
+        flags=re.IGNORECASE,
+    )
+    expected = set(issues)
+    found: set[int] = set()
+    for line in _visible_pr_lines(body):
+        match = closing_pattern.match(line)
+        if match and int(match.group(1)) in expected:
+            found.add(int(match.group(1)))
+    return found
+
+
+def _validate_integration_binding(
+    manifest: object,
+    *,
+    manifest_sha: str,
+    origin_url: str,
+    base_sha: str,
+    candidate_sha: str,
+    branch: str,
+    commits: Sequence[tuple[str, str]],
+    pr_payload: dict[str, object] | None,
+) -> str:
+    """Validate a multi-issue integration manifest against live identities."""
+
+    if not isinstance(manifest, dict) or not SHA256_PATTERN.fullmatch(manifest_sha):
+        return NOT_VERIFIED
+    if (
+        manifest.get("format") != "evidence-review/integration-gate"
+        or type(manifest.get("version")) is not int
+        or manifest.get("version") != 1
+        or manifest.get("origin_url") != origin_url
+        or manifest.get("base_sha") != base_sha
+        or manifest.get("candidate_sha") != candidate_sha
+        or manifest.get("branch") != branch
+        or not _is_sha(base_sha)
+        or not _is_sha(candidate_sha)
+        or not branch
+        or not origin_url
+    ):
+        return FAIL
+    issues = manifest.get("issues")
+    if (
+        not isinstance(issues, list)
+        or not issues
+        or any(
+            not isinstance(issue, int) or isinstance(issue, bool) or issue <= 0
+            for issue in issues
+        )
+        or len(set(issues)) != len(issues)
+    ):
+        return FAIL
+    entries = manifest.get("commits")
+    if not isinstance(entries, list) or not entries or len(entries) != len(commits):
+        return FAIL
+    actual_shas = tuple(sha for sha, _subject in commits)
+    manifest_shas: list[str] = []
+    mapped_issue_ids: set[int] = set()
+    known_issues = set(issues)
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return FAIL
+        sha = entry.get("sha")
+        description = entry.get("description")
+        mapped_issues = entry.get("issues")
+        scope = entry.get("scope")
+        if (
+            not isinstance(sha, str)
+            or not _is_sha(sha)
+            or not isinstance(description, str)
+            or len(description.strip()) < 12
+            or (mapped_issues is None) == (scope is None)
+        ):
+            return FAIL
+        if mapped_issues is not None:
+            if (
+                not isinstance(mapped_issues, list)
+                or not mapped_issues
+                or any(
+                    not isinstance(issue, int)
+                    or isinstance(issue, bool)
+                    or issue not in known_issues
+                    for issue in mapped_issues
+                )
+                or len(set(mapped_issues)) != len(mapped_issues)
+            ):
+                return FAIL
+            mapped_issue_ids.update(mapped_issues)
+        elif not isinstance(scope, str) or not re.fullmatch(r"[a-z][a-z0-9-]{2,63}", scope):
+            return FAIL
+        manifest_shas.append(sha)
+    if (
+        len(set(manifest_shas)) != len(manifest_shas)
+        or tuple(manifest_shas) != actual_shas
+        or mapped_issue_ids != known_issues
+    ):
+        return FAIL
+    if pr_payload is None:
+        return NOT_VERIFIED
+    if not {"number", "headRefName", "headRefOid", "baseRefName", "body"}.issubset(pr_payload):
+        return NOT_VERIFIED
+    if (
+        not isinstance(pr_payload.get("number"), int)
+        or isinstance(pr_payload.get("number"), bool)
+        or pr_payload.get("number", 0) <= 0
+        or pr_payload.get("headRefName") != branch
+        or pr_payload.get("baseRefName") != "main"
+        or pr_payload.get("headRefOid") != candidate_sha
+        or not isinstance(pr_payload.get("body"), str)
+    ):
+        return FAIL
+    body = pr_payload["body"]
+    assert isinstance(body, str)
+    if _closing_references(body, issues) != known_issues:
+        return FAIL
+    hash_pattern = re.compile(
+        rf"^[ \t]*Integration-Manifest-SHA256:\s*{re.escape(manifest_sha)}\s*$",
+        flags=re.IGNORECASE,
+    )
+    if not any(hash_pattern.fullmatch(line) for line in _visible_pr_lines(body)):
+        return FAIL
+    return PASS
+
+
+def load_integration_manifest(
+    path: Path,
+    *,
+    repository_root: Path,
+) -> tuple[object | None, str, str]:
+    """Read an external integration manifest and preserve its exact byte hash."""
+
+    if not path.is_absolute():
+        return None, NOT_VERIFIED, "integration manifest must be an absolute path"
+    resolved = path.resolve()
+    if _path_is_inside(resolved, repository_root.resolve()):
+        return None, NOT_VERIFIED, "integration manifest must be outside the repository"
+    try:
+        raw = resolved.read_bytes()
+        document = json.loads(raw, object_pairs_hook=_reject_duplicate_json_object)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        return None, NOT_VERIFIED, f"integration manifest unreadable: {type(exc).__name__}"
+    return document, hashlib.sha256(raw).hexdigest(), ""
+
+
+def _reject_duplicate_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    document: dict[str, object] = {}
+    for key, value in pairs:
+        if key in document:
+            raise ValueError(f"duplicate JSON key: {key}")
+        document[key] = value
+    return document
+
+
+def _commits(
+    repository_root: Path,
+    base_sha: str,
+    head_sha: str,
+    command_runner: CommandRunner,
+) -> tuple[tuple[str, str], ...]:
+    commit_log = _git_text(
+        repository_root,
+        ["log", f"{base_sha}..{head_sha}", "--format=%H%x00%s"],
+        command_runner,
+    )
+    entries: list[tuple[str, str]] = []
+    for line in commit_log.splitlines():
+        sha, separator, subject = line.partition("\x00")
+        if not separator or not _is_sha(sha):
+            return ()
+        entries.append((sha, subject))
+    return tuple(entries)
+
+
 def _commit_subjects(
     repository_root: Path,
     base_sha: str,
     head_sha: str,
     command_runner: CommandRunner,
 ) -> tuple[str, ...]:
-    commit_log = _git_text(
-        repository_root,
-        ["log", f"{base_sha}..{head_sha}", "--format=%H%x00%s"],
-        command_runner,
-    )
-    return tuple(
-        line.partition("\x00")[2] if "\x00" in line else line
-        for line in commit_log.splitlines()
-    )
+    commits = _commits(repository_root, base_sha, head_sha, command_runner)
+    return tuple(subject for _sha, subject in commits)
 
 
 def _empty_verdict(*, branch: str = "", error: str = "") -> GateVerdict:
@@ -683,6 +879,7 @@ def collect_repository_state(
     remote_ref: str | None = None,
     pr_head_sha: str | None = None,
     issue_number: int | None = None,
+    integration_manifest_path: Path | None = None,
     package_evidence_path: Path | None = None,
     command_runner: CommandRunner = run_command,
 ) -> GateVerdict:
@@ -692,6 +889,18 @@ def collect_repository_state(
     head_before = _git_text(repository_root, ["rev-parse", "HEAD"], command_runner)
     if not branch or not _is_sha(head_before):
         return _empty_verdict(branch=branch, error="could not resolve branch or HEAD")
+    origin_url = _git_text(repository_root, ["remote", "get-url", "origin"], command_runner)
+    integration_manifest_document: object | None = None
+    integration_manifest_sha256 = NOT_APPLICABLE
+    if integration_manifest_path is not None:
+        (
+            integration_manifest_document,
+            integration_manifest_sha256,
+            _manifest_detail,
+        ) = load_integration_manifest(
+            integration_manifest_path,
+            repository_root=repository_root,
+        )
 
     local_remote_base_sha = _git_text(
         repository_root,
@@ -797,7 +1006,7 @@ def collect_repository_state(
             resolved_pr_head_sha = (
                 value if isinstance(value, str) and _is_sha(value) else NOT_VERIFIED
             )
-    commit_subjects = _commit_subjects(
+    commits = _commits(
         repository_root,
         base_sha,
         head_before,
@@ -806,9 +1015,28 @@ def collect_repository_state(
     issue_binding = _validate_issue_binding(
         issue_number,
         branch,
-        commit_subjects,
+        tuple(subject for _sha, subject in commits),
         pr_payload,
     )
+    verification_mode = "ISSUE" if issue_number is not None else NOT_VERIFIED
+    if integration_manifest_path is not None:
+        verification_mode = "INTEGRATION"
+        issue_binding = _validate_integration_binding(
+            integration_manifest_document,
+            manifest_sha=integration_manifest_sha256,
+            origin_url=origin_url,
+            base_sha=base_sha,
+            candidate_sha=head_before,
+            branch=branch,
+            commits=commits,
+            pr_payload=pr_payload,
+        )
+        _current_manifest, current_manifest_sha, _manifest_detail = load_integration_manifest(
+            integration_manifest_path,
+            repository_root=repository_root,
+        )
+        if current_manifest_sha != integration_manifest_sha256:
+            issue_binding = FAIL
     if _package_change(changed_paths):
         if package_evidence_path is None:
             package_acceptance = NOT_RUN
@@ -864,6 +1092,8 @@ def collect_repository_state(
         remote_base_sha=remote_base_sha,
         local_remote_base_sha=local_remote_base_sha or NOT_VERIFIED,
         issue_binding=issue_binding,
+        verification_mode=verification_mode,
+        integration_manifest_sha256=integration_manifest_sha256,
     )
 
 
@@ -872,6 +1102,7 @@ def _post_report_recheck(
     verdict: GateVerdict,
     *,
     issue_number: int | None,
+    integration_manifest_path: Path | None,
     package_evidence_path: Path | None,
     command_runner: CommandRunner = run_command,
 ) -> str | None:
@@ -929,17 +1160,34 @@ def _post_report_recheck(
     pr_head_sha = pr_payload.get("headRefOid")
     if not isinstance(pr_head_sha, str) or pr_head_sha != verdict.pr_head_sha:
         return "PR head identity changed after report write"
-    issue_binding = _validate_issue_binding(
-        issue_number,
-        verdict.branch,
-        _commit_subjects(
-            repository_root,
-            verdict.base_sha,
-            verdict.candidate_sha,
-            command_runner,
-        ),
-        pr_payload,
+    commits = _commits(
+        repository_root, verdict.base_sha, verdict.candidate_sha, command_runner
     )
+    if integration_manifest_path is None:
+        issue_binding = _validate_issue_binding(
+            issue_number,
+            verdict.branch,
+            tuple(subject for _sha, subject in commits),
+            pr_payload,
+        )
+    else:
+        manifest, manifest_sha, _manifest_detail = load_integration_manifest(
+            integration_manifest_path,
+            repository_root=repository_root,
+        )
+        if manifest_sha != verdict.integration_manifest_sha256:
+            return "integration manifest changed after report write"
+        origin_url = _git_text(repository_root, ["remote", "get-url", "origin"], command_runner)
+        issue_binding = _validate_integration_binding(
+            manifest,
+            manifest_sha=manifest_sha,
+            origin_url=origin_url,
+            base_sha=verdict.base_sha,
+            candidate_sha=verdict.candidate_sha,
+            branch=verdict.branch,
+            commits=commits,
+            pr_payload=pr_payload,
+        )
     if issue_binding != verdict.issue_binding:
         return "issue binding changed after report write"
 
@@ -967,7 +1215,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--repository-root", type=Path, default=Path.cwd())
     parser.add_argument("--tested-sha")
     parser.add_argument("--remote-ref")
-    parser.add_argument("--issue", type=int)
+    binding = parser.add_mutually_exclusive_group()
+    binding.add_argument("--issue", type=int)
+    binding.add_argument("--integration-manifest", type=Path)
     parser.add_argument("--package-evidence", type=Path)
     parser.add_argument("--json-report", type=Path)
     return parser
@@ -994,11 +1244,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             tested_sha=args.tested_sha,
             remote_ref=args.remote_ref,
             issue_number=args.issue,
+            integration_manifest_path=args.integration_manifest,
             package_evidence_path=args.package_evidence,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         raw = _empty_verdict(error=f"{type(exc).__name__}: {exc}")
-    if args.issue is None:
+    if args.issue is None and args.integration_manifest is None:
         raw = replace(raw, issue_binding=NOT_VERIFIED)
     verdict = evaluate_verdict(raw)
     if args.json_report is None and verdict.merge_readiness == READY_FOR_REVIEW:
@@ -1024,6 +1275,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repository_root,
                 verdict,
                 issue_number=args.issue,
+                integration_manifest_path=args.integration_manifest,
                 package_evidence_path=args.package_evidence,
             )
         except (OSError, RuntimeError, ValueError) as exc:

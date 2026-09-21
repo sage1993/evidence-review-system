@@ -405,6 +405,16 @@ checks together:
 py -3.13 scripts/repository_gate.py --issue <N> --json-report "$env:TEMP\ers-repository-gate-<N>.json"
 ```
 
+For an explicit multi-issue integration candidate only, the verifier also
+supports `--integration-manifest <absolute-external-json>` as a mutually
+exclusive alternative to `--issue`. The manifest binds exact origin URL, base,
+candidate, branch, declared positive issue IDs, and the complete ordered commit
+inventory; its SHA-256 must be visible in the PR body outside code fences and
+the verifier rereads it after report creation. This policy does not
+retrospectively accept a candidate tested before the verifier contained this
+mode. Adding it changes the candidate SHA and requires all applicable gates on
+the resulting exact integration SHA.
+
 It exits nonzero for a dirty worktree, changed candidate, failed or unrun
 gate, unknown ancestry, remote/PR SHA mismatch, unavailable identity, or a
 missing issue binding. The verifier reports

@@ -1,3 +1,5 @@
+import hashlib
+import json
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -80,6 +82,103 @@ def test_cli_requires_explicit_issue_binding(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "ISSUE_BINDING = NOT_VERIFIED" in output
     assert "MERGE_READINESS = HOLD" in output
+
+
+def test_cli_rejects_issue_and_integration_manifest_together():
+    with pytest.raises(SystemExit):
+        repository_gate.main(
+            [
+                "--repository-root",
+                ".",
+                "--issue",
+                "227",
+                "--integration-manifest",
+                "C:\\integration.json",
+            ]
+        )
+
+
+@pytest.mark.parametrize("mutate_manifest", [False, True])
+def test_integration_cli_runs_all_gates_and_rechecks_manifest(
+    monkeypatch, tmp_path, mutate_manifest
+):
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    branch = "codex/integration-test"
+    origin = "https://github.com/sage1993/evidence-review-system.git"
+    manifest_path = tmp_path / "integration.json"
+    manifest_path.write_text(json.dumps({
+        "format": "evidence-review/integration-gate", "version": 1,
+        "origin_url": origin, "base_sha": "b" * 40, "candidate_sha": SHA,
+        "branch": branch, "issues": [227], "commits": [{
+            "sha": SHA, "issues": [227], "description": "Integrate the verified policy change.",
+        }],
+    }), encoding="utf-8")
+    manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    gates = []
+
+    def runner(args, _cwd):
+        command = tuple(args)
+        output = ""
+        if command == ("git", "branch", "--show-current"):
+            output = branch
+        elif command == ("git", "rev-parse", "HEAD"):
+            output = SHA
+        elif command == ("git", "rev-parse", "origin/main"):
+            output = "b" * 40
+        elif command == ("git", "remote", "get-url", "origin"):
+            output = origin
+        elif command[:3] == ("git", "ls-remote", "origin"):
+            remote_sha = "b" * 40 if command[3] == "refs/heads/main" else SHA
+            output = f"{remote_sha}\t{command[3]}"
+        elif command[:2] == ("git", "log"):
+            output = f"{SHA}\x00Integration change without single-issue title"
+        elif command[:3] == ("gh", "pr", "view"):
+            output = json.dumps({
+                "number": 250, "headRefName": branch, "headRefOid": SHA,
+                "baseRefName": "main",
+                "body": f"Closes #227\nIntegration-Manifest-SHA256: {manifest_sha}",
+            })
+        elif "-m" in command:
+            gates.append(command[command.index("-m") + 1:])
+            if mutate_manifest and "pytest" in command:
+                manifest_path.write_text('{"changed":true}', encoding="utf-8")
+        elif command[:2] in {("git", "status"), ("git", "diff"), ("git", "merge-base")}:
+            pass
+        else:
+            raise AssertionError(command)
+        return CommandResult(command, 0, output)
+
+    collect = repository_gate.collect_repository_state
+    recheck = repository_gate._post_report_recheck
+    collected = []
+
+    def observed_collect(root, **kwargs):
+        verdict = collect(root, command_runner=runner, **kwargs)
+        collected.append(verdict)
+        return verdict
+
+    monkeypatch.setattr(repository_gate, "collect_repository_state", observed_collect)
+    monkeypatch.setattr(repository_gate, "_post_report_recheck",
+                        lambda root, verdict, **kwargs: recheck(
+                            root, verdict, command_runner=runner, **kwargs))
+    report = tmp_path / "report.json"
+    code = repository_gate.main([
+        "--repository-root", str(checkout), "--integration-manifest", str(manifest_path),
+        "--json-report", str(report),
+    ])
+    result = json.loads(report.read_text(encoding="utf-8"))
+    assert [command[0] for command in gates] == [
+        "evidence_review", "pytest", "ruff", "mypy", "mypy", "compileall",
+    ]
+    assert all(item["status"] == "PASS" for item in result["gate_statuses"])
+    assert result["integration_manifest_sha256"] == manifest_sha
+    assert result["verification_mode"] == "INTEGRATION"
+    assert code == (1 if mutate_manifest else 0)
+    assert result["merge_readiness"] == ("HOLD" if mutate_manifest else "READY_FOR_REVIEW")
+    if mutate_manifest:
+        assert collected[0].issue_binding == "FAIL"
+        assert repository_gate.evaluate_verdict(collected[0]).merge_readiness == "HOLD"
 
 
 def test_cli_requires_external_report_for_a_ready_verdict(monkeypatch, capsys):
