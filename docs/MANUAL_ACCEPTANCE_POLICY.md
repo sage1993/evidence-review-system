@@ -43,6 +43,19 @@ cleanliness, diff whitespace, candidate stability, remote branch SHA, and PR
 head SHA. It exits nonzero and prints `MERGE_READINESS = HOLD` for any failed,
 unrun, dirty, unknown, or mismatched condition.
 
+For an explicit multi-issue integration candidate, `--integration-manifest`
+is the mutually exclusive alternative to `--issue`:
+
+```powershell
+py -3.13 scripts/repository_gate.py --integration-manifest <absolute-manifest.json> --json-report "$env:TEMP\ers-integration-gate.json"
+```
+
+The external manifest binds exact origin, base, candidate, branch, declared
+issues and the complete ordered commit inventory. Its SHA-256 and issue-closing
+references must be present in the PR body. All local gates and identity checks
+remain required; see the full contract in
+[Commit, Push, and Pull Request Policy](COMMIT_PUSH_POLICY.md).
+
 ## GitHub-enforced `main` controls and process-level gates
 
 The authenticated GitHub UI audit observed the following on 2026-09-16:
@@ -154,6 +167,7 @@ py -3.13 -m mypy src
 py -3.13 -m mypy --platform win32 src
 ```
 
-The first command proves the Linux source tree remains type-checked, and the
-second proves the guarded Windows API path remains type-checked against the
-Windows platform stubs.
+The first command uses the host's default platform stubs; on Windows it does
+not prove a Linux-platform check. The second explicitly checks Windows stubs.
+Record the host platform with both results, and execute a Linux-platform check
+separately when claiming the required Linux acceptance.

@@ -4,7 +4,7 @@
 
 ## 개요
 
-현재 ERS의 검토 파이프라인은 다음과 같습니다.
+직접 질문을 검토하는 `review-question` 경로는 다음과 같습니다.
 
 ```text
 PDF 또는 이미지
@@ -31,8 +31,11 @@ Planner or create a conclusion. The Workbench stores **mutable ReviewMatter
 work state** such as selected evidence and drafts; that state is not evidence
 or a decision. **Formalization** is the only promotion boundary from an exact
 Matter revision and finalized snapshot into **Formal Review**. Formal Review
-then retains the Question Planner, deterministic engines, Track A/Track B,
-immutable packet, and packet-bound Human Decision boundaries below.
+then retains the deterministic engines, Track A/Track B, immutable packet,
+and packet-bound Human Decision boundaries below. The direct `review-question`
+entrypoint requires a validated Question Planner handoff. `review-matter
+formalize` instead consumes the explicit ReviewScope from promoted Matter
+inputs and does not require that handoff.
 
 Codex가 명시적인 파일 handoff를 통해 다음 결과를 제공합니다.
 
@@ -86,6 +89,18 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install .
 .\.venv\Scripts\python.exe -m evidence_review --version
 ```
+
+설치본 검증은 같은 가상환경의 실행 파일로 수행합니다.
+
+```powershell
+.\.venv\Scripts\evidence-review.exe --runtime-mode installed doctor
+```
+
+Wheel acceptance는 별도의 깨끗한 Python 3.13 가상환경에서 candidate wheel을
+설치하고 `PYTHONPATH` 없이 실행합니다. Editable install이나 저장소 `src`
+주입은 설치본 검증이 아닙니다. 설치본과 개발 checkout의 구분, package digest,
+workspace control directory는 [Runtime Authority](docs/runtime-authority.md)를
+참고하십시오.
 
 PDF를 처리하려면 지원되는 로컬 Parser가 필요합니다.
 
@@ -142,7 +157,7 @@ $ERS_REVIEW 이 문서가 해당 기준을 충족하는지 근거 페이지와 �
 
 ERS에는 정식 검토 과정을 우회하는 **Quick Answer** 또는 **문장 전체 직접 검색 방식의 우회 경로**가 존재하지 않습니다.
 
-정식 검토 과정에서는 다음 순서가 적용됩니다.
+위의 직접 질문 경로에서는 다음 순서가 적용됩니다.
 
 1. 활성 Workspace 검증
 2. 결론을 포함하지 않는 QuestionPlan 생성
@@ -151,6 +166,11 @@ ERS에는 정식 검토 과정을 우회하는 **Quick Answer** 또는 **문장 
 5. 독립적인 Track B 감사
 6. Final Review Packet 생성
 7. Review HTML 생성
+
+이미 ReviewMatter에서 작업한 경우에는 현재 revision과 명시적인 ReviewScope를
+검증하는 `review-matter formalize`를 사용합니다. 이 경로는 불변 snapshot을
+만든 후 같은 Formal Review core에 연결됩니다. 실행 예시는
+[Codex Workflow](docs/CODEX_WORKFLOW.md)를 참고하십시오.
 
 사용자는 다음 항목을 직접 작성하지 않습니다.
 
@@ -332,9 +352,23 @@ ancestry 또는 SHA 불일치에서 `MERGE_READINESS = HOLD`로 종료합니다.
 acceptance report의 `ACTIONS_NOT_RUN` 기록은 역사적 사실이므로 수정하지
 않습니다.
 
-`<N>`은 실제 GitHub Issue 번호이며, 검증기는 issue-scoped branch, 최신
-commit subject, PR head branch 및 PR 본문의 `Closes/Fixes/Resolves #N`를
-함께 확인합니다. `--json-report`는 repository 밖의 절대 경로만 허용하며,
+`<N>`은 실제 GitHub Issue 번호이며, 검증기는 issue-scoped branch, candidate
+범위의 모든 contributor commit subject, PR head branch 및 PR 본문의
+`Closes/Fixes/Resolves #N`를 함께 확인합니다.
+
+명시적인 여러 이슈의 통합 후보에는 `--issue` 대신 다음 모드를 사용합니다.
+
+```powershell
+py -3.13 scripts/repository_gate.py --integration-manifest <absolute-manifest.json> --json-report "$env:TEMP\ers-integration-gate.json"
+```
+
+외부 manifest는 origin/base/candidate/branch, 이슈 번호와 전체 commit 목록을
+결속합니다. PR 본문에는 manifest SHA-256과 각 이슈의 closing reference가
+필요합니다. 이 모드는 단일 이슈 검증이나 로컬 gate를 우회하지 않습니다.
+정확한 형식은 [Commit, Push, and Pull Request Policy](docs/COMMIT_PUSH_POLICY.md)를
+참고하십시오.
+
+`--json-report`는 repository 밖의 절대 경로만 허용하며,
 runtime/package 변경에는 exact candidate SHA에 결합된 외부 `--package-evidence`
 JSON이 필요합니다. Wheel build, isolated install, `pip check`, runtime
 smoke 중 하나라도 없거나 실패하면 `PACKAGE_ACCEPTANCE`는 PASS가 아닙니다.
