@@ -923,6 +923,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
     return "".join(
         (
             '<section id="case-visual-review" class="visual-review-workspace" '
+            'data-findings-collapsed="true" '
             f'data-overlay-mode="all" data-reference-available="{"true" if any_direct else "false"}" '
             'aria-label="기준 근거와 사용자 파일 대조 Workspace">',
             '<div class="visual-notices">',
@@ -936,8 +937,9 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             '<div class="comparison-actions">'
             '<label><input type="checkbox" data-view-sync> 확대·이동 동기화</label>'
             '<button type="button" data-comparison-fullscreen>비교 화면 전체 보기</button>'
-            '<button type="button" data-findings-toggle aria-expanded="true" '
-            'aria-controls="visual-observations">관찰 목록 접기</button></div>',
+            '<button type="button" data-findings-toggle aria-expanded="false" '
+            f'data-findings-count="{len(findings)}" '
+            f'aria-controls="visual-observations">관찰 {len(findings)} · 목록 펼치기</button></div>',
             '<div class="workspace-grid">',
             f'<div class="comparison-workspace" data-case-split data-reference-width="{initial_reference_width}">',
             (
@@ -951,7 +953,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
                 + 'data-case-divider><span></span></button>'
             ),
             '<section class="subject-viewer" aria-label="사용자 파일 Viewer">',
-            '<header class="subject-toolbar"><div><strong>사용자 파일</strong><span>Subject</span></div>',
+            '<header class="subject-toolbar"><div><strong>사용자 파일</strong></div>',
             '<div class="overlay-modes" role="group" aria-label="Annotation 표시">'
             '<button type="button" class="is-active" data-case-overlay-mode="all">전체 마커</button>'
             '<button type="button" data-case-overlay-mode="selected">선택 항목만</button></div>',
@@ -979,6 +981,7 @@ def render_case_visual_review(model: Mapping[str, object]) -> str:
             "".join(finding_html),
             '<p class="findings-empty" data-findings-empty hidden>선택한 조건에 해당하는 관찰 항목이 없습니다.</p>',
             '</div></aside></div>',
+            '<p class="selected-observation" data-selected-observation aria-live="polite"></p>',
             '<p class="case-visual-help">빨간 강조: 선택한 관찰 위치 · 위반 확정 표시가 아닙니다. '
             '마우스 휠 확대 · 드래그 이동 · 더블클릭 화면 맞춤</p>',
             "</section>",

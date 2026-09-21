@@ -31,7 +31,7 @@ def test_decision_panel_has_readonly_persisted_state_and_explicit_append_action(
     assert 'data-persisted-decision-value' in html
     assert 'data-persisted-notes' in html
     assert 'data-add-decision' in html
-    assert "추가 결정 기록" in html
+    assert "새 결정 기록" in html
     assert 'data-decision-editor' in html
 
 

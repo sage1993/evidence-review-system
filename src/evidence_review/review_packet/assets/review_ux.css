@@ -14,7 +14,7 @@
 .raw-quote { margin: 10px 0; }
 .raw-quote blockquote { overflow-wrap: anywhere; }
 .review-shell-region[data-review-shell-region="evidence-workspace"] #case-visual-review {
-  height: auto; grid-template-rows: auto auto minmax(0, 1fr) auto;
+  height: auto; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
 }
 #case-visual-review .workspace-grid { height: max(600px, 76vh); grid-row: 3; grid-template-columns: minmax(0, 1fr) 280px; }
 #case-visual-review .comparison-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #d0d5dd; }
@@ -57,7 +57,7 @@
 #case-visual-review .visual-notices:empty { display: none; }
 #case-visual-review .visual-abstain { flex-wrap: wrap; }
 #case-visual-review .reference-unavailable { max-width: 100%; }
-#case-visual-review .case-visual-help { grid-row: 4; white-space: normal; }
+#case-visual-review .case-visual-help { grid-row: 5; white-space: normal; }
 #case-visual-review .subject-toolbar { min-width: 0; }
 #case-visual-review [data-case-page-jump] { width: 66px; min-width: 0; padding: 4px; }
 #case-visual-review .overlay-modes button { height: auto; min-height: 40px; white-space: nowrap; }
@@ -65,6 +65,99 @@
 #case-visual-review .case-visual-overlay.is-active { color: #d92d20; stroke: #d92d20; }
 #case-visual-review .case-visual-overlay.is-active .case-visual-geometry {
   stroke: #d92d20; fill: rgba(217,45,32,.1); opacity: 1; stroke-width: 3;
+}
+
+/* Compact comparison: primary documents, secondary disclosures. */
+.app-shell:has([data-review-shell="unified"]) { width: 100%; max-width: none; padding: 12px 20px; margin: 0; }
+.review-workspace[data-review-shell="unified"] { gap: 8px; padding: 0; }
+[data-review-shell="unified"] .status-band { padding: 0 0 10px; min-height: 44px; }
+[data-review-shell="unified"] .status-copy h1 { font-size: 20px; }
+[data-review-shell="unified"] .status-label { font-size: 12px; }
+[data-status-tone="warning"] { color: #93370d; background: #fffaeb; border: 1px solid #fedf89; }
+[data-review-shell="unified"] .result-card { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; padding: 10px 14px; min-height: 0; }
+[data-review-shell="unified"] .result-question-block { flex: 1 1 60%; padding: 0; }
+[data-review-shell="unified"] .result-question-block .summary-label { display: none; }
+[data-review-shell="unified"] .result-question-block h2 { font-size: 17px; line-height: 1.5; font-weight: 600; word-break: keep-all; overflow-wrap: anywhere; }
+[data-review-shell="unified"] .result-facts { display: flex; gap: 16px; margin: 0; }
+[data-review-shell="unified"] .result-facts > div { display: flex; flex-direction: row; gap: 6px; border: 0; padding: 0; align-items: baseline; }
+[data-review-shell="unified"] .result-facts dt,
+[data-review-shell="unified"] .result-facts dd { font-size: 13px; margin: 0; }
+[data-review-shell="unified"] .result-conclusion-block:not(.visually-hidden) { flex-basis: 100%; padding: 8px 0 0; border: 0; }
+[data-review-shell="unified"] .answer-summary { font-size: 15px; line-height: 1.6; }
+[data-review-shell="unified"] #summary-attention { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 13px; }
+[data-review-shell="unified"] #summary-attention h3 { display: none; }
+[data-review-shell="unified"] #summary-attention p { margin: 0; }
+[data-review-shell="unified"] .summary-attention-details[open] { flex-basis: 100%; }
+[data-review-shell="unified"] #case-visual-review { grid-template-rows: auto auto minmax(0,1fr) auto auto; }
+[data-review-shell="unified"] #case-visual-review .visual-abstain { display: none; }
+[data-review-shell="unified"] #case-visual-review .visual-notices { padding: 0 0 6px; }
+[data-review-shell="unified"] #case-visual-review .visual-notices:has(.visual-abstain:only-child) { display: none; }
+#case-visual-review .workspace-grid { height: max(400px, calc(100dvh - 380px)); }
+#case-visual-review .comparison-actions { padding: 4px 0; border: 0; }
+#case-visual-review .comparison-actions button { min-height: 34px; padding: 6px 10px; font-size: 13px; }
+#case-visual-review .reference-viewer > header { min-height: 38px; }
+#case-visual-review .subject-toolbar { padding: 6px 10px; gap: 6px; flex-wrap: wrap; }
+#case-visual-review .viewer-controls { flex-wrap: wrap; gap: 4px; }
+#case-visual-review .viewer-controls button { width: 32px; height: 32px; min-height: 32px; }
+#case-visual-review .overlay-modes button { min-height: 32px; padding: 4px 8px; }
+#case-visual-review .reference-selector { font-size: 12px; }
+#case-visual-review .reference-controls { gap: 4px; }
+#case-visual-review .selected-observation { grid-row: 4; margin: 0; padding: 8px 12px; font-size: 13px; font-weight: 600; border-top: 1px solid #e4e7ec; }
+#case-visual-review .case-visual-help { font-size: 12px; padding: 4px 12px; }
+#case-visual-review .finding-card { flex: 0 0 auto; padding: 10px; }
+#case-visual-review .finding-card:not(.is-active) .comparison-grid { display: none; }
+#case-visual-review .finding-card h3 { margin: 6px 0; font-size: 14px; }
+#case-visual-review .case-visual-overlay.is-active .case-visual-geometry { fill: transparent; }
+[data-review-region="detail-issue-results"] { order: 4; }
+[data-review-region="human-decision"] { order: 3; }
+[data-review-region="audit"] { order: 5; }
+#review-details { border-top: 1px solid #e4e7ec; padding: 8px 12px; font-size: 13px; }
+#review-details > summary { cursor: pointer; min-height: 28px; }
+#decision-form { position: static; border-radius: 6px; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; }
+#decision-form .decision-panel-heading { display: contents; }
+#decision-form #decision-heading { font-size: 14px; margin: 0; padding: 12px; }
+#decision-form [data-add-decision] { grid-column: 2; grid-row: 1; justify-self: end; margin: 8px 12px; min-height: 36px; padding: 8px 14px; }
+#decision-form [data-add-decision], #decision-form button[type="submit"] { background: #175cd3; border-color: #175cd3; color: white; }
+#decision-form .persisted-decision { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; border: 0; padding: 0 12px 8px; }
+#decision-form .persisted-decision dl { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; }
+#decision-form .persisted-decision dl > div { display: flex; gap: 6px; font-size: 13px; }
+#decision-form .decision-record-details { font-size: 13px; }
+#decision-form .decision-record-details[open] { flex-basis: 100%; }
+#decision-form form { grid-column: 1 / -1; padding: 0; border: 0; gap: 0; }
+#decision-form [data-decision-editor] { padding: 12px 16px; border-top: 1px solid #e4e7ec; }
+#decision-form [data-decision-editor] > p:first-child { margin: 0 0 12px; font-size: 14px; }
+#decision-form .decision-choices { grid-template-columns: repeat(2,minmax(0,1fr)); }
+#decision-form .decision-reviewer { max-width: 320px; }
+#decision-form .form-status:empty { display: none; }
+#decision-form .form-status:not(:empty) { margin: 8px 16px; }
+#decision-form [hidden] { display: none; }
+@media(min-width:721px) {
+  #case-visual-review .subject-toolbar { min-height: 120px; align-content: center; }
+  #case-visual-review .reference-focus { gap: 4px; }
+  #case-visual-review .reference-selector { font-size: 0; }
+  #case-visual-review .reference-selector select { font-size: 13px; }
+  #decision-form { grid-template-columns: auto minmax(0,1fr) auto; }
+  #decision-form [data-add-decision] { grid-column: 3; }
+  #decision-form .persisted-decision { grid-column: 2; grid-row: 1; padding: 8px; gap: 4px 12px; }
+  #decision-form .persisted-decision dl { gap: 6px 12px; }
+}
+[data-review-shell="unified"] #review-items .review-item-list { flex: 0 0 auto; }
+[data-review-shell="unified"] .evidence-card { height: auto; }
+@media(max-width:720px) {
+  .app-shell:has([data-review-shell="unified"]) { padding: 10px; }
+  [data-review-shell="unified"] .status-band { flex-wrap: wrap; gap: 8px; }
+  [data-review-shell="unified"] .status-copy h1 { font-size: 18px; }
+  [data-review-shell="unified"] .result-card { padding: 10px; }
+  [data-review-shell="unified"] .result-question-block { flex-basis: 100%; }
+  #case-visual-review .workspace-grid { height: auto; }
+  #case-visual-review .comparison-workspace { height: 580px; }
+  #case-visual-review .subject-toolbar { padding: 4px; }
+  #case-visual-review .viewer-controls { gap: 2px; }
+  #decision-form .decision-choices { grid-template-columns: 1fr; }
+}
+@media print {
+  #decision-form [data-add-decision], #decision-form [data-cancel-decision] { display: none; }
+  #case-visual-review .workspace-grid { height: auto; }
 }
 #case-visual-review .reference-page-stage { height: 360px; min-height: 240px; }
 #case-visual-review .related-reference-list { opacity: 1; }

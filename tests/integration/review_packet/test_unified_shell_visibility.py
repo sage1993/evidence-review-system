@@ -75,6 +75,20 @@ process.stdin.on('end', async () => {
     const decision = page.locator('#decision-form');
     if (await decision.getAttribute('aria-hidden') === 'true')
       throw new Error('Visible human decision is hidden from assistive technology');
+    const editor = page.locator('[data-decision-editor]');
+    if (await editor.isVisible()) throw new Error('Decision editor starts expanded');
+    await page.locator('[data-add-decision]').click();
+    if (!(await editor.isVisible())) throw new Error('Decision editor did not open');
+    await page.locator('[data-cancel-decision]').click();
+    if (await editor.isVisible()) throw new Error('Decision editor did not close');
+    if (!(await page.locator('[data-add-decision]').evaluate(n=>n===document.activeElement)))
+      throw new Error('Cancel failed to restore focus');
+    if (await page.locator('#review-details').getAttribute('open') !== null)
+      throw new Error('Secondary results start expanded');
+    await page.locator('#review-details > summary').click();
+    if (!(await page.locator('#review-issue-results').isVisible()))
+      throw new Error('Deferred issue results are inaccessible');
+    await page.locator('#review-details > summary').click();
     if (data.mode === 'subject-only' || data.mode === 'reference-subject') {
       const left = await page.locator('.reference-viewer').boundingBox();
       const right = await page.locator('.subject-viewer').boundingBox();
@@ -85,10 +99,14 @@ process.stdin.on('end', async () => {
       if (await divider.getAttribute('aria-valuenow') !== '52')
         throw new Error('Divider keyboard adjustment failed');
       const toggle = page.locator('[data-findings-toggle]');
+      if (await page.locator('.findings-panel').isVisible())
+        throw new Error('Panel must start collapsed for comparison');
+      await toggle.click();
+      if (!(await page.locator('.findings-panel').isVisible()))
+        throw new Error('Panel did not expand');
       await toggle.click();
       if (await page.locator('.findings-panel').isVisible())
         throw new Error('Panel did not collapse');
-      await toggle.click();
     }
     if (data.mode === 'reference-subject') {
       const images = page.locator('[data-reference-page-image]');
@@ -115,6 +133,7 @@ process.stdin.on('end', async () => {
         throw new Error('Opt-in synchronized movement failed');
     }
     if (data.mode === 'subject-only') {
+      await page.locator('[data-findings-toggle]').click();
       const findings = page.locator('[data-case-finding]');
       if (await findings.count() !== 8) throw new Error('Missing finding');
       for (let i = 0; i < 8; i++) {

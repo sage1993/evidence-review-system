@@ -67,7 +67,7 @@ def test_reference_layout_has_evidence_column_above_pdf_and_decision_column(
     assert 'id="review-items"' in html
     assert 'class="evidence-card' in html
     assert 'class="result-question-block"' in html
-    assert 'class="result-conclusion-block"' in html
+    assert 'class="result-conclusion-block visually-hidden"' in html
     assert '"additional additional additional"' in html
     assert '"items viewer decision"' in html
     assert "items viewer decision" in html
