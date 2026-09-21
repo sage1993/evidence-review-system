@@ -37,6 +37,9 @@ from evidence_review.review_packet.server_runtime import (
 _ACTIVE_SERVERS: dict[tuple[Path, str], ReviewWorkspaceServer] = {}
 _ACTIVE_SERVERS_LOCK = Lock()
 _READY_TIMEOUT_SECONDS = 2.0
+# Startup includes interpreter launch and full packet/evidence verification before
+# the child can publish its port; it is not the subsequent HTTP readiness probe.
+_SERVER_START_TIMEOUT_SECONDS = 15.0
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _PROCESS_COMMAND_LINE_INFORMATION = 60
 _STATUS_INFO_LENGTH_MISMATCH = -1073741820
@@ -160,7 +163,7 @@ def _readline_with_timeout(stream: TextIO) -> str:
 
     Thread(target=read, daemon=True).start()
     try:
-        return result.get(timeout=_READY_TIMEOUT_SECONDS)
+        return result.get(timeout=_SERVER_START_TIMEOUT_SECONDS)
     except queue.Empty:
         return ""
 

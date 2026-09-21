@@ -3,12 +3,33 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from evidence_review.review_packet import browser_launcher
+
+
+def test_server_port_handshake_allows_verified_large_document_startup() -> None:
+    class VerifiedStartupStream:
+        def readline(self) -> str:
+            # Detached Windows startup plus verified 130-page projection exceeds 2s.
+            time.sleep(2.2)
+            return "8123\n"
+
+    assert browser_launcher._readline_with_timeout(VerifiedStartupStream()) == "8123\n"
+
+
+def test_server_port_handshake_remains_bounded(monkeypatch) -> None:
+    class StalledStartupStream:
+        def readline(self) -> str:
+            time.sleep(0.1)
+            return "8123\n"
+
+    monkeypatch.setattr(browser_launcher, "_SERVER_START_TIMEOUT_SECONDS", 0.01, raising=False)
+    assert browser_launcher._readline_with_timeout(StalledStartupStream()) == ""
 
 
 def test_windows_server_process_identity_uses_command_line(monkeypatch) -> None:
